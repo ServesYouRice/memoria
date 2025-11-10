@@ -39,6 +39,7 @@ export interface CanvasHeaderProps {
   onExportPNG?: () => void;
   onExportPDF?: () => void;
   onSaveAsTemplate?: () => void;
+  onVersionHistory?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   canUndo?: boolean;
@@ -61,6 +62,7 @@ export function CanvasHeader({
   onExportPNG,
   onExportPDF,
   onSaveAsTemplate,
+  onVersionHistory,
   searchQuery = '',
   onSearchChange,
   canUndo = false,
@@ -275,6 +277,16 @@ export function CanvasHeader({
               }}
             >
               Save as Template
+            </MenuItem>
+          )}
+          {onVersionHistory && (
+            <MenuItem
+              onClick={() => {
+                onVersionHistory();
+                handleMenuClose();
+              }}
+            >
+              Version History
             </MenuItem>
           )}
           <MenuItem onClick={handleMenuClose}>Canvas Settings</MenuItem>

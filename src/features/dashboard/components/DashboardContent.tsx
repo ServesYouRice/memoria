@@ -17,9 +17,12 @@ import {
   TextField,
   Typography,
   Alert,
+  Paper,
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, Explore as ExploreIcon } from '@mui/icons-material';
 import { useCanvases, useCreateCanvas } from '@/lib/hooks/use-canvases';
+import { ActivityFeed } from './ActivityFeed';
+import Link from 'next/link';
 
 export function DashboardContent() {
   const router = useRouter();
@@ -67,18 +70,31 @@ export function DashboardContent() {
 
   return (
     <>
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h5" component="h2">
-          My Canvases
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          New Canvas
-        </Button>
-      </Box>
+      <Grid container spacing={3}>
+        {/* Left column - Canvases */}
+        <Grid item xs={12} md={8}>
+          <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h5" component="h2">
+              My Canvases
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                component={Link}
+                href="/templates"
+                variant="outlined"
+                startIcon={<ExploreIcon />}
+              >
+                Templates
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                New Canvas
+              </Button>
+            </Box>
+          </Box>
 
       {!hasCanvases ? (
         <Box
@@ -143,6 +159,15 @@ export function DashboardContent() {
           ))}
         </Grid>
       )}
+        </Grid>
+
+        {/* Right column - Activity Feed */}
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3, position: 'sticky', top: 16 }}>
+            <ActivityFeed limit={15} />
+          </Paper>
+        </Grid>
+      </Grid>
 
       {/* Create Canvas Dialog */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>

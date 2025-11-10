@@ -23,6 +23,7 @@ import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/compon
 import { SelectionBox } from '@/features/canvas/components/SelectionBox';
 import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
 import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplateDialog';
+import { VersionHistoryDialog } from '@/features/canvas/components/VersionHistoryDialog';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 
@@ -43,6 +44,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
@@ -485,6 +487,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onExportPNG={handleExportPNG}
         onExportPDF={handleExportPDF}
         onSaveAsTemplate={() => setTemplateDialogOpen(true)}
+        onVersionHistory={() => setVersionHistoryOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         canUndo={canUndo}
@@ -637,6 +640,13 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setTemplateDialogOpen(false)}
         canvasId={canvasId}
         canvasName={canvasName}
+      />
+
+      {/* Version History Dialog */}
+      <VersionHistoryDialog
+        open={versionHistoryOpen}
+        onClose={() => setVersionHistoryOpen(false)}
+        canvasId={canvasId}
       />
     </Box>
   );
