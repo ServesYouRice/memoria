@@ -24,8 +24,10 @@ import { SelectionBox } from '@/features/canvas/components/SelectionBox';
 import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
 import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplateDialog';
 import { VersionHistoryDialog } from '@/features/canvas/components/VersionHistoryDialog';
+import { ExportDialog, ExportFormat, ExportOptions } from '@/features/canvas/components/ExportDialog';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
+import { jsPDF } from 'jspdf';
 
 const queryClient = new QueryClient();
 
@@ -45,6 +47,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
@@ -436,26 +439,112 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     setCommentsPanelOpen(true);
   };
 
-  const handleExportPNG = () => {
+  const handleExport = (format: ExportFormat, options: ExportOptions) => {
+    switch (format) {
+      case 'png':
+        handleExportPNG(options);
+        break;
+      case 'pdf':
+        handleExportPDF(options);
+        break;
+      case 'json':
+        handleExportJSON(options);
+        break;
+      default:
+        alert(`${format.toUpperCase()} export is not yet implemented`);
+    }
+  };
+
+  const handleExportPNG = (options: ExportOptions) => {
     if (!stageRef.current) return;
 
+    const pixelRatio = options.quality === 'low' ? 1 : options.quality === 'medium' ? 2 : 3;
+
     const uri = stageRef.current.toDataURL({
-      pixelRatio: 2, // Higher quality
+      pixelRatio,
     });
 
     // Create download link
     const link = document.createElement('a');
-    link.download = `${canvasName.replace(/\s+/g, '_')}.png`;
+    link.download = `${options.filename || canvasName.replace(/\s+/g, '_')}.png`;
     link.href = uri;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleExportPDF = () => {
-    // PDF export would require jsPDF library
-    // For now, just show an alert
-    alert('PDF export will be implemented in a future update. Use PNG export for now.');
+  const handleExportPDF = (options: ExportOptions) => {
+    if (!stageRef.current) return;
+
+    try {
+      // Get canvas as image
+      const uri = stageRef.current.toDataURL({
+        pixelRatio: 2,
+      });
+
+      // Get stage dimensions
+      const width = stageRef.current.width();
+      const height = stageRef.current.height();
+
+      // Create PDF with appropriate dimensions
+      const pdf = new jsPDF({
+        orientation: width > height ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [width, height],
+      });
+
+      // Add image to PDF
+      pdf.addImage(uri, 'PNG', 0, 0, width, height);
+
+      // Download
+      pdf.save(`${options.filename || canvasName.replace(/\s+/g, '_')}.pdf`);
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+
+  const handleExportJSON = (options: ExportOptions) => {
+    try {
+      // Prepare export data
+      const exportData = {
+        canvas: {
+          id: canvasId,
+          name: canvasName,
+          zoomLevel: zoom,
+          panX: position.x,
+          panY: position.y,
+          exportedAt: new Date().toISOString(),
+        },
+        items: allItems.map((item) => ({
+          type: item.type,
+          positionX: item.positionX,
+          positionY: item.positionY,
+          width: item.width,
+          height: item.height,
+          zIndex: item.zIndex,
+          content: item.content,
+          tags: item.tags || [],
+        })),
+      };
+
+      // Convert to JSON string
+      const jsonString = JSON.stringify(exportData, null, 2);
+
+      // Create blob and download
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `${options.filename || canvasName.replace(/\s+/g, '_')}.json`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export JSON:', err);
+      alert('Failed to export JSON. Please try again.');
+    }
   };
 
   if (isLoading) {
@@ -484,8 +573,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         zoom={zoom}
         onZoomChange={handleZoomChange}
         onFitToScreen={handleFitToScreen}
-        onExportPNG={handleExportPNG}
-        onExportPDF={handleExportPDF}
+        onExport={() => setExportDialogOpen(true)}
         onSaveAsTemplate={() => setTemplateDialogOpen(true)}
         onVersionHistory={() => setVersionHistoryOpen(true)}
         searchQuery={searchQuery}
@@ -647,6 +735,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         open={versionHistoryOpen}
         onClose={() => setVersionHistoryOpen(false)}
         canvasId={canvasId}
+      />
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        onExport={handleExport}
+        canvasName={canvasName}
       />
     </Box>
   );

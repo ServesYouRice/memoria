@@ -37,8 +37,7 @@ export interface CanvasHeaderProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
   onFitToScreen: () => void;
-  onExportPNG?: () => void;
-  onExportPDF?: () => void;
+  onExport?: () => void;
   onSaveAsTemplate?: () => void;
   onVersionHistory?: () => void;
   searchQuery?: string;
@@ -60,8 +59,7 @@ export function CanvasHeader({
   zoom,
   onZoomChange,
   onFitToScreen,
-  onExportPNG,
-  onExportPDF,
+  onExport,
   onSaveAsTemplate,
   onVersionHistory,
   searchQuery = '',
@@ -259,22 +257,16 @@ export function CanvasHeader({
           </IconButton>
         </Tooltip>
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-          <MenuItem
-            onClick={() => {
-              onExportPNG?.();
-              handleMenuClose();
-            }}
-          >
-            Export as PNG
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              onExportPDF?.();
-              handleMenuClose();
-            }}
-          >
-            Export as PDF
-          </MenuItem>
+          {onExport && (
+            <MenuItem
+              onClick={() => {
+                onExport();
+                handleMenuClose();
+              }}
+            >
+              Export Canvas...
+            </MenuItem>
+          )}
           {onSaveAsTemplate && (
             <MenuItem
               onClick={() => {
