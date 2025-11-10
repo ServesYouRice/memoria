@@ -11,10 +11,11 @@ import { Stage, Layer } from 'react-konva';
 import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
 import { NoteAdd, Bookmark } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useCanvasItems } from '@/lib/hooks/use-canvas-items';
+import { useCanvasItems, useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
+import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { ItemType } from '@/types/canvas';
 import Konva from 'konva';
@@ -30,6 +31,7 @@ interface CanvasPageProps {
 function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
@@ -39,6 +41,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   // Fetch all items for this canvas
   const { data, isLoading, error } = useCanvasItems(canvasId);
   const items = data?.items || [];
+  const { mutateAsync: deleteItem } = useDeleteCanvasItem();
 
   // Fetch canvas details (name, zoom, pan)
   React.useEffect(() => {
@@ -74,6 +77,34 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Delete key - delete selected item
+      if (e.key === 'Delete' && selectedItemId) {
+        const selectedItem = items.find((item) => item.id === selectedItemId);
+        if (selectedItem) {
+          try {
+            await deleteItem({
+              itemId: selectedItemId,
+              version: selectedItem.version,
+            });
+            setSelectedItemId(null);
+          } catch (err) {
+            console.error('Failed to delete item:', err);
+          }
+        }
+      }
+      // Escape key - deselect
+      else if (e.key === 'Escape') {
+        setSelectedItemId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItemId, items, deleteItem]);
 
   const handleStageClick = (e: any) => {
     // Deselect if clicking on empty canvas
@@ -206,10 +237,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         <SpeedDialAction
           icon={<NoteAdd />}
           tooltipTitle="Add Note"
-          onClick={() => {
-            // Note creation dialog would go here
-            console.log('Add note clicked');
-          }}
+          onClick={() => setNoteDialogOpen(true)}
+          data-testid="add-note-button"
         />
       </SpeedDial>
 
@@ -219,6 +248,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setBookmarkDialogOpen(false)}
         canvasId={canvasId}
         initialPosition={{ x: 100, y: 100 }}
+      />
+
+      {/* Create Note Dialog */}
+      <CreateNoteDialog
+        open={noteDialogOpen}
+        onClose={() => setNoteDialogOpen(false)}
+        canvasId={canvasId}
+        initialPosition={{ x: 200, y: 200 }}
       />
     </Box>
   );
