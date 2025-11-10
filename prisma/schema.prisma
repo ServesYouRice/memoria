@@ -24,6 +24,7 @@ model User {
   createdItems  CanvasItem[] @relation("ItemCreatedBy")
   updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
   deletedItems  CanvasItem[] @relation("ItemDeletedBy")
+  comments      Comment[]
 }
 
 model Canvas {
@@ -81,6 +82,24 @@ model CanvasItem {
   @@index([canvasId, type])
   @@index([canvasId, zIndex])
   @@index([canvasId, updatedAt])
+
+  comments    Comment[]
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  itemId      String
+  item        CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([itemId, deletedAt])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 enum ItemType {

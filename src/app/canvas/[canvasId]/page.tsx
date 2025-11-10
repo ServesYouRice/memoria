@@ -21,6 +21,7 @@ import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog'
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
 import { SelectionBox } from '@/features/canvas/components/SelectionBox';
+import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 
@@ -38,6 +39,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
+  const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
+  const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
@@ -423,6 +426,12 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     }
   };
 
+  const handleOpenComments = () => {
+    if (!selectedItemId) return;
+    setCommentsItemId(selectedItemId);
+    setCommentsPanelOpen(true);
+  };
+
   const handleExportPNG = () => {
     if (!stageRef.current) return;
 
@@ -603,7 +612,21 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onDelete={handleDeleteFromMenu}
         onDuplicate={handleDuplicate}
         onCopy={handleCopy}
+        onComments={handleOpenComments}
       />
+
+      {/* Comments Panel */}
+      {commentsItemId && (
+        <CommentsPanel
+          open={commentsPanelOpen}
+          onClose={() => {
+            setCommentsPanelOpen(false);
+            setCommentsItemId(null);
+          }}
+          itemId={commentsItemId}
+          itemType={allItems.find((item) => item.id === commentsItemId)?.type || 'NOTE'}
+        />
+      )}
     </Box>
   );
 }

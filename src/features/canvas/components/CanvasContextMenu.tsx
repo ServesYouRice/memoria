@@ -6,6 +6,7 @@ import {
   Delete as DeleteIcon,
   ContentCopy as CopyIcon,
   FileCopy as DuplicateIcon,
+  Comment as CommentIcon,
 } from '@mui/icons-material';
 
 export interface ContextMenuPosition {
@@ -19,6 +20,7 @@ export interface CanvasContextMenuProps {
   onDelete: () => void;
   onDuplicate: () => void;
   onCopy: () => void;
+  onComments: () => void;
 }
 
 export function CanvasContextMenu({
@@ -27,6 +29,7 @@ export function CanvasContextMenu({
   onDelete,
   onDuplicate,
   onCopy,
+  onComments,
 }: CanvasContextMenuProps) {
   const open = Boolean(position);
 
@@ -55,6 +58,12 @@ export function CanvasContextMenu({
           <DuplicateIcon fontSize="small" />
         </ListItemIcon>
         <ListItemText>Duplicate</ListItemText>
+      </MenuItem>
+      <MenuItem onClick={() => handleAction(onComments)}>
+        <ListItemIcon>
+          <CommentIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Comments</ListItemText>
       </MenuItem>
       <Divider />
       <MenuItem onClick={() => handleAction(onDelete)}>
