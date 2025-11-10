@@ -26,6 +26,7 @@ import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
 import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplateDialog';
 import { VersionHistoryDialog } from '@/features/canvas/components/VersionHistoryDialog';
 import { ExportDialog, ExportFormat, ExportOptions } from '@/features/canvas/components/ExportDialog';
+import { TagFilterPanel } from '@/features/canvas/components/TagFilterPanel';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 import { jsPDF } from 'jspdf';
@@ -49,6 +50,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
@@ -79,22 +82,51 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     isItemInSelection,
   } = useSelectionBox();
 
-  // Filter items based on search query
-  const items = React.useMemo(() => {
-    if (!searchQuery.trim()) return allItems;
-
-    const query = searchQuery.toLowerCase();
-    return allItems.filter((item) => {
-      if (item.type === ItemType.NOTE) {
-        const noteContent = item.content as { text: string };
-        return noteContent.text.toLowerCase().includes(query);
-      } else if (item.type === ItemType.BOOKMARK) {
-        const bookmarkContent = item.content as { url: string };
-        return bookmarkContent.url.toLowerCase().includes(query);
+  // Extract unique tags and counts from all items
+  const { allTags, tagCounts } = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    allItems.forEach((item) => {
+      if (item.tags && Array.isArray(item.tags)) {
+        item.tags.forEach((tag) => {
+          counts[tag] = (counts[tag] || 0) + 1;
+        });
       }
-      return false;
     });
-  }, [allItems, searchQuery]);
+    return {
+      allTags: Object.keys(counts).sort(),
+      tagCounts: counts,
+    };
+  }, [allItems]);
+
+  // Filter items based on search query and tags
+  const items = React.useMemo(() => {
+    let filtered = allItems;
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((item) => {
+        if (item.type === ItemType.NOTE) {
+          const noteContent = item.content as { text: string };
+          return noteContent.text.toLowerCase().includes(query);
+        } else if (item.type === ItemType.BOOKMARK) {
+          const bookmarkContent = item.content as { url: string };
+          return bookmarkContent.url.toLowerCase().includes(query);
+        }
+        return false;
+      });
+    }
+
+    // Filter by selected tags (items must have ALL selected tags)
+    if (selectedTags.length > 0) {
+      filtered = filtered.filter((item) => {
+        if (!item.tags || !Array.isArray(item.tags)) return false;
+        return selectedTags.every((tag) => item.tags.includes(tag));
+      });
+    }
+
+    return filtered;
+  }, [allItems, searchQuery, selectedTags]);
 
   // Fetch canvas details (name, zoom, pan)
   React.useEffect(() => {
@@ -609,6 +641,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onExport={() => setExportDialogOpen(true)}
         onSaveAsTemplate={() => setTemplateDialogOpen(true)}
         onVersionHistory={() => setVersionHistoryOpen(true)}
+        onTagFilter={() => setTagFilterOpen(true)}
+        activeTagCount={selectedTags.length}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         canUndo={canUndo}
@@ -776,6 +810,16 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setExportDialogOpen(false)}
         onExport={handleExport}
         canvasName={canvasName}
+      />
+
+      {/* Tag Filter Panel */}
+      <TagFilterPanel
+        open={tagFilterOpen}
+        onClose={() => setTagFilterOpen(false)}
+        allTags={allTags}
+        selectedTags={selectedTags}
+        onTagsChange={setSelectedTags}
+        tagCounts={tagCounts}
       />
     </Box>
   );

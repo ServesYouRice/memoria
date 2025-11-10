@@ -14,6 +14,7 @@ import {
   Tooltip,
   Menu,
   MenuItem,
+  Badge,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -26,6 +27,7 @@ import {
   Undo as UndoIcon,
   Redo as RedoIcon,
   Share as ShareIcon,
+  LocalOffer as TagIcon,
 } from '@mui/icons-material';
 import { ShareDialog } from './ShareDialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -40,12 +42,14 @@ export interface CanvasHeaderProps {
   onExport?: () => void;
   onSaveAsTemplate?: () => void;
   onVersionHistory?: () => void;
+  onTagFilter?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  activeTagCount?: number;
 }
 
 const ZOOM_STEP = 0.1;
@@ -62,12 +66,14 @@ export function CanvasHeader({
   onExport,
   onSaveAsTemplate,
   onVersionHistory,
+  onTagFilter,
   searchQuery = '',
   onSearchChange,
   canUndo = false,
   canRedo = false,
   onUndo,
   onRedo,
+  activeTagCount = 0,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -216,6 +222,17 @@ export function CanvasHeader({
         <Box sx={{ mr: 1 }}>
           <ThemeToggle />
         </Box>
+
+        {/* Tag Filter */}
+        {onTagFilter && (
+          <Tooltip title="Filter by Tags">
+            <IconButton onClick={onTagFilter} sx={{ mr: 1 }}>
+              <Badge badgeContent={activeTagCount} color="primary">
+                <TagIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+        )}
 
         {/* Search Toggle */}
         {onSearchChange && !showSearch && !isEditingName && (
