@@ -9,7 +9,7 @@
 import React, { useState, useRef } from 'react';
 import { Stage, Layer } from 'react-konva';
 import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
-import { NoteAdd, Bookmark } from '@mui/icons-material';
+import { NoteAdd, Bookmark, Image } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
@@ -17,8 +17,10 @@ import { useSelectionBox } from '@/lib/hooks/use-selection-box';
 import { useUpdateCanvasThumbnail } from '@/lib/hooks/use-canvases';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
+import { ImageItem } from '@/features/canvas/components/ImageItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
 import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
+import { CreateImageDialog } from '@/features/canvas/components/CreateImageDialog';
 import { EditNoteDialog } from '@/features/canvas/components/EditNoteDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
@@ -46,6 +48,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false);
   const [editingNoteItem, setEditingNoteItem] = useState<CanvasItem | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
@@ -743,6 +746,15 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     }}
                   />
                 );
+              } else if (item.type === ItemType.IMAGE) {
+                return (
+                  <ImageItem
+                    key={item.id}
+                    item={item}
+                    isSelected={isItemSelected}
+                    onSelect={() => setSelectedItemId(item.id)}
+                  />
+                );
               }
               return null;
             })}
@@ -778,6 +790,12 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
           onClick={() => setNoteDialogOpen(true)}
           data-testid="add-note-button"
         />
+        <SpeedDialAction
+          icon={<Image />}
+          tooltipTitle="Add Image"
+          onClick={() => setImageDialogOpen(true)}
+          data-testid="add-image-button"
+        />
       </SpeedDial>
 
       {/* Create Bookmark Dialog */}
@@ -794,6 +812,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setNoteDialogOpen(false)}
         canvasId={canvasId}
         initialPosition={{ x: 200, y: 200 }}
+      />
+
+      {/* Create Image Dialog */}
+      <CreateImageDialog
+        open={imageDialogOpen}
+        onClose={() => setImageDialogOpen(false)}
+        canvasId={canvasId}
+        initialPosition={{ x: 300, y: 300 }}
       />
 
       {/* Edit Note Dialog */}

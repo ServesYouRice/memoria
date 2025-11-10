@@ -6,6 +6,7 @@
 export enum ItemType {
   NOTE = 'NOTE',
   BOOKMARK = 'BOOKMARK',
+  IMAGE = 'IMAGE',
 }
 
 /**
@@ -42,9 +43,20 @@ export interface BookmarkContent {
 }
 
 /**
+ * Image item content
+ */
+export interface ImageContent {
+  url: string; // URL to the uploaded image
+  filename: string; // Original filename
+  alt?: string; // Alternative text for accessibility
+  width?: number; // Original image width
+  height?: number; // Original image height
+}
+
+/**
  * Union type for all item content types
  */
-export type ItemContent = NoteContent | BookmarkContent;
+export type ItemContent = NoteContent | BookmarkContent | ImageContent;
 
 /**
  * Full canvas item (matches database schema)
@@ -87,7 +99,11 @@ export function isNoteContent(content: ItemContent): content is NoteContent {
 }
 
 export function isBookmarkContent(content: ItemContent): content is BookmarkContent {
-  return 'url' in content;
+  return 'url' in content && !('filename' in content);
+}
+
+export function isImageContent(content: ItemContent): content is ImageContent {
+  return 'url' in content && 'filename' in content;
 }
 
 /**
