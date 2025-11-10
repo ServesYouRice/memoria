@@ -132,13 +132,19 @@ export function LoginForm() {
           }}
         />
 
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+          <Link href="/auth/forgot-password" variant="body2" underline="hover">
+            Forgot password?
+          </Link>
+        </Box>
+
         <Button
           type="submit"
           variant="contained"
           fullWidth
           size="large"
           disabled={isLoading}
-          sx={{ mt: 3, mb: 2 }}
+          sx={{ mt: 2, mb: 2 }}
         >
           {isLoading ? 'Signing In...' : 'Sign In'}
         </Button>

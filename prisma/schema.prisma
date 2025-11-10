@@ -106,6 +106,18 @@ model Account {
   id_token           String? @db.Text
   session_state      String?
   user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@unique([provider, providerAccountId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email, expiresAt])
+  @@index([token, expiresAt])
 }
