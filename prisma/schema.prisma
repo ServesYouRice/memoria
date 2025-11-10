@@ -63,6 +63,7 @@ model Canvas {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items       CanvasItem[]
   shares      CanvasShare[]
+  versions    CanvasVersion[]
 
   zoomLevel   Float       @default(1.0)
   panX        Float       @default(0)
@@ -84,6 +85,17 @@ model Canvas {
   @@index([userId, createdAt])
   @@index([shareToken])
   @@index([isTemplate, templateCategory])
+}
+
+model CanvasVersion {
+  id          String   @id @default(cuid())
+  canvasId    String
+  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  name        String
+  snapshot    Json     // Complete canvas state including items
+  createdAt   DateTime @default(now())
+
+  @@index([canvasId, createdAt])
 }
 
 model CanvasItem {
