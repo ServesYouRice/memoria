@@ -19,6 +19,7 @@ import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
 import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
+import { EditNoteDialog } from '@/features/canvas/components/EditNoteDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
 import { SelectionBox } from '@/features/canvas/components/SelectionBox';
@@ -45,6 +46,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false);
+  const [editingNoteItem, setEditingNoteItem] = useState<CanvasItem | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
@@ -398,6 +401,13 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
   };
 
+  const handleNoteDoubleClick = (item: CanvasItem) => {
+    if (item.type === ItemType.NOTE) {
+      setEditingNoteItem(item);
+      setEditNoteDialogOpen(true);
+    }
+  };
+
   const handleDeleteFromMenu = async () => {
     if (!selectedItemId) return;
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
@@ -722,6 +732,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     item={item}
                     isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
+                    onDoubleClick={() => handleNoteDoubleClick(item)}
                     onContextMenu={(e: any) => {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
@@ -783,6 +794,16 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setNoteDialogOpen(false)}
         canvasId={canvasId}
         initialPosition={{ x: 200, y: 200 }}
+      />
+
+      {/* Edit Note Dialog */}
+      <EditNoteDialog
+        open={editNoteDialogOpen}
+        onClose={() => {
+          setEditNoteDialogOpen(false);
+          setEditingNoteItem(null);
+        }}
+        item={editingNoteItem}
       />
 
       {/* Context Menu */}

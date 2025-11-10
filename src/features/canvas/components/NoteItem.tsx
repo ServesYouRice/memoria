@@ -13,16 +13,18 @@ import Konva from 'konva';
 import { CanvasItem, NoteContent, isNoteContent } from '@/types/canvas';
 import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { stripHtmlTags } from '@/lib/utils/html';
 
 interface NoteItemProps {
   item: CanvasItem;
   isSelected?: boolean;
   onSelect?: () => void;
+  onDoubleClick?: () => void;
 }
 
 const DELETE_BUTTON_SIZE = 20;
 
-export function NoteItem({ item, isSelected = false, onSelect }: NoteItemProps) {
+export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick }: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -66,6 +68,8 @@ export function NoteItem({ item, isSelected = false, onSelect }: NoteItemProps) 
       onDragEnd={handleDragEnd}
       onClick={onSelect}
       onTap={onSelect}
+      onDblClick={onDoubleClick}
+      onDblTap={onDoubleClick}
     >
       <Rect
         width={item.width}
@@ -85,7 +89,7 @@ export function NoteItem({ item, isSelected = false, onSelect }: NoteItemProps) 
         y={10}
         width={item.width - 20}
         height={item.height - 20}
-        text={content.text}
+        text={stripHtmlTags(content.text)}
         fontSize={14}
         fontFamily="Arial"
         fill="#333"

@@ -1,19 +1,18 @@
 /**
- * Create Note Dialog
+ * Edit Note Dialog
  *
- * MUI dialog for creating new notes on the canvas
+ * MUI dialog for editing existing notes on the canvas
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
-  TextField,
   Alert,
   CircularProgress,
   Box,
@@ -22,33 +21,27 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { ItemType } from '@/types/canvas';
+import { useUpdateCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { CanvasItem, isNoteContent } from '@/types/canvas';
 import { TagInput } from './TagInput';
 import { RichTextEditor } from '@/components/RichTextEditor';
 
-interface CreateNoteDialogProps {
+interface EditNoteDialogProps {
   open: boolean;
   onClose: () => void;
-  canvasId: string;
-  initialPosition?: { x: number; y: number };
+  item: CanvasItem | null;
 }
 
 const formSchema = z.object({
-  text: z.string().min(1, 'Note text is required').max(5000, 'Note text too long'),
+  text: z.string().min(1, 'Note text is required').max(10000, 'Note text too long'),
   tags: z.array(z.string()).default([]),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
-export function CreateNoteDialog({
-  open,
-  onClose,
-  canvasId,
-  initialPosition = { x: 100, y: 100 },
-}: CreateNoteDialogProps) {
+export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   const [error, setError] = useState<string | null>(null);
-  const createItem = useCreateCanvasItem();
+  const updateItem = useUpdateCanvasItem();
 
   const {
     control,
@@ -63,6 +56,15 @@ export function CreateNoteDialog({
     },
   });
 
+  useEffect(() => {
+    if (item && isNoteContent(item.content)) {
+      reset({
+        text: item.content.text || '',
+        tags: item.tags || [],
+      });
+    }
+  }, [item, reset]);
+
   const handleClose = () => {
     reset();
     setError(null);
@@ -70,37 +72,40 @@ export function CreateNoteDialog({
   };
 
   const onSubmit = async (data: FormData) => {
+    if (!item) return;
+
     try {
       setError(null);
 
-      await createItem.mutateAsync({
-        canvasId,
-        type: ItemType.NOTE,
-        positionX: initialPosition.x,
-        positionY: initialPosition.y,
-        width: 200,
-        height: 200,
-        zIndex: 0,
-        content: {
-          text: data.text,
+      await updateItem.mutateAsync({
+        itemId: item.id,
+        version: item.version,
+        updates: {
+          content: {
+            text: data.text,
+          },
+          tags: data.tags || [],
         },
-        tags: data.tags || [],
       });
 
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create note');
+      setError(err instanceof Error ? err.message : 'Failed to update note');
     }
   };
 
+  if (!item) {
+    return null;
+  }
+
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Note</DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+      <DialogTitle>Edit Note</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Typography variant="body2" color="text.secondary">
-              Create a sticky note on your canvas.
+              Update your note content and tags.
             </Typography>
 
             <Box>
@@ -115,7 +120,7 @@ export function CreateNoteDialog({
                     content={field.value}
                     onChange={field.onChange}
                     placeholder="Enter your note..."
-                    minHeight={150}
+                    minHeight={200}
                     editable={!isSubmitting}
                   />
                 )}
@@ -157,7 +162,7 @@ export function CreateNoteDialog({
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? 'Creating...' : 'Create Note'}
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
           </Button>
         </DialogActions>
       </form>

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Providers } from './providers';
 import { PWARegister } from '@/components/PWARegister';
+import './tiptap.css';
 
 export const metadata: Metadata = {
   title: 'CanvasCollect',
