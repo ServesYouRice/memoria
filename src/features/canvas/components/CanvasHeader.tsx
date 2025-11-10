@@ -21,6 +21,8 @@ import {
   ZoomOut,
   FitScreen,
   MoreVert,
+  Search as SearchIcon,
+  Clear as ClearIcon,
 } from '@mui/icons-material';
 
 export interface CanvasHeaderProps {
@@ -31,6 +33,8 @@ export interface CanvasHeaderProps {
   onFitToScreen: () => void;
   onExportPNG?: () => void;
   onExportPDF?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 const ZOOM_STEP = 0.1;
@@ -45,11 +49,14 @@ export function CanvasHeader({
   onFitToScreen,
   onExportPNG,
   onExportPDF,
+  searchQuery = '',
+  onSearchChange,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(canvasName);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [showSearch, setShowSearch] = useState(false);
 
   const handleBackClick = () => {
     router.push('/dashboard');
@@ -107,8 +114,31 @@ export function CanvasHeader({
         </Tooltip>
 
         {/* Canvas Name */}
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          {isEditingName ? (
+        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
+          {showSearch && onSearchChange ? (
+            <TextField
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search notes and bookmarks..."
+              size="small"
+              autoFocus
+              sx={{ minWidth: 300, maxWidth: 500 }}
+              InputProps={{
+                startAdornment: <SearchIcon sx={{ mr: 1, color: 'action.active' }} />,
+                endAdornment: searchQuery ? (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      onSearchChange('');
+                      setShowSearch(false);
+                    }}
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                ) : null,
+              }}
+            />
+          ) : isEditingName ? (
             <TextField
               value={editedName}
               onChange={(e) => setEditedName(e.target.value)}
@@ -136,6 +166,15 @@ export function CanvasHeader({
             </Typography>
           )}
         </Box>
+
+        {/* Search Toggle */}
+        {onSearchChange && !showSearch && !isEditingName && (
+          <Tooltip title="Search">
+            <IconButton onClick={() => setShowSearch(true)} sx={{ mr: 1 }}>
+              <SearchIcon />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {/* Zoom Controls */}
         <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>

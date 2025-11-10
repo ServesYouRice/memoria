@@ -38,13 +38,31 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [searchQuery, setSearchQuery] = useState('');
   const stageRef = useRef<Konva.Stage>(null);
 
   // Fetch all items for this canvas
   const { data, isLoading, error } = useCanvasItems(canvasId);
-  const items = data?.items || [];
+  const allItems = data?.items || [];
   const { mutateAsync: deleteItem } = useDeleteCanvasItem();
   const { mutateAsync: createItem } = useCreateCanvasItem();
+
+  // Filter items based on search query
+  const items = React.useMemo(() => {
+    if (!searchQuery.trim()) return allItems;
+
+    const query = searchQuery.toLowerCase();
+    return allItems.filter((item) => {
+      if (item.type === ItemType.NOTE) {
+        const noteContent = item.content as { text: string };
+        return noteContent.text.toLowerCase().includes(query);
+      } else if (item.type === ItemType.BOOKMARK) {
+        const bookmarkContent = item.content as { url: string };
+        return bookmarkContent.url.toLowerCase().includes(query);
+      }
+      return false;
+    });
+  }, [allItems, searchQuery]);
 
   // Fetch canvas details (name, zoom, pan)
   React.useEffect(() => {
@@ -86,7 +104,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     const handleKeyDown = async (e: KeyboardEvent) => {
       // Delete key - delete selected item
       if (e.key === 'Delete' && selectedItemId) {
-        const selectedItem = items.find((item) => item.id === selectedItemId);
+        const selectedItem = allItems.find((item) => item.id === selectedItemId);
         if (selectedItem) {
           try {
             await deleteItem({
@@ -108,7 +126,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemId, items, deleteItem]);
+  }, [selectedItemId, allItems, deleteItem]);
 
   // Prevent default context menu on stage
   React.useEffect(() => {
@@ -170,7 +188,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
   const handleDeleteFromMenu = async () => {
     if (!selectedItemId) return;
-    const selectedItem = items.find((item) => item.id === selectedItemId);
+    const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
       try {
         await deleteItem({
@@ -186,7 +204,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
   const handleDuplicate = async () => {
     if (!selectedItemId) return;
-    const selectedItem = items.find((item) => item.id === selectedItemId);
+    const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
       try {
         await createItem({
@@ -207,7 +225,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
   const handleCopy = () => {
     if (!selectedItemId) return;
-    const selectedItem = items.find((item) => item.id === selectedItemId);
+    const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
       // Copy to clipboard (JSON format for now)
       const copyData = {
@@ -269,6 +287,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onFitToScreen={handleFitToScreen}
         onExportPNG={handleExportPNG}
         onExportPDF={handleExportPDF}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       {/* Canvas */}
