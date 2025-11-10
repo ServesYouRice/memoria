@@ -18,9 +18,14 @@ import {
   Typography,
   Alert,
   Paper,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
-import { Add as AddIcon, Explore as ExploreIcon } from '@mui/icons-material';
-import { useCanvases, useCreateCanvas } from '@/lib/hooks/use-canvases';
+import { Add as AddIcon, Explore as ExploreIcon, MoreVert, ContentCopy as DuplicateIcon } from '@mui/icons-material';
+import { useCanvases, useCreateCanvas, useDuplicateCanvas } from '@/lib/hooks/use-canvases';
 import { ActivityFeed } from './ActivityFeed';
 import Link from 'next/link';
 
@@ -28,9 +33,11 @@ export function DashboardContent() {
   const router = useRouter();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newCanvasName, setNewCanvasName] = useState('');
+  const [menuAnchor, setMenuAnchor] = useState<{ element: HTMLElement; canvasId: string } | null>(null);
 
   const { data: canvases, isLoading, error } = useCanvases();
   const createCanvas = useCreateCanvas();
+  const duplicateCanvas = useDuplicateCanvas();
 
   const handleCreateCanvas = async () => {
     try {
@@ -48,6 +55,25 @@ export function DashboardContent() {
 
   const handleCanvasClick = (canvasId: string) => {
     router.push(`/canvas/${canvasId}`);
+  };
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, canvasId: string) => {
+    event.stopPropagation();
+    setMenuAnchor({ element: event.currentTarget, canvasId });
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchor(null);
+  };
+
+  const handleDuplicate = async () => {
+    if (!menuAnchor) return;
+    try {
+      await duplicateCanvas.mutateAsync(menuAnchor.canvasId);
+      handleMenuClose();
+    } catch (err) {
+      console.error('Failed to duplicate canvas:', err);
+    }
   };
 
   if (isLoading) {
@@ -126,7 +152,13 @@ export function DashboardContent() {
         <Grid container spacing={3}>
           {canvases.map((canvas) => (
             <Grid item xs={12} sm={6} md={4} key={canvas.id}>
-              <Card sx={{ height: '100%' }}>
+              <Card sx={{ height: '100%', position: 'relative' }}>
+                <IconButton
+                  sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
+                  onClick={(e) => handleMenuOpen(e, canvas.id)}
+                >
+                  <MoreVert />
+                </IconButton>
                 <CardActionArea
                   onClick={() => handleCanvasClick(canvas.id)}
                   sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
@@ -201,6 +233,20 @@ export function DashboardContent() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Canvas Action Menu */}
+      <Menu
+        anchorEl={menuAnchor?.element}
+        open={Boolean(menuAnchor)}
+        onClose={handleMenuClose}
+      >
+        <MenuItem onClick={handleDuplicate}>
+          <ListItemIcon>
+            <DuplicateIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Duplicate</ListItemText>
+        </MenuItem>
+      </Menu>
     </>
   );
 }

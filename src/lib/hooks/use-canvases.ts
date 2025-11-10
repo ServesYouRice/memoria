@@ -45,6 +45,19 @@ const api = {
 
     return response.json() as Promise<Canvas>;
   },
+
+  async duplicateCanvas(canvasId: string) {
+    const response = await fetch(`/api/v1/canvases/${canvasId}/duplicate`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to duplicate canvas');
+    }
+
+    return response.json() as Promise<Canvas>;
+  },
 };
 
 /**
@@ -76,6 +89,22 @@ export function useCreateCanvas() {
     mutationFn: api.createCanvas,
     onSuccess: () => {
       // Invalidate and refetch canvases list
+      queryClient.invalidateQueries({
+        queryKey: canvasKeys.list(),
+      });
+    },
+  });
+}
+
+/**
+ * Duplicate an existing canvas
+ */
+export function useDuplicateCanvas() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: api.duplicateCanvas,
+    onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: canvasKeys.list(),
       });
