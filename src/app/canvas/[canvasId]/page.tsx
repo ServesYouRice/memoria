@@ -119,10 +119,21 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
       filtered = filtered.filter((item) => {
         if (item.type === ItemType.NOTE) {
           const noteContent = item.content as { text: string };
-          return noteContent.text.toLowerCase().includes(query);
+          return noteContent.text?.toLowerCase().includes(query);
         } else if (item.type === ItemType.BOOKMARK) {
-          const bookmarkContent = item.content as { url: string };
-          return bookmarkContent.url.toLowerCase().includes(query);
+          const bookmarkContent = item.content as any;
+          return (
+            bookmarkContent.url?.toLowerCase().includes(query) ||
+            bookmarkContent.title?.toLowerCase().includes(query) ||
+            bookmarkContent.description?.toLowerCase().includes(query) ||
+            bookmarkContent.siteName?.toLowerCase().includes(query)
+          );
+        } else if (item.type === ItemType.IMAGE) {
+          const imageContent = item.content as any;
+          return (
+            imageContent.filename?.toLowerCase().includes(query) ||
+            imageContent.alt?.toLowerCase().includes(query)
+          );
         }
         return false;
       });
