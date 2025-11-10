@@ -7,6 +7,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { theme } from '@/lib/theme';
+import { GlobalShortcutsProvider } from '@/components/GlobalShortcutsProvider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,8 +24,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          {children}
-          {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
+          <GlobalShortcutsProvider>
+            {children}
+            {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
+          </GlobalShortcutsProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </SessionProvider>
