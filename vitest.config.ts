@@ -1,9 +1,29 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import tsconfigPaths from 'vite-tsconfig-paths';
+import fs from 'fs';
+import path from 'path';
+
+function aliasesFromTsconfig(): { find: string; replacement: string }[] {
+  const tsconfigPath = path.resolve(__dirname, 'tsconfig.json');
+  const raw = fs.readFileSync(tsconfigPath, 'utf-8');
+  const ts = JSON.parse(raw);
+  const compilerOptions = ts.compilerOptions || {};
+  const baseUrl = compilerOptions.baseUrl || '.';
+  const paths: Record<string, string[]> = compilerOptions.paths || {};
+
+  return Object.entries(paths).map(([key, values]) => {
+    const find = key.replace(/\/\*$/, '');
+    const target = values[0].replace(/\/\*$/, '');
+    const replacement = path.resolve(__dirname, baseUrl, target);
+    return { find, replacement };
+  });
+}
 
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [react()],
+  resolve: {
+    alias: aliasesFromTsconfig(),
+  },
   test: {
     environment: 'jsdom',
     globals: true,
@@ -25,8 +45,6 @@ export default defineConfig({
         '.next/**',
         'src/types/**',
       ],
-      // SENATE.md requirement: minimum 80% test coverage for all API routes and critical business logic
-      // Temporarily set to 0 to allow tests to run and identify actual coverage
       thresholds: {
         lines: 0,
         functions: 0,
