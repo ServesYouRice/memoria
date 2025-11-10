@@ -25,6 +25,35 @@ model User {
   updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
   deletedItems  CanvasItem[] @relation("ItemDeletedBy")
   comments      Comment[]
+  activities    Activity[]
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ActivityType
+  canvasId    String?
+  canvasName  String?
+  itemId      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([canvasId, createdAt])
+}
+
+enum ActivityType {
+  CANVAS_CREATED
+  CANVAS_UPDATED
+  CANVAS_DELETED
+  CANVAS_SHARED
+  ITEM_CREATED
+  ITEM_UPDATED
+  ITEM_DELETED
+  COMMENT_ADDED
+  TEMPLATE_CREATED
+  TEMPLATE_USED
 }
 
 model Canvas {
