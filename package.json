@@ -40,6 +40,7 @@
     "@tiptap/react": "^3.10.5",
     "@tiptap/starter-kit": "^3.10.5",
     "argon2": "^0.40.0",
+    "cheerio": "^1.1.2",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "dotenv-safe": "^9.1.0",

@@ -29,17 +29,16 @@ export interface NoteContent {
 
 /**
  * Bookmark item content
- * Note: Unfurling (title, description, favicon, preview image) is Phase 2
- * For MVP, we only store the URL
+ * Includes unfurled metadata from the URL
  */
 export interface BookmarkContent {
   url: string;
-  // Phase 2 fields (not implemented in MVP):
-  // title?: string;
-  // description?: string;
-  // favicon?: string;
-  // previewImage?: string;
-  // unfurledAt?: string;
+  title?: string;
+  description?: string;
+  favicon?: string;
+  previewImage?: string;
+  siteName?: string;
+  unfurledAt?: string;
 }
 
 /**
