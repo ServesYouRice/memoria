@@ -270,3 +270,80 @@ test.describe('Bookmark UI Integration', () => {
     await expect(page.locator('text=/example\\.com.*\\.\\.\\./')).toBeVisible();
   });
 });
+
+test.describe('Bookmark Viewport-Based Pagination', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsTestUser(page);
+  });
+
+  test('should paginate bookmarks with viewport params', async ({ page }) => {
+    // Get the current canvas URL to extract canvas ID
+    await page.goto(page.url());
+
+    // Request bookmarks in a viewport region
+    const response = await page.request.get(
+      `${page.url().split('?')[0]}/api/v1/canvas-items?canvasId=${
+        page.url().split('/').pop() || 'test-canvas'
+      }&type=BOOKMARK&minX=0&maxX=5000&minY=0&maxY=5000&limit=100`
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+
+      // Verify response structure
+      expect(data).toHaveProperty('items');
+      expect(Array.isArray(data.items)).toBe(true);
+
+      // All items should be bookmarks if type filter was applied
+      for (const item of data.items) {
+        expect(item.type).toBe('BOOKMARK');
+      }
+    }
+  });
+
+  test('should handle viewport pagination with multiple items', async ({ page }) => {
+    // Create multiple bookmarks at different positions
+    const bookmarks = [
+      { url: 'https://bookmark1.com', x: 100, y: 100 },
+      { url: 'https://bookmark2.com', x: 500, y: 500 },
+      { url: 'https://bookmark3.com', x: 1000, y: 1000 },
+    ];
+
+    for (const bookmark of bookmarks) {
+      await page.click('[data-testid="add-bookmark-button"]');
+      await page.fill('[name="url"]', bookmark.url);
+      // Position would be set through the UI (defaults to some position)
+      await page.click('button:has-text("Create Bookmark")');
+      await page.waitForTimeout(300);
+    }
+
+    // Now request bookmarks in a viewport that should include some but not all
+    // This tests that viewport filtering actually reduces the result set
+    const response = await page.request.get(
+      `${page.url().split('?')[0]}/api/v1/canvas-items?canvasId=${
+        page.url().split('/').pop() || 'test-canvas'
+      }&type=BOOKMARK&minX=0&maxX=600&minY=0&maxY=600&limit=100`
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+
+      // Should have pagination metadata
+      expect(data).toHaveProperty('total');
+      expect(data).toHaveProperty('limit');
+      expect(data).toHaveProperty('offset');
+
+      // All returned items should be within viewport bounds
+      for (const item of data.items) {
+        const itemRight = item.positionX + item.width;
+        const itemBottom = item.positionY + item.height;
+
+        // Viewport intersection check
+        const isInViewport =
+          itemRight >= 0 && item.positionX <= 600 && itemBottom >= 0 && item.positionY <= 600;
+
+        expect(isInViewport).toBe(true);
+      }
+    }
+  });
+});

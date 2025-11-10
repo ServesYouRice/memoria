@@ -13,18 +13,45 @@ import {
 } from '@/lib/validation/canvas-item';
 
 /**
+ * Viewport parameters for viewport-based loading
+ */
+export interface ViewportParams {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  limit?: number;
+  offset?: number;
+}
+
+/**
  * API client functions
  */
 const api = {
-  async listItems(canvasId: string, type?: ItemType) {
+  async listItems(canvasId: string, type?: ItemType, viewport?: ViewportParams) {
     const params = new URLSearchParams({ canvasId });
     if (type) params.set('type', type);
+
+    // Add viewport parameters if provided
+    if (viewport) {
+      params.set('minX', viewport.minX.toString());
+      params.set('maxX', viewport.maxX.toString());
+      params.set('minY', viewport.minY.toString());
+      params.set('maxY', viewport.maxY.toString());
+      if (viewport.limit !== undefined) params.set('limit', viewport.limit.toString());
+      if (viewport.offset !== undefined) params.set('offset', viewport.offset.toString());
+    }
 
     const response = await fetch(`/api/v1/canvas-items?${params}`);
     if (!response.ok) throw new Error('Failed to fetch items');
 
     const data = await response.json();
-    return data.items as CanvasItem[];
+    return {
+      items: data.items as CanvasItem[],
+      total: data.total,
+      offset: data.offset,
+      limit: data.limit,
+    };
   },
 
   async getItem(itemId: string) {
@@ -86,18 +113,34 @@ const api = {
 export const canvasItemKeys = {
   all: ['canvas-items'] as const,
   lists: () => [...canvasItemKeys.all, 'list'] as const,
-  list: (canvasId: string, type?: ItemType) =>
-    [...canvasItemKeys.lists(), { canvasId, type }] as const,
+  list: (canvasId: string, type?: ItemType, viewport?: ViewportParams) =>
+    [...canvasItemKeys.lists(), { canvasId, type, viewport }] as const,
   detail: (itemId: string) => [...canvasItemKeys.all, 'detail', itemId] as const,
 };
 
 /**
- * List all items for a canvas
+ * List all items for a canvas with optional viewport-based pagination
+ *
+ * Usage without viewport (loads all items):
+ * ```
+ * useCanvasItems(canvasId)
+ * ```
+ *
+ * Usage with viewport (efficient pagination for large canvases):
+ * ```
+ * useCanvasItems(canvasId, undefined, {
+ *   minX: viewportX,
+ *   maxX: viewportX + viewportWidth,
+ *   minY: viewportY,
+ *   maxY: viewportY + viewportHeight,
+ *   limit: 100,
+ * })
+ * ```
  */
-export function useCanvasItems(canvasId: string, type?: ItemType) {
+export function useCanvasItems(canvasId: string, type?: ItemType, viewport?: ViewportParams) {
   return useQuery({
-    queryKey: canvasItemKeys.list(canvasId, type),
-    queryFn: () => api.listItems(canvasId, type),
+    queryKey: canvasItemKeys.list(canvasId, type, viewport),
+    queryFn: () => api.listItems(canvasId, type, viewport),
     enabled: !!canvasId,
   });
 }

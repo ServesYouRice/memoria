@@ -98,9 +98,39 @@ export const listCanvasItemsSchema = z.object({
 });
 
 /**
+ * Viewport-based pagination schema
+ *
+ * Viewport Intersection Algorithm:
+ * An item is considered "in viewport" if its bounding box intersects with the viewport bounds.
+ *
+ * Intersection check:
+ * (item.positionX + item.width) >= minX  &&  // item right edge >= viewport left
+ * item.positionX <= maxX                 &&  // item left edge <= viewport right
+ * (item.positionY + item.height) >= minY &&  // item bottom edge >= viewport top
+ * item.positionY <= maxY                     // item top edge <= viewport bottom
+ *
+ * This ensures we only load items that are visible or partially visible in the viewport.
+ * For large canvases (10k+ items), this dramatically reduces data transfer and rendering overhead.
+ */
+export const viewportPaginationSchema = z.object({
+  canvasId: z.string().cuid(),
+  type: z.nativeEnum(ItemType).optional(),
+  includeDeleted: z.boolean().default(false),
+  // Viewport bounds (required for viewport filtering)
+  minX: z.number().finite().optional(),
+  maxX: z.number().finite().optional(),
+  minY: z.number().finite().optional(),
+  maxY: z.number().finite().optional(),
+  // Pagination parameters
+  limit: z.number().int().positive().max(1000).default(100),
+  offset: z.number().int().nonnegative().default(0),
+});
+
+/**
  * Type inference
  */
 export type CreateCanvasItemInput = z.infer<typeof createCanvasItemSchema>;
 export type UpdateCanvasItemInput = z.infer<typeof updateCanvasItemSchema>;
 export type DeleteCanvasItemInput = z.infer<typeof deleteCanvasItemSchema>;
 export type ListCanvasItemsInput = z.infer<typeof listCanvasItemsSchema>;
+export type ViewportPaginationInput = z.infer<typeof viewportPaginationSchema>;

@@ -12,6 +12,13 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       exclude: ['node_modules/', 'tests/', '**/*.spec.ts', '**/*.test.ts', '**/*.config.ts'],
+      // SENATE.md requirement: minimum 80% test coverage for all API routes and critical business logic
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+      },
     },
   },
   resolve: {

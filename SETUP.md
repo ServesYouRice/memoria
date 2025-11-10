@@ -38,6 +38,13 @@ Wait for the database to be ready (check with `docker compose logs -f`).
 ### 4. Run Database Migrations
 
 ```bash
+# Create and apply migrations in development (creates migration files)
+pnpm db:migrate:dev
+```
+
+For production deployments, use:
+```bash
+# Deploy existing migrations (does not create new migrations)
 pnpm db:migrate
 ```
 
@@ -72,8 +79,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - `pnpm test` - Run unit tests with Vitest
 - `pnpm test:coverage` - Run tests with coverage
 - `pnpm test:e2e` - Run end-to-end tests with Playwright
-- `pnpm db:migrate` - Run Prisma migrations
-- `pnpm db:push` - Push schema changes to database
+- `pnpm db:migrate:dev` - Create and apply migrations (development)
+- `pnpm db:migrate` - Deploy migrations to production database
 - `pnpm db:seed` - Seed database with sample data
 - `pnpm db:studio` - Open Prisma Studio
 - `pnpm ci` - Run full CI pipeline
@@ -131,9 +138,23 @@ Users can log in at `/auth/login` using their email and password.
 
 ### Migrations
 
-Create a new migration:
+CanvasCollect uses **Prisma Migrate** for production-ready database versioning (not `db:push`).
+
+#### Development Workflow
+
+Create a new migration after modifying `prisma/schema.prisma`:
 
 ```bash
+# This will prompt for a migration name and create the migration file
+pnpm db:migrate:dev
+```
+
+#### Production Deployments
+
+Deploy existing migrations to production:
+
+```bash
+# This applies all pending migrations without prompting
 pnpm db:migrate
 ```
 
@@ -141,8 +162,21 @@ pnpm db:migrate
 
 After modifying `prisma/schema.prisma`:
 
-1. Create migration: `pnpm db:migrate`
-2. Regenerate Prisma Client: `pnpm db:generate`
+1. Create and apply migration: `pnpm db:migrate:dev`
+2. Regenerate Prisma Client: `pnpm db:generate` (usually automatic with migrate:dev)
+
+### Migration Structure
+
+Migrations are stored in `prisma/migrations/` with the following structure:
+
+```
+prisma/migrations/
+├── migration_lock.toml          # Locks database provider to PostgreSQL
+└── 20251110090734_init/         # Migration timestamp_name format
+    └── migration.sql            # Generated SQL for this migration
+```
+
+Each migration contains the SQL needed to evolve the database schema forward.
 
 ### Prisma Studio
 

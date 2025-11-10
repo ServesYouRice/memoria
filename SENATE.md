@@ -22,14 +22,16 @@ A proposal is **ACCEPTED** when either (a) the User casts a final `Approve` vote
 ### 2.1. Task Board
 | Task | Status | Assignee | Notes |
 |------|--------|----------|-------|
-| **Slice 1:** Project Setup | NS | UNASSIGNED | Dependencies, Scaffolding, Tooling |
-| **Slice 2:** Auth & Data Model | NS | UNASSIGNED | DB, Prisma Schema, Auth UI & API |
-| **Slice 3:** The Blank Canvas | NS | UNASSIGNED | Protected route, basic Konva stage |
-| **Slice 4:** Note Item CRUD | NS | UNASSIGNED | Create, Move, Resize, Delete Notes |
-| **Slice 5:** Bookmark Item CRUD | NS | UNASSIGNED | Create, Move, Resize, Delete Bookmarks |
-| **Slice 6:** MVP Hardening | NS | UNASSIGNED | Security Headers, Final Testing |
+| **Slice 1:** Project Setup | DN | Claude | Dependencies, Scaffolding, Tooling ✅ |
+| **Slice 2:** Auth & Data Model | DN | Claude | DB, Prisma Schema, Auth UI & API ✅ |
+| **Slice 3:** The Blank Canvas | DN | Claude | Protected route, basic Konva stage ✅ |
+| **Slice 4:** Note Item CRUD | DN | Claude | Create, Move, Resize, Delete Notes ✅ |
+| **Slice 5:** Bookmark Item CRUD | DN | Claude | Create, Move, Resize, Delete Bookmarks ✅ |
+| **Slice 6:** MVP Hardening | DN | Claude | Security Headers, Final Testing ✅ |
 
 *Legend: NS=Not Started, IP=In Progress, DN=Done*
+
+**MVP Status:** ✅ **COMPLETE** - All 6 slices delivered (Commit: 06d8339)
 
 ### 2.2. Pending Decisions
 *(No pending decisions at this time.)*

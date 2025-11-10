@@ -74,8 +74,8 @@ openssl rand -base64 32
 # Generate Prisma Client
 pnpm db:generate
 
-# Run migrations (creates database schema)
-pnpm db:migrate
+# Create and run migrations in development
+pnpm db:migrate:dev
 
 # (Optional) Seed the database
 pnpm db:seed
@@ -115,8 +115,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Database
 
 - `pnpm db:generate` - Generate Prisma Client
-- `pnpm db:push` - Push schema changes to database
-- `pnpm db:migrate` - Run database migrations
+- `pnpm db:migrate` - Deploy migrations to production database
+- `pnpm db:migrate:dev` - Create and apply migrations in development
 - `pnpm db:studio` - Open Prisma Studio (database GUI)
 - `pnpm db:seed` - Seed database with test data
 
