@@ -12,13 +12,14 @@ import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from
 import { NoteAdd, Bookmark } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
 import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
-import { ItemType } from '@/types/canvas';
+import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 
 const queryClient = new QueryClient();
@@ -46,6 +47,9 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const allItems = data?.items || [];
   const { mutateAsync: deleteItem } = useDeleteCanvasItem();
   const { mutateAsync: createItem } = useCreateCanvasItem();
+
+  // History manager for undo/redo
+  const { addCommand, undo, redo, canUndo, canRedo } = useCanvasHistory();
 
   // Filter items based on search query
   const items = React.useMemo(() => {
@@ -102,15 +106,53 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   // Keyboard shortcuts
   React.useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
+      // Undo (Ctrl+Z / Cmd+Z)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      // Redo (Ctrl+Y / Cmd+Y or Ctrl+Shift+Z / Cmd+Shift+Z)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       // Delete key - delete selected item
       if (e.key === 'Delete' && selectedItemId) {
         const selectedItem = allItems.find((item) => item.id === selectedItemId);
         if (selectedItem) {
           try {
-            await deleteItem({
-              itemId: selectedItemId,
-              version: selectedItem.version,
-            });
+            // Create delete command
+            const deleteCommand: Command = {
+              type: 'delete',
+              description: `Delete ${selectedItem.type}`,
+              execute: async () => {
+                await deleteItem({
+                  itemId: selectedItem.id,
+                  version: selectedItem.version,
+                });
+              },
+              undo: async () => {
+                // Recreate the item
+                await createItem({
+                  canvasId,
+                  type: selectedItem.type,
+                  positionX: selectedItem.positionX,
+                  positionY: selectedItem.positionY,
+                  width: selectedItem.width,
+                  height: selectedItem.height,
+                  zIndex: selectedItem.zIndex,
+                  content: selectedItem.content,
+                  tags: selectedItem.tags || [],
+                });
+              },
+            };
+
+            await deleteCommand.execute();
+            addCommand(deleteCommand);
             setSelectedItemId(null);
           } catch (err) {
             console.error('Failed to delete item:', err);
@@ -126,7 +168,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemId, allItems, deleteItem]);
+  }, [selectedItemId, allItems, deleteItem, createItem, canvasId, undo, redo, addCommand]);
 
   // Prevent default context menu on stage
   React.useEffect(() => {
@@ -191,10 +233,34 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
       try {
-        await deleteItem({
-          itemId: selectedItemId,
-          version: selectedItem.version,
-        });
+        // Create delete command
+        const deleteCommand: Command = {
+          type: 'delete',
+          description: `Delete ${selectedItem.type}`,
+          execute: async () => {
+            await deleteItem({
+              itemId: selectedItem.id,
+              version: selectedItem.version,
+            });
+          },
+          undo: async () => {
+            // Recreate the item
+            await createItem({
+              canvasId,
+              type: selectedItem.type,
+              positionX: selectedItem.positionX,
+              positionY: selectedItem.positionY,
+              width: selectedItem.width,
+              height: selectedItem.height,
+              zIndex: selectedItem.zIndex,
+              content: selectedItem.content,
+              tags: selectedItem.tags || [],
+            });
+          },
+        };
+
+        await deleteCommand.execute();
+        addCommand(deleteCommand);
         setSelectedItemId(null);
       } catch (err) {
         console.error('Failed to delete item:', err);
@@ -289,6 +355,10 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onExportPDF={handleExportPDF}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
       />
 
       {/* Canvas */}

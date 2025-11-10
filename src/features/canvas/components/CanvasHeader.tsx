@@ -23,6 +23,8 @@ import {
   MoreVert,
   Search as SearchIcon,
   Clear as ClearIcon,
+  Undo as UndoIcon,
+  Redo as RedoIcon,
 } from '@mui/icons-material';
 
 export interface CanvasHeaderProps {
@@ -35,6 +37,10 @@ export interface CanvasHeaderProps {
   onExportPDF?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 const ZOOM_STEP = 0.1;
@@ -51,6 +57,10 @@ export function CanvasHeader({
   onExportPDF,
   searchQuery = '',
   onSearchChange,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -166,6 +176,26 @@ export function CanvasHeader({
             </Typography>
           )}
         </Box>
+
+        {/* Undo/Redo Controls */}
+        {(onUndo || onRedo) && (
+          <Box sx={{ mr: 1 }}>
+            <Tooltip title="Undo (Ctrl+Z)">
+              <span>
+                <IconButton onClick={onUndo} disabled={!canUndo} size="small">
+                  <UndoIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Redo (Ctrl+Y)">
+              <span>
+                <IconButton onClick={onRedo} disabled={!canRedo} size="small">
+                  <RedoIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+        )}
 
         {/* Search Toggle */}
         {onSearchChange && !showSearch && !isEditingName && (
