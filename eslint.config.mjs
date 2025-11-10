@@ -10,9 +10,26 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/out/**',
+      '**/build/**',
+      '**/dist/**',
+      '**/*.config.js',
+      '**/*.config.mjs',
+      '**/coverage/**',
+      'scripts/**/*.mjs',
+      'prisma/migrations/**',
+    ],
+  },
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
   ...compat.extends('prettier'),
   {
+    linterOptions: {
+      reportUnusedDisableDirectives: 'error',
+    },
     rules: {
       // TypeScript specific rules
       '@typescript-eslint/no-unused-vars': [
