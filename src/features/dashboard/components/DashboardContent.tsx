@@ -36,9 +36,11 @@ import {
   CheckBoxOutlineBlank,
   CheckBox,
   Close as CloseIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useCanvases, useCreateCanvas, useDuplicateCanvas } from '@/lib/hooks/use-canvases';
 import { ActivityFeed } from './ActivityFeed';
+import { GlobalSearchDialog } from '@/components/GlobalSearchDialog';
 import Link from 'next/link';
 
 export function DashboardContent() {
@@ -49,8 +51,9 @@ export function DashboardContent() {
   const [selectedCanvasIds, setSelectedCanvasIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
 
-  const { data: canvases, isLoading, error } = useCanvases();
+  const { data: canvases, isLoading, error} = useCanvases();
   const createCanvas = useCreateCanvas();
   const duplicateCanvas = useDuplicateCanvas();
 
@@ -179,6 +182,13 @@ export function DashboardContent() {
               My Canvases
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<SearchIcon />}
+                onClick={() => setSearchDialogOpen(true)}
+              >
+                Search
+              </Button>
               {hasCanvases && (
                 <Button
                   variant="outlined"
@@ -427,6 +437,9 @@ export function DashboardContent() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Global Search Dialog */}
+      <GlobalSearchDialog open={searchDialogOpen} onClose={() => setSearchDialogOpen(false)} />
     </>
   );
 }
