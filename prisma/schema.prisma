@@ -53,8 +53,9 @@ model CanvasItem {
   width       Float
   height      Float
   zIndex      Int      @default(0)
-  
+
   content     Json
+  tags        String[] @default([])
 
   version     Int      @default(1)
   deletedAt   DateTime?

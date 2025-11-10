@@ -24,6 +24,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { ItemType } from '@/types/canvas';
+import { TagInput } from './TagInput';
 
 interface CreateNoteDialogProps {
   open: boolean;
@@ -34,6 +35,7 @@ interface CreateNoteDialogProps {
 
 const formSchema = z.object({
   text: z.string().min(1, 'Note text is required').max(5000, 'Note text too long'),
+  tags: z.array(z.string()).default([]),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -56,6 +58,7 @@ export function CreateNoteDialog({
     resolver: zodResolver(formSchema),
     defaultValues: {
       text: '',
+      tags: [],
     },
   });
 
@@ -80,6 +83,7 @@ export function CreateNoteDialog({
         content: {
           text: data.text,
         },
+        tags: data.tags || [],
       });
 
       handleClose();
@@ -113,6 +117,19 @@ export function CreateNoteDialog({
                   error={!!errors.text}
                   helperText={errors.text?.message}
                   disabled={isSubmitting}
+                />
+              )}
+            />
+
+            <Controller
+              name="tags"
+              control={control}
+              render={({ field }) => (
+                <TagInput
+                  tags={field.value || []}
+                  onChange={field.onChange}
+                  placeholder="Add tags..."
+                  size="small"
                 />
               )}
             />

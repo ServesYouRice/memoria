@@ -59,6 +59,7 @@ export interface CanvasItem {
   height: number;
   zIndex: number;
   content: ItemContent;
+  tags: string[];
   version: number;
   deletedAt: Date | null;
   createdById: string;

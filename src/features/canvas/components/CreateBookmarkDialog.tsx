@@ -26,6 +26,7 @@ import { z } from 'zod';
 import { bookmarkContentSchema } from '@/lib/validation/canvas-item';
 import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { ItemType } from '@/types/canvas';
+import { TagInput } from './TagInput';
 
 interface CreateBookmarkDialogProps {
   open: boolean;
@@ -36,6 +37,7 @@ interface CreateBookmarkDialogProps {
 
 const formSchema = z.object({
   url: bookmarkContentSchema.shape.url,
+  tags: z.array(z.string()).default([]),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -58,6 +60,7 @@ export function CreateBookmarkDialog({
     resolver: zodResolver(formSchema),
     defaultValues: {
       url: '',
+      tags: [],
     },
   });
 
@@ -82,6 +85,7 @@ export function CreateBookmarkDialog({
         content: {
           url: data.url,
         },
+        tags: data.tags || [],
       });
 
       handleClose();
@@ -119,6 +123,19 @@ export function CreateBookmarkDialog({
                   error={!!errors.url}
                   helperText={errors.url?.message}
                   disabled={isSubmitting}
+                />
+              )}
+            />
+
+            <Controller
+              name="tags"
+              control={control}
+              render={({ field }) => (
+                <TagInput
+                  tags={field.value || []}
+                  onChange={field.onChange}
+                  placeholder="Add tags..."
+                  size="small"
                 />
               )}
             />
