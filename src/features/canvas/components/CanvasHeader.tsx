@@ -29,6 +29,8 @@ export interface CanvasHeaderProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
   onFitToScreen: () => void;
+  onExportPNG?: () => void;
+  onExportPDF?: () => void;
 }
 
 const ZOOM_STEP = 0.1;
@@ -41,6 +43,8 @@ export function CanvasHeader({
   zoom,
   onZoomChange,
   onFitToScreen,
+  onExportPNG,
+  onExportPDF,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -164,8 +168,22 @@ export function CanvasHeader({
           </IconButton>
         </Tooltip>
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-          <MenuItem onClick={handleMenuClose}>Export as PNG</MenuItem>
-          <MenuItem onClick={handleMenuClose}>Export as PDF</MenuItem>
+          <MenuItem
+            onClick={() => {
+              onExportPNG?.();
+              handleMenuClose();
+            }}
+          >
+            Export as PNG
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              onExportPDF?.();
+              handleMenuClose();
+            }}
+          >
+            Export as PDF
+          </MenuItem>
           <MenuItem onClick={handleMenuClose}>Canvas Settings</MenuItem>
         </Menu>
       </Toolbar>

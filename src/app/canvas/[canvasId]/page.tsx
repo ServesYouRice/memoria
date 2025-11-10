@@ -220,6 +220,28 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     }
   };
 
+  const handleExportPNG = () => {
+    if (!stageRef.current) return;
+
+    const uri = stageRef.current.toDataURL({
+      pixelRatio: 2, // Higher quality
+    });
+
+    // Create download link
+    const link = document.createElement('a');
+    link.download = `${canvasName.replace(/\s+/g, '_')}.png`;
+    link.href = uri;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    // PDF export would require jsPDF library
+    // For now, just show an alert
+    alert('PDF export will be implemented in a future update. Use PNG export for now.');
+  };
+
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -245,6 +267,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         zoom={zoom}
         onZoomChange={handleZoomChange}
         onFitToScreen={handleFitToScreen}
+        onExportPNG={handleExportPNG}
+        onExportPDF={handleExportPDF}
       />
 
       {/* Canvas */}
