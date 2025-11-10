@@ -11,12 +11,13 @@ import { Stage, Layer } from 'react-konva';
 import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
 import { NoteAdd, Bookmark } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useCanvasItems, useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
 import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
+import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
 import { ItemType } from '@/types/canvas';
 import Konva from 'konva';
 
@@ -32,6 +33,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
@@ -42,6 +44,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const { data, isLoading, error } = useCanvasItems(canvasId);
   const items = data?.items || [];
   const { mutateAsync: deleteItem } = useDeleteCanvasItem();
+  const { mutateAsync: createItem } = useCreateCanvasItem();
 
   // Fetch canvas details (name, zoom, pan)
   React.useEffect(() => {
@@ -99,12 +102,24 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
       // Escape key - deselect
       else if (e.key === 'Escape') {
         setSelectedItemId(null);
+        setContextMenuPosition(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedItemId, items, deleteItem]);
+
+  // Prevent default context menu on stage
+  React.useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      if (stageRef.current?.container().contains(e.target as Node)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('contextmenu', handleContextMenu);
+    return () => window.removeEventListener('contextmenu', handleContextMenu);
+  }, []);
 
   const handleStageClick = (e: any) => {
     // Deselect if clicking on empty canvas
@@ -144,6 +159,64 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     if (stageRef.current) {
       stageRef.current.position({ x: 0, y: 0 });
       stageRef.current.scale({ x: 1, y: 1 });
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, itemId: string) => {
+    e.preventDefault();
+    setSelectedItemId(itemId);
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleDeleteFromMenu = async () => {
+    if (!selectedItemId) return;
+    const selectedItem = items.find((item) => item.id === selectedItemId);
+    if (selectedItem) {
+      try {
+        await deleteItem({
+          itemId: selectedItemId,
+          version: selectedItem.version,
+        });
+        setSelectedItemId(null);
+      } catch (err) {
+        console.error('Failed to delete item:', err);
+      }
+    }
+  };
+
+  const handleDuplicate = async () => {
+    if (!selectedItemId) return;
+    const selectedItem = items.find((item) => item.id === selectedItemId);
+    if (selectedItem) {
+      try {
+        await createItem({
+          canvasId,
+          type: selectedItem.type,
+          positionX: selectedItem.positionX + 20,
+          positionY: selectedItem.positionY + 20,
+          width: selectedItem.width,
+          height: selectedItem.height,
+          zIndex: selectedItem.zIndex,
+          content: selectedItem.content,
+        });
+      } catch (err) {
+        console.error('Failed to duplicate item:', err);
+      }
+    }
+  };
+
+  const handleCopy = () => {
+    if (!selectedItemId) return;
+    const selectedItem = items.find((item) => item.id === selectedItemId);
+    if (selectedItem) {
+      // Copy to clipboard (JSON format for now)
+      const copyData = {
+        type: selectedItem.type,
+        content: selectedItem.content,
+        width: selectedItem.width,
+        height: selectedItem.height,
+      };
+      navigator.clipboard.writeText(JSON.stringify(copyData));
     }
   };
 
@@ -204,6 +277,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     isSelected={selectedItemId === item.id}
                     onSelect={() => setSelectedItemId(item.id)}
                     onDeselect={() => setSelectedItemId(null)}
+                    onContextMenu={(e: any) => {
+                      const stage = e.target.getStage();
+                      const pointerPosition = stage.getPointerPosition();
+                      handleContextMenu(
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        item.id
+                      );
+                    }}
                   />
                 );
               } else if (item.type === ItemType.NOTE) {
@@ -213,6 +294,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     item={item}
                     isSelected={selectedItemId === item.id}
                     onSelect={() => setSelectedItemId(item.id)}
+                    onContextMenu={(e: any) => {
+                      const stage = e.target.getStage();
+                      const pointerPosition = stage.getPointerPosition();
+                      handleContextMenu(
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        item.id
+                      );
+                    }}
                   />
                 );
               }
@@ -256,6 +345,15 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setNoteDialogOpen(false)}
         canvasId={canvasId}
         initialPosition={{ x: 200, y: 200 }}
+      />
+
+      {/* Context Menu */}
+      <CanvasContextMenu
+        position={contextMenuPosition}
+        onClose={() => setContextMenuPosition(null)}
+        onDelete={handleDeleteFromMenu}
+        onDuplicate={handleDuplicate}
+        onCopy={handleCopy}
       />
     </Box>
   );
