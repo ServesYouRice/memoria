@@ -23,8 +23,20 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  Checkbox,
+  Toolbar,
+  Chip,
 } from '@mui/material';
-import { Add as AddIcon, Explore as ExploreIcon, MoreVert, ContentCopy as DuplicateIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Explore as ExploreIcon,
+  MoreVert,
+  ContentCopy as DuplicateIcon,
+  Delete as DeleteIcon,
+  CheckBoxOutlineBlank,
+  CheckBox,
+  Close as CloseIcon,
+} from '@mui/icons-material';
 import { useCanvases, useCreateCanvas, useDuplicateCanvas } from '@/lib/hooks/use-canvases';
 import { ActivityFeed } from './ActivityFeed';
 import Link from 'next/link';
@@ -34,6 +46,9 @@ export function DashboardContent() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newCanvasName, setNewCanvasName] = useState('');
   const [menuAnchor, setMenuAnchor] = useState<{ element: HTMLElement; canvasId: string } | null>(null);
+  const [selectedCanvasIds, setSelectedCanvasIds] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const { data: canvases, isLoading, error } = useCanvases();
   const createCanvas = useCreateCanvas();
@@ -53,8 +68,35 @@ export function DashboardContent() {
     }
   };
 
-  const handleCanvasClick = (canvasId: string) => {
-    router.push(`/canvas/${canvasId}`);
+  const handleCanvasClick = (canvasId: string, event?: React.MouseEvent) => {
+    if (selectionMode) {
+      event?.stopPropagation();
+      toggleCanvasSelection(canvasId);
+    } else {
+      router.push(`/canvas/${canvasId}`);
+    }
+  };
+
+  const toggleCanvasSelection = (canvasId: string) => {
+    const newSelected = new Set(selectedCanvasIds);
+    if (newSelected.has(canvasId)) {
+      newSelected.delete(canvasId);
+    } else {
+      newSelected.add(canvasId);
+    }
+    setSelectedCanvasIds(newSelected);
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    if (selectionMode) {
+      setSelectedCanvasIds(new Set());
+    }
+  };
+
+  const selectAll = () => {
+    if (!canvases) return;
+    setSelectedCanvasIds(new Set(canvases.map((c) => c.id)));
   };
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, canvasId: string) => {
@@ -73,6 +115,39 @@ export function DashboardContent() {
       handleMenuClose();
     } catch (err) {
       console.error('Failed to duplicate canvas:', err);
+    }
+  };
+
+  const handleBulkDuplicate = async () => {
+    try {
+      await Promise.all(
+        Array.from(selectedCanvasIds).map((id) => duplicateCanvas.mutateAsync(id))
+      );
+      setSelectedCanvasIds(new Set());
+      setSelectionMode(false);
+    } catch (err) {
+      console.error('Failed to bulk duplicate canvases:', err);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      // Delete canvases via API
+      await Promise.all(
+        Array.from(selectedCanvasIds).map(async (id) => {
+          const response = await fetch(`/api/v1/canvases/${id}`, {
+            method: 'DELETE',
+          });
+          if (!response.ok) throw new Error('Failed to delete canvas');
+        })
+      );
+      setSelectedCanvasIds(new Set());
+      setSelectionMode(false);
+      setDeleteConfirmOpen(false);
+      // Refresh canvas list
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to bulk delete canvases:', err);
     }
   };
 
@@ -104,6 +179,15 @@ export function DashboardContent() {
               My Canvases
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
+              {hasCanvases && (
+                <Button
+                  variant="outlined"
+                  startIcon={selectionMode ? <CloseIcon /> : <CheckBoxOutlineBlank />}
+                  onClick={toggleSelectionMode}
+                >
+                  {selectionMode ? 'Cancel' : 'Select'}
+                </Button>
+              )}
               <Button
                 component={Link}
                 href="/templates"
@@ -121,6 +205,54 @@ export function DashboardContent() {
               </Button>
             </Box>
           </Box>
+
+          {/* Bulk Actions Toolbar */}
+          {selectionMode && (
+            <Paper
+              sx={{
+                mb: 2,
+                p: 2,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="body1">
+                  {selectedCanvasIds.size} selected
+                </Typography>
+                {selectedCanvasIds.size > 0 && (
+                  <Button size="small" onClick={() => setSelectedCanvasIds(new Set())}>
+                    Clear
+                  </Button>
+                )}
+                {selectedCanvasIds.size !== canvases?.length && (
+                  <Button size="small" onClick={selectAll}>
+                    Select All
+                  </Button>
+                )}
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<DuplicateIcon />}
+                  onClick={handleBulkDuplicate}
+                  disabled={selectedCanvasIds.size === 0}
+                >
+                  Duplicate
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  disabled={selectedCanvasIds.size === 0}
+                >
+                  Delete
+                </Button>
+              </Box>
+            </Paper>
+          )}
 
       {!hasCanvases ? (
         <Box
@@ -152,15 +284,32 @@ export function DashboardContent() {
         <Grid container spacing={3}>
           {canvases.map((canvas) => (
             <Grid item xs={12} sm={6} md={4} key={canvas.id}>
-              <Card sx={{ height: '100%', position: 'relative' }}>
-                <IconButton
-                  sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
-                  onClick={(e) => handleMenuOpen(e, canvas.id)}
-                >
-                  <MoreVert />
-                </IconButton>
+              <Card
+                sx={{
+                  height: '100%',
+                  position: 'relative',
+                  border: selectedCanvasIds.has(canvas.id) ? 2 : 0,
+                  borderColor: 'primary.main',
+                }}
+              >
+                {selectionMode && (
+                  <Checkbox
+                    checked={selectedCanvasIds.has(canvas.id)}
+                    onChange={() => toggleCanvasSelection(canvas.id)}
+                    sx={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
+                {!selectionMode && (
+                  <IconButton
+                    sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
+                    onClick={(e) => handleMenuOpen(e, canvas.id)}
+                  >
+                    <MoreVert />
+                  </IconButton>
+                )}
                 <CardActionArea
-                  onClick={() => handleCanvasClick(canvas.id)}
+                  onClick={(e) => handleCanvasClick(canvas.id, e)}
                   sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
                 >
                   <Box
@@ -262,6 +411,22 @@ export function DashboardContent() {
           <ListItemText>Duplicate</ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
+        <DialogTitle>Delete Canvases?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete {selectedCanvasIds.size} canvas(es)? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleBulkDelete} variant="contained" color="error">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
