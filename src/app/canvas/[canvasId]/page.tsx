@@ -13,12 +13,14 @@ import { NoteAdd, Bookmark } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
+import { useSelectionBox } from '@/lib/hooks/use-selection-box';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
 import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
+import { SelectionBox } from '@/features/canvas/components/SelectionBox';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 
@@ -32,6 +34,7 @@ interface CanvasPageProps {
 
 function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
@@ -50,6 +53,17 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
   // History manager for undo/redo
   const { addCommand, undo, redo, canUndo, canRedo } = useCanvasHistory();
+
+  // Selection box for multi-select
+  const {
+    isSelecting,
+    selectionBox,
+    startSelection,
+    updateSelection,
+    endSelection,
+    cancelSelection,
+    isItemInSelection,
+  } = useSelectionBox();
 
   // Filter items based on search query
   const items = React.useMemo(() => {
@@ -120,48 +134,98 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         return;
       }
 
-      // Delete key - delete selected item
-      if (e.key === 'Delete' && selectedItemId) {
-        const selectedItem = allItems.find((item) => item.id === selectedItemId);
-        if (selectedItem) {
+      // Delete key - delete selected item(s)
+      if (e.key === 'Delete') {
+        // Bulk delete if multiple items selected
+        if (selectedItemIds.size > 0) {
           try {
-            // Create delete command
+            const itemsToDelete = allItems.filter((item) => selectedItemIds.has(item.id));
+
+            // Create batch delete command
             const deleteCommand: Command = {
-              type: 'delete',
-              description: `Delete ${selectedItem.type}`,
+              type: 'batch',
+              description: `Delete ${itemsToDelete.length} items`,
               execute: async () => {
-                await deleteItem({
-                  itemId: selectedItem.id,
-                  version: selectedItem.version,
-                });
+                await Promise.all(
+                  itemsToDelete.map((item) =>
+                    deleteItem({
+                      itemId: item.id,
+                      version: item.version,
+                    })
+                  )
+                );
               },
               undo: async () => {
-                // Recreate the item
-                await createItem({
-                  canvasId,
-                  type: selectedItem.type,
-                  positionX: selectedItem.positionX,
-                  positionY: selectedItem.positionY,
-                  width: selectedItem.width,
-                  height: selectedItem.height,
-                  zIndex: selectedItem.zIndex,
-                  content: selectedItem.content,
-                  tags: selectedItem.tags || [],
-                });
+                // Recreate all items
+                await Promise.all(
+                  itemsToDelete.map((item) =>
+                    createItem({
+                      canvasId,
+                      type: item.type,
+                      positionX: item.positionX,
+                      positionY: item.positionY,
+                      width: item.width,
+                      height: item.height,
+                      zIndex: item.zIndex,
+                      content: item.content,
+                      tags: item.tags || [],
+                    })
+                  )
+                );
               },
             };
 
             await deleteCommand.execute();
             addCommand(deleteCommand);
-            setSelectedItemId(null);
+            setSelectedItemIds(new Set());
           } catch (err) {
-            console.error('Failed to delete item:', err);
+            console.error('Failed to bulk delete items:', err);
+          }
+        }
+        // Single delete
+        else if (selectedItemId) {
+          const selectedItem = allItems.find((item) => item.id === selectedItemId);
+          if (selectedItem) {
+            try {
+              // Create delete command
+              const deleteCommand: Command = {
+                type: 'delete',
+                description: `Delete ${selectedItem.type}`,
+                execute: async () => {
+                  await deleteItem({
+                    itemId: selectedItem.id,
+                    version: selectedItem.version,
+                  });
+                },
+                undo: async () => {
+                  // Recreate the item
+                  await createItem({
+                    canvasId,
+                    type: selectedItem.type,
+                    positionX: selectedItem.positionX,
+                    positionY: selectedItem.positionY,
+                    width: selectedItem.width,
+                    height: selectedItem.height,
+                    zIndex: selectedItem.zIndex,
+                    content: selectedItem.content,
+                    tags: selectedItem.tags || [],
+                  });
+                },
+              };
+
+              await deleteCommand.execute();
+              addCommand(deleteCommand);
+              setSelectedItemId(null);
+            } catch (err) {
+              console.error('Failed to delete item:', err);
+            }
           }
         }
       }
       // Escape key - deselect
       else if (e.key === 'Escape') {
         setSelectedItemId(null);
+        setSelectedItemIds(new Set());
         setContextMenuPosition(null);
       }
     };
@@ -181,10 +245,65 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     return () => window.removeEventListener('contextmenu', handleContextMenu);
   }, []);
 
+  const handleStageMouseDown = (e: any) => {
+    // Only start selection on empty canvas (not on items)
+    if (e.target === e.target.getStage()) {
+      const stage = e.target.getStage();
+      const pointerPos = stage.getPointerPosition();
+      if (pointerPos) {
+        // Start selection box
+        startSelection({
+          x: (pointerPos.x - position.x) / zoom,
+          y: (pointerPos.y - position.y) / zoom,
+        });
+      }
+    }
+  };
+
+  const handleStageMouseMove = (e: any) => {
+    if (isSelecting) {
+      const stage = e.target.getStage();
+      const pointerPos = stage.getPointerPosition();
+      if (pointerPos) {
+        updateSelection({
+          x: (pointerPos.x - position.x) / zoom,
+          y: (pointerPos.y - position.y) / zoom,
+        });
+      }
+    }
+  };
+
+  const handleStageMouseUp = (e: any) => {
+    if (isSelecting) {
+      const finalBox = endSelection();
+      if (finalBox && finalBox.width > 5 && finalBox.height > 5) {
+        // Select all items in box
+        const selected = new Set<string>();
+        items.forEach((item) => {
+          if (isItemInSelection({
+            x: item.positionX,
+            y: item.positionY,
+            width: item.width,
+            height: item.height,
+          }, finalBox)) {
+            selected.add(item.id);
+          }
+        });
+        setSelectedItemIds(selected);
+        setSelectedItemId(null); // Clear single selection
+      } else {
+        // Small box = click, deselect all
+        setSelectedItemId(null);
+        setSelectedItemIds(new Set());
+      }
+    }
+  };
+
   const handleStageClick = (e: any) => {
     // Deselect if clicking on empty canvas
     if (e.target === e.target.getStage()) {
       setSelectedItemId(null);
+      setSelectedItemIds(new Set());
     }
   };
 
@@ -369,11 +488,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
           height={stageSize.height}
           onClick={handleStageClick}
           onTap={handleStageClick}
+          onMouseDown={handleStageMouseDown}
+          onMouseMove={handleStageMouseMove}
+          onMouseUp={handleStageMouseUp}
           scaleX={zoom}
           scaleY={zoom}
           x={position.x}
           y={position.y}
-          draggable
+          draggable={!isSelecting}
           onDragEnd={(e) => {
             setPosition({
               x: e.target.x(),
@@ -383,12 +505,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         >
           <Layer>
             {items.map((item) => {
+              const isItemSelected = selectedItemId === item.id || selectedItemIds.has(item.id);
+
               if (item.type === ItemType.BOOKMARK) {
                 return (
                   <BookmarkItem
                     key={item.id}
                     item={item}
-                    isSelected={selectedItemId === item.id}
+                    isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
                     onDeselect={() => setSelectedItemId(null)}
                     onContextMenu={(e: any) => {
@@ -406,7 +530,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                   <NoteItem
                     key={item.id}
                     item={item}
-                    isSelected={selectedItemId === item.id}
+                    isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
                     onContextMenu={(e: any) => {
                       const stage = e.target.getStage();
@@ -421,6 +545,16 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
               }
               return null;
             })}
+
+            {/* Selection Box */}
+            {selectionBox && (
+              <SelectionBox
+                x={selectionBox.x}
+                y={selectionBox.y}
+                width={selectionBox.width}
+                height={selectionBox.height}
+              />
+            )}
           </Layer>
         </Stage>
       </Box>
