@@ -2,6 +2,7 @@
  * TanStack Query hooks for Canvases
  * Following ADR-0005: State Management Policy
  * Server state is managed via TanStack Query
+ * Phase 3: Includes shared canvas support
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +19,20 @@ export interface Canvas {
   updatedAt: string;
 }
 
+export interface SharedCanvas {
+  id: string;
+  name: string;
+  thumbnail?: string | null;
+  itemCount: number;
+  owner: {
+    name: string | null;
+    email: string;
+  };
+  role: 'VIEW' | 'COMMENT' | 'EDIT';
+  sharedAt: string;
+  updatedAt: string;
+}
+
 export interface CreateCanvasInput {
   name?: string;
 }
@@ -30,6 +45,13 @@ const api = {
     const response = await fetch('/api/v1/canvases');
     if (!response.ok) throw new Error('Failed to fetch canvases');
     return response.json() as Promise<Canvas[]>;
+  },
+
+  async listSharedCanvases() {
+    const response = await fetch('/api/v1/shared-canvases');
+    if (!response.ok) throw new Error('Failed to fetch shared canvases');
+    const data = await response.json();
+    return data.canvases as SharedCanvas[];
   },
 
   async createCanvas(input: CreateCanvasInput) {
@@ -68,6 +90,8 @@ export const canvasKeys = {
   all: ['canvases'] as const,
   lists: () => [...canvasKeys.all, 'list'] as const,
   list: () => [...canvasKeys.lists()] as const,
+  sharedLists: () => [...canvasKeys.all, 'shared'] as const,
+  sharedList: () => [...canvasKeys.sharedLists()] as const,
 };
 
 /**
@@ -77,6 +101,17 @@ export function useCanvases() {
   return useQuery({
     queryKey: canvasKeys.list(),
     queryFn: api.listCanvases,
+  });
+}
+
+/**
+ * List canvases shared with the current user
+ * Phase 3: Collaboration feature
+ */
+export function useSharedCanvases() {
+  return useQuery({
+    queryKey: canvasKeys.sharedList(),
+    queryFn: api.listSharedCanvases,
   });
 }
 
