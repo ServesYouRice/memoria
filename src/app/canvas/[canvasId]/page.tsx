@@ -1,22 +1,23 @@
 /**
  * Canvas Page
  *
- * Main canvas view integrating both NOTE and BOOKMARK items
- * This is a simplified example showing how components integrate
+ * Main canvas view integrating both NOTE and BOOKMARK items with zoom and pan controls
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Stage, Layer } from 'react-konva';
-import { Box, Fab, SpeedDial, SpeedDialAction, SpeedDialIcon } from '@mui/material';
+import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
 import { NoteAdd, Bookmark } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCanvasItems } from '@/lib/hooks/use-canvas-items';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
-import { ItemType, isBookmarkContent } from '@/types/canvas';
+import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
+import { ItemType } from '@/types/canvas';
+import Konva from 'konva';
 
 const queryClient = new QueryClient();
 
@@ -30,16 +31,43 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  const [canvasName, setCanvasName] = useState('Untitled Canvas');
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const stageRef = useRef<Konva.Stage>(null);
 
   // Fetch all items for this canvas
-  const { data: items = [], isLoading, error } = useCanvasItems(canvasId);
+  const { data, isLoading, error } = useCanvasItems(canvasId);
+  const items = data?.items || [];
 
-  // Update stage size on mount
+  // Fetch canvas details (name, zoom, pan)
   React.useEffect(() => {
+    const fetchCanvas = async () => {
+      try {
+        const response = await fetch(`/api/v1/canvases`);
+        if (response.ok) {
+          const canvases = await response.json();
+          const canvas = canvases.find((c: any) => c.id === canvasId);
+          if (canvas) {
+            setCanvasName(canvas.name);
+            setZoom(canvas.zoomLevel || 1);
+            setPosition({ x: canvas.panX || 0, y: canvas.panY || 0 });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch canvas:', err);
+      }
+    };
+    fetchCanvas();
+  }, [canvasId]);
+
+  // Update stage size on mount and resize
+  React.useEffect(() => {
+    const HEADER_HEIGHT = 64;
     const updateSize = () => {
       setStageSize({
         width: window.innerWidth,
-        height: window.innerHeight - 64, // Subtract app bar height
+        height: window.innerHeight - HEADER_HEIGHT,
       });
     };
     updateSize();
@@ -54,49 +82,114 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     }
   };
 
+  const handleCanvasNameChange = async (name: string) => {
+    setCanvasName(name);
+    // Update canvas name via API
+    try {
+      const response = await fetch(`/api/v1/canvases/${canvasId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) {
+        console.error('Failed to update canvas name');
+      }
+    } catch (err) {
+      console.error('Failed to update canvas name:', err);
+    }
+  };
+
+  const handleZoomChange = (newZoom: number) => {
+    setZoom(newZoom);
+    if (stageRef.current) {
+      stageRef.current.scale({ x: newZoom, y: newZoom });
+    }
+    // TODO: Persist zoom to canvas via API
+  };
+
+  const handleFitToScreen = () => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+    if (stageRef.current) {
+      stageRef.current.position({ x: 0, y: 0 });
+      stageRef.current.scale({ x: 1, y: 1 });
+    }
+  };
+
   if (isLoading) {
-    return <div>Loading canvas...</div>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
   }
 
   if (error) {
-    return <div>Error loading canvas: {error.message}</div>;
+    return (
+      <Box sx={{ p: 4 }}>
+        <div>Error loading canvas: {error.message}</div>
+      </Box>
+    );
   }
 
   return (
-    <Box sx={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Canvas Header */}
+      <CanvasHeader
+        canvasName={canvasName}
+        onCanvasNameChange={handleCanvasNameChange}
+        zoom={zoom}
+        onZoomChange={handleZoomChange}
+        onFitToScreen={handleFitToScreen}
+      />
+
       {/* Canvas */}
-      <Stage
-        width={stageSize.width}
-        height={stageSize.height}
-        onClick={handleStageClick}
-        onTap={handleStageClick}
-      >
-        <Layer>
-          {items.map((item) => {
-            if (item.type === ItemType.BOOKMARK) {
-              return (
-                <BookmarkItem
-                  key={item.id}
-                  item={item}
-                  isSelected={selectedItemId === item.id}
-                  onSelect={() => setSelectedItemId(item.id)}
-                  onDeselect={() => setSelectedItemId(null)}
-                />
-              );
-            } else if (item.type === ItemType.NOTE) {
-              return (
-                <NoteItem
-                  key={item.id}
-                  item={item}
-                  isSelected={selectedItemId === item.id}
-                  onSelect={() => setSelectedItemId(item.id)}
-                />
-              );
-            }
-            return null;
-          })}
-        </Layer>
-      </Stage>
+      <Box sx={{ flex: 1, overflow: 'hidden' }}>
+        <Stage
+          ref={stageRef}
+          width={stageSize.width}
+          height={stageSize.height}
+          onClick={handleStageClick}
+          onTap={handleStageClick}
+          scaleX={zoom}
+          scaleY={zoom}
+          x={position.x}
+          y={position.y}
+          draggable
+          onDragEnd={(e) => {
+            setPosition({
+              x: e.target.x(),
+              y: e.target.y(),
+            });
+          }}
+        >
+          <Layer>
+            {items.map((item) => {
+              if (item.type === ItemType.BOOKMARK) {
+                return (
+                  <BookmarkItem
+                    key={item.id}
+                    item={item}
+                    isSelected={selectedItemId === item.id}
+                    onSelect={() => setSelectedItemId(item.id)}
+                    onDeselect={() => setSelectedItemId(null)}
+                  />
+                );
+              } else if (item.type === ItemType.NOTE) {
+                return (
+                  <NoteItem
+                    key={item.id}
+                    item={item}
+                    isSelected={selectedItemId === item.id}
+                    onSelect={() => setSelectedItemId(item.id)}
+                  />
+                );
+              }
+              return null;
+            })}
+          </Layer>
+        </Stage>
+      </Box>
 
       {/* Floating Action Buttons */}
       <SpeedDial
