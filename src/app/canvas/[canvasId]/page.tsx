@@ -1,22 +1,30 @@
 /**
  * Canvas Page
  *
- * Main canvas view integrating both NOTE and BOOKMARK items
- * This is a simplified example showing how components integrate
+ * Main canvas view integrating both NOTE and BOOKMARK items with zoom and pan controls
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Stage, Layer } from 'react-konva';
-import { Box, Fab, SpeedDial, SpeedDialAction, SpeedDialIcon } from '@mui/material';
+import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
 import { NoteAdd, Bookmark } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useCanvasItems } from '@/lib/hooks/use-canvas-items';
+import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
+import { useSelectionBox } from '@/lib/hooks/use-selection-box';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
-import { ItemType, isBookmarkContent } from '@/types/canvas';
+import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
+import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
+import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
+import { SelectionBox } from '@/features/canvas/components/SelectionBox';
+import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
+import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplateDialog';
+import { ItemType, CanvasItem } from '@/types/canvas';
+import Konva from 'konva';
 
 const queryClient = new QueryClient();
 
@@ -28,18 +36,85 @@ interface CanvasPageProps {
 
 function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
+  const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
+  const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  const [canvasName, setCanvasName] = useState('Untitled Canvas');
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [searchQuery, setSearchQuery] = useState('');
+  const stageRef = useRef<Konva.Stage>(null);
 
   // Fetch all items for this canvas
-  const { data: items = [], isLoading, error } = useCanvasItems(canvasId);
+  const { data, isLoading, error } = useCanvasItems(canvasId);
+  const allItems = data?.items || [];
+  const { mutateAsync: deleteItem } = useDeleteCanvasItem();
+  const { mutateAsync: createItem } = useCreateCanvasItem();
 
-  // Update stage size on mount
+  // History manager for undo/redo
+  const { addCommand, undo, redo, canUndo, canRedo } = useCanvasHistory();
+
+  // Selection box for multi-select
+  const {
+    isSelecting,
+    selectionBox,
+    startSelection,
+    updateSelection,
+    endSelection,
+    cancelSelection,
+    isItemInSelection,
+  } = useSelectionBox();
+
+  // Filter items based on search query
+  const items = React.useMemo(() => {
+    if (!searchQuery.trim()) return allItems;
+
+    const query = searchQuery.toLowerCase();
+    return allItems.filter((item) => {
+      if (item.type === ItemType.NOTE) {
+        const noteContent = item.content as { text: string };
+        return noteContent.text.toLowerCase().includes(query);
+      } else if (item.type === ItemType.BOOKMARK) {
+        const bookmarkContent = item.content as { url: string };
+        return bookmarkContent.url.toLowerCase().includes(query);
+      }
+      return false;
+    });
+  }, [allItems, searchQuery]);
+
+  // Fetch canvas details (name, zoom, pan)
   React.useEffect(() => {
+    const fetchCanvas = async () => {
+      try {
+        const response = await fetch(`/api/v1/canvases`);
+        if (response.ok) {
+          const canvases = await response.json();
+          const canvas = canvases.find((c: any) => c.id === canvasId);
+          if (canvas) {
+            setCanvasName(canvas.name);
+            setZoom(canvas.zoomLevel || 1);
+            setPosition({ x: canvas.panX || 0, y: canvas.panY || 0 });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch canvas:', err);
+      }
+    };
+    fetchCanvas();
+  }, [canvasId]);
+
+  // Update stage size on mount and resize
+  React.useEffect(() => {
+    const HEADER_HEIGHT = 64;
     const updateSize = () => {
       setStageSize({
         width: window.innerWidth,
-        height: window.innerHeight - 64, // Subtract app bar height
+        height: window.innerHeight - HEADER_HEIGHT,
       });
     };
     updateSize();
@@ -47,56 +122,455 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Undo (Ctrl+Z / Cmd+Z)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      // Redo (Ctrl+Y / Cmd+Y or Ctrl+Shift+Z / Cmd+Shift+Z)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      // Delete key - delete selected item(s)
+      if (e.key === 'Delete') {
+        // Bulk delete if multiple items selected
+        if (selectedItemIds.size > 0) {
+          try {
+            const itemsToDelete = allItems.filter((item) => selectedItemIds.has(item.id));
+
+            // Create batch delete command
+            const deleteCommand: Command = {
+              type: 'batch',
+              description: `Delete ${itemsToDelete.length} items`,
+              execute: async () => {
+                await Promise.all(
+                  itemsToDelete.map((item) =>
+                    deleteItem({
+                      itemId: item.id,
+                      version: item.version,
+                    })
+                  )
+                );
+              },
+              undo: async () => {
+                // Recreate all items
+                await Promise.all(
+                  itemsToDelete.map((item) =>
+                    createItem({
+                      canvasId,
+                      type: item.type,
+                      positionX: item.positionX,
+                      positionY: item.positionY,
+                      width: item.width,
+                      height: item.height,
+                      zIndex: item.zIndex,
+                      content: item.content,
+                      tags: item.tags || [],
+                    })
+                  )
+                );
+              },
+            };
+
+            await deleteCommand.execute();
+            addCommand(deleteCommand);
+            setSelectedItemIds(new Set());
+          } catch (err) {
+            console.error('Failed to bulk delete items:', err);
+          }
+        }
+        // Single delete
+        else if (selectedItemId) {
+          const selectedItem = allItems.find((item) => item.id === selectedItemId);
+          if (selectedItem) {
+            try {
+              // Create delete command
+              const deleteCommand: Command = {
+                type: 'delete',
+                description: `Delete ${selectedItem.type}`,
+                execute: async () => {
+                  await deleteItem({
+                    itemId: selectedItem.id,
+                    version: selectedItem.version,
+                  });
+                },
+                undo: async () => {
+                  // Recreate the item
+                  await createItem({
+                    canvasId,
+                    type: selectedItem.type,
+                    positionX: selectedItem.positionX,
+                    positionY: selectedItem.positionY,
+                    width: selectedItem.width,
+                    height: selectedItem.height,
+                    zIndex: selectedItem.zIndex,
+                    content: selectedItem.content,
+                    tags: selectedItem.tags || [],
+                  });
+                },
+              };
+
+              await deleteCommand.execute();
+              addCommand(deleteCommand);
+              setSelectedItemId(null);
+            } catch (err) {
+              console.error('Failed to delete item:', err);
+            }
+          }
+        }
+      }
+      // Escape key - deselect
+      else if (e.key === 'Escape') {
+        setSelectedItemId(null);
+        setSelectedItemIds(new Set());
+        setContextMenuPosition(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItemId, allItems, deleteItem, createItem, canvasId, undo, redo, addCommand]);
+
+  // Prevent default context menu on stage
+  React.useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      if (stageRef.current?.container().contains(e.target as Node)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('contextmenu', handleContextMenu);
+    return () => window.removeEventListener('contextmenu', handleContextMenu);
+  }, []);
+
+  const handleStageMouseDown = (e: any) => {
+    // Only start selection on empty canvas (not on items)
+    if (e.target === e.target.getStage()) {
+      const stage = e.target.getStage();
+      const pointerPos = stage.getPointerPosition();
+      if (pointerPos) {
+        // Start selection box
+        startSelection({
+          x: (pointerPos.x - position.x) / zoom,
+          y: (pointerPos.y - position.y) / zoom,
+        });
+      }
+    }
+  };
+
+  const handleStageMouseMove = (e: any) => {
+    if (isSelecting) {
+      const stage = e.target.getStage();
+      const pointerPos = stage.getPointerPosition();
+      if (pointerPos) {
+        updateSelection({
+          x: (pointerPos.x - position.x) / zoom,
+          y: (pointerPos.y - position.y) / zoom,
+        });
+      }
+    }
+  };
+
+  const handleStageMouseUp = (e: any) => {
+    if (isSelecting) {
+      const finalBox = endSelection();
+      if (finalBox && finalBox.width > 5 && finalBox.height > 5) {
+        // Select all items in box
+        const selected = new Set<string>();
+        items.forEach((item) => {
+          if (isItemInSelection({
+            x: item.positionX,
+            y: item.positionY,
+            width: item.width,
+            height: item.height,
+          }, finalBox)) {
+            selected.add(item.id);
+          }
+        });
+        setSelectedItemIds(selected);
+        setSelectedItemId(null); // Clear single selection
+      } else {
+        // Small box = click, deselect all
+        setSelectedItemId(null);
+        setSelectedItemIds(new Set());
+      }
+    }
+  };
+
   const handleStageClick = (e: any) => {
     // Deselect if clicking on empty canvas
     if (e.target === e.target.getStage()) {
       setSelectedItemId(null);
+      setSelectedItemIds(new Set());
     }
   };
 
+  const handleCanvasNameChange = async (name: string) => {
+    setCanvasName(name);
+    // Update canvas name via API
+    try {
+      const response = await fetch(`/api/v1/canvases/${canvasId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) {
+        console.error('Failed to update canvas name');
+      }
+    } catch (err) {
+      console.error('Failed to update canvas name:', err);
+    }
+  };
+
+  const handleZoomChange = (newZoom: number) => {
+    setZoom(newZoom);
+    if (stageRef.current) {
+      stageRef.current.scale({ x: newZoom, y: newZoom });
+    }
+    // TODO: Persist zoom to canvas via API
+  };
+
+  const handleFitToScreen = () => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+    if (stageRef.current) {
+      stageRef.current.position({ x: 0, y: 0 });
+      stageRef.current.scale({ x: 1, y: 1 });
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, itemId: string) => {
+    e.preventDefault();
+    setSelectedItemId(itemId);
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleDeleteFromMenu = async () => {
+    if (!selectedItemId) return;
+    const selectedItem = allItems.find((item) => item.id === selectedItemId);
+    if (selectedItem) {
+      try {
+        // Create delete command
+        const deleteCommand: Command = {
+          type: 'delete',
+          description: `Delete ${selectedItem.type}`,
+          execute: async () => {
+            await deleteItem({
+              itemId: selectedItem.id,
+              version: selectedItem.version,
+            });
+          },
+          undo: async () => {
+            // Recreate the item
+            await createItem({
+              canvasId,
+              type: selectedItem.type,
+              positionX: selectedItem.positionX,
+              positionY: selectedItem.positionY,
+              width: selectedItem.width,
+              height: selectedItem.height,
+              zIndex: selectedItem.zIndex,
+              content: selectedItem.content,
+              tags: selectedItem.tags || [],
+            });
+          },
+        };
+
+        await deleteCommand.execute();
+        addCommand(deleteCommand);
+        setSelectedItemId(null);
+      } catch (err) {
+        console.error('Failed to delete item:', err);
+      }
+    }
+  };
+
+  const handleDuplicate = async () => {
+    if (!selectedItemId) return;
+    const selectedItem = allItems.find((item) => item.id === selectedItemId);
+    if (selectedItem) {
+      try {
+        await createItem({
+          canvasId,
+          type: selectedItem.type,
+          positionX: selectedItem.positionX + 20,
+          positionY: selectedItem.positionY + 20,
+          width: selectedItem.width,
+          height: selectedItem.height,
+          zIndex: selectedItem.zIndex,
+          content: selectedItem.content,
+        });
+      } catch (err) {
+        console.error('Failed to duplicate item:', err);
+      }
+    }
+  };
+
+  const handleCopy = () => {
+    if (!selectedItemId) return;
+    const selectedItem = allItems.find((item) => item.id === selectedItemId);
+    if (selectedItem) {
+      // Copy to clipboard (JSON format for now)
+      const copyData = {
+        type: selectedItem.type,
+        content: selectedItem.content,
+        width: selectedItem.width,
+        height: selectedItem.height,
+      };
+      navigator.clipboard.writeText(JSON.stringify(copyData));
+    }
+  };
+
+  const handleOpenComments = () => {
+    if (!selectedItemId) return;
+    setCommentsItemId(selectedItemId);
+    setCommentsPanelOpen(true);
+  };
+
+  const handleExportPNG = () => {
+    if (!stageRef.current) return;
+
+    const uri = stageRef.current.toDataURL({
+      pixelRatio: 2, // Higher quality
+    });
+
+    // Create download link
+    const link = document.createElement('a');
+    link.download = `${canvasName.replace(/\s+/g, '_')}.png`;
+    link.href = uri;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    // PDF export would require jsPDF library
+    // For now, just show an alert
+    alert('PDF export will be implemented in a future update. Use PNG export for now.');
+  };
+
   if (isLoading) {
-    return <div>Loading canvas...</div>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
   }
 
   if (error) {
-    return <div>Error loading canvas: {error.message}</div>;
+    return (
+      <Box sx={{ p: 4 }}>
+        <div>Error loading canvas: {error.message}</div>
+      </Box>
+    );
   }
 
   return (
-    <Box sx={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Canvas Header */}
+      <CanvasHeader
+        canvasId={canvasId}
+        canvasName={canvasName}
+        onCanvasNameChange={handleCanvasNameChange}
+        zoom={zoom}
+        onZoomChange={handleZoomChange}
+        onFitToScreen={handleFitToScreen}
+        onExportPNG={handleExportPNG}
+        onExportPDF={handleExportPDF}
+        onSaveAsTemplate={() => setTemplateDialogOpen(true)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+      />
+
       {/* Canvas */}
-      <Stage
-        width={stageSize.width}
-        height={stageSize.height}
-        onClick={handleStageClick}
-        onTap={handleStageClick}
-      >
-        <Layer>
-          {items.map((item) => {
-            if (item.type === ItemType.BOOKMARK) {
-              return (
-                <BookmarkItem
-                  key={item.id}
-                  item={item}
-                  isSelected={selectedItemId === item.id}
-                  onSelect={() => setSelectedItemId(item.id)}
-                  onDeselect={() => setSelectedItemId(null)}
-                />
-              );
-            } else if (item.type === ItemType.NOTE) {
-              return (
-                <NoteItem
-                  key={item.id}
-                  item={item}
-                  isSelected={selectedItemId === item.id}
-                  onSelect={() => setSelectedItemId(item.id)}
-                />
-              );
-            }
-            return null;
-          })}
-        </Layer>
-      </Stage>
+      <Box sx={{ flex: 1, overflow: 'hidden' }}>
+        <Stage
+          ref={stageRef}
+          width={stageSize.width}
+          height={stageSize.height}
+          onClick={handleStageClick}
+          onTap={handleStageClick}
+          onMouseDown={handleStageMouseDown}
+          onMouseMove={handleStageMouseMove}
+          onMouseUp={handleStageMouseUp}
+          scaleX={zoom}
+          scaleY={zoom}
+          x={position.x}
+          y={position.y}
+          draggable={!isSelecting}
+          onDragEnd={(e) => {
+            setPosition({
+              x: e.target.x(),
+              y: e.target.y(),
+            });
+          }}
+        >
+          <Layer>
+            {items.map((item) => {
+              const isItemSelected = selectedItemId === item.id || selectedItemIds.has(item.id);
+
+              if (item.type === ItemType.BOOKMARK) {
+                return (
+                  <BookmarkItem
+                    key={item.id}
+                    item={item}
+                    isSelected={isItemSelected}
+                    onSelect={() => setSelectedItemId(item.id)}
+                    onDeselect={() => setSelectedItemId(null)}
+                    onContextMenu={(e: any) => {
+                      const stage = e.target.getStage();
+                      const pointerPosition = stage.getPointerPosition();
+                      handleContextMenu(
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        item.id
+                      );
+                    }}
+                  />
+                );
+              } else if (item.type === ItemType.NOTE) {
+                return (
+                  <NoteItem
+                    key={item.id}
+                    item={item}
+                    isSelected={isItemSelected}
+                    onSelect={() => setSelectedItemId(item.id)}
+                    onContextMenu={(e: any) => {
+                      const stage = e.target.getStage();
+                      const pointerPosition = stage.getPointerPosition();
+                      handleContextMenu(
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        item.id
+                      );
+                    }}
+                  />
+                );
+              }
+              return null;
+            })}
+
+            {/* Selection Box */}
+            {selectionBox && (
+              <SelectionBox
+                x={selectionBox.x}
+                y={selectionBox.y}
+                width={selectionBox.width}
+                height={selectionBox.height}
+              />
+            )}
+          </Layer>
+        </Stage>
+      </Box>
 
       {/* Floating Action Buttons */}
       <SpeedDial
@@ -113,10 +587,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         <SpeedDialAction
           icon={<NoteAdd />}
           tooltipTitle="Add Note"
-          onClick={() => {
-            // Note creation dialog would go here
-            console.log('Add note clicked');
-          }}
+          onClick={() => setNoteDialogOpen(true)}
+          data-testid="add-note-button"
         />
       </SpeedDial>
 
@@ -126,6 +598,45 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setBookmarkDialogOpen(false)}
         canvasId={canvasId}
         initialPosition={{ x: 100, y: 100 }}
+      />
+
+      {/* Create Note Dialog */}
+      <CreateNoteDialog
+        open={noteDialogOpen}
+        onClose={() => setNoteDialogOpen(false)}
+        canvasId={canvasId}
+        initialPosition={{ x: 200, y: 200 }}
+      />
+
+      {/* Context Menu */}
+      <CanvasContextMenu
+        position={contextMenuPosition}
+        onClose={() => setContextMenuPosition(null)}
+        onDelete={handleDeleteFromMenu}
+        onDuplicate={handleDuplicate}
+        onCopy={handleCopy}
+        onComments={handleOpenComments}
+      />
+
+      {/* Comments Panel */}
+      {commentsItemId && (
+        <CommentsPanel
+          open={commentsPanelOpen}
+          onClose={() => {
+            setCommentsPanelOpen(false);
+            setCommentsItemId(null);
+          }}
+          itemId={commentsItemId}
+          itemType={allItems.find((item) => item.id === commentsItemId)?.type || 'NOTE'}
+        />
+      )}
+
+      {/* Save as Template Dialog */}
+      <SaveAsTemplateDialog
+        open={templateDialogOpen}
+        onClose={() => setTemplateDialogOpen(false)}
+        canvasId={canvasId}
+        canvasName={canvasName}
       />
     </Box>
   );

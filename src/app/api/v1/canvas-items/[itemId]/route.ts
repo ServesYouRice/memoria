@@ -89,6 +89,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         ...(data.height !== undefined && { height: data.height }),
         ...(data.zIndex !== undefined && { zIndex: data.zIndex }),
         ...(data.content !== undefined && { content: data.content as any }),
+        ...(data.tags !== undefined && { tags: data.tags }),
         version: { increment: 1 },
         updatedById: userId,
       },

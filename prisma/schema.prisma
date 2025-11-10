@@ -11,6 +11,7 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   passwordHash  String?
+  emailVerified DateTime? // null = not verified, DateTime = verified at
   name          String?
   image         String?
   createdAt     DateTime  @default(now())
@@ -19,10 +20,11 @@ model User {
   canvases      Canvas[]
   sessions      Session[]
   accounts      Account[]
-  
+
   createdItems  CanvasItem[] @relation("ItemCreatedBy")
   updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
   deletedItems  CanvasItem[] @relation("ItemDeletedBy")
+  comments      Comment[]
 }
 
 model Canvas {
@@ -31,15 +33,28 @@ model Canvas {
   userId      String
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items       CanvasItem[]
-  
+  shares      CanvasShare[]
+
   zoomLevel   Float       @default(1.0)
   panX        Float       @default(0)
   panY        Float       @default(0)
+
+  // Sharing settings
+  isPublic    Boolean     @default(false)
+  shareToken  String?     @unique // For public sharing links
+
+  // Template settings
+  isTemplate  Boolean     @default(false)
+  templateDescription String?
+  templateCategory String?
+  usageCount  Int         @default(0)
 
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   @@index([userId, createdAt])
+  @@index([shareToken])
+  @@index([isTemplate, templateCategory])
 }
 
 model CanvasItem {
@@ -53,8 +68,9 @@ model CanvasItem {
   width       Float
   height      Float
   zIndex      Int      @default(0)
-  
+
   content     Json
+  tags        String[] @default([])
 
   version     Int      @default(1)
   deletedAt   DateTime?
@@ -73,11 +89,49 @@ model CanvasItem {
   @@index([canvasId, type])
   @@index([canvasId, zIndex])
   @@index([canvasId, updatedAt])
+
+  comments    Comment[]
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  itemId      String
+  item        CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([itemId, deletedAt])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 enum ItemType {
   NOTE
   BOOKMARK
+}
+
+enum ShareRole {
+  VIEW    // Can only view
+  COMMENT // Can view and comment
+  EDIT    // Can view, comment, and edit
+}
+
+model CanvasShare {
+  id        String    @id @default(cuid())
+  canvasId  String
+  canvas    Canvas    @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  email     String    // Email of person shared with
+  role      ShareRole @default(VIEW)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([canvasId, email])
+  @@index([canvasId])
+  @@index([email])
 }
 
 model Session {
@@ -105,6 +159,30 @@ model Account {
   id_token           String? @db.Text
   session_state      String?
   user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@unique([provider, providerAccountId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email, expiresAt])
+  @@index([token, expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email, expiresAt])
+  @@index([token, expiresAt])
 }

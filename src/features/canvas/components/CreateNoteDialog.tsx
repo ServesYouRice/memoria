@@ -1,8 +1,7 @@
 /**
- * Create Bookmark Dialog
+ * Create Note Dialog
  *
- * MUI dialog for creating new bookmarks on the canvas
- * Validates URL input using Zod schema
+ * MUI dialog for creating new notes on the canvas
  */
 
 'use client';
@@ -23,12 +22,11 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { bookmarkContentSchema } from '@/lib/validation/canvas-item';
 import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { ItemType } from '@/types/canvas';
 import { TagInput } from './TagInput';
 
-interface CreateBookmarkDialogProps {
+interface CreateNoteDialogProps {
   open: boolean;
   onClose: () => void;
   canvasId: string;
@@ -36,18 +34,18 @@ interface CreateBookmarkDialogProps {
 }
 
 const formSchema = z.object({
-  url: bookmarkContentSchema.shape.url,
+  text: z.string().min(1, 'Note text is required').max(5000, 'Note text too long'),
   tags: z.array(z.string()).default([]),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
-export function CreateBookmarkDialog({
+export function CreateNoteDialog({
   open,
   onClose,
   canvasId,
   initialPosition = { x: 100, y: 100 },
-}: CreateBookmarkDialogProps) {
+}: CreateNoteDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const createItem = useCreateCanvasItem();
 
@@ -59,7 +57,7 @@ export function CreateBookmarkDialog({
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      url: '',
+      text: '',
       tags: [],
     },
   });
@@ -76,52 +74,48 @@ export function CreateBookmarkDialog({
 
       await createItem.mutateAsync({
         canvasId,
-        type: ItemType.BOOKMARK,
+        type: ItemType.NOTE,
         positionX: initialPosition.x,
         positionY: initialPosition.y,
-        width: 300,
-        height: 100,
+        width: 200,
+        height: 200,
         zIndex: 0,
         content: {
-          url: data.url,
+          text: data.text,
         },
         tags: data.tags || [],
       });
 
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create bookmark');
+      setError(err instanceof Error ? err.message : 'Failed to create note');
     }
   };
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Bookmark</DialogTitle>
+      <DialogTitle>Add Note</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Typography variant="body2" color="text.secondary">
-              Enter a URL to create a bookmark on your canvas.
+              Create a sticky note on your canvas.
             </Typography>
 
-            {/* Phase 2 notice */}
-            <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
-              Note: URL preview and metadata (title, description, favicon) will be added in Phase 2.
-              For now, only the URL will be displayed.
-            </Alert>
-
             <Controller
-              name="url"
+              name="text"
               control={control}
               render={({ field }) => (
                 <TextField
                   {...field}
-                  label="URL"
-                  placeholder="https://example.com"
+                  label="Note Text"
+                  placeholder="Enter your note..."
                   fullWidth
+                  multiline
+                  rows={4}
                   autoFocus
-                  error={!!errors.url}
-                  helperText={errors.url?.message}
+                  error={!!errors.text}
+                  helperText={errors.text?.message}
                   disabled={isSubmitting}
                 />
               )}
@@ -157,7 +151,7 @@ export function CreateBookmarkDialog({
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? 'Creating...' : 'Create Bookmark'}
+            {isSubmitting ? 'Creating...' : 'Create Note'}
           </Button>
         </DialogActions>
       </form>

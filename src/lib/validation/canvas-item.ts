@@ -65,6 +65,7 @@ export const createCanvasItemSchema = z.object({
   height: z.number().positive().finite(),
   zIndex: z.number().int().min(0).max(999999).default(0),
   content: z.union([noteContentSchema, bookmarkContentSchema]),
+  tags: z.array(z.string().min(1).max(50)).max(20).default([]),
 });
 
 /**
@@ -79,6 +80,7 @@ export const updateCanvasItemSchema = z.object({
   height: z.number().positive().finite().optional(),
   zIndex: z.number().int().min(0).max(999999).optional(),
   content: z.union([noteContentSchema, bookmarkContentSchema]).optional(),
+  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
 });
 
 /**

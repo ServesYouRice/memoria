@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
         height: data.height,
         zIndex: data.zIndex,
         content: data.content as any, // Prisma Json type
+        tags: data.tags || [],
         version: 1,
         createdById: userId,
         updatedById: userId,
