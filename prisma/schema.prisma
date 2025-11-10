@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  canvases      Canvas[]
+  sessions      Session[]
+  accounts      Account[]
+  
+  createdItems  CanvasItem[] @relation("ItemCreatedBy")
+  updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
+  deletedItems  CanvasItem[] @relation("ItemDeletedBy")
+}
+
+model Canvas {
+  id          String      @id @default(cuid())
+  name        String      @default("Untitled Canvas")
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       CanvasItem[]
+  
+  zoomLevel   Float       @default(1.0)
+  panX        Float       @default(0)
+  panY        Float       @default(0)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model CanvasItem {
+  id          String   @id @default(cuid())
+  canvasId    String
+  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  type        ItemType
+
+  positionX   Float
+  positionY   Float
+  width       Float
+  height      Float
+  zIndex      Int      @default(0)
+  
+  content     Json
+
+  version     Int      @default(1)
+  deletedAt   DateTime?
+
+  createdById String
+  updatedById String?
+  deletedById String?
+  createdBy   User     @relation("ItemCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("ItemUpdatedBy", fields: [updatedById], references: [id])
+  deletedBy   User?    @relation("ItemDeletedBy", fields: [deletedById], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([canvasId, deletedAt])
+  @@index([canvasId, type])
+  @@index([canvasId, zIndex])
+  @@index([canvasId, updatedAt])
+}
+
+enum ItemType {
+  NOTE
+  BOOKMARK
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  sessionToken String    @unique
+  userId       String
+  expires      DateTime
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  deviceInfo   String?
+  revokedAt    DateTime?
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+}
