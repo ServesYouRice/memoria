@@ -25,9 +25,12 @@ import {
   Clear as ClearIcon,
   Undo as UndoIcon,
   Redo as RedoIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
+import { ShareDialog } from './ShareDialog';
 
 export interface CanvasHeaderProps {
+  canvasId: string;
   canvasName: string;
   onCanvasNameChange: (name: string) => void;
   zoom: number;
@@ -48,6 +51,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 
 export function CanvasHeader({
+  canvasId,
   canvasName,
   onCanvasNameChange,
   zoom,
@@ -67,6 +71,7 @@ export function CanvasHeader({
   const [editedName, setEditedName] = useState(canvasName);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   const handleBackClick = () => {
     router.push('/dashboard');
@@ -197,6 +202,13 @@ export function CanvasHeader({
           </Box>
         )}
 
+        {/* Share Button */}
+        <Tooltip title="Share Canvas">
+          <IconButton onClick={() => setShareDialogOpen(true)} sx={{ mr: 1 }}>
+            <ShareIcon />
+          </IconButton>
+        </Tooltip>
+
         {/* Search Toggle */}
         {onSearchChange && !showSearch && !isEditingName && (
           <Tooltip title="Search">
@@ -256,6 +268,14 @@ export function CanvasHeader({
           <MenuItem onClick={handleMenuClose}>Canvas Settings</MenuItem>
         </Menu>
       </Toolbar>
+
+      {/* Share Dialog */}
+      <ShareDialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        canvasId={canvasId}
+        canvasName={canvasName}
+      />
     </AppBar>
   );
 }

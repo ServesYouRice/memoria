@@ -465,6 +465,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Canvas Header */}
       <CanvasHeader
+        canvasId={canvasId}
         canvasName={canvasName}
         onCanvasNameChange={handleCanvasNameChange}
         zoom={zoom}
