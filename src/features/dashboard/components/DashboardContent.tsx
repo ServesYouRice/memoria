@@ -41,6 +41,8 @@ import {
 import { useCanvases, useCreateCanvas, useDuplicateCanvas } from '@/lib/hooks/use-canvases';
 import { ActivityFeed } from './ActivityFeed';
 import { GlobalSearchDialog } from '@/components/GlobalSearchDialog';
+import { CommandPalette } from '@/components/CommandPalette';
+import { useThemeMode } from '@/contexts/ThemeContext';
 import Link from 'next/link';
 
 export function DashboardContent() {
@@ -52,10 +54,12 @@ export function DashboardContent() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   const { data: canvases, isLoading, error} = useCanvases();
   const createCanvas = useCreateCanvas();
   const duplicateCanvas = useDuplicateCanvas();
+  const { mode, toggleTheme } = useThemeMode();
 
   const handleCreateCanvas = async () => {
     try {
@@ -70,6 +74,19 @@ export function DashboardContent() {
       console.error('Failed to create canvas:', err);
     }
   };
+
+  // Command palette keyboard shortcut
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleCanvasClick = (canvasId: string, event?: React.MouseEvent) => {
     if (selectionMode) {
@@ -440,6 +457,16 @@ export function DashboardContent() {
 
       {/* Global Search Dialog */}
       <GlobalSearchDialog open={searchDialogOpen} onClose={() => setSearchDialogOpen(false)} />
+
+      {/* Command Palette */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onCreateCanvas={() => setCreateDialogOpen(true)}
+        onSearch={() => setSearchDialogOpen(true)}
+        onToggleTheme={toggleTheme}
+        isDarkMode={mode === 'dark'}
+      />
     </>
   );
 }
