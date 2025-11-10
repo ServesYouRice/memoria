@@ -91,7 +91,13 @@ export async function GET(request: NextRequest) {
         return (
           content.url?.toLowerCase().includes(queryLower) ||
           content.title?.toLowerCase().includes(queryLower) ||
-          content.description?.toLowerCase().includes(queryLower)
+          content.description?.toLowerCase().includes(queryLower) ||
+          content.siteName?.toLowerCase().includes(queryLower)
+        );
+      } else if (item.type === 'IMAGE') {
+        return (
+          content.filename?.toLowerCase().includes(queryLower) ||
+          content.alt?.toLowerCase().includes(queryLower)
         );
       }
       return false;
@@ -108,6 +114,8 @@ export async function GET(request: NextRequest) {
         snippet = (start > 0 ? '...' : '') + text.substring(start, end) + (end < text.length ? '...' : '');
       } else if (item.type === 'BOOKMARK') {
         snippet = content.title || content.url || '';
+      } else if (item.type === 'IMAGE') {
+        snippet = content.alt || content.filename || 'Image';
       }
 
       return {

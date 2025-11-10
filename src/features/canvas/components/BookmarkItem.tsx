@@ -14,7 +14,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Group, Rect, Text, Circle } from 'react-konva';
+import { Group, Rect, Text, Circle, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
 import { CanvasItem, BookmarkContent, isBookmarkContent } from '@/types/canvas';
 import { useAutosave } from '@/lib/hooks/use-autosave';
@@ -47,6 +47,7 @@ export function BookmarkItem({
     width: item.width,
     height: item.height,
   });
+  const [favicon, setFavicon] = useState<HTMLImageElement | null>(null);
 
   const { saveChanges, isSaving } = useAutosave({
     itemId: item.id,
@@ -59,11 +60,31 @@ export function BookmarkItem({
   // Extract bookmark content
   const content = isBookmarkContent(item.content) ? item.content : { url: 'Invalid bookmark' };
 
+  // Check if we have metadata
+  const hasMetadata = content.title || content.description;
+
   // Sync with server updates
   useEffect(() => {
     setLocalPosition({ x: item.positionX, y: item.positionY });
     setLocalSize({ width: item.width, height: item.height });
   }, [item.positionX, item.positionY, item.width, item.height]);
+
+  // Load favicon if available
+  useEffect(() => {
+    if (content.favicon) {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        setFavicon(img);
+      };
+      img.onerror = () => {
+        console.error('Failed to load favicon:', content.favicon);
+      };
+      img.src = content.favicon;
+    } else {
+      setFavicon(null);
+    }
+  }, [content.favicon]);
 
   // Handle drag
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
@@ -170,33 +191,95 @@ export function BookmarkItem({
         cornerRadius={8}
       />
 
-      {/* Bookmark icon/indicator */}
-      <Rect x={10} y={10} width={30} height={30} fill="#FFB74D" cornerRadius={4} />
+      {/* Content area with metadata */}
+      {hasMetadata ? (
+        <>
+          {/* Favicon */}
+          {favicon && (
+            <KonvaImage
+              image={favicon}
+              x={10}
+              y={10}
+              width={20}
+              height={20}
+            />
+          )}
 
-      {/* URL text */}
-      <Text
-        x={50}
-        y={15}
-        width={localSize.width - 60}
-        text={displayUrl}
-        fontSize={14}
-        fontFamily="Arial"
-        fill="#1976D2"
-        textDecoration="underline"
-        wrap="none"
-        ellipsis={true}
-      />
+          {/* Title */}
+          {content.title && (
+            <Text
+              x={favicon ? 38 : 10}
+              y={10}
+              width={localSize.width - (favicon ? 48 : 20)}
+              text={content.title}
+              fontSize={15}
+              fontWeight="bold"
+              fontFamily="Arial"
+              fill="#333"
+              wrap="none"
+              ellipsis={true}
+            />
+          )}
 
-      {/* "Bookmark" label */}
-      <Text
-        x={10}
-        y={localSize.height - 30}
-        width={localSize.width - 20}
-        text="Bookmark"
-        fontSize={11}
-        fontFamily="Arial"
-        fill="#666"
-      />
+          {/* Description */}
+          {content.description && (
+            <Text
+              x={10}
+              y={35}
+              width={localSize.width - 20}
+              height={localSize.height - 65}
+              text={content.description}
+              fontSize={12}
+              fontFamily="Arial"
+              fill="#666"
+              wrap="word"
+            />
+          )}
+
+          {/* Site name or URL */}
+          <Text
+            x={10}
+            y={localSize.height - 25}
+            width={localSize.width - 20}
+            text={content.siteName || displayUrl}
+            fontSize={10}
+            fontFamily="Arial"
+            fill="#999"
+            wrap="none"
+            ellipsis={true}
+          />
+        </>
+      ) : (
+        <>
+          {/* Bookmark icon/indicator (fallback when no metadata) */}
+          <Rect x={10} y={10} width={30} height={30} fill="#FFB74D" cornerRadius={4} />
+
+          {/* URL text (fallback when no metadata) */}
+          <Text
+            x={50}
+            y={15}
+            width={localSize.width - 60}
+            text={displayUrl}
+            fontSize={14}
+            fontFamily="Arial"
+            fill="#1976D2"
+            textDecoration="underline"
+            wrap="none"
+            ellipsis={true}
+          />
+
+          {/* "Bookmark" label */}
+          <Text
+            x={10}
+            y={localSize.height - 30}
+            width={localSize.width - 20}
+            text="Bookmark"
+            fontSize={11}
+            fontFamily="Arial"
+            fill="#666"
+          />
+        </>
+      )}
 
       {/* Saving indicator */}
       {isSaving && (

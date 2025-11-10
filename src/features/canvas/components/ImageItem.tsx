@@ -18,11 +18,12 @@ interface ImageItemProps {
   isSelected?: boolean;
   onSelect?: () => void;
   onDoubleClick?: () => void;
+  onContextMenu?: (e: any) => void;
 }
 
 const DELETE_BUTTON_SIZE = 20;
 
-export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick }: ImageItemProps) {
+export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, onContextMenu }: ImageItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -84,6 +85,7 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick }:
       onTap={onSelect}
       onDblClick={onDoubleClick}
       onDblTap={onDoubleClick}
+      onContextMenu={onContextMenu}
     >
       {/* Border/Background */}
       <Rect

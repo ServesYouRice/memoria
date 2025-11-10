@@ -753,6 +753,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     item={item}
                     isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
+                    onContextMenu={(e: any) => {
+                      const stage = e.target.getStage();
+                      const pointerPosition = stage.getPointerPosition();
+                      handleContextMenu(
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        item.id
+                      );
+                    }}
                   />
                 );
               }
