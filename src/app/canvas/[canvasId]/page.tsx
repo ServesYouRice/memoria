@@ -22,6 +22,7 @@ import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
 import { SelectionBox } from '@/features/canvas/components/SelectionBox';
 import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
+import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplateDialog';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 
@@ -41,6 +42,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
@@ -482,6 +484,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onFitToScreen={handleFitToScreen}
         onExportPNG={handleExportPNG}
         onExportPDF={handleExportPDF}
+        onSaveAsTemplate={() => setTemplateDialogOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         canUndo={canUndo}
@@ -627,6 +630,14 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
           itemType={allItems.find((item) => item.id === commentsItemId)?.type || 'NOTE'}
         />
       )}
+
+      {/* Save as Template Dialog */}
+      <SaveAsTemplateDialog
+        open={templateDialogOpen}
+        onClose={() => setTemplateDialogOpen(false)}
+        canvasId={canvasId}
+        canvasName={canvasName}
+      />
     </Box>
   );
 }

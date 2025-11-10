@@ -38,6 +38,7 @@ export interface CanvasHeaderProps {
   onFitToScreen: () => void;
   onExportPNG?: () => void;
   onExportPDF?: () => void;
+  onSaveAsTemplate?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   canUndo?: boolean;
@@ -59,6 +60,7 @@ export function CanvasHeader({
   onFitToScreen,
   onExportPNG,
   onExportPDF,
+  onSaveAsTemplate,
   searchQuery = '',
   onSearchChange,
   canUndo = false,
@@ -265,6 +267,16 @@ export function CanvasHeader({
           >
             Export as PDF
           </MenuItem>
+          {onSaveAsTemplate && (
+            <MenuItem
+              onClick={() => {
+                onSaveAsTemplate();
+                handleMenuClose();
+              }}
+            >
+              Save as Template
+            </MenuItem>
+          )}
           <MenuItem onClick={handleMenuClose}>Canvas Settings</MenuItem>
         </Menu>
       </Toolbar>

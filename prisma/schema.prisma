@@ -43,11 +43,18 @@ model Canvas {
   isPublic    Boolean     @default(false)
   shareToken  String?     @unique // For public sharing links
 
+  // Template settings
+  isTemplate  Boolean     @default(false)
+  templateDescription String?
+  templateCategory String?
+  usageCount  Int         @default(0)
+
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   @@index([userId, createdAt])
   @@index([shareToken])
+  @@index([isTemplate, templateCategory])
 }
 
 model CanvasItem {
