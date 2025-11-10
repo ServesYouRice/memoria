@@ -25,6 +25,8 @@ interface BookmarkItemProps {
   isSelected?: boolean;
   onSelect?: () => void;
   onDeselect?: () => void;
+  onDoubleClick?: () => void;
+  onContextMenu?: (e: any) => void;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -37,6 +39,8 @@ export function BookmarkItem({
   isSelected = false,
   onSelect,
   onDeselect,
+  onDoubleClick,
+  onContextMenu,
 }: BookmarkItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -176,6 +180,9 @@ export function BookmarkItem({
       onDragEnd={handleDragEnd}
       onClick={onSelect}
       onTap={onSelect}
+      onDblClick={onDoubleClick}
+      onDblTap={onDoubleClick}
+      onContextMenu={onContextMenu}
     >
       {/* Main bookmark rectangle */}
       <Rect

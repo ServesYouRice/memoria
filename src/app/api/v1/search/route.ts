@@ -8,6 +8,7 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/db';
 import { authOptions } from '@/lib/auth';
 import { UnauthorizedError, ValidationError } from '@/lib/errors';
+import { stripHtmlTags } from '@/lib/utils/html';
 
 interface SearchResult {
   itemId: string;
@@ -86,7 +87,9 @@ export async function GET(request: NextRequest) {
     .filter((item) => {
       const content = item.content as any;
       if (item.type === 'NOTE') {
-        return content.text?.toLowerCase().includes(queryLower);
+        // Strip HTML tags before searching
+        const plainText = stripHtmlTags(content.text || '');
+        return plainText.toLowerCase().includes(queryLower);
       } else if (item.type === 'BOOKMARK') {
         return (
           content.url?.toLowerCase().includes(queryLower) ||
@@ -107,11 +110,12 @@ export async function GET(request: NextRequest) {
       let snippet = '';
 
       if (item.type === 'NOTE') {
-        const text = content.text || '';
-        const index = text.toLowerCase().indexOf(queryLower);
+        // Strip HTML tags for snippet as well
+        const plainText = stripHtmlTags(content.text || '');
+        const index = plainText.toLowerCase().indexOf(queryLower);
         const start = Math.max(0, index - 50);
-        const end = Math.min(text.length, index + queryLower.length + 50);
-        snippet = (start > 0 ? '...' : '') + text.substring(start, end) + (end < text.length ? '...' : '');
+        const end = Math.min(plainText.length, index + queryLower.length + 50);
+        snippet = (start > 0 ? '...' : '') + plainText.substring(start, end) + (end < plainText.length ? '...' : '');
       } else if (item.type === 'BOOKMARK') {
         snippet = content.title || content.url || '';
       } else if (item.type === 'IMAGE') {

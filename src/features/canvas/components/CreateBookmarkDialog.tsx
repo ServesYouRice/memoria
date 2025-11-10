@@ -7,7 +7,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -31,6 +31,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { bookmarkContentSchema } from '@/lib/validation/canvas-item';
 import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { useDebounce } from '@/lib/hooks/use-debounce';
 import { ItemType } from '@/types/canvas';
 import { TagInput } from './TagInput';
 
@@ -72,6 +73,7 @@ export function CreateBookmarkDialog({
     control,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -81,12 +83,35 @@ export function CreateBookmarkDialog({
     },
   });
 
+  // Watch the URL field for auto-unfurling
+  const urlValue = watch('url');
+  const debouncedUrl = useDebounce(urlValue, 1000); // 1 second debounce
+
   const handleClose = () => {
     reset();
     setError(null);
     setMetadata(null);
     onClose();
   };
+
+  // Auto-unfurl when a valid URL is entered
+  useEffect(() => {
+    // Only auto-unfurl if:
+    // 1. Dialog is open
+    // 2. We have a URL value
+    // 3. There are no validation errors
+    // 4. We don't already have metadata
+    // 5. We're not currently unfurling
+    if (open && debouncedUrl && !errors.url && !metadata && !unfurling) {
+      // Validate that it's a proper URL format
+      try {
+        new URL(debouncedUrl);
+        handleUnfurl(debouncedUrl);
+      } catch {
+        // Invalid URL format, don't auto-unfurl
+      }
+    }
+  }, [debouncedUrl, open, errors.url, metadata, unfurling]);
 
   const handleUnfurl = async (url: string) => {
     try {

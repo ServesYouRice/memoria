@@ -15,6 +15,7 @@ import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/
 import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
 import { useSelectionBox } from '@/lib/hooks/use-selection-box';
 import { useUpdateCanvasThumbnail } from '@/lib/hooks/use-canvases';
+import { stripHtmlTags } from '@/lib/utils/html';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { ImageItem } from '@/features/canvas/components/ImageItem';
@@ -22,6 +23,8 @@ import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmar
 import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
 import { CreateImageDialog } from '@/features/canvas/components/CreateImageDialog';
 import { EditNoteDialog } from '@/features/canvas/components/EditNoteDialog';
+import { EditBookmarkDialog } from '@/features/canvas/components/EditBookmarkDialog';
+import { EditImageDialog } from '@/features/canvas/components/EditImageDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
 import { SelectionBox } from '@/features/canvas/components/SelectionBox';
@@ -51,6 +54,10 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false);
   const [editingNoteItem, setEditingNoteItem] = useState<CanvasItem | null>(null);
+  const [editBookmarkDialogOpen, setEditBookmarkDialogOpen] = useState(false);
+  const [editingBookmarkItem, setEditingBookmarkItem] = useState<CanvasItem | null>(null);
+  const [editImageDialogOpen, setEditImageDialogOpen] = useState(false);
+  const [editingImageItem, setEditingImageItem] = useState<CanvasItem | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
@@ -119,7 +126,9 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
       filtered = filtered.filter((item) => {
         if (item.type === ItemType.NOTE) {
           const noteContent = item.content as { text: string };
-          return noteContent.text?.toLowerCase().includes(query);
+          // Strip HTML tags before searching
+          const plainText = stripHtmlTags(noteContent.text || '');
+          return plainText.toLowerCase().includes(query);
         } else if (item.type === ItemType.BOOKMARK) {
           const bookmarkContent = item.content as any;
           return (
@@ -419,6 +428,20 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     if (item.type === ItemType.NOTE) {
       setEditingNoteItem(item);
       setEditNoteDialogOpen(true);
+    }
+  };
+
+  const handleBookmarkDoubleClick = (item: CanvasItem) => {
+    if (item.type === ItemType.BOOKMARK) {
+      setEditingBookmarkItem(item);
+      setEditBookmarkDialogOpen(true);
+    }
+  };
+
+  const handleImageDoubleClick = (item: CanvasItem) => {
+    if (item.type === ItemType.IMAGE) {
+      setEditingImageItem(item);
+      setEditImageDialogOpen(true);
     }
   };
 
@@ -729,6 +752,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
                     onDeselect={() => setSelectedItemId(null)}
+                    onDoubleClick={() => handleBookmarkDoubleClick(item)}
                     onContextMenu={(e: any) => {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
@@ -764,6 +788,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     item={item}
                     isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
+                    onDoubleClick={() => handleImageDoubleClick(item)}
                     onContextMenu={(e: any) => {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
@@ -849,6 +874,26 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
           setEditingNoteItem(null);
         }}
         item={editingNoteItem}
+      />
+
+      {/* Edit Bookmark Dialog */}
+      <EditBookmarkDialog
+        open={editBookmarkDialogOpen}
+        onClose={() => {
+          setEditBookmarkDialogOpen(false);
+          setEditingBookmarkItem(null);
+        }}
+        item={editingBookmarkItem}
+      />
+
+      {/* Edit Image Dialog */}
+      <EditImageDialog
+        open={editImageDialogOpen}
+        onClose={() => {
+          setEditImageDialogOpen(false);
+          setEditingImageItem(null);
+        }}
+        item={editingImageItem}
       />
 
       {/* Context Menu */}

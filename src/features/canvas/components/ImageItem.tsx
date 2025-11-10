@@ -21,6 +21,9 @@ interface ImageItemProps {
   onContextMenu?: (e: any) => void;
 }
 
+const RESIZE_HANDLE_SIZE = 8;
+const MIN_WIDTH = 100;
+const MIN_HEIGHT = 100;
 const DELETE_BUTTON_SIZE = 20;
 
 export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, onContextMenu }: ImageItemProps) {
@@ -28,6 +31,10 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
     y: item.positionY,
+  });
+  const [localSize, setLocalSize] = useState({
+    width: item.width,
+    height: item.height,
   });
   const [image, setImage] = useState<HTMLImageElement | null>(null);
 
@@ -43,7 +50,8 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
 
   useEffect(() => {
     setLocalPosition({ x: item.positionX, y: item.positionY });
-  }, [item.positionX, item.positionY]);
+    setLocalSize({ width: item.width, height: item.height });
+  }, [item.positionX, item.positionY, item.width, item.height]);
 
   // Load the image
   useEffect(() => {
@@ -60,11 +68,71 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
     }
   }, [content.url]);
 
+  const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const node = e.target;
+    const newPos = {
+      x: node.x(),
+      y: node.y(),
+    };
+    setLocalPosition(newPos);
+  };
+
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
     saveChanges({
       positionX: node.x(),
       positionY: node.y(),
+    });
+  };
+
+  const handleResize = (
+    corner: 'se' | 'sw' | 'ne' | 'nw',
+    e: Konva.KonvaEventObject<MouseEvent>
+  ) => {
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    let newWidth = localSize.width;
+    let newHeight = localSize.height;
+    let newX = localPosition.x;
+    let newY = localPosition.y;
+
+    switch (corner) {
+      case 'se': // Bottom-right
+        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
+        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
+        break;
+      case 'sw': // Bottom-left
+        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
+        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
+        newX = localPosition.x + localSize.width - newWidth;
+        break;
+      case 'ne': // Top-right
+        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
+        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+        newY = localPosition.y + localSize.height - newHeight;
+        break;
+      case 'nw': // Top-left
+        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
+        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+        newX = localPosition.x + localSize.width - newWidth;
+        newY = localPosition.y + localSize.height - newHeight;
+        break;
+    }
+
+    setLocalSize({ width: newWidth, height: newHeight });
+    setLocalPosition({ x: newX, y: newY });
+  };
+
+  const handleResizeEnd = () => {
+    saveChanges({
+      positionX: localPosition.x,
+      positionY: localPosition.y,
+      width: localSize.width,
+      height: localSize.height,
     });
   };
 
@@ -80,6 +148,7 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
       x={localPosition.x}
       y={localPosition.y}
       draggable
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
       onTap={onSelect}
@@ -89,8 +158,8 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
     >
       {/* Border/Background */}
       <Rect
-        width={item.width}
-        height={item.height}
+        width={localSize.width}
+        height={localSize.height}
         fill="#ffffff"
         stroke={isSelected ? '#2196F3' : '#e0e0e0'}
         strokeWidth={isSelected ? 3 : 1}
@@ -107,8 +176,8 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
           image={image}
           x={0}
           y={0}
-          width={item.width}
-          height={item.height}
+          width={localSize.width}
+          height={localSize.height}
           cornerRadius={4}
         />
       )}
@@ -117,8 +186,8 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
       {!image && (
         <Text
           x={10}
-          y={item.height / 2 - 10}
-          width={item.width - 20}
+          y={localSize.height / 2 - 10}
+          width={localSize.width - 20}
           text="Loading image..."
           fontSize={14}
           fontFamily="Arial"
@@ -131,8 +200,8 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
       {isSelected && content.alt && (
         <Rect
           x={0}
-          y={item.height - 30}
-          width={item.width}
+          y={localSize.height - 30}
+          width={localSize.width}
           height={30}
           fill="rgba(0, 0, 0, 0.7)"
           cornerRadius={[0, 0, 4, 4]}
@@ -141,8 +210,8 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
       {isSelected && content.alt && (
         <Text
           x={8}
-          y={item.height - 22}
-          width={item.width - 16}
+          y={localSize.height - 22}
+          width={localSize.width - 16}
           text={content.alt}
           fontSize={12}
           fontFamily="Arial"
@@ -154,14 +223,88 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
 
       {/* Saving indicator */}
       {isSaving && (
-        <Text x={item.width - 80} y={item.height - 25} text="Saving..." fontSize={10} fill="#999" />
+        <Text x={localSize.width - 80} y={localSize.height - 25} text="Saving..." fontSize={10} fill="#999" />
       )}
 
-      {/* Delete button */}
+      {/* Resize handles and delete button */}
       {isSelected && (
         <>
+          {/* Resize handles */}
           <Circle
-            x={item.width - DELETE_BUTTON_SIZE}
+            x={localSize.width}
+            y={localSize.height}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('se', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nwse-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          <Circle
+            x={0}
+            y={localSize.height}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('sw', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nesw-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          <Circle
+            x={localSize.width}
+            y={0}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('ne', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nesw-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          <Circle
+            x={0}
+            y={0}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('nw', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nwse-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          {/* Delete button */}
+          <Circle
+            x={localSize.width - DELETE_BUTTON_SIZE}
             y={DELETE_BUTTON_SIZE}
             radius={DELETE_BUTTON_SIZE}
             fill="#F44336"
@@ -177,7 +320,7 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
             }}
           />
           <Text
-            x={item.width - DELETE_BUTTON_SIZE - 5}
+            x={localSize.width - DELETE_BUTTON_SIZE - 5}
             y={DELETE_BUTTON_SIZE - 6}
             text="×"
             fontSize={20}
