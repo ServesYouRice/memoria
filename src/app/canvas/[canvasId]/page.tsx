@@ -27,6 +27,7 @@ import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplat
 import { VersionHistoryDialog } from '@/features/canvas/components/VersionHistoryDialog';
 import { ExportDialog, ExportFormat, ExportOptions } from '@/features/canvas/components/ExportDialog';
 import { TagFilterPanel } from '@/features/canvas/components/TagFilterPanel';
+import { GridOverlay, snapPositionToGrid } from '@/features/canvas/components/GridOverlay';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 import { jsPDF } from 'jspdf';
@@ -52,12 +53,16 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [gridVisible, setGridVisible] = useState(false);
+  const [snapToGridEnabled, setSnapToGridEnabled] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const stageRef = useRef<Konva.Stage>(null);
+
+  const GRID_SIZE = 20; // Grid cell size in pixels
 
   // Fetch all items for this canvas
   const { data, isLoading, error } = useCanvasItems(canvasId);
@@ -643,6 +648,10 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onVersionHistory={() => setVersionHistoryOpen(true)}
         onTagFilter={() => setTagFilterOpen(true)}
         activeTagCount={selectedTags.length}
+        gridVisible={gridVisible}
+        onGridToggle={() => setGridVisible(!gridVisible)}
+        snapEnabled={snapToGridEnabled}
+        onSnapToggle={() => setSnapToGridEnabled(!snapToGridEnabled)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         canUndo={canUndo}
@@ -674,6 +683,16 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
             });
           }}
         >
+          {/* Grid Overlay */}
+          <GridOverlay
+            width={stageSize.width}
+            height={stageSize.height}
+            gridSize={GRID_SIZE}
+            visible={gridVisible}
+            offset={position}
+            zoom={zoom}
+          />
+
           <Layer>
             {items.map((item) => {
               const isItemSelected = selectedItemId === item.id || selectedItemIds.has(item.id);

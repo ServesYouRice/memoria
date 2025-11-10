@@ -15,6 +15,8 @@ import {
   Menu,
   MenuItem,
   Badge,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -28,6 +30,8 @@ import {
   Redo as RedoIcon,
   Share as ShareIcon,
   LocalOffer as TagIcon,
+  GridOn as GridOnIcon,
+  GridOff as GridOffIcon,
 } from '@mui/icons-material';
 import { ShareDialog } from './ShareDialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -43,6 +47,10 @@ export interface CanvasHeaderProps {
   onSaveAsTemplate?: () => void;
   onVersionHistory?: () => void;
   onTagFilter?: () => void;
+  gridVisible?: boolean;
+  onGridToggle?: () => void;
+  snapEnabled?: boolean;
+  onSnapToggle?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   canUndo?: boolean;
@@ -67,6 +75,10 @@ export function CanvasHeader({
   onSaveAsTemplate,
   onVersionHistory,
   onTagFilter,
+  gridVisible = false,
+  onGridToggle,
+  snapEnabled = false,
+  onSnapToggle,
   searchQuery = '',
   onSearchChange,
   canUndo = false,
@@ -266,6 +278,30 @@ export function CanvasHeader({
             {Math.round(zoom * 100)}%
           </Typography>
         </Box>
+
+        {/* Grid Controls */}
+        {(onGridToggle || onSnapToggle) && (
+          <Box sx={{ mr: 2 }}>
+            <ToggleButtonGroup size="small">
+              {onGridToggle && (
+                <ToggleButton value="grid" selected={gridVisible} onChange={onGridToggle}>
+                  <Tooltip title={gridVisible ? 'Hide Grid' : 'Show Grid'}>
+                    {gridVisible ? <GridOnIcon fontSize="small" /> : <GridOffIcon fontSize="small" />}
+                  </Tooltip>
+                </ToggleButton>
+              )}
+              {onSnapToggle && (
+                <ToggleButton value="snap" selected={snapEnabled} onChange={onSnapToggle}>
+                  <Tooltip title={snapEnabled ? 'Disable Snap to Grid' : 'Enable Snap to Grid'}>
+                    <Typography variant="caption" sx={{ fontWeight: snapEnabled ? 'bold' : 'normal' }}>
+                      SNAP
+                    </Typography>
+                  </Tooltip>
+                </ToggleButton>
+              )}
+            </ToggleButtonGroup>
+          </Box>
+        )}
 
         {/* Options Menu */}
         <Tooltip title="More Options">
