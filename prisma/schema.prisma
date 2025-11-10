@@ -11,6 +11,7 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   passwordHash  String?
+  emailVerified DateTime? // null = not verified, DateTime = verified at
   name          String?
   image         String?
   createdAt     DateTime  @default(now())
@@ -19,7 +20,7 @@ model User {
   canvases      Canvas[]
   sessions      Session[]
   accounts      Account[]
-  
+
   createdItems  CanvasItem[] @relation("ItemCreatedBy")
   updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
   deletedItems  CanvasItem[] @relation("ItemDeletedBy")
@@ -111,6 +112,18 @@ model Account {
 }
 
 model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email, expiresAt])
+  @@index([token, expiresAt])
+}
+
+model EmailVerificationToken {
   id        String   @id @default(cuid())
   token     String   @unique
   email     String
