@@ -13,6 +13,7 @@ export interface Canvas {
   zoomLevel: number;
   panX: number;
   panY: number;
+  thumbnail?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +105,35 @@ export function useDuplicateCanvas() {
 
   return useMutation({
     mutationFn: api.duplicateCanvas,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: canvasKeys.list(),
+      });
+    },
+  });
+}
+
+/**
+ * Update canvas thumbnail
+ */
+export function useUpdateCanvasThumbnail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ canvasId, thumbnail }: { canvasId: string; thumbnail: string }) => {
+      const response = await fetch(`/api/v1/canvases/${canvasId}/thumbnail`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thumbnail }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to update thumbnail');
+      }
+
+      return response.json() as Promise<Canvas>;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: canvasKeys.list(),

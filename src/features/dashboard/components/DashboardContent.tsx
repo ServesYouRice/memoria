@@ -171,11 +171,26 @@ export function DashboardContent() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      overflow: 'hidden',
+                      position: 'relative',
                     }}
                   >
-                    <Typography variant="h4" color="text.secondary">
-                      📋
-                    </Typography>
+                    {canvas.thumbnail ? (
+                      <Box
+                        component="img"
+                        src={canvas.thumbnail}
+                        alt={`${canvas.name} thumbnail`}
+                        sx={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <Typography variant="h4" color="text.secondary">
+                        📋
+                      </Typography>
+                    )}
                   </Box>
                   <CardContent sx={{ flexGrow: 1, width: '100%' }}>
                     <Typography variant="h6" gutterBottom noWrap>

@@ -69,6 +69,9 @@ model Canvas {
   panX        Float       @default(0)
   panY        Float       @default(0)
 
+  // Thumbnail for preview (base64 encoded PNG)
+  thumbnail   String?     @db.Text
+
   // Sharing settings
   isPublic    Boolean     @default(false)
   shareToken  String?     @unique // For public sharing links

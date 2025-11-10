@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
 import { useSelectionBox } from '@/lib/hooks/use-selection-box';
+import { useUpdateCanvasThumbnail } from '@/lib/hooks/use-canvases';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
@@ -63,6 +64,9 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
   // History manager for undo/redo
   const { addCommand, undo, redo, canUndo, canRedo } = useCanvasHistory();
+
+  // Thumbnail update
+  const updateThumbnail = useUpdateCanvasThumbnail();
 
   // Selection box for multi-select
   const {
@@ -438,6 +442,35 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     setCommentsItemId(selectedItemId);
     setCommentsPanelOpen(true);
   };
+
+  const generateThumbnail = React.useCallback(() => {
+    if (!stageRef.current) return;
+
+    try {
+      // Generate a small thumbnail (300x200)
+      const thumbnail = stageRef.current.toDataURL({
+        pixelRatio: 0.3, // Low resolution for smaller file size
+        mimeType: 'image/jpeg',
+        quality: 0.6,
+      });
+
+      // Save thumbnail to backend
+      updateThumbnail.mutate({ canvasId, thumbnail });
+    } catch (err) {
+      console.error('Failed to generate thumbnail:', err);
+    }
+  }, [canvasId, updateThumbnail]);
+
+  // Auto-generate thumbnail when items change (debounced)
+  React.useEffect(() => {
+    if (allItems.length === 0) return;
+
+    const timeoutId = setTimeout(() => {
+      generateThumbnail();
+    }, 3000); // Wait 3 seconds after last change
+
+    return () => clearTimeout(timeoutId);
+  }, [allItems, generateThumbnail]);
 
   const handleExport = (format: ExportFormat, options: ExportOptions) => {
     switch (format) {
