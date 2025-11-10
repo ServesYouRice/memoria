@@ -28,6 +28,7 @@ import {
   Share as ShareIcon,
 } from '@mui/icons-material';
 import { ShareDialog } from './ShareDialog';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export interface CanvasHeaderProps {
   canvasId: string;
@@ -212,6 +213,11 @@ export function CanvasHeader({
             <ShareIcon />
           </IconButton>
         </Tooltip>
+
+        {/* Theme Toggle */}
+        <Box sx={{ mr: 1 }}>
+          <ThemeToggle />
+        </Box>
 
         {/* Search Toggle */}
         {onSearchChange && !showSearch && !isEditingName && (

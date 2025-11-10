@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { Box, Container, Typography } from '@mui/material';
 import { auth } from '@/lib/auth';
 import { LogoutButton } from '@/features/auth/components/LogoutButton';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { DashboardContent } from '@/features/dashboard/components/DashboardContent';
 
 export const metadata = {
@@ -27,7 +28,10 @@ export default async function DashboardPage() {
             Welcome back, {session.user.name || session.user.email}!
           </Typography>
         </Box>
-        <LogoutButton />
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <ThemeToggle />
+          <LogoutButton />
+        </Box>
       </Box>
 
       <DashboardContent />

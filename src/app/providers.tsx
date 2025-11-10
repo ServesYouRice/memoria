@@ -4,9 +4,8 @@ import React from 'react';
 import { SessionProvider } from 'next-auth/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { theme } from '@/lib/theme';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { GlobalShortcutsProvider } from '@/components/GlobalShortcutsProvider';
 
 const queryClient = new QueryClient({
@@ -22,7 +21,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider theme={theme}>
+        <ThemeProvider>
           <CssBaseline />
           <GlobalShortcutsProvider>
             {children}
