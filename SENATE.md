@@ -48,8 +48,8 @@ A proposal is **ACCEPTED** when either (a) the User casts a final `Approve` vote
 | ADR-0007 | Performance Budgets & CI Guard | Accepted | `docs/adr/ADR-0007-performance-budgets-and-ci-guard.md` |
 | ADR-0008 | Auth, Session & CSRF Policy | Accepted | `docs/adr/ADR-0008-auth-session-and-csrf-policy.md` |
 | ADR-0009 | Autosave & Optimistic Concurrency | Accepted | `docs/adr/ADR-0009-autosave-delta-updates-and-concurrency.md` |
-| ADR-0010 | Real-Time Collaboration Strategy | Proposed | `docs/adr/ADR-0010-realtime-collaboration-strategy.md` |
-| ADR-0011 | Server-Side Caching Strategy | Proposed | `docs/adr/ADR-0011-server-side-caching-strategy.md` |
+| ADR-0010 | Real-Time Collaboration Strategy (Y.js CRDT) | Accepted | `docs/adr/ADR-0010-realtime-collaboration-strategy.md` |
+| ADR-0011 | Server-Side Caching Strategy (Deferred w/ Triggers) | Accepted | `docs/adr/ADR-0011-server-side-caching-strategy.md` |
 | ADR-0012 | Security Headers & CORS Policy | Accepted | `docs/adr/ADR-0012-security-headers-and-cors.md` |
 
 ---
