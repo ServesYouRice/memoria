@@ -17,6 +17,9 @@ import {
   Badge,
   ToggleButtonGroup,
   ToggleButton,
+  Avatar,
+  AvatarGroup,
+  Chip,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -32,9 +35,17 @@ import {
   LocalOffer as TagIcon,
   GridOn as GridOnIcon,
   GridOff as GridOffIcon,
+  FiberManualRecord as OnlineIcon,
 } from '@mui/icons-material';
 import { ShareDialog } from './ShareDialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
+
+export interface CollaboratorInfo {
+  userId: string;
+  email: string;
+  name?: string;
+  color: string;
+}
 
 export interface CanvasHeaderProps {
   canvasId: string;
@@ -58,6 +69,8 @@ export interface CanvasHeaderProps {
   onUndo?: () => void;
   onRedo?: () => void;
   activeTagCount?: number;
+  collaborators?: CollaboratorInfo[];
+  collaborationConnected?: boolean;
 }
 
 const ZOOM_STEP = 0.1;
@@ -86,6 +99,8 @@ export function CanvasHeader({
   onUndo,
   onRedo,
   activeTagCount = 0,
+  collaborators = [],
+  collaborationConnected = false,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -229,6 +244,50 @@ export function CanvasHeader({
             <ShareIcon />
           </IconButton>
         </Tooltip>
+
+        {/* Collaboration Indicator */}
+        {collaborators.length > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', mr: 2, gap: 1 }}>
+            <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 32, height: 32, fontSize: 14 } }}>
+              {collaborators.map((collaborator) => (
+                <Tooltip
+                  key={collaborator.userId}
+                  title={`${collaborator.name || collaborator.email} (viewing)`}
+                >
+                  <Avatar
+                    sx={{
+                      bgcolor: collaborator.color,
+                      width: 32,
+                      height: 32,
+                      fontSize: 14,
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {(collaborator.name || collaborator.email).charAt(0).toUpperCase()}
+                  </Avatar>
+                </Tooltip>
+              ))}
+            </AvatarGroup>
+            {collaborationConnected && (
+              <Tooltip title="Real-time collaboration active">
+                <Chip
+                  icon={<OnlineIcon sx={{ fontSize: 12, color: '#4caf50' }} />}
+                  label="Live"
+                  size="small"
+                  sx={{
+                    height: 24,
+                    fontSize: 11,
+                    bgcolor: 'rgba(76, 175, 80, 0.1)',
+                    color: 'text.primary',
+                    '& .MuiChip-icon': {
+                      marginLeft: 0.5,
+                    },
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Box>
+        )}
 
         {/* Theme Toggle */}
         <Box sx={{ mr: 1 }}>

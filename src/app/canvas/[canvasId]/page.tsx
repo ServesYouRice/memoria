@@ -7,14 +7,16 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Stage, Layer } from 'react-konva';
+import { Stage, Layer, Circle, Text as KonvaText } from 'react-konva';
 import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
 import { NoteAdd, Bookmark, Image } from '@mui/icons-material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
 import { useSelectionBox } from '@/lib/hooks/use-selection-box';
 import { useUpdateCanvasThumbnail } from '@/lib/hooks/use-canvases';
+import { useCollaboration } from '@/lib/hooks/use-collaboration';
 import { stripHtmlTags } from '@/lib/utils/html';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
@@ -99,6 +101,16 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     cancelSelection,
     isItemInSelection,
   } = useSelectionBox();
+
+  // Real-time collaboration (Phase 3)
+  const { data: session } = useSession();
+  const { users: collaborators, cursors, connected: collaborationConnected, updateCursor } = useCollaboration({
+    canvasId,
+    userId: session?.user?.id || 'anonymous',
+    email: session?.user?.email || 'anonymous@example.com',
+    name: session?.user?.name || undefined,
+    enabled: !!session?.user,
+  });
 
   // Extract unique tags and counts from all items
   const { allTags, tagCounts } = React.useMemo(() => {
@@ -338,14 +350,23 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   };
 
   const handleStageMouseMove = (e: any) => {
-    if (isSelecting) {
-      const stage = e.target.getStage();
-      const pointerPos = stage.getPointerPosition();
-      if (pointerPos) {
+    const stage = e.target.getStage();
+    const pointerPos = stage.getPointerPosition();
+
+    if (pointerPos) {
+      // Update selection box if selecting
+      if (isSelecting) {
         updateSelection({
           x: (pointerPos.x - position.x) / zoom,
           y: (pointerPos.y - position.y) / zoom,
         });
+      }
+
+      // Broadcast cursor position for collaboration
+      if (updateCursor) {
+        const canvasX = (pointerPos.x - position.x) / zoom;
+        const canvasY = (pointerPos.y - position.y) / zoom;
+        updateCursor(canvasX, canvasY);
       }
     }
   };
@@ -705,6 +726,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
+        collaborators={collaborators}
+        collaborationConnected={collaborationConnected}
       />
 
       {/* Canvas */}
@@ -812,6 +835,36 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                 height={selectionBox.height}
               />
             )}
+
+            {/* Collaboration Cursors */}
+            {cursors.map((cursor) => (
+              <React.Fragment key={cursor.userId}>
+                {/* Cursor pointer */}
+                <Circle
+                  x={cursor.x}
+                  y={cursor.y}
+                  radius={8}
+                  fill={cursor.color}
+                  shadowBlur={4}
+                  shadowColor="rgba(0, 0, 0, 0.3)"
+                />
+                {/* User name label */}
+                {cursor.name && (
+                  <>
+                    <KonvaText
+                      x={cursor.x + 12}
+                      y={cursor.y - 10}
+                      text={cursor.name}
+                      fontSize={12}
+                      fontStyle="bold"
+                      fill={cursor.color}
+                      shadowBlur={2}
+                      shadowColor="rgba(0, 0, 0, 0.5)"
+                    />
+                  </>
+                )}
+              </React.Fragment>
+            ))}
           </Layer>
         </Stage>
       </Box>

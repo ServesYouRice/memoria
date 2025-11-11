@@ -1,6 +1,6 @@
 Title: Real‑Time Collaboration Strategy (CRDT vs OT)
 Date: 2025-11-09
-Status: Proposed
+Status: Accepted
 Owners: CodexCLI
 
 Context
