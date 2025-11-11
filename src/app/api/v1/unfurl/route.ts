@@ -3,6 +3,7 @@
  *
  * Fetches and extracts metadata from URLs with SSRF protection
  * Implements ADR-0003: SSRF-Protected Unfurling
+ * Implements ADR-0011: Server-Side Caching Strategy
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,6 +11,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { safeFetch } from '@/lib/utils/ssrf-protection';
 import { extractMetadata, validateMetadata } from '@/lib/utils/metadata-extractor';
+import { getCachedUnfurl, setCachedUnfurl } from '@/lib/cache/unfurl-cache';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +27,13 @@ export async function POST(request: NextRequest) {
 
     if (!url || typeof url !== 'string') {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    // Check cache first (ADR-0011)
+    const cachedMetadata = await getCachedUnfurl(url);
+    if (cachedMetadata) {
+      console.log(`Cache hit for unfurl: ${url}`);
+      return NextResponse.json(cachedMetadata);
     }
 
     // Validate and fetch URL with SSRF protection
@@ -56,6 +65,9 @@ export async function POST(request: NextRequest) {
       ...cleanedMetadata,
       unfurledAt: new Date().toISOString(),
     };
+
+    // Store in cache for future requests
+    await setCachedUnfurl(url, result);
 
     return NextResponse.json(result);
   } catch (error) {
