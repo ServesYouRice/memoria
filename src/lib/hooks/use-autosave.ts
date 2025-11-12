@@ -1,8 +1,42 @@
 /**
- * Autosave hook with debouncing
- * Following ADR-0009: Autosave Delta Updates
+ * Autosave Hook with Debouncing
  *
- * Debounces updates in 250-500ms windows to reduce write amplification
+ * Provides debounced autosave functionality for canvas items to reduce
+ * write amplification while maintaining data consistency.
+ *
+ * @module lib/hooks/use-autosave
+ *
+ * ## Architecture
+ * Per ADR-0009 (Autosave Delta Updates):
+ * - Debounces updates in 250-500ms windows
+ * - Merges pending changes to reduce API calls
+ * - Flushes on unmount to prevent data loss
+ * - Uses optimistic concurrency control with versions
+ *
+ * ## Typical Use Case
+ * Ideal for high-frequency updates like dragging, resizing, or typing.
+ * Changes are batched and sent as a single PATCH request after the
+ * debounce period expires.
+ *
+ * @example
+ * ```typescript
+ * // In a draggable component
+ * const { saveChanges, isSaving } = useAutosave({
+ *   itemId: item.id,
+ *   version: item.version,
+ *   debounceMs: 500
+ * });
+ *
+ * const handleDrag = (e: KonvaEventObject<DragEvent>) => {
+ *   // This will be debounced - multiple calls merge into one request
+ *   saveChanges({
+ *     positionX: e.target.x(),
+ *     positionY: e.target.y()
+ *   });
+ * };
+ * ```
+ *
+ * @see {@link useUpdateCanvasItem} for the underlying mutation hook
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -18,18 +52,50 @@ interface UseAutosaveOptions {
 }
 
 /**
- * Autosave hook that debounces updates
+ * Create an autosave hook for a canvas item
  *
- * Usage:
- * ```
- * const { saveChanges, isSaving } = useAutosave({
- *   itemId: item.id,
- *   version: item.version,
- *   debounceMs: 500,
- * });
+ * Provides debounced save functionality that batches multiple changes
+ * into a single API call. Automatically flushes pending changes on unmount.
  *
- * // In drag handler:
- * saveChanges({ positionX: newX, positionY: newY });
+ * @param options - Configuration options
+ * @param options.itemId - The item to autosave
+ * @param options.version - Current item version (for OCC)
+ * @param options.debounceMs - Debounce delay in milliseconds (default: 500)
+ * @param options.onSuccess - Callback fired after successful save
+ * @param options.onError - Callback fired on save error
+ * @returns Hook utilities for saving and checking status
+ *
+ * @example
+ * ```typescript
+ * function DraggableNote({ item }: { item: CanvasItem }) {
+ *   const { saveChanges, isSaving, flush } = useAutosave({
+ *     itemId: item.id,
+ *     version: item.version,
+ *     debounceMs: 500,
+ *     onError: (error) => toast.error(error.message)
+ *   });
+ *
+ *   const handleDragMove = (e: KonvaEventObject<DragEvent>) => {
+ *     saveChanges({
+ *       positionX: e.target.x(),
+ *       positionY: e.target.y()
+ *     });
+ *   };
+ *
+ *   const handleDragEnd = () => {
+ *     flush(); // Save immediately on drag end
+ *   };
+ *
+ *   return (
+ *     <Group
+ *       draggable
+ *       onDragMove={handleDragMove}
+ *       onDragEnd={handleDragEnd}
+ *     >
+ *       {isSaving && <Text text="Saving..." />}
+ *     </Group>
+ *   );
+ * }
  * ```
  */
 export function useAutosave({
