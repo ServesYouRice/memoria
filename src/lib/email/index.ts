@@ -1,7 +1,51 @@
 /**
- * Email Service
- * Main entry point for sending emails
- * Following ADR pattern for service abstraction
+ * Email Service Module
+ *
+ * Provides a pluggable email service abstraction with multiple provider support.
+ * Follows service abstraction ADR pattern for easy provider switching.
+ *
+ * @module lib/email
+ *
+ * @example
+ * ```typescript
+ * // Send password reset email
+ * await sendPasswordResetEmail(
+ *   { email: 'user@example.com', name: 'John Doe' },
+ *   {
+ *     userName: 'John Doe',
+ *     resetUrl: 'https://app.com/reset?token=abc123',
+ *     expiresIn: '1 hour'
+ *   }
+ * );
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Send custom email
+ * await sendEmail({
+ *   to: { email: 'user@example.com', name: 'User' },
+ *   subject: 'Welcome!',
+ *   text: 'Welcome to our app',
+ *   html: '<h1>Welcome!</h1>'
+ * });
+ * ```
+ *
+ * ## Configuration
+ *
+ * Set environment variables to configure the email provider:
+ * - `EMAIL_PROVIDER`: 'console' | 'smtp' | 'sendgrid' | 'resend' (default: 'console')
+ * - `EMAIL_FROM`: From email address (default: 'noreply@canvascollect.com')
+ * - `EMAIL_FROM_NAME`: From name (default: 'CanvasCollect')
+ *
+ * ### SMTP Configuration
+ * - `SMTP_HOST`: SMTP server host
+ * - `SMTP_PORT`: SMTP server port
+ * - `SMTP_SECURE`: Use TLS ('true' | 'false')
+ * - `SMTP_USER`: SMTP username
+ * - `SMTP_PASS`: SMTP password
+ *
+ * @see {@link EmailService} for provider interface
+ * @see {@link SendEmailOptions} for email options
  */
 
 import { logger } from '@/lib/logger';
@@ -106,6 +150,22 @@ export function getEmailService(): EmailService {
 
 /**
  * Send a generic email
+ *
+ * Sends an email using the configured email service provider.
+ * The 'from' address is automatically set from configuration.
+ *
+ * @param options - Email options (to, subject, text, html, etc.)
+ * @throws {Error} If email service fails to send
+ *
+ * @example
+ * ```typescript
+ * await sendEmail({
+ *   to: { email: 'user@example.com', name: 'John Doe' },
+ *   subject: 'Account Update',
+ *   text: 'Your account has been updated',
+ *   html: '<p>Your account has been updated</p>'
+ * });
+ * ```
  */
 export async function sendEmail(options: Omit<SendEmailOptions, 'from'>): Promise<void> {
   const service = getEmailService();

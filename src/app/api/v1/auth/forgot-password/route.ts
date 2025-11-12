@@ -1,12 +1,45 @@
 /**
- * Forgot Password API
+ * Forgot Password API Route
+ *
+ * Handles password reset requests by generating a secure token and sending
+ * a password reset email. Implements security best practices including:
+ * - Email enumeration prevention (always returns success)
+ * - Secure token generation using nanoid
+ * - Token expiration (1 hour by default)
+ * - Graceful email failure handling
+ *
+ * @module app/api/v1/auth/forgot-password
+ *
+ * ## Endpoint
  * POST /api/v1/auth/forgot-password
  *
- * Generates a password reset token and sends it via email (or logs it in dev mode)
+ * ## Request Body
+ * ```json
+ * {
+ *   "email": "user@example.com"
+ * }
+ * ```
+ *
+ * ## Response
+ * ```json
+ * {
+ *   "message": "If an account exists with this email, you will receive password reset instructions."
+ * }
+ * ```
+ *
+ * ## Security Notes
+ * - Always returns success to prevent email enumeration attacks
+ * - Only sends email if user actually exists in database
+ * - Token is 32 characters of secure random data
+ * - Email failures are logged but don't affect the response
+ *
+ * @see {@link sendPasswordResetEmail} for email template details
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
+import { sendPasswordResetEmail } from '@/lib/email';
 import { errorResponse } from '@/lib/errors';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
@@ -44,25 +77,24 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // In production, send email with reset link
-      // For now, log the token (development mode)
+      // Send password reset email
       const resetUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/auth/reset-password?token=${token}`;
 
-      console.log('='.repeat(80));
-      console.log('PASSWORD RESET REQUEST');
-      console.log('='.repeat(80));
-      console.log('Email:', email);
-      console.log('Reset URL:', resetUrl);
-      console.log('Token expires at:', expiresAt.toISOString());
-      console.log('='.repeat(80));
+      try {
+        await sendPasswordResetEmail(
+          { email: email.toLowerCase(), name: user.name || undefined },
+          {
+            userName: user.name || 'User',
+            resetUrl,
+            expiresIn: `${TOKEN_EXPIRY_HOURS} hour${TOKEN_EXPIRY_HOURS > 1 ? 's' : ''}`,
+          }
+        );
 
-      // TODO: Send email using email service (SendGrid, AWS SES, etc.)
-      // Example:
-      // await sendPasswordResetEmail({
-      //   to: email,
-      //   resetUrl,
-      //   expiresAt,
-      // });
+        logger.info({ email: email.toLowerCase() }, 'Password reset email sent');
+      } catch (emailError) {
+        // Log error but don't fail the request (security: don't reveal if email failed)
+        logger.error({ error: emailError, email: email.toLowerCase() }, 'Failed to send password reset email');
+      }
     }
 
     // Always return success (security best practice)

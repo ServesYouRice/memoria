@@ -9,11 +9,13 @@
  * - Autosave on changes
  *
  * Following ADR-0009: Autosave with debouncing
+ *
+ * Performance: Memoized to prevent unnecessary re-renders when sibling items change
  */
 
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, memo } from 'react';
 import { Group, Rect, Text, Circle } from 'react-konva';
 import Konva from 'konva';
 import { CanvasItem, BookmarkContent, isBookmarkContent } from '@/types/canvas';
@@ -32,7 +34,7 @@ const MIN_WIDTH = 200;
 const MIN_HEIGHT = 80;
 const DELETE_BUTTON_SIZE = 20;
 
-export function BookmarkItem({
+function BookmarkItemComponent({
   item,
   isSelected = false,
   onSelect,
@@ -318,3 +320,38 @@ export function BookmarkItem({
     </Group>
   );
 }
+
+/**
+ * Memoized BookmarkItem with custom comparison
+ * Only re-renders if item data, selection state, or handlers change
+ */
+export const BookmarkItem = memo(BookmarkItemComponent, (prevProps, nextProps) => {
+  // Re-render if selection state changes
+  if (prevProps.isSelected !== nextProps.isSelected) {
+    return false;
+  }
+
+  // Re-render if handlers change
+  if (prevProps.onSelect !== nextProps.onSelect || prevProps.onDeselect !== nextProps.onDeselect) {
+    return false;
+  }
+
+  // Re-render if item data changes
+  const prevItem = prevProps.item;
+  const nextItem = nextProps.item;
+
+  if (
+    prevItem.id !== nextItem.id ||
+    prevItem.version !== nextItem.version ||
+    prevItem.positionX !== nextItem.positionX ||
+    prevItem.positionY !== nextItem.positionY ||
+    prevItem.width !== nextItem.width ||
+    prevItem.height !== nextItem.height ||
+    JSON.stringify(prevItem.content) !== JSON.stringify(nextItem.content)
+  ) {
+    return false;
+  }
+
+  // Props are equal, skip re-render
+  return true;
+});

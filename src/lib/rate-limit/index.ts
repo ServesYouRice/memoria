@@ -1,7 +1,53 @@
 /**
- * Rate Limiting Service
- * Provides request rate limiting using sliding window algorithm
- * Following ADR pattern for service abstraction
+ * Rate Limiting Module
+ *
+ * Provides distributed rate limiting with Redis support and memory fallback.
+ * Uses sliding window algorithm for accurate request counting.
+ *
+ * @module lib/rate-limit
+ *
+ * @example
+ * ```typescript
+ * // Create a rate limiter
+ * const limiter = createRateLimiter({
+ *   maxRequests: 100,
+ *   windowSeconds: 60
+ * });
+ *
+ * // Check rate limit
+ * const result = await limiter.check('user-123');
+ * if (!result.allowed) {
+ *   throw new Error('Rate limit exceeded');
+ * }
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Use preset configurations
+ * import { RATE_LIMITS } from '@/lib/rate-limit';
+ *
+ * const limiter = createRateLimiter(RATE_LIMITS.auth);
+ * // 5 requests per minute for auth endpoints
+ * ```
+ *
+ * ## Configuration
+ *
+ * Set environment variables to use Redis (otherwise uses memory store):
+ * - `REDIS_HOST`: Redis server host (default: 'localhost')
+ * - `REDIS_PORT`: Redis server port (default: 6379)
+ * - `REDIS_PASSWORD`: Redis password (optional)
+ * - `REDIS_DB`: Redis database number (default: 0)
+ *
+ * ## Preset Rate Limits
+ *
+ * - `RATE_LIMITS.api`: 100 requests/minute (general API)
+ * - `RATE_LIMITS.auth`: 5 requests/minute (authentication)
+ * - `RATE_LIMITS.passwordReset`: 3 requests/hour (password reset)
+ * - `RATE_LIMITS.strict`: 10 requests/minute (expensive operations)
+ *
+ * @see {@link RateLimiter} for rate limiter interface
+ * @see {@link RateLimitConfig} for configuration options
+ * @see {@link RateLimitResult} for check result format
  */
 
 import { logger } from '@/lib/logger';

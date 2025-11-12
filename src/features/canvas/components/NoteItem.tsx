@@ -3,11 +3,13 @@
  *
  * Minimal Note component for reference
  * (Full implementation would be part of Slice 4)
+ *
+ * Performance: Memoized to prevent unnecessary re-renders when sibling items change
  */
 
 'use client';
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, memo } from 'react';
 import { Group, Rect, Text, Circle } from 'react-konva';
 import Konva from 'konva';
 import { CanvasItem, NoteContent, isNoteContent } from '@/types/canvas';
@@ -22,7 +24,7 @@ interface NoteItemProps {
 
 const DELETE_BUTTON_SIZE = 20;
 
-export function NoteItem({ item, isSelected = false, onSelect }: NoteItemProps) {
+function NoteItemComponent({ item, isSelected = false, onSelect }: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -127,3 +129,38 @@ export function NoteItem({ item, isSelected = false, onSelect }: NoteItemProps) 
     </Group>
   );
 }
+
+/**
+ * Memoized NoteItem with custom comparison
+ * Only re-renders if item data, selection state, or handlers change
+ */
+export const NoteItem = memo(NoteItemComponent, (prevProps, nextProps) => {
+  // Re-render if selection state changes
+  if (prevProps.isSelected !== nextProps.isSelected) {
+    return false;
+  }
+
+  // Re-render if onSelect handler changes
+  if (prevProps.onSelect !== nextProps.onSelect) {
+    return false;
+  }
+
+  // Re-render if item data changes
+  const prevItem = prevProps.item;
+  const nextItem = nextProps.item;
+
+  if (
+    prevItem.id !== nextItem.id ||
+    prevItem.version !== nextItem.version ||
+    prevItem.positionX !== nextItem.positionX ||
+    prevItem.positionY !== nextItem.positionY ||
+    prevItem.width !== nextItem.width ||
+    prevItem.height !== nextItem.height ||
+    JSON.stringify(prevItem.content) !== JSON.stringify(nextItem.content)
+  ) {
+    return false;
+  }
+
+  // Props are equal, skip re-render
+  return true;
+});

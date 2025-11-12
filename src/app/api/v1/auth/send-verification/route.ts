@@ -2,11 +2,13 @@
  * Send Email Verification API
  * POST /api/v1/auth/send-verification
  *
- * Sends a verification email to the user (or logs it in dev mode)
+ * Sends a verification email to the user
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
+import { sendEmailVerification } from '@/lib/email';
 import { requireAuth } from '@/lib/api/auth';
 import { errorResponse, BadRequestError } from '@/lib/errors';
 import { nanoid } from 'nanoid';
@@ -45,24 +47,25 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // In production, send email with verification link
-    // For now, log the token (development mode)
+    // Send verification email
     const verifyUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/auth/verify-email?token=${token}`;
 
-    console.log('='.repeat(80));
-    console.log('EMAIL VERIFICATION REQUEST');
-    console.log('='.repeat(80));
-    console.log('Email:', user.email);
-    console.log('Verify URL:', verifyUrl);
-    console.log('Token expires at:', expiresAt.toISOString());
-    console.log('='.repeat(80));
+    try {
+      await sendEmailVerification(
+        { email: user.email, name: user.name || undefined },
+        {
+          userName: user.name || 'User',
+          verificationUrl: verifyUrl,
+          expiresIn: `${TOKEN_EXPIRY_HOURS} hours`,
+        }
+      );
 
-    // TODO: Send email using email service
-    // await sendVerificationEmail({
-    //   to: user.email,
-    //   verifyUrl,
-    //   expiresAt,
-    // });
+      logger.info({ email: user.email }, 'Verification email sent');
+    } catch (emailError) {
+      // Log error but don't fail the request
+      logger.error({ error: emailError, email: user.email }, 'Failed to send verification email');
+      // Still return success to user (they can retry later)
+    }
 
     return NextResponse.json({
       message: 'Verification email sent. Please check your inbox.',
