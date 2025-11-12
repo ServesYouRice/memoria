@@ -4,9 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/auth-options';
-import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
 
@@ -23,7 +22,7 @@ const createCommentSchema = z.object({
  * Create a new comment on a canvas item
  */
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in to comment');
   }
@@ -102,7 +101,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
  * List all comments for a canvas item
  */
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const { itemId } = params;
 
   // Check if item exists
