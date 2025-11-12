@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, requireCanvasOwnership } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
 const updateCanvasSchema = z.object({
@@ -55,7 +56,7 @@ export async function PATCH(
       );
     }
 
-    console.error('Error updating canvas:', error);
+    logger.error({ error, canvasId: params.canvasId }, 'Error updating canvas');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',

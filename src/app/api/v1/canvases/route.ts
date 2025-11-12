@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
 /**
@@ -25,7 +26,7 @@ export async function GET() {
 
     return NextResponse.json(canvases);
   } catch (error) {
-    console.error('Error fetching canvases:', error);
+    logger.error({ error }, 'Error fetching canvases');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error('Error creating canvas:', error);
+    logger.error({ error }, 'Error creating canvas');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',
