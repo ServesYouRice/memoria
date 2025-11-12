@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 
@@ -11,24 +11,12 @@ import { z } from 'zod';
  */
 export async function GET() {
   try {
-    // Authentication check
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          type: 'https://canvascollect.com/errors/unauthorized',
-          title: 'Unauthorized',
-          status: 401,
-          detail: 'You must be logged in to access this resource',
-        },
-        { status: 401 }
-      );
-    }
+    const { userId } = await requireAuth();
 
     // Fetch all canvases for the user
     const canvases = await prisma.canvas.findMany({
       where: {
-        userId: session.user.id,
+        userId,
       },
       orderBy: {
         updatedAt: 'desc',
@@ -62,19 +50,7 @@ const createCanvasSchema = z.object({
  */
 export async function POST(request: Request) {
   try {
-    // Authentication check
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          type: 'https://canvascollect.com/errors/unauthorized',
-          title: 'Unauthorized',
-          status: 401,
-          detail: 'You must be logged in to access this resource',
-        },
-        { status: 401 }
-      );
-    }
+    const { userId } = await requireAuth();
 
     // Parse and validate request body
     const body = await request.json();
@@ -84,7 +60,7 @@ export async function POST(request: Request) {
     const canvas = await prisma.canvas.create({
       data: {
         name: validatedData.name,
-        userId: session.user.id,
+        userId,
       },
     });
 

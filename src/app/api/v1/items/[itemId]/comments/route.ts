@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
@@ -22,11 +23,7 @@ const createCommentSchema = z.object({
  * Create a new comment on a canvas item
  */
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in to comment');
-  }
-
+  const { userId, email } = await requireAuth();
   const { itemId } = params;
 
   // Validate request body
@@ -41,11 +38,19 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   // Check if item exists and user has access (via ownership or share)
   const item = await prisma.canvasItem.findUnique({
     where: { id: itemId },
-    include: {
+    select: {
+      id: true,
+      deletedAt: true,
       canvas: {
-        include: {
-          user: true,
-          shares: true,
+        select: {
+          userId: true,
+          isPublic: true,
+          shares: {
+            select: {
+              email: true,
+              role: true,
+            },
+          },
         },
       },
     },
@@ -56,9 +61,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   }
 
   // Check if user has access to the canvas
-  const isOwner = item.canvas.userId === session.user.id;
+  const isOwner = item.canvas.userId === userId;
   const hasShare = item.canvas.shares.some(
-    (share) => share.email === session.user.email && ['COMMENT', 'EDIT'].includes(share.role)
+    (share) => share.email === email && ['COMMENT', 'EDIT'].includes(share.role)
   );
   const isPublic = item.canvas.isPublic;
 
@@ -68,7 +73,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   // For shared users, check they have COMMENT or EDIT role
   if (!isOwner && hasShare) {
-    const userShare = item.canvas.shares.find((share) => share.email === session.user.email);
+    const userShare = item.canvas.shares.find((share) => share.email === email);
     if (userShare && userShare.role === 'VIEW') {
       throw new UnauthorizedError('You only have view permission on this canvas');
     }
@@ -78,7 +83,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   const comment = await prisma.comment.create({
     data: {
       itemId,
-      userId: session.user.id,
+      userId,
       content,
     },
     include: {
@@ -107,11 +112,19 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   // Check if item exists
   const item = await prisma.canvasItem.findUnique({
     where: { id: itemId },
-    include: {
+    select: {
+      id: true,
+      deletedAt: true,
       canvas: {
-        include: {
-          user: true,
-          shares: true,
+        select: {
+          userId: true,
+          isPublic: true,
+          shares: {
+            select: {
+              email: true,
+              role: true,
+            },
+          },
         },
       },
     },

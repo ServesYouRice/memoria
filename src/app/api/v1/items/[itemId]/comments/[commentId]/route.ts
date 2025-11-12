@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
@@ -22,11 +22,7 @@ const updateCommentSchema = z.object({
  * Update a comment (only by comment author)
  */
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in to update comments');
-  }
-
+  const { userId } = await requireAuth();
   const { commentId } = params;
 
   // Validate request body
@@ -50,7 +46,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     throw new NotFoundError('Comment not found');
   }
 
-  if (comment.userId !== session.user.id) {
+  if (comment.userId !== userId) {
     throw new UnauthorizedError('You can only edit your own comments');
   }
 
@@ -78,11 +74,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
  * Delete a comment (soft delete)
  */
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in to delete comments');
-  }
-
+  const { userId } = await requireAuth();
   const { commentId } = params;
 
   // Find comment and check ownership
@@ -102,8 +94,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   }
 
   // Allow deletion by comment author or canvas owner
-  const isCommentAuthor = comment.userId === session.user.id;
-  const isCanvasOwner = comment.item.canvas.userId === session.user.id;
+  const isCommentAuthor = comment.userId === userId;
+  const isCanvasOwner = comment.item.canvas.userId === userId;
 
   if (!isCommentAuthor && !isCanvasOwner) {
     throw new UnauthorizedError('You can only delete your own comments or comments on your canvas');

@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { NotFoundError, UnauthorizedError } from '@/lib/errors';
 
@@ -47,11 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
  * Remove template status from a canvas (doesn't delete canvas)
  */
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in');
-  }
-
+  const { userId } = await requireAuth();
   const { templateId } = params;
 
   // Find template and verify ownership
@@ -63,7 +59,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     throw new NotFoundError('Template not found');
   }
 
-  if (template.userId !== session.user.id) {
+  if (template.userId !== userId) {
     throw new UnauthorizedError('You can only modify your own templates');
   }
 

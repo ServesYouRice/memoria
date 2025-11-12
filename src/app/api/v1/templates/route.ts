@@ -4,7 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
+import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { UnauthorizedError, ValidationError } from '@/lib/errors';
@@ -20,10 +21,7 @@ const saveAsTemplateSchema = z.object({
  * Save a canvas as a template
  */
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in to create templates');
-  }
+  const { userId } = await requireAuth();
 
   const body = await request.json();
   const validation = saveAsTemplateSchema.safeParse(body);
@@ -43,7 +41,7 @@ export async function POST(request: NextRequest) {
     throw new ValidationError('Canvas not found');
   }
 
-  if (canvas.userId !== session.user.id) {
+  if (canvas.userId !== userId) {
     throw new UnauthorizedError('You can only create templates from your own canvases');
   }
 
@@ -79,23 +77,37 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get('category');
   const userId = searchParams.get('userId'); // Optional: filter by user
 
-  const where: any = {
+  const where: Prisma.CanvasWhereInput = {
     isTemplate: true,
+    ...(category && category !== 'all' && { templateCategory: category }),
+    ...(userId && { userId }),
   };
-
-  if (category && category !== 'all') {
-    where.templateCategory = category;
-  }
-
-  if (userId) {
-    where.userId = userId;
-  }
 
   const templates = await prisma.canvas.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      title: true,
+      userId: true,
+      isTemplate: true,
+      templateDescription: true,
+      templateCategory: true,
+      usageCount: true,
+      createdAt: true,
+      updatedAt: true,
       items: {
         where: { deletedAt: null },
+        select: {
+          id: true,
+          type: true,
+          positionX: true,
+          positionY: true,
+          width: true,
+          height: true,
+          zIndex: true,
+          content: true,
+          tags: true,
+        },
       },
       user: {
         select: {

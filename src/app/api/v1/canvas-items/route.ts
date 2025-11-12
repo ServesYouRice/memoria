@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCanvasOwnership } from '@/lib/api/auth';
 import { errorResponse } from '@/lib/errors';
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
         width: data.width,
         height: data.height,
         zIndex: data.zIndex,
-        content: data.content as any, // Prisma Json type
+        content: data.content as Prisma.JsonValue,
         tags: data.tags || [],
         version: 1,
         createdById: userId,
