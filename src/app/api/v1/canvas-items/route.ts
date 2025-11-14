@@ -14,6 +14,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth, requireCanvasOwnership } from '@/lib/api/auth';
 import { errorResponse } from '@/lib/errors';
 import { createCanvasItemSchema, listCanvasItemsSchema, viewportPaginationSchema } from '@/lib/validation/canvas-item';
+import type { CanvasItem } from '@prisma/client';
 
 /**
  * POST /api/v1/canvas-items
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
       // item.positionX <= maxX                 &&  // item left edge <= viewport right
       // (item.positionY + item.height) >= minY &&  // item bottom edge >= viewport top
       // item.positionY <= maxY                     // item top edge <= viewport bottom
-      items = items.filter((item) => {
+      items = items.filter((item: CanvasItem) => {
         const itemRight = item.positionX + item.width;
         const itemBottom = item.positionY + item.height;
 

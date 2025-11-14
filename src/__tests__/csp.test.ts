@@ -30,32 +30,32 @@ describe('CSP Middleware', () => {
 
     it('should not allow unsafe-inline in production', () => {
       const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
+      (process.env as any).NODE_ENV = 'production';
 
       const csp = buildCSP('nonce');
       expect(csp).not.toContain("'unsafe-inline'");
 
-      process.env.NODE_ENV = originalEnv;
+      (process.env as any).NODE_ENV = originalEnv;
     });
 
     it('should not allow unsafe-eval in production', () => {
       const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
+      (process.env as any).NODE_ENV = 'production';
 
       const csp = buildCSP('nonce');
       expect(csp).not.toContain("'unsafe-eval'");
 
-      process.env.NODE_ENV = originalEnv;
+      (process.env as any).NODE_ENV = originalEnv;
     });
 
     it('should include strict-dynamic in production', () => {
       const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
+      (process.env as any).NODE_ENV = 'production';
 
       const csp = buildCSP('nonce');
       expect(csp).toContain("'strict-dynamic'");
 
-      process.env.NODE_ENV = originalEnv;
+      (process.env as any).NODE_ENV = originalEnv;
     });
   });
 });

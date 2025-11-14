@@ -4,9 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/auth-options';
-import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { UnauthorizedError, ValidationError } from '@/lib/errors';
 
@@ -21,7 +20,7 @@ const saveAsTemplateSchema = z.object({
  * Save a canvas as a template
  */
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in to create templates');
   }

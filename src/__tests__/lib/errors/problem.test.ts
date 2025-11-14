@@ -33,7 +33,7 @@ describe('RFC 7807 Problem Details', () => {
         retryAfter: 60,
       });
 
-      expect(problem.retryAfter).toBe(60);
+      expect(problem['retryAfter']).toBe(60);
     });
   });
 
@@ -48,8 +48,8 @@ describe('RFC 7807 Problem Details', () => {
 
       expect(problem.status).toBe(400);
       expect(problem.title).toBe('Validation Error');
-      expect(problem.errors).toHaveLength(2);
-      expect(problem.errors[0].field).toBe('email');
+      expect(problem['errors']).toHaveLength(2);
+      expect((problem['errors'] as any)[0].field).toBe('email');
     });
   });
 

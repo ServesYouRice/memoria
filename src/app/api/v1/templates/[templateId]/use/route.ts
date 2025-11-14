@@ -4,9 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/auth-options';
-import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { NotFoundError, UnauthorizedError } from '@/lib/errors';
 
 interface RouteContext {
@@ -17,8 +16,8 @@ interface RouteContext {
  * POST /api/v1/templates/[templateId]/use
  * Create a new canvas from a template
  */
-export async function POST(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+export async function POST(_request: NextRequest, { params }: RouteContext) {
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in to use templates');
   }

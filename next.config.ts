@@ -9,12 +9,6 @@ const nextConfig: NextConfig = {
       fullUrl: true,
     },
   },
-
-  // Experimental features
-  experimental: {
-    // Enable instrumentation for observability
-    instrumentationHook: true,
-  },
 };
 
 export default nextConfig;

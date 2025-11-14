@@ -4,11 +4,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/auth-options';
-import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
+import type { CanvasShare } from '@prisma/client';
 
 interface RouteContext {
   params: { itemId: string };
@@ -23,7 +23,7 @@ const createCommentSchema = z.object({
  * Create a new comment on a canvas item
  */
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in to comment');
   }
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   // Check if user has access to the canvas
   const isOwner = item.canvas.userId === session.user.id;
   const hasShare = item.canvas.shares.some(
-    (share) => share.email === session.user.email && ['COMMENT', 'EDIT'].includes(share.role)
+    (share: CanvasShare) => share.email === session.user.email && ['COMMENT', 'EDIT'].includes(share.role)
   );
   const isPublic = item.canvas.isPublic;
 
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   // For shared users, check they have COMMENT or EDIT role
   if (!isOwner && hasShare) {
-    const userShare = item.canvas.shares.find((share) => share.email === session.user.email);
+    const userShare = item.canvas.shares.find((share: CanvasShare) => share.email === session.user.email);
     if (userShare && userShare.role === 'VIEW') {
       throw new UnauthorizedError('You only have view permission on this canvas');
     }
@@ -101,8 +101,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
  * GET /api/v1/items/[itemId]/comments
  * List all comments for a canvas item
  */
-export async function GET(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+export async function GET(_request: NextRequest, { params }: RouteContext) {
+  const session = await auth();
   const { itemId } = params;
 
   // Check if item exists
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   // Check if user has access (owner, shared, or public)
   const isOwner = session?.user?.id && item.canvas.userId === session.user.id;
   const hasShare = session?.user?.email && item.canvas.shares.some(
-    (share) => share.email === session.user.email
+    (share: CanvasShare) => share.email === session.user.email
   );
   const isPublic = item.canvas.isPublic;
 

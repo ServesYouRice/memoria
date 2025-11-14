@@ -31,7 +31,7 @@ describe('Logger', () => {
     it('should auto-generate correlation ID if not provided', () => {
       const logger = createRequestLogger();
       expect(logger.bindings()).toHaveProperty('correlationId');
-      expect(logger.bindings().correlationId).toBeTruthy();
+      expect(logger.bindings()['correlationId']).toBeTruthy();
     });
   });
 
