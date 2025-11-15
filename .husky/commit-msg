@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# FIXED: Issue #44 - Commit message validation
+
+commit_msg_file=$1
+commit_msg=$(cat "$commit_msg_file")
+
+# Conventional Commits format: type(scope?): subject
+# Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+commit_regex="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?!?: .{1,100}"
+
+if ! echo "$commit_msg" | grep -qE "$commit_regex"; then
+  echo "❌ Invalid commit message format!"
+  echo ""
+  echo "Commit message must follow Conventional Commits format:"
+  echo "  type(scope?): subject"
+  echo ""
+  echo "Valid types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+  echo ""
+  echo "Examples:"
+  echo "  feat: add dark mode support"
+  echo "  fix(auth): resolve session timeout issue"
+  echo "  docs: update API documentation"
+  echo "  refactor(canvas): extract utility functions"
+  echo ""
+  echo "Your commit message:"
+  echo "  $commit_msg"
+  exit 1
+fi
+
+echo "✅ Commit message format is valid"

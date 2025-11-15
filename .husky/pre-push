@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# FIXED: Issue #44 - Pre-push hook to run comprehensive checks before pushing
+
+echo "🔍 Running pre-push checks..."
+
+# Run type check
+echo "📝 Type checking..."
+pnpm run type-check
+if [ $? -ne 0 ]; then
+  echo "❌ Type check failed. Fix type errors before pushing."
+  exit 1
+fi
+
+# Run tests
+echo "🧪 Running tests..."
+pnpm run test --run
+if [ $? -ne 0 ]; then
+  echo "❌ Tests failed. Fix failing tests before pushing."
+  exit 1
+fi
+
+# Run linter
+echo "🔧 Running linter..."
+pnpm run lint
+if [ $? -ne 0 ]; then
+  echo "❌ Linting failed. Fix lint errors before pushing."
+  exit 1
+fi
+
+echo "✅ All pre-push checks passed!"
+echo "🚀 Pushing to remote..."

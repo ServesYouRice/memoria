@@ -1,4 +1,15 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+# FIXED: Issue #44 - Enhanced git hooks to catch issues before commit
+
+# Run lint-staged (eslint, prettier, type-check for changed files)
 pnpm run lint-staged
+
+# Exit with error if lint-staged failed
+if [ $? -ne 0 ]; then
+  echo "❌ Pre-commit checks failed. Please fix the errors above."
+  exit 1
+fi
+
+echo "✅ Pre-commit checks passed!"
