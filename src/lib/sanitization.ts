@@ -1,6 +1,8 @@
 /**
  * Input Sanitization Utilities
  *
+ * FIXED: Issue #38 - Added comprehensive JSDoc to complex functions
+ *
  * Provides XSS protection for user input.
  * See CODE_AUDIT_REPORT.md Issue #18
  *
@@ -12,8 +14,22 @@
  */
 
 /**
- * Basic HTML entity encoding to prevent XSS
- * Escapes potentially dangerous characters
+ * Escapes HTML special characters to prevent XSS attacks
+ *
+ * Converts potentially dangerous characters to their HTML entity equivalents:
+ * - `&` → `&amp;`
+ * - `<` → `&lt;`
+ * - `>` → `&gt;`
+ * - `"` → `&quot;`
+ * - `'` → `&#039;`
+ *
+ * @param unsafe - The string to escape
+ * @returns HTML-safe string with special characters escaped
+ * @example
+ * ```typescript
+ * escapeHtml('<script>alert("XSS")</script>');
+ * // Returns: '&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;'
+ * ```
  */
 export function escapeHtml(unsafe: string): string {
   return unsafe
@@ -25,8 +41,19 @@ export function escapeHtml(unsafe: string): string {
 }
 
 /**
- * Sanitize plain text input (removes all HTML)
- * Use for user input that should never contain HTML
+ * Removes all HTML tags from input text
+ *
+ * Use this for user input fields that should never contain HTML markup.
+ * This is more restrictive than escapeHtml() - it completely removes tags
+ * instead of encoding them.
+ *
+ * @param input - The text to sanitize
+ * @returns Plain text with all HTML tags removed and whitespace trimmed
+ * @example
+ * ```typescript
+ * sanitizePlainText('Hello <b>World</b>!  ');
+ * // Returns: 'Hello World!'
+ * ```
  */
 export function sanitizePlainText(input: string): string {
   // Remove all HTML tags and trim whitespace
@@ -34,8 +61,28 @@ export function sanitizePlainText(input: string): string {
 }
 
 /**
- * Sanitize URL to prevent javascript: and data: URIs
- * Returns null if URL is potentially dangerous
+ * Validates and sanitizes URLs to prevent XSS attacks via dangerous protocols
+ *
+ * Blocks dangerous URL protocols including:
+ * - `javascript:` (executes JavaScript)
+ * - `data:` (can contain executable code)
+ * - `vbscript:` (VBScript execution)
+ * - `file:` (local file access)
+ * - `about:` (browser-specific URIs)
+ *
+ * Only allows:
+ * - `http://` and `https://` (web URLs)
+ * - `mailto:` (email links)
+ * - Relative URLs (`/`, `./`, `../`)
+ *
+ * @param url - The URL to validate and sanitize
+ * @returns The sanitized URL, or null if the URL is potentially dangerous
+ * @example
+ * ```typescript
+ * sanitizeUrl('https://example.com'); // Returns: 'https://example.com'
+ * sanitizeUrl('javascript:alert(1)'); // Returns: null
+ * sanitizeUrl('/path/to/page');       // Returns: '/path/to/page'
+ * ```
  */
 export function sanitizeUrl(url: string): string | null {
   const trimmed = url.trim();

@@ -159,29 +159,95 @@ export function fromZodError(error: ZodError): ValidationError {
 
 /**
  * Convenience factory functions for common errors
- * (for backward compatibility and convenience)
+ * FIXED: Issue #38 - Added JSDoc to complex functions
+ */
+
+/**
+ * Creates a BadRequestError for invalid client requests
+ *
+ * @param detail - Optional detailed error message
+ * @returns A BadRequestError instance
+ * @example
+ * ```typescript
+ * throw badRequestError('Invalid canvas ID format');
+ * ```
  */
 export function badRequestError(detail?: string): BadRequestError {
   return new BadRequestError(detail);
 }
 
+/**
+ * Creates a NotFoundError for missing resources
+ *
+ * @param resource - The type of resource that wasn't found (e.g., 'Canvas', 'User')
+ * @param id - Optional ID of the resource
+ * @returns A NotFoundError instance
+ * @example
+ * ```typescript
+ * throw notFoundError('Canvas', canvasId);
+ * // Error message: "Canvas with id abc123 was not found."
+ * ```
+ */
 export function notFoundError(resource: string, id?: string): NotFoundError {
   const detail = id ? `${resource} with id ${id} was not found.` : resource;
   return new NotFoundError(detail);
 }
 
+/**
+ * Creates an UnauthorizedError for authentication failures
+ *
+ * @param detail - Optional detailed error message
+ * @returns An UnauthorizedError instance
+ * @example
+ * ```typescript
+ * throw unauthorizedError('Invalid session token');
+ * ```
+ */
 export function unauthorizedError(detail?: string): UnauthorizedError {
   return new UnauthorizedError(detail);
 }
 
+/**
+ * Creates a ForbiddenError for authorization failures
+ *
+ * @param detail - Optional detailed error message
+ * @returns A ForbiddenError instance
+ * @example
+ * ```typescript
+ * throw forbiddenError('You do not have permission to delete this canvas');
+ * ```
+ */
 export function forbiddenError(detail?: string): ForbiddenError {
   return new ForbiddenError(detail);
 }
 
+/**
+ * Creates a ConflictError for resource conflicts
+ *
+ * @param detail - Detailed error message
+ * @returns A ConflictError instance
+ * @example
+ * ```typescript
+ * throw conflictError('Email already exists');
+ * ```
+ */
 export function conflictError(detail: string): ConflictError {
   return new ConflictError(detail);
 }
 
+/**
+ * Creates a ValidationError from a field error map
+ *
+ * @param errors - Map of field names to error messages
+ * @returns A ValidationError instance with all field errors
+ * @example
+ * ```typescript
+ * throw validationError({
+ *   email: ['Invalid email format', 'Email is required'],
+ *   password: ['Password too short']
+ * });
+ * ```
+ */
 export function validationError(errors: Record<string, string[]>): ValidationError {
   const errorDetails: ValidationErrorDetail[] = [];
   for (const [field, messages] of Object.entries(errors)) {
@@ -192,6 +258,19 @@ export function validationError(errors: Record<string, string[]>): ValidationErr
   return new ValidationError('One or more validation errors occurred.', errorDetails);
 }
 
+/**
+ * Creates a VersionMismatchError for optimistic concurrency control conflicts
+ *
+ * @param expectedVersion - The version number that was expected
+ * @param actualVersion - The actual current version number
+ * @returns A VersionMismatchError instance
+ * @example
+ * ```typescript
+ * if (item.version !== requestedVersion) {
+ *   throw versionMismatchError(requestedVersion, item.version);
+ * }
+ * ```
+ */
 export function versionMismatchError(expectedVersion: number, actualVersion: number): VersionMismatchError {
   return new VersionMismatchError(expectedVersion, actualVersion);
 }
