@@ -10,10 +10,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCanvasOwnership } from '@/lib/api/auth';
 import { errorResponse } from '@/lib/errors';
-import { createCanvasItemSchema, listCanvasItemsSchema, viewportPaginationSchema } from '@/lib/validation/canvas-item';
+import {
+  createCanvasItemSchema,
+  listCanvasItemsSchema,
+  viewportPaginationSchema,
+  type ViewportPaginationInput,
+} from '@/lib/validation/canvas-item';
 import type { CanvasItem } from '@prisma/client';
 
 /**
@@ -41,7 +47,7 @@ export async function POST(request: NextRequest) {
         width: data.width,
         height: data.height,
         zIndex: data.zIndex,
-        content: data.content as any, // Prisma Json type
+        content: data.content as Prisma.JsonValue, // FIXED: Use proper Prisma Json type instead of any
         tags: data.tags || [],
         version: 1,
         createdById: userId,
@@ -115,7 +121,8 @@ export async function GET(request: NextRequest) {
 
     // Apply viewport filtering if viewport parameters are provided
     if (hasViewportParams) {
-      const { minX, maxX, minY, maxY, limit, offset } = query as any;
+      // FIXED: Use proper type instead of 'as any'
+      const { minX, maxX, minY, maxY, limit, offset } = query as ViewportPaginationInput;
 
       // OPTIMIZATION: Use database-level filtering instead of in-memory filtering
       // This significantly improves performance for large canvases (1000+ items)
@@ -126,38 +133,45 @@ export async function GET(request: NextRequest) {
       // (item.positionY + item.height) >= minY &&  // item bottom edge >= viewport top
       // item.positionY <= maxY                     // item top edge <= viewport bottom
 
-      // Build WHERE conditions
-      const whereConditions = [`"canvasId" = '${query.canvasId}'`];
+      // FIXED: Use parameterized queries instead of string concatenation
+      // This prevents SQL injection even though inputs are validated
+      const { Prisma } = prisma;
 
-      if (query.type) {
-        whereConditions.push(`"type" = '${query.type}'`);
-      }
+      // Build type filter fragment
+      const typeFilter = query.type
+        ? Prisma.sql`AND "type" = ${query.type}::\"ItemType\"`
+        : Prisma.empty;
 
-      if (!query.includeDeleted) {
-        whereConditions.push(`"deletedAt" IS NULL`);
-      }
+      // Build deleted filter fragment
+      const deletedFilter = query.includeDeleted
+        ? Prisma.empty
+        : Prisma.sql`AND "deletedAt" IS NULL`;
 
-      // Viewport intersection conditions
-      whereConditions.push(`("positionX" + "width") >= ${minX}`);
-      whereConditions.push(`"positionX" <= ${maxX}`);
-      whereConditions.push(`("positionY" + "height") >= ${minY}`);
-      whereConditions.push(`"positionY" <= ${maxY}`);
-
-      const whereClause = whereConditions.join(' AND ');
-
-      // Get total count for pagination
+      // Get total count for pagination with parameterized query
       const countResult = await prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*)::int as count
         FROM "CanvasItem"
-        WHERE ${prisma.Prisma.raw(whereClause)}
+        WHERE "canvasId" = ${query.canvasId}
+          ${typeFilter}
+          ${deletedFilter}
+          AND ("positionX" + "width") >= ${minX}
+          AND "positionX" <= ${maxX}
+          AND ("positionY" + "height") >= ${minY}
+          AND "positionY" <= ${maxY}
       `;
       const total = Number(countResult[0]?.count || 0);
 
-      // Fetch items with viewport filtering at database level
+      // Fetch items with viewport filtering using parameterized query
       const items = await prisma.$queryRaw<CanvasItem[]>`
         SELECT *
         FROM "CanvasItem"
-        WHERE ${prisma.Prisma.raw(whereClause)}
+        WHERE "canvasId" = ${query.canvasId}
+          ${typeFilter}
+          ${deletedFilter}
+          AND ("positionX" + "width") >= ${minX}
+          AND "positionX" <= ${maxX}
+          AND ("positionY" + "height") >= ${minY}
+          AND "positionY" <= ${maxY}
         ORDER BY "zIndex" ASC, "createdAt" ASC
         LIMIT ${limit} OFFSET ${offset}
       `;

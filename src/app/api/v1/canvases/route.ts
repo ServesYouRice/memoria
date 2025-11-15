@@ -20,9 +20,11 @@ const logger = createLogger('api:canvases');
  * FIXED: Issue #16 - Added pagination limits
  */
 export async function GET(request: NextRequest) {
+  let session = null; // Declare outside try block to fix scope issue
+
   try {
     // Authentication check
-    const session = await auth();
+    session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         {
@@ -68,6 +70,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    // FIXED: Variable scope - session now accessible in catch block
     logger.error({ error, userId: session?.user?.id }, 'Error fetching canvases');
     return NextResponse.json(
       {
