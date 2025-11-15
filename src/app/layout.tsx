@@ -1,4 +1,11 @@
+/**
+ * Root Layout
+ *
+ * ENHANCED: Issue #40 - Analytics integration
+ */
+
 import type { Metadata } from 'next';
+import { Analytics } from '@vercel/analytics/react';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
@@ -11,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   );
