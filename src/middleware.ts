@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applyCSP } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';
-import { apiRateLimit } from './middleware/rate-limit';
+import { apiRateLimit, authRateLimit } from './middleware/rate-limit';
 import { createRequestLogger } from './lib/logger';
 
 export function middleware(request: NextRequest) {
@@ -17,7 +17,26 @@ export function middleware(request: NextRequest) {
     'Incoming request'
   );
 
-  // Apply rate limiting for API routes
+  // Apply rate limiting for authentication routes (Issue #19)
+  // Stricter rate limits to prevent brute force attacks
+  if (
+    request.nextUrl.pathname.startsWith('/api/v1/auth') ||
+    request.nextUrl.pathname.startsWith('/api/auth')
+  ) {
+    const rateLimitResponse = authRateLimit(request);
+    if (rateLimitResponse) {
+      logger.warn(
+        {
+          pathname: request.nextUrl.pathname,
+          ip: request.headers.get('x-forwarded-for'),
+        },
+        'Auth rate limit exceeded'
+      );
+      return rateLimitResponse;
+    }
+  }
+
+  // Apply rate limiting for general API routes
   if (request.nextUrl.pathname.startsWith('/api/v1')) {
     const rateLimitResponse = apiRateLimit(request);
     if (rateLimitResponse) {

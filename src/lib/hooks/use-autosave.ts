@@ -3,6 +3,8 @@
  * Following ADR-0009: Autosave Delta Updates
  *
  * Debounces updates in 250-500ms windows to reduce write amplification
+ *
+ * FIXED: Issue #9 - Memory leak from unstable cleanup effect
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -44,13 +46,26 @@ export function useAutosave({
   const timerRef = useRef<NodeJS.Timeout>();
   const currentVersionRef = useRef(version);
 
-  // Update version ref when it changes
+  // Store callbacks in refs to avoid recreating flush on every callback change
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+
+  // Update refs when they change
   useEffect(() => {
     currentVersionRef.current = version;
   }, [version]);
 
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  }, [onSuccess]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
   /**
    * Flush pending changes immediately
+   * Stable function that doesn't depend on callbacks
    */
   const flush = useCallback(() => {
     if (Object.keys(pendingChangesRef.current).length === 0) {
@@ -70,14 +85,14 @@ export function useAutosave({
       },
       {
         onSuccess: () => {
-          onSuccess?.();
+          onSuccessRef.current?.();
         },
         onError: (error) => {
-          onError?.(error as Error);
+          onErrorRef.current?.(error as Error);
         },
       }
     );
-  }, [itemId, updateItem, onSuccess, onError]);
+  }, [itemId, updateItem]);
 
   /**
    * Save changes with debouncing
@@ -102,6 +117,10 @@ export function useAutosave({
 
   /**
    * Cleanup: flush on unmount
+   *
+   * FIXED: Now depends on stable flush function
+   * This prevents the effect from re-running on every callback change,
+   * which was causing potential memory leaks and duplicate timers
    */
   useEffect(() => {
     return () => {

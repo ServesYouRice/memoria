@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
@@ -6,10 +6,16 @@ import { z } from 'zod';
 /**
  * GET /api/v1/canvases
  *
- * Fetch all canvases for the authenticated user
+ * Fetch canvases for the authenticated user
  * Per ADR-0001: API Versioning & Error Contract (RFC 7807)
+ *
+ * Query parameters:
+ * - limit: Number of canvases to return (default: 50, max: 100)
+ * - offset: Number of canvases to skip (default: 0)
+ *
+ * FIXED: Issue #16 - Added pagination limits
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     // Authentication check
     const session = await auth();
@@ -25,17 +31,41 @@ export async function GET() {
       );
     }
 
-    // Fetch all canvases for the user
+    // Pagination parameters
+    const DEFAULT_LIMIT = 50;
+    const MAX_LIMIT = 100;
+
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(
+      parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10),
+      MAX_LIMIT
+    );
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
+
+    const where = { userId: session.user.id };
+
+    // Get total count
+    const total = await prisma.canvas.count({ where });
+
+    // Fetch canvases with pagination
     const canvases = await prisma.canvas.findMany({
-      where: {
-        userId: session.user.id,
-      },
+      where,
       orderBy: {
         updatedAt: 'desc',
       },
+      take: limit,
+      skip: offset,
     });
 
-    return NextResponse.json(canvases);
+    return NextResponse.json({
+      canvases,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total,
+      },
+    });
   } catch (error) {
     console.error('Error fetching canvases:', error);
     return NextResponse.json(
