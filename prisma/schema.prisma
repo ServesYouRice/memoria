@@ -53,8 +53,10 @@ model Canvas {
   updatedAt   DateTime    @updatedAt
 
   @@index([userId, createdAt])
+  @@index([userId, updatedAt])
   @@index([shareToken])
   @@index([isTemplate, templateCategory])
+  @@index([isTemplate, usageCount, createdAt])
 }
 
 model CanvasItem {
@@ -89,6 +91,7 @@ model CanvasItem {
   @@index([canvasId, type])
   @@index([canvasId, zIndex])
   @@index([canvasId, updatedAt])
+  @@index([canvasId, positionX, positionY])
 
   comments    Comment[]
 }
@@ -140,9 +143,12 @@ model Session {
   userId       String
   expires      DateTime
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   deviceInfo   String?
   revokedAt    DateTime?
+
+  @@index([userId])
+  @@index([expires])
 }
 
 model Account {
@@ -161,6 +167,7 @@ model Account {
   user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model PasswordResetToken {

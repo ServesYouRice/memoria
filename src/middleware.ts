@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { applyCSP } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';
 import { apiRateLimit, authRateLimit } from './middleware/rate-limit';
+import { applyCors, handleCorsPreflight } from './middleware/cors';
 import { createRequestLogger } from './lib/logger';
 
 export function middleware(request: NextRequest) {
   const logger = createRequestLogger();
+
+  // Handle CORS preflight requests (Issue #15)
+  if (request.method === 'OPTIONS') {
+    const preflightResponse = handleCorsPreflight(request);
+    if (preflightResponse) {
+      return preflightResponse;
+    }
+  }
 
   // Log incoming request
   logger.info(
@@ -46,6 +55,9 @@ export function middleware(request: NextRequest) {
 
   // Continue with request
   const response = NextResponse.next();
+
+  // Apply CORS headers (Issue #15)
+  applyCors(request, response);
 
   // Apply security headers
   applySecurityHeaders(response);
