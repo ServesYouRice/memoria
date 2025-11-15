@@ -156,3 +156,185 @@ export async function withTimeout<T>(
 
   return Promise.race([promise, timeoutPromise]);
 }
+
+/**
+ * Database retry wrapper with exponential backoff
+ *
+ * FIXED: Issue #26 - Retry logic for transient database failures
+ *
+ * Automatically retries database operations on transient failures like:
+ * - Connection timeouts
+ * - Connection pool exhausted
+ * - Temporary network issues
+ * - Deadlocks
+ *
+ * Usage:
+ * ```typescript
+ * const user = await withRetry(
+ *   () => prisma.user.findUnique({ where: { id: userId } }),
+ *   3,    // max retries
+ *   1000  // initial delay in ms
+ * );
+ * ```
+ *
+ * @param operation - The database operation to retry
+ * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @param initialDelayMs - Initial delay in milliseconds (default: 1000)
+ * @returns The result of the operation
+ * @throws The last error if all retries fail
+ */
+export async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelayMs: number = 1000
+): Promise<T> {
+  let lastError: Error | unknown;
+
+  for (let attempt = 0; attempt < maxRetries + 1; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry on last attempt
+      if (attempt === maxRetries) {
+        break;
+      }
+
+      // Check if error is retryable
+      if (!isRetryableError(error)) {
+        logger.warn(
+          { error, attempt },
+          'Database operation failed with non-retryable error'
+        );
+        throw error;
+      }
+
+      // Calculate exponential backoff delay
+      const delayMs = initialDelayMs * Math.pow(2, attempt);
+      const jitter = Math.random() * 0.3 * delayMs; // Add 0-30% jitter
+      const totalDelay = delayMs + jitter;
+
+      logger.warn(
+        {
+          error,
+          attempt: attempt + 1,
+          maxRetries,
+          delayMs: Math.round(totalDelay),
+        },
+        'Database operation failed, retrying...'
+      );
+
+      // Wait before retrying
+      await new Promise((resolve) => setTimeout(resolve, totalDelay));
+    }
+  }
+
+  // All retries exhausted
+  logger.error(
+    { error: lastError, maxRetries },
+    'Database operation failed after all retries'
+  );
+  throw lastError;
+}
+
+/**
+ * Determine if an error is retryable
+ *
+ * Retryable errors include:
+ * - Connection errors (P1001, P1002, P1008, P1017)
+ * - Timeout errors (P2024)
+ * - Pool exhausted (P1008)
+ * - Deadlock (P2034)
+ * - Transaction conflicts
+ *
+ * Non-retryable errors include:
+ * - Validation errors (P2000-P2023, except P2024)
+ * - Not found errors (P2025)
+ * - Unique constraint violations (P2002)
+ * - Foreign key constraint violations (P2003)
+ */
+function isRetryableError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  // Check for Prisma error codes
+  if ('code' in error && typeof error.code === 'string') {
+    const code = error.code;
+
+    // Retryable Prisma error codes
+    const retryableCodes = [
+      'P1001', // Can't reach database server
+      'P1002', // Database server timeout
+      'P1008', // Operations timed out
+      'P1017', // Server closed connection
+      'P2024', // Timed out fetching connection from pool
+      'P2034', // Transaction failed due to write conflict or deadlock
+    ];
+
+    if (retryableCodes.includes(code)) {
+      return true;
+    }
+
+    // Don't retry validation, constraint, or not found errors
+    const nonRetryableCodes = [
+      'P2000', // Value too long
+      'P2001', // Record not found
+      'P2002', // Unique constraint failed
+      'P2003', // Foreign key constraint failed
+      'P2025', // Record to update/delete not found
+    ];
+
+    if (nonRetryableCodes.includes(code)) {
+      return false;
+    }
+  }
+
+  // Check error message for common transient issues
+  if ('message' in error && typeof error.message === 'string') {
+    const message = error.message.toLowerCase();
+    const transientMessages = [
+      'connection',
+      'timeout',
+      'timed out',
+      'econnrefused',
+      'econnreset',
+      'epipe',
+      'etimedout',
+      'pool',
+      'deadlock',
+    ];
+
+    return transientMessages.some((msg) => message.includes(msg));
+  }
+
+  // Conservative default: don't retry unknown errors
+  return false;
+}
+
+/**
+ * Convenience wrapper combining retry and timeout
+ *
+ * Usage:
+ * ```typescript
+ * const user = await withRetryAndTimeout(
+ *   () => prisma.user.findUnique({ where: { id } }),
+ *   5000,  // timeout in ms
+ *   3,     // max retries
+ *   1000   // initial retry delay
+ * );
+ * ```
+ */
+export async function withRetryAndTimeout<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number = 5000,
+  maxRetries: number = 3,
+  initialDelayMs: number = 1000
+): Promise<T> {
+  return withRetry(
+    () => withTimeout(operation(), timeoutMs),
+    maxRetries,
+    initialDelayMs
+  );
+}

@@ -1,8 +1,17 @@
 /**
  * NoteItem Konva Component
  *
- * Minimal Note component for reference
- * (Full implementation would be part of Slice 4)
+ * OPTIMIZED: Issue #30 - Canvas performance improvements
+ *
+ * Uses React.memo to prevent unnecessary re-renders when:
+ * - Other items on the canvas change
+ * - Parent component re-renders
+ * - Unrelated props update
+ *
+ * Only re-renders when:
+ * - Item's updatedAt timestamp changes
+ * - Selection state changes
+ * - Item version changes (for conflict resolution)
  */
 
 'use client';
@@ -22,7 +31,7 @@ interface NoteItemProps {
 
 const DELETE_BUTTON_SIZE = 20;
 
-export function NoteItem({ item, isSelected = false, onSelect }: NoteItemProps) {
+function NoteItemComponent({ item, isSelected = false, onSelect }: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -127,3 +136,42 @@ export function NoteItem({ item, isSelected = false, onSelect }: NoteItemProps) 
     </Group>
   );
 }
+
+/**
+ * Memoized NoteItem with custom comparison
+ *
+ * Comparison logic:
+ * - item.id: Must match (different items are different)
+ * - item.updatedAt: Changes mean content/position updated
+ * - item.version: Changes mean conflict resolution needed
+ * - isSelected: Changes affect rendering (highlight, delete button)
+ *
+ * This prevents re-renders when:
+ * - Parent canvas re-renders
+ * - Other items in the array change
+ * - Unrelated state updates
+ */
+export const NoteItem = React.memo(NoteItemComponent, (prevProps, nextProps) => {
+  // Re-render if item changed
+  if (prevProps.item.id !== nextProps.item.id) {
+    return false;
+  }
+
+  // Re-render if selection state changed
+  if (prevProps.isSelected !== nextProps.isSelected) {
+    return false;
+  }
+
+  // Re-render if item was updated
+  if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
+    return false;
+  }
+
+  // Re-render if version changed (conflict resolution)
+  if (prevProps.item.version !== nextProps.item.version) {
+    return false;
+  }
+
+  // No changes detected, skip re-render
+  return true;
+});

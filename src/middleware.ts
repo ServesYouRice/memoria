@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { nanoid } from 'nanoid';
 import { applyCSP } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';
 import { apiRateLimit, authRateLimit } from './middleware/rate-limit';
@@ -7,6 +8,9 @@ import { getVersionHeaders, validateApiVersion } from './lib/api/versioning';
 import { createRequestLogger } from './lib/logger';
 
 export function middleware(request: NextRequest) {
+  // Generate or extract request ID for tracing (Issue #24)
+  const requestId = request.headers.get('x-request-id') || nanoid(16);
+
   const logger = createRequestLogger();
 
   // Handle CORS preflight requests (Issue #15)
@@ -17,9 +21,10 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Log incoming request
+  // Log incoming request with request ID
   logger.info(
     {
+      requestId,
       method: request.method,
       url: request.url,
       userAgent: request.headers.get('user-agent'),
@@ -32,7 +37,7 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith('/api/v')) {
     const versionError = validateApiVersion(pathname);
     if (versionError) {
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           type: 'https://canvascollect.com/errors/unsupported-version',
           title: 'Unsupported API Version',
@@ -41,6 +46,8 @@ export function middleware(request: NextRequest) {
         },
         { status: 400 }
       );
+      errorResponse.headers.set('x-request-id', requestId);
+      return errorResponse;
     }
   }
 
@@ -73,6 +80,9 @@ export function middleware(request: NextRequest) {
 
   // Continue with request
   const response = NextResponse.next();
+
+  // Add request ID to response headers (Issue #24)
+  response.headers.set('x-request-id', requestId);
 
   // Apply CORS headers (Issue #15)
   applyCors(request, response);
