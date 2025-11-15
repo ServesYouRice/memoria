@@ -106,7 +106,6 @@ if (process.env.NODE_ENV === 'production') {
       })
       .catch((error: Error) => {
         logger.fatal({ error }, 'Failed to connect to database');
-        console.error('Failed to connect to database:', error);
         process.exit(1);
       });
   }

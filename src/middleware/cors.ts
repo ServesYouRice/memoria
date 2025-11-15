@@ -8,6 +8,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('cors');
 
 /**
  * CORS Configuration
@@ -180,8 +183,8 @@ export function validateCorsConfig(): void {
   if (process.env.NODE_ENV === 'production') {
     // Warn if using wildcard in production
     if (config.allowedOrigins.some((origin) => origin === '*')) {
-      console.warn(
-        'WARNING: CORS is configured to allow all origins (*) in production. ' +
+      logger.warn(
+        'CORS is configured to allow all origins (*) in production. ' +
           'This is a security risk. Set CORS_ALLOWED_ORIGINS environment variable.'
       );
     }
@@ -191,24 +194,24 @@ export function validateCorsConfig(): void {
       config.allowCredentials &&
       config.allowedOrigins.some((origin) => origin === '*')
     ) {
-      console.error(
-        'ERROR: CORS cannot allow credentials with wildcard origin (*). ' +
+      logger.error(
+        'CORS cannot allow credentials with wildcard origin (*). ' +
           'This configuration will not work. Set specific origins in CORS_ALLOWED_ORIGINS.'
       );
     }
 
     // Warn if no NEXTAUTH_URL is set
     if (!process.env.NEXTAUTH_URL && !process.env.CORS_ALLOWED_ORIGINS) {
-      console.warn(
-        'WARNING: Neither NEXTAUTH_URL nor CORS_ALLOWED_ORIGINS is set. ' +
+      logger.warn(
+        'Neither NEXTAUTH_URL nor CORS_ALLOWED_ORIGINS is set. ' +
           'CORS may not work correctly in production.'
       );
     }
   }
 
-  console.log('CORS configuration loaded:', {
+  logger.info({
     allowedOrigins: config.allowedOrigins,
     allowedMethods: config.allowedMethods,
     allowCredentials: config.allowCredentials,
-  });
+  }, 'CORS configuration loaded');
 }

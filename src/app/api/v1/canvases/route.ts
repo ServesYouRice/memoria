@@ -3,6 +3,9 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/lib/constants';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('api:canvases');
 
 /**
  * GET /api/v1/canvases
@@ -65,7 +68,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching canvases:', error);
+    logger.error({ error, userId: session?.user?.id }, 'Error fetching canvases');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',
@@ -134,7 +137,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error('Error creating canvas:', error);
+    logger.error({ error, userId: session?.user?.id }, 'Error creating canvas');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',
