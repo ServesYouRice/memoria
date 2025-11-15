@@ -27,10 +27,32 @@ const nextConfig = {
     optimizePackageImports: ['@mui/material', '@mui/icons-material'],
   },
 
-  // Webpack optimizations for Konva
-  webpack: (config) => {
-    // Optimize konva bundle size - exclude server-side canvas
-    config.externals = [...(config.externals || []), { canvas: 'canvas' }];
+  // Webpack optimizations for Konva (Issue #17)
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Browser-only optimizations
+
+      // Exclude canvas module from browser bundle (only needed server-side)
+      config.externals = {
+        ...(typeof config.externals === 'object' ? config.externals : {}),
+        canvas: 'canvas',
+      };
+
+      // Tree-shake unused Konva features for smaller bundle
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        // Use the main Konva bundle with tree-shaking support
+        'konva': require.resolve('konva/lib/index.js'),
+      };
+
+      // Enable webpack's built-in optimizations
+      config.optimization = {
+        ...config.optimization,
+        usedExports: true, // Tree shaking
+        sideEffects: true, // Respect package.json sideEffects field
+      };
+    }
+
     return config;
   },
 

@@ -48,8 +48,11 @@ describe('RFC 7807 Problem Details', () => {
 
       expect(problem.status).toBe(400);
       expect(problem.title).toBe('Validation Error');
-      expect(problem['errors']).toHaveLength(2);
-      expect((problem['errors'] as any)[0].field).toBe('email');
+
+      // Type-safe access to errors array
+      const problemErrors = problem['errors'] as Array<{ field: string; message: string; code: string }>;
+      expect(problemErrors).toHaveLength(2);
+      expect(problemErrors[0]?.field).toBe('email');
     });
   });
 

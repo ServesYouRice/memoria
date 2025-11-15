@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildCSP, generateNonce } from '../middleware/csp';
 
 describe('CSP Middleware', () => {
@@ -18,6 +18,20 @@ describe('CSP Middleware', () => {
   });
 
   describe('buildCSP', () => {
+    let originalEnv: string | undefined;
+
+    beforeEach(() => {
+      originalEnv = process.env['NODE_ENV'];
+    });
+
+    afterEach(() => {
+      if (originalEnv !== undefined) {
+        vi.stubEnv('NODE_ENV', originalEnv);
+      } else {
+        vi.unstubAllEnvs();
+      }
+    });
+
     it('should build a valid CSP string', () => {
       const nonce = 'test-nonce-123';
       const csp = buildCSP(nonce);
@@ -29,33 +43,24 @@ describe('CSP Middleware', () => {
     });
 
     it('should not allow unsafe-inline in production', () => {
-      const originalEnv = process.env.NODE_ENV;
-      (process.env as any).NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
 
       const csp = buildCSP('nonce');
       expect(csp).not.toContain("'unsafe-inline'");
-
-      (process.env as any).NODE_ENV = originalEnv;
     });
 
     it('should not allow unsafe-eval in production', () => {
-      const originalEnv = process.env.NODE_ENV;
-      (process.env as any).NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
 
       const csp = buildCSP('nonce');
       expect(csp).not.toContain("'unsafe-eval'");
-
-      (process.env as any).NODE_ENV = originalEnv;
     });
 
     it('should include strict-dynamic in production', () => {
-      const originalEnv = process.env.NODE_ENV;
-      (process.env as any).NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
 
       const csp = buildCSP('nonce');
       expect(csp).toContain("'strict-dynamic'");
-
-      (process.env as any).NODE_ENV = originalEnv;
     });
   });
 });

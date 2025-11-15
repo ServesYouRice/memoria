@@ -3,6 +3,7 @@ import { applyCSP } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';
 import { apiRateLimit, authRateLimit } from './middleware/rate-limit';
 import { applyCors, handleCorsPreflight } from './middleware/cors';
+import { getVersionHeaders, validateApiVersion } from './lib/api/versioning';
 import { createRequestLogger } from './lib/logger';
 
 export function middleware(request: NextRequest) {
@@ -25,6 +26,23 @@ export function middleware(request: NextRequest) {
     },
     'Incoming request'
   );
+
+  // Validate API version (Issue #23)
+  const pathname = request.nextUrl.pathname;
+  if (pathname.startsWith('/api/v')) {
+    const versionError = validateApiVersion(pathname);
+    if (versionError) {
+      return NextResponse.json(
+        {
+          type: 'https://canvascollect.com/errors/unsupported-version',
+          title: 'Unsupported API Version',
+          status: 400,
+          detail: versionError,
+        },
+        { status: 400 }
+      );
+    }
+  }
 
   // Apply rate limiting for authentication routes (Issue #19)
   // Stricter rate limits to prevent brute force attacks
@@ -64,6 +82,14 @@ export function middleware(request: NextRequest) {
 
   // Apply CSP
   applyCSP(request, response);
+
+  // Add API version headers for API routes (Issue #23)
+  if (pathname.startsWith('/api/v')) {
+    const versionHeaders = getVersionHeaders(pathname);
+    Object.entries(versionHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+  }
 
   return response;
 }
