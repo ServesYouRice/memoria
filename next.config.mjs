@@ -8,6 +8,9 @@
  * We use .mjs to support ES modules and TypeScript imports (env.ts)
  *
  * See CODE_AUDIT_REPORT.md Issue #1 for details on why we consolidated configs.
+ *
+ * ENHANCED: Issue #27 - Bundle size analysis
+ * After build, run: node scripts/analyze-bundle.mjs
  */
 import { env } from './src/lib/env.ts';
 

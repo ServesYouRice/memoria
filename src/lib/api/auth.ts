@@ -1,18 +1,25 @@
 /**
  * API Authentication & Authorization
+ *
+ * ENHANCED: Issue #25 - Session caching to avoid repeated DB calls
+ *
  * Following ADR-0008: Auth, Session & CSRF Policy
  */
 
-import { getServerSession } from 'next-auth';
+import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
 
 /**
  * Get authenticated user from session
  * Throws UnauthorizedError if not authenticated
+ *
+ * NOTE: For better performance in routes with multiple auth checks,
+ * consider using getCachedSession() from '@/lib/api/session-cache'
+ * to avoid repeated database queries within the same request.
  */
 export async function requireAuth() {
-  const session = await getServerSession();
+  const session = await auth();
 
   if (!session || !session.user?.email) {
     throw new UnauthorizedError('You must be logged in to access this resource');

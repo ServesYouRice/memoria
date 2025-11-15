@@ -20,6 +20,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "audit": "pnpm audit --audit-level=moderate",
+    "analyze": "node scripts/analyze-bundle.mjs",
     "check-bundle": "node scripts/check-bundle-size.mjs",
     "ci": "pnpm run lint && pnpm run type-check && pnpm run test:coverage && pnpm run audit && pnpm run build && pnpm run test:e2e",
     "prepare": "husky"
