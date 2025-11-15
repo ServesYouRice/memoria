@@ -158,23 +158,69 @@ export function useCanvasItem(itemId: string) {
 
 /**
  * Create a new canvas item
+ *
+ * OPTIMIZED: Issue #29 - Optimistic updates for better UX
+ * Creates item in cache immediately, rolls back on error
  */
 export function useCreateCanvasItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: api.createItem,
+    onMutate: async (newItem) => {
+      // Cancel outgoing refetches to prevent overwriting optimistic update
+      await queryClient.cancelQueries({
+        queryKey: canvasItemKeys.list(newItem.canvasId),
+      });
+
+      // Snapshot previous value for rollback
+      const previousItems = queryClient.getQueryData(
+        canvasItemKeys.list(newItem.canvasId)
+      );
+
+      // Optimistically update cache with temporary item
+      const optimisticItem = {
+        ...newItem,
+        id: `temp-${Date.now()}`, // Temporary ID
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        deletedAt: null,
+      };
+
+      queryClient.setQueryData(
+        canvasItemKeys.list(newItem.canvasId),
+        (old: any) => ({
+          ...old,
+          items: old ? [...old.items, optimisticItem] : [optimisticItem],
+        })
+      );
+
+      return { previousItems };
+    },
     onSuccess: (newItem) => {
-      // Invalidate list queries for this canvas
+      // Invalidate list queries for this canvas to get real server data
       queryClient.invalidateQueries({
         queryKey: canvasItemKeys.list(newItem.canvasId),
       });
+    },
+    onError: (err, newItem, context) => {
+      // Rollback on error
+      if (context?.previousItems) {
+        queryClient.setQueryData(
+          canvasItemKeys.list(newItem.canvasId),
+          context.previousItems
+        );
+      }
     },
   });
 }
 
 /**
  * Update a canvas item
+ *
+ * OPTIMIZED: Issue #29 - Optimistic updates for better UX
+ * Updates item in cache immediately, rolls back on error
  */
 export function useUpdateCanvasItem() {
   const queryClient = useQueryClient();
@@ -182,17 +228,62 @@ export function useUpdateCanvasItem() {
   return useMutation({
     mutationFn: ({ itemId, data }: { itemId: string; data: UpdateCanvasItemInput }) =>
       api.updateItem(itemId, data),
+    onMutate: async ({ itemId, data }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({
+        queryKey: canvasItemKeys.detail(itemId),
+      });
+
+      // Snapshot previous value
+      const previousItem = queryClient.getQueryData(canvasItemKeys.detail(itemId));
+
+      // Optimistically update the item in detail cache
+      queryClient.setQueryData(canvasItemKeys.detail(itemId), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          ...data,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      // Also update in list caches
+      queryClient.setQueriesData(
+        { queryKey: canvasItemKeys.lists() },
+        (old: any) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((item: any) =>
+              item.id === itemId
+                ? { ...item, ...data, updatedAt: new Date().toISOString() }
+                : item
+            ),
+          };
+        }
+      );
+
+      return { previousItem, itemId };
+    },
     onSuccess: (updatedItem) => {
-      // Update cache with new version
+      // Update cache with real server data
       queryClient.setQueryData(canvasItemKeys.detail(updatedItem.id), updatedItem);
 
-      // Invalidate list queries
+      // Invalidate list queries to ensure consistency
       queryClient.invalidateQueries({
         queryKey: canvasItemKeys.list(updatedItem.canvasId),
       });
     },
-    onError: (error: Error) => {
-      // Handle version mismatch - refetch data
+    onError: (error: Error, variables, context) => {
+      // Rollback on error
+      if (context?.previousItem) {
+        queryClient.setQueryData(
+          canvasItemKeys.detail(context.itemId),
+          context.previousItem
+        );
+      }
+
+      // Handle version mismatch - refetch all data
       if (error.message.includes('Version mismatch')) {
         queryClient.invalidateQueries({
           queryKey: canvasItemKeys.all,
@@ -204,6 +295,9 @@ export function useUpdateCanvasItem() {
 
 /**
  * Delete a canvas item
+ *
+ * OPTIMIZED: Issue #29 - Optimistic updates for better UX
+ * Removes item from cache immediately, rolls back on error
  */
 export function useDeleteCanvasItem() {
   const queryClient = useQueryClient();
@@ -211,8 +305,51 @@ export function useDeleteCanvasItem() {
   return useMutation({
     mutationFn: ({ itemId, version }: { itemId: string; version: number }) =>
       api.deleteItem(itemId, { version }),
-    onSuccess: (_, variables) => {
-      // Invalidate queries
+    onMutate: async ({ itemId }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({
+        queryKey: canvasItemKeys.all,
+      });
+
+      // Snapshot all list caches that might contain this item
+      const previousListQueries = queryClient.getQueriesData({
+        queryKey: canvasItemKeys.lists(),
+      });
+
+      // Optimistically remove item from all list caches
+      queryClient.setQueriesData(
+        { queryKey: canvasItemKeys.lists() },
+        (old: any) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.filter((item: any) => item.id !== itemId),
+          };
+        }
+      );
+
+      // Remove from detail cache
+      queryClient.removeQueries({
+        queryKey: canvasItemKeys.detail(itemId),
+      });
+
+      return { previousListQueries, itemId };
+    },
+    onSuccess: () => {
+      // Invalidate queries to ensure consistency
+      queryClient.invalidateQueries({
+        queryKey: canvasItemKeys.all,
+      });
+    },
+    onError: (err, variables, context) => {
+      // Rollback all list caches on error
+      if (context?.previousListQueries) {
+        context.previousListQueries.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+
+      // Refetch to ensure we have latest data
       queryClient.invalidateQueries({
         queryKey: canvasItemKeys.all,
       });

@@ -9,10 +9,15 @@
  *
  * See CODE_AUDIT_REPORT.md Issue #1 for details on why we consolidated configs.
  *
- * ENHANCED: Issue #27 - Bundle size analysis
- * After build, run: node scripts/analyze-bundle.mjs
+ * ENHANCED: Issue #27 - Bundle size analysis with @next/bundle-analyzer
+ * Run: ANALYZE=true pnpm build
  */
 import { env } from './src/lib/env.ts';
+import bundleAnalyzer from '@next/bundle-analyzer';
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+});
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -102,4 +107,5 @@ const nextConfig = {
   // CSP is handled via middleware for nonce-based implementation (ADR-0002)
 };
 
-export default nextConfig;
+// Wrap config with bundle analyzer (Issue #27)
+export default withBundleAnalyzer(nextConfig);
