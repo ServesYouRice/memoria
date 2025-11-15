@@ -8,6 +8,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
+import { sanitizeComment } from '@/lib/sanitization';
 import type { CanvasShare } from '@prisma/client';
 
 interface RouteContext {
@@ -15,7 +16,11 @@ interface RouteContext {
 }
 
 const createCommentSchema = z.object({
-  content: z.string().min(1, 'Comment cannot be empty').max(5000, 'Comment too long'),
+  content: z
+    .string()
+    .min(1, 'Comment cannot be empty')
+    .max(5000, 'Comment too long')
+    .transform((val) => sanitizeComment(val)),
 });
 
 /**

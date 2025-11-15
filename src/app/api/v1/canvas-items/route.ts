@@ -113,43 +113,66 @@ export async function GET(request: NextRequest) {
       ...(query.includeDeleted ? {} : { deletedAt: null }),
     };
 
-    // Fetch items
-    let items = await prisma.canvasItem.findMany({
-      where: baseWhere,
-      orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
-    });
-
     // Apply viewport filtering if viewport parameters are provided
     if (hasViewportParams) {
       const { minX, maxX, minY, maxY, limit, offset } = query as any;
 
-      // Filter items that intersect with viewport bounds
-      // Intersection algorithm:
+      // OPTIMIZATION: Use database-level filtering instead of in-memory filtering
+      // This significantly improves performance for large canvases (1000+ items)
+      //
+      // Intersection algorithm (implemented in SQL):
       // (item.positionX + item.width) >= minX  &&  // item right edge >= viewport left
       // item.positionX <= maxX                 &&  // item left edge <= viewport right
       // (item.positionY + item.height) >= minY &&  // item bottom edge >= viewport top
       // item.positionY <= maxY                     // item top edge <= viewport bottom
-      items = items.filter((item: CanvasItem) => {
-        const itemRight = item.positionX + item.width;
-        const itemBottom = item.positionY + item.height;
 
-        return (
-          itemRight >= minX &&
-          item.positionX <= maxX &&
-          itemBottom >= minY &&
-          item.positionY <= maxY
-        );
-      });
+      // Build WHERE conditions
+      const whereConditions = [`"canvasId" = '${query.canvasId}'`];
 
-      // Apply offset and limit
-      const total = items.length;
-      items = items.slice(offset, offset + limit);
+      if (query.type) {
+        whereConditions.push(`"type" = '${query.type}'`);
+      }
+
+      if (!query.includeDeleted) {
+        whereConditions.push(`"deletedAt" IS NULL`);
+      }
+
+      // Viewport intersection conditions
+      whereConditions.push(`("positionX" + "width") >= ${minX}`);
+      whereConditions.push(`"positionX" <= ${maxX}`);
+      whereConditions.push(`("positionY" + "height") >= ${minY}`);
+      whereConditions.push(`"positionY" <= ${maxY}`);
+
+      const whereClause = whereConditions.join(' AND ');
+
+      // Get total count for pagination
+      const countResult = await prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::int as count
+        FROM "CanvasItem"
+        WHERE ${prisma.Prisma.raw(whereClause)}
+      `;
+      const total = Number(countResult[0]?.count || 0);
+
+      // Fetch items with viewport filtering at database level
+      const items = await prisma.$queryRaw<CanvasItem[]>`
+        SELECT *
+        FROM "CanvasItem"
+        WHERE ${prisma.Prisma.raw(whereClause)}
+        ORDER BY "zIndex" ASC, "createdAt" ASC
+        LIMIT ${limit} OFFSET ${offset}
+      `;
 
       // Return with pagination metadata
       return NextResponse.json({ items, total, offset, limit });
     }
 
     // Backwards compatible response (no viewport params)
+    // Fetch all items (no viewport filtering)
+    const items = await prisma.canvasItem.findMany({
+      where: baseWhere,
+      orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
+    });
+
     return NextResponse.json({ items });
   } catch (error) {
     return errorResponse(error, request.url);

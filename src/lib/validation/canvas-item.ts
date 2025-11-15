@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { ItemType } from '@/types/canvas';
+import { sanitizePlainText, sanitizeUrl } from '@/lib/sanitization';
 
 /**
  * URL validation schema for bookmarks
@@ -29,17 +30,35 @@ const urlSchema = z
 
 /**
  * Note content validation
+ * Sanitizes text to prevent XSS attacks
  */
 export const noteContentSchema = z.object({
-  text: z.string().min(1, 'Note text cannot be empty').max(10000, 'Note text too long'),
+  text: z
+    .string()
+    .min(1, 'Note text cannot be empty')
+    .max(10000, 'Note text too long')
+    .transform((val) => sanitizePlainText(val)),
 });
 
 /**
  * Bookmark content validation
  * Phase 2 will add unfurling fields
+ * Sanitizes URL to prevent javascript: and data: URIs
  */
 export const bookmarkContentSchema = z.object({
-  url: urlSchema,
+  url: urlSchema.transform((val) => {
+    const sanitized = sanitizeUrl(val);
+    if (!sanitized) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          message: 'URL contains potentially dangerous content',
+          path: ['url'],
+        },
+      ]);
+    }
+    return sanitized;
+  }),
 });
 
 /**

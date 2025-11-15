@@ -1,8 +1,26 @@
+/**
+ * Next.js Configuration
+ *
+ * IMPORTANT: This is the ONLY Next.js config file.
+ * Do not create next.config.js or next.config.ts files.
+ *
+ * Next.js precedence: .ts > .mjs > .js
+ * We use .mjs to support ES modules and TypeScript imports (env.ts)
+ *
+ * See CODE_AUDIT_REPORT.md Issue #1 for details on why we consolidated configs.
+ */
 import { env } from './src/lib/env.ts';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // Logging
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
+  },
 
   // Optimize bundle size (ADR-0007: Performance Budgets)
   experimental: {
