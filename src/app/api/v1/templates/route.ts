@@ -8,11 +8,17 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { UnauthorizedError, ValidationError } from '@/lib/errors';
+import {
+  MAX_TEMPLATE_DESCRIPTION_LENGTH,
+  MAX_CATEGORY_NAME_LENGTH,
+  DEFAULT_PAGE_LIMIT,
+  MAX_PAGE_LIMIT,
+} from '@/lib/constants';
 
 const saveAsTemplateSchema = z.object({
   canvasId: z.string().cuid(),
-  description: z.string().min(1).max(500).optional(),
-  category: z.string().min(1).max(50).optional(),
+  description: z.string().min(1).max(MAX_TEMPLATE_DESCRIPTION_LENGTH).optional(),
+  category: z.string().min(1).max(MAX_CATEGORY_NAME_LENGTH).optional(),
 });
 
 /**
@@ -88,12 +94,9 @@ export async function GET(request: NextRequest) {
   const userId = searchParams.get('userId'); // Optional: filter by user
 
   // Pagination parameters with sensible defaults
-  const DEFAULT_LIMIT = 50;
-  const MAX_LIMIT = 100;
-
   const limit = Math.min(
-    parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10),
-    MAX_LIMIT
+    parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10),
+    MAX_PAGE_LIMIT
   );
   const offset = parseInt(searchParams.get('offset') || '0', 10);
 

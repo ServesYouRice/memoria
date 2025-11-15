@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { ItemType } from '@prisma/client';
+import { MAX_NOTE_TEXT_LENGTH, MIN_CANVAS_ITEM_WIDTH, MIN_CANVAS_ITEM_HEIGHT } from '@/lib/constants';
 
 // Note content validation
 export const noteContentSchema = z.object({
-  text: z.string().min(1, 'Note text cannot be empty').max(5000, 'Note text is too long'),
+  text: z.string().min(1, 'Note text cannot be empty').max(MAX_NOTE_TEXT_LENGTH, 'Note text is too long'),
 });
 
 // Bookmark content validation
@@ -19,8 +20,8 @@ export const createItemSchema = z.object({
   type: z.nativeEnum(ItemType),
   positionX: z.number(),
   positionY: z.number(),
-  width: z.number().min(50, 'Width must be at least 50'),
-  height: z.number().min(50, 'Height must be at least 50'),
+  width: z.number().min(MIN_CANVAS_ITEM_WIDTH, `Width must be at least ${MIN_CANVAS_ITEM_WIDTH}`),
+  height: z.number().min(MIN_CANVAS_ITEM_HEIGHT, `Height must be at least ${MIN_CANVAS_ITEM_HEIGHT}`),
   content: z.union([noteContentSchema, bookmarkContentSchema]),
 });
 
@@ -28,8 +29,8 @@ export const createItemSchema = z.object({
 export const updateItemSchema = z.object({
   positionX: z.number().optional(),
   positionY: z.number().optional(),
-  width: z.number().min(50, 'Width must be at least 50').optional(),
-  height: z.number().min(50, 'Height must be at least 50').optional(),
+  width: z.number().min(MIN_CANVAS_ITEM_WIDTH, `Width must be at least ${MIN_CANVAS_ITEM_WIDTH}`).optional(),
+  height: z.number().min(MIN_CANVAS_ITEM_HEIGHT, `Height must be at least ${MIN_CANVAS_ITEM_HEIGHT}`).optional(),
   zIndex: z.number().optional(),
   content: z.union([noteContentSchema, bookmarkContentSchema]).optional(),
   version: z.number().int().positive('Version must be a positive integer'),

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
+import {
+  API_RATE_LIMIT_WINDOW_MS,
+  API_RATE_LIMIT_MAX_REQUESTS,
+  AUTH_RATE_LIMIT_WINDOW_MS,
+  AUTH_RATE_LIMIT_MAX_REQUESTS,
+} from '@/lib/constants';
 
 const logger = createLogger('rate-limit');
 
@@ -103,14 +109,14 @@ export function rateLimit(config: RateLimitConfig) {
  * Endpoint-specific rate limits
  */
 export const authRateLimit = rateLimit({
-  maxRequests: 5,
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: AUTH_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
   keyPrefix: 'auth',
 });
 
 export const apiRateLimit = rateLimit({
-  maxRequests: 100,
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: API_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: API_RATE_LIMIT_WINDOW_MS,
   keyPrefix: 'api',
 });
 

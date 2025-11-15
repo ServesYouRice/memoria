@@ -6,6 +6,15 @@
 import { z } from 'zod';
 import { ItemType } from '@/types/canvas';
 import { sanitizePlainText, sanitizeUrl } from '@/lib/sanitization';
+import {
+  MAX_URL_LENGTH,
+  MAX_NOTE_TEXT_LENGTH,
+  MAX_ZINDEX,
+  MAX_TAG_LENGTH,
+  MAX_TAGS_PER_ITEM,
+  MAX_VIEWPORT_ITEMS,
+  DEFAULT_VIEWPORT_LIMIT,
+} from '@/lib/constants';
 
 /**
  * URL validation schema for bookmarks
@@ -15,7 +24,7 @@ import { sanitizePlainText, sanitizeUrl } from '@/lib/sanitization';
 const urlSchema = z
   .string()
   .url({ message: 'Invalid URL format' })
-  .max(2048, 'URL must be less than 2048 characters')
+  .max(MAX_URL_LENGTH, `URL must be less than ${MAX_URL_LENGTH} characters`)
   .refine(
     (url) => {
       try {
@@ -36,7 +45,7 @@ export const noteContentSchema = z.object({
   text: z
     .string()
     .min(1, 'Note text cannot be empty')
-    .max(10000, 'Note text too long')
+    .max(MAX_NOTE_TEXT_LENGTH, `Note text too long (max ${MAX_NOTE_TEXT_LENGTH} characters)`)
     .transform((val) => sanitizePlainText(val)),
 });
 
@@ -69,7 +78,7 @@ export const geometrySchema = z.object({
   positionY: z.number().finite(),
   width: z.number().positive().finite(),
   height: z.number().positive().finite(),
-  zIndex: z.number().int().min(0).max(999999),
+  zIndex: z.number().int().min(0).max(MAX_ZINDEX),
 });
 
 /**
@@ -82,9 +91,9 @@ export const createCanvasItemSchema = z.object({
   positionY: z.number().finite(),
   width: z.number().positive().finite(),
   height: z.number().positive().finite(),
-  zIndex: z.number().int().min(0).max(999999).default(0),
+  zIndex: z.number().int().min(0).max(MAX_ZINDEX).default(0),
   content: z.union([noteContentSchema, bookmarkContentSchema]),
-  tags: z.array(z.string().min(1).max(50)).max(20).default([]),
+  tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_ITEM).default([]),
 });
 
 /**
@@ -97,9 +106,9 @@ export const updateCanvasItemSchema = z.object({
   positionY: z.number().finite().optional(),
   width: z.number().positive().finite().optional(),
   height: z.number().positive().finite().optional(),
-  zIndex: z.number().int().min(0).max(999999).optional(),
+  zIndex: z.number().int().min(0).max(MAX_ZINDEX).optional(),
   content: z.union([noteContentSchema, bookmarkContentSchema]).optional(),
-  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+  tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_ITEM).optional(),
 });
 
 /**
@@ -143,7 +152,7 @@ export const viewportPaginationSchema = z.object({
   minY: z.number().finite().optional(),
   maxY: z.number().finite().optional(),
   // Pagination parameters
-  limit: z.number().int().positive().max(1000).default(100),
+  limit: z.number().int().positive().max(MAX_VIEWPORT_ITEMS).default(DEFAULT_VIEWPORT_LIMIT),
   offset: z.number().int().nonnegative().default(0),
 });
 

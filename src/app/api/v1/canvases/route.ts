@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
+import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/lib/constants';
 
 /**
  * GET /api/v1/canvases
@@ -32,13 +33,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Pagination parameters
-    const DEFAULT_LIMIT = 50;
-    const MAX_LIMIT = 100;
-
     const { searchParams } = new URL(request.url);
     const limit = Math.min(
-      parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10),
-      MAX_LIMIT
+      parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10),
+      MAX_PAGE_LIMIT
     );
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 

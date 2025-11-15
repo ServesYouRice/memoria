@@ -10,6 +10,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useUpdateCanvasItem } from './use-canvas-items';
 import { UpdateCanvasItemInput } from '@/lib/validation/canvas-item';
+import { AUTOSAVE_DEBOUNCE_MS } from '@/lib/constants';
 
 interface UseAutosaveOptions {
   itemId: string;
@@ -37,7 +38,7 @@ interface UseAutosaveOptions {
 export function useAutosave({
   itemId,
   version,
-  debounceMs = 500,
+  debounceMs = AUTOSAVE_DEBOUNCE_MS,
   onSuccess,
   onError,
 }: UseAutosaveOptions) {
