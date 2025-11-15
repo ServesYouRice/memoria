@@ -54,7 +54,9 @@ model Canvas {
 
   @@index([userId, createdAt])
   @@index([userId, updatedAt])
+  @@index([userId, isTemplate]) // For template listing by user (Issue #12)
   @@index([shareToken])
+  @@index([isPublic]) // For public canvas discovery (Issue #12)
   @@index([isTemplate, templateCategory])
   @@index([isTemplate, usageCount, createdAt])
 }
@@ -92,6 +94,7 @@ model CanvasItem {
   @@index([canvasId, zIndex])
   @@index([canvasId, updatedAt])
   @@index([canvasId, positionX, positionY])
+  @@index([canvasId, createdById]) // For filtering by creator (Issue #12)
 
   comments    Comment[]
 }
@@ -108,6 +111,7 @@ model Comment {
   deletedAt   DateTime?
 
   @@index([itemId, deletedAt])
+  @@index([itemId, createdAt]) // For chronological comments (Issue #12)
   @@index([userId])
   @@index([createdAt])
 }
