@@ -78,8 +78,8 @@ A proposal is **ACCEPTED** when either (a) the User casts a final `Approve` vote
 | ADR-0007 | Performance Budgets & CI Guard | Accepted | `docs/adr/ADR-0007-performance-budgets-and-ci-guard.md` |
 | ADR-0008 | Auth, Session & CSRF Policy | Accepted | `docs/adr/ADR-0008-auth-session-and-csrf-policy.md` |
 | ADR-0009 | Autosave & Optimistic Concurrency | Accepted | `docs/adr/ADR-0009-autosave-delta-updates-and-concurrency.md` |
-| ADR-0010 | Real-Time Collaboration Strategy | Proposed | `docs/adr/ADR-0010-realtime-collaboration-strategy.md` |
-| ADR-0011 | Server-Side Caching Strategy | Proposed | `docs/adr/ADR-0011-server-side-caching-strategy.md` |
+| ADR-0010 | Real-Time Collaboration Strategy (Y.js CRDT) | Accepted | `docs/adr/ADR-0010-realtime-collaboration-strategy.md` |
+| ADR-0011 | Server-Side Caching Strategy (Deferred w/ Triggers) | Accepted | `docs/adr/ADR-0011-server-side-caching-strategy.md` |
 | ADR-0012 | Security Headers & CORS Policy | Accepted | `docs/adr/ADR-0012-security-headers-and-cors.md` |
 
 ---
@@ -294,3 +294,182 @@ This plan executes the MVP by delivering testable, end-to-end value in each slic
 *   **Slice 6: MVP Hardening & Testing**
     *   **Goal:** The MVP is secure and well-tested.
     *   **Tasks:** Implement the strict CSP and other security headers. Write the final E2E tests covering all MVP functionality.
+
+---
+
+## 6. Known Issues & Technical Debt
+
+### 6.1. Critical Issues (P0) - Production Blockers
+
+1. **Rate Limiting (Issue #24)** - `src/middleware/rate-limit.ts`
+   - **Problem**: In-memory rate limiting won't work in multi-instance deployments
+   - **Impact**: Bypass rate limiting in production clusters
+   - **Fix**: Implement Redis-based rate limiting (see ADR-0011 triggers)
+   - **Workaround**: Deploy as single instance until Redis implemented
+
+2. **Email Service Integration (Issue #36)** - Auth API routes
+   - **Problem**: Email verification and password reset log to console instead of sending emails
+   - **Impact**: Critical auth features non-functional
+   - **Fix**: Integrate SendGrid, AWS SES, or similar email service
+   - **Files**:
+     - `src/app/api/v1/auth/forgot-password/route.ts:59`
+     - `src/app/api/v1/auth/send-verification/route.ts:60`
+
+3. **Missing E2E Tests (Issue #28)**
+   - **Problem**: No end-to-end test coverage for critical flows
+   - **Impact**: Cannot verify production readiness
+   - **Fix**: Add Playwright tests for:
+     - User registration and login
+     - Canvas CRUD and item manipulation
+     - Sharing and collaboration
+     - Undo/redo functionality
+
+4. **N+1 Query in Comments (Issue #11)** - `src/app/api/v1/items/[itemId]/comments/route.ts:42-52`
+   - **Problem**: Loads unnecessary data with multiple joins
+   - **Impact**: Performance degradation with active canvases
+   - **Fix**: Use selective `select` instead of full `include`
+
+### 6.2. High Priority Issues (P1) - Type Safety & Performance
+
+5. **Type Safety Issues (Issues #1-3)**
+   - **Files**:
+     - `src/app/api/v1/canvas-items/route.ts:43` - `content: data.content as any`
+     - `src/app/api/v1/canvas-items/[itemId]/route.ts:91` - `content: body.content as any`
+     - `src/app/api/v1/templates/route.ts:82` - `const where: any = {}`
+   - **Fix**: Use proper Prisma types (`Prisma.JsonValue`, `Prisma.CanvasWhereInput`)
+
+6. **Session Type Guard Missing (Issue #5)** - `src/lib/api/auth.ts:22`
+   - **Problem**: Type assertion without runtime validation
+   - **Impact**: Potential runtime errors if session.user.id is undefined
+   - **Fix**: Add proper type guard before accessing session.user.id
+
+7. **Templates Route N+1 (Issue #12)** - `src/app/api/v1/templates/route.ts:94-112`
+   - **Problem**: Loads all items for all templates
+   - **Impact**: Large payloads, slow response times
+   - **Fix**: Return item count only or add pagination
+
+8. **Viewport Filtering Limitation (Issue #16)** - `src/app/api/v1/canvas-items/route.ts:116-145`
+   - **Problem**: Fetches all items then filters in memory
+   - **Impact**: Performance degrades with large canvases (10k+ items)
+   - **Note**: Current implementation is acceptable; future enhancement requires PostGIS
+
+9. **Inconsistent Auth Patterns (Issue #23)**
+   - **Problem**: Some routes use `requireAuth()`, others use `auth()` directly
+   - **Fix**: Standardize on `requireAuth()` helper across all routes
+
+10. **Missing API Tests (Issue #29)**
+    - **Problem**: API routes lack unit tests
+    - **Impact**: Cannot verify contract, error handling, validation
+    - **Fix**: Add Jest/Vitest tests for all API routes
+
+11. **Missing Hook Tests (Issue #30)**
+    - **Problem**: React hooks lack unit tests
+    - **Impact**: Cannot verify behavior, edge cases
+    - **Fix**: Add React Testing Library tests for all custom hooks
+
+### 6.3. Medium Priority Issues (P2) - Code Quality
+
+12. **Inconsistent Error Handling (Issue #6)**
+    - **Problem**: Mix of `errorResponse()` helper and manual error responses
+    - **Fix**: Migrate all routes to use `errorResponse()` for consistency
+
+13. **Console Logging (Issue #9)**
+    - **Problem**: 15+ occurrences of `console.error` instead of structured logger
+    - **Fix**: Replace with `logger` from `@/lib/logger`
+
+14. **Missing Memoization (Issues #13-14)** - Canvas components
+    - **Files**:
+      - `src/app/canvas/[canvasId]/page.tsx:253-305` - Event handlers
+      - `src/features/canvas/components/Canvas.tsx:107-121` - Item rendering
+    - **Fix**: Wrap handlers in `useCallback` and items in `useMemo`
+
+15. **QueryClient Instantiation (Issue #15)** - `src/app/canvas/[canvasId]/page.tsx:29`
+    - **Problem**: Created at module level
+    - **Fix**: Use singleton pattern at app level
+
+16. **Business Logic in Components (Issue #21)** - `src/app/canvas/[canvasId]/page.tsx:126-240`
+    - **Problem**: Keyboard handlers and delete logic in page component
+    - **Fix**: Extract to `useCanvasKeyboardShortcuts` hook
+
+### 6.4. Low Priority Issues (P3) - Polish
+
+17. **Debug Console Logs (Issue #8)**
+    - **Files**:
+      - `src/app/api/v1/auth/send-verification/route.ts:52-58`
+      - `src/app/api/v1/auth/forgot-password/route.ts:51-54`
+    - **Fix**: Remove or replace with proper logger before production
+
+18. **Missing Zoom Persistence (Issue #18)** - ADR-0009 Violation
+    - **File**: `src/app/canvas/[canvasId]/page.tsx:337`
+    - **Problem**: Zoom level not saved to database
+    - **Fix**: Implement debounced zoom persistence
+
+19. **Missing Component Tests (Issue #31)**
+    - **Problem**: No tests for Canvas, NoteItem, BookmarkItem, auth forms
+    - **Fix**: Add component tests with Testing Library
+
+20. **Code Duplication (Issue #38)** - Delete logic
+    - **File**: `src/app/canvas/[canvasId]/page.tsx:142-228, 355-393`
+    - **Fix**: Extract to `createDeleteCommand` utility
+
+21. **Missing JSDoc (Issue #39)**
+    - **Problem**: Inconsistent API documentation
+    - **Fix**: Add JSDoc to all public APIs
+
+### 6.5. Architectural Notes
+
+**Database Indexes:**
+- Missing composite index for comments: `@@index([itemId, deletedAt, createdAt])`
+
+**Performance Budgets (ADR-0007):**
+- Current implementation: Unknown (needs measurement)
+- Target: Landing <100KB, Canvas <150KB gzipped JS
+- Action: Add bundle size checks to CI
+
+**Test Coverage:**
+- Current: ~15% (estimated)
+- Target: 80%+ for API routes and business logic
+- Gap: E2E tests, hook tests, component tests
+
+**Security:**
+- ✅ CSP implemented (ADR-0012)
+- ✅ Security headers configured
+- ⚠️ Rate limiting not production-ready (single instance only)
+- ⚠️ CSRF protection needs verification
+
+### 6.6. Future Enhancements (Post-MVP)
+
+These features are deferred per ADR decisions:
+
+1. **Redis Caching (ADR-0011)** - Implement when triggers met:
+   - P95 latency > 500ms for 3+ days
+   - Database CPU > 70% for 24+ hours
+   - Total items > 100,000
+   - Concurrent users > 500
+
+2. **Real-Time Collaboration (ADR-0010)** - Phase 3:
+   - Y.js CRDT implementation
+   - WebSocket infrastructure
+   - Presence indicators
+   - Conflict resolution
+
+3. **Production Infrastructure:**
+   - Multi-instance deployment with Redis
+   - Database read replicas
+   - CDN for static assets
+   - Log aggregation (CloudWatch, Datadog)
+   - Error tracking (Sentry)
+
+### 6.7. Prisma Client Workaround (Development Only)
+
+**Issue**: Prisma engines cannot be downloaded in restricted network environments
+
+**Current Workaround** (development):
+- Manual SQL migration execution
+- Symlink to `@prisma/client` for imports
+- Not suitable for production
+
+**Production Solution**:
+- Use environment with normal internet access
+- Pre-bundle Prisma engines in Docker image
+- Or use Prisma binary targets in `schema.prisma`

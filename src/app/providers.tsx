@@ -2,6 +2,7 @@
  * Application Providers
  *
  * ENHANCED: Issue #42 - Dark mode support
+ * ENHANCED: Phase 4 - Global keyboard shortcuts
  *
  * Wraps the application with necessary providers:
  * - ErrorBoundary for React error handling
@@ -9,6 +10,7 @@
  * - QueryClientProvider for server state
  * - ThemeModeProvider for dark mode state
  * - ThemeProvider for MUI theming
+ * - GlobalShortcutsProvider for keyboard shortcuts
  */
 
 'use client';
@@ -17,11 +19,12 @@ import React from 'react';
 import { SessionProvider } from 'next-auth/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { ThemeProvider } from '@mui/material/styles';
+import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { createAppTheme } from '@/lib/theme';
 import { ThemeModeProvider, useThemeMode } from '@/lib/theme-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { GlobalShortcutsProvider } from '@/components/GlobalShortcutsProvider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,11 +43,13 @@ function ThemedProviders({ children }: { children: React.ReactNode }) {
   const theme = React.useMemo(() => createAppTheme(mode), [mode]);
 
   return (
-    <ThemeProvider theme={theme}>
+    <MuiThemeProvider theme={theme}>
       <CssBaseline />
-      {children}
-      {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
-    </ThemeProvider>
+      <GlobalShortcutsProvider>
+        {children}
+        {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
+      </GlobalShortcutsProvider>
+    </MuiThemeProvider>
   );
 }
 

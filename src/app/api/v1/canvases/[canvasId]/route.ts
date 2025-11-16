@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { requireAuth, requireCanvasOwnership } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
 const updateCanvasSchema = z.object({
@@ -21,51 +22,11 @@ export async function PATCH(
   { params }: { params: { canvasId: string } }
 ) {
   try {
-    // Authentication check
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          type: 'https://canvascollect.com/errors/unauthorized',
-          title: 'Unauthorized',
-          status: 401,
-          detail: 'You must be logged in to access this resource',
-        },
-        { status: 401 }
-      );
-    }
-
+    const { userId } = await requireAuth();
     const { canvasId } = params;
 
     // Verify canvas ownership
-    const canvas = await prisma.canvas.findUnique({
-      where: { id: canvasId },
-      select: { userId: true },
-    });
-
-    if (!canvas) {
-      return NextResponse.json(
-        {
-          type: 'https://canvascollect.com/errors/not-found',
-          title: 'Not Found',
-          status: 404,
-          detail: 'Canvas not found',
-        },
-        { status: 404 }
-      );
-    }
-
-    if (canvas.userId !== session.user.id) {
-      return NextResponse.json(
-        {
-          type: 'https://canvascollect.com/errors/forbidden',
-          title: 'Forbidden',
-          status: 403,
-          detail: 'You do not have permission to update this canvas',
-        },
-        { status: 403 }
-      );
-    }
+    await requireCanvasOwnership(canvasId, userId);
 
     // Parse and validate request body
     const body = await request.json();
@@ -95,7 +56,7 @@ export async function PATCH(
       );
     }
 
-    console.error('Error updating canvas:', error);
+    logger.error({ error, canvasId: params.canvasId }, 'Error updating canvas');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',

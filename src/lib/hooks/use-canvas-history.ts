@@ -1,12 +1,63 @@
 /**
  * Canvas History Hook
  *
- * Implements undo/redo functionality using the Command pattern
- * Tracks canvas operations and allows users to undo/redo changes
+ * Implements undo/redo functionality using the Command pattern.
+ * Tracks canvas operations in command stacks and allows time-travel debugging.
+ *
+ * @module lib/hooks/use-canvas-history
+ *
+ * ## Architecture
+ * Implements the Command pattern with:
+ * - Undo/redo stacks with configurable size limits
+ * - Atomic command execution with error handling
+ * - Batch command support for grouped operations
+ * - Automatic redo stack clearing on new commands
+ *
+ * ## Command Types
+ * - `create`: Add new item to canvas
+ * - `delete`: Remove item from canvas
+ * - `update`: Modify existing item
+ * - `batch`: Group multiple commands
+ *
+ * ## Future Enhancements
+ * - Command serialization for session restore
+ * - Network sync for collaborative editing
+ * - Command merging for similar operations
+ *
+ * @example
+ * ```typescript
+ * function CanvasEditor({ canvasId }: { canvasId: string }) {
+ *   const { addCommand, undo, redo, canUndo, canRedo } = useCanvasHistory({
+ *     maxHistorySize: 50
+ *   });
+ *
+ *   const handleCreateItem = async (item: CanvasItem) => {
+ *     // Add command for undo/redo
+ *     addCommand({
+ *       type: 'create',
+ *       description: `Create ${item.type}`,
+ *       execute: async () => {
+ *         await createItem(item);
+ *       },
+ *       undo: async () => {
+ *         await deleteItem(item.id);
+ *       }
+ *     });
+ *   };
+ *
+ *   return (
+ *     <div>
+ *       <button onClick={undo} disabled={!canUndo}>Undo</button>
+ *       <button onClick={redo} disabled={!canRedo}>Redo</button>
+ *     </div>
+ *   );
+ * }
+ * ```
  */
 
 import { useState, useCallback, useRef } from 'react';
 import { CanvasItem, ItemType } from '@/types/canvas';
+import { logger } from '@/lib/logger';
 
 export interface Command {
   type: 'create' | 'delete' | 'update' | 'batch';
@@ -93,7 +144,7 @@ export function useCanvasHistory(options: UseCanvasHistoryOptions = {}) {
       setUndoStack((prev) => prev.slice(0, -1));
       setRedoStack((prev) => [...prev, command]);
     } catch (error) {
-      console.error('Undo failed:', error);
+      logger.error({ error, command: command.description }, 'Undo operation failed');
       throw error;
     } finally {
       isExecutingRef.current = false;
@@ -120,7 +171,7 @@ export function useCanvasHistory(options: UseCanvasHistoryOptions = {}) {
       setRedoStack((prev) => prev.slice(0, -1));
       setUndoStack((prev) => [...prev, command]);
     } catch (error) {
-      console.error('Redo failed:', error);
+      logger.error({ error, command: command.description }, 'Redo operation failed');
       throw error;
     } finally {
       isExecutingRef.current = false;

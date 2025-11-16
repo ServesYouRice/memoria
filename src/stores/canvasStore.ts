@@ -1,16 +1,61 @@
+/**
+ * Canvas UI State Store
+ *
+ * Zustand store for managing ephemeral canvas UI state including viewport,
+ * tool selection, and item selection. Follows strict separation of concerns.
+ *
+ * @module stores/canvasStore
+ *
+ * ## Architecture
+ * Per ADR-0005 (State Management Policy):
+ * - **This store**: Ephemeral UI state (zoom, pan, selection, active tool)
+ * - **TanStack Query**: Server-persisted data (canvases, items)
+ * - **Separation**: UI state here, server state in hooks
+ *
+ * ## State Management
+ * - `currentZoom/Pan`: Live viewport state, updated during pan/zoom gestures
+ * - `activeTool`: Currently selected tool (select, pan, note, bookmark)
+ * - `selectedItemId`: Currently selected canvas item for editing
+ * - `contextMenu`: Position and visibility of right-click menu
+ *
+ * ## Persistence
+ * Viewport state (zoom/pan) is persisted to server via debounced mutations
+ * when user stops interacting. Current state here is source of truth for UI.
+ *
+ * @example
+ * ```typescript
+ * function CanvasToolbar() {
+ *   const { activeTool, setActiveTool } = useCanvasStore();
+ *
+ *   return (
+ *     <div>
+ *       <button
+ *         onClick={() => setActiveTool('select')}
+ *         className={activeTool === 'select' ? 'active' : ''}
+ *       >
+ *         Select
+ *       </button>
+ *       <button
+ *         onClick={() => setActiveTool('note')}
+ *         className={activeTool === 'note' ? 'active' : ''}
+ *       >
+ *         Add Note
+ *       </button>
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
+ * @see {@link useCanvas} for server-persisted canvas data
+ * @see {@link useCanvasItems} for canvas items data
+ */
+
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 
 /**
- * Canvas UI State Store
- *
- * Per ADR-0005 (State Management Policy):
- * - This store manages ONLY ephemeral UI state
- * - Server-persisted data (canvases, items) is managed by TanStack Query
- * - Current zoom/pan positions are stored here for UI reactivity
- * - Persisted zoom/pan is saved via debounced mutations
+ * Available canvas tools for user interaction
  */
-
 export type CanvasTool = 'select' | 'pan' | 'note' | 'bookmark';
 
 interface CanvasUIState {

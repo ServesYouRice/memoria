@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCanvasOwnership } from '@/lib/api/auth';
+import { requireAuth, requireCanvasAccess } from '@/lib/api/auth';
 import { errorResponse } from '@/lib/errors';
 import {
   createCanvasItemSchema,
@@ -25,17 +25,18 @@ import type { CanvasItem } from '@prisma/client';
 /**
  * POST /api/v1/canvas-items
  * Create a new canvas item (NOTE or BOOKMARK)
+ * Phase 3: Supports shared canvas access with EDIT permission
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const body = await request.json();
 
     // Validate input
     const data = createCanvasItemSchema.parse(body);
 
-    // Verify canvas ownership
-    await requireCanvasOwnership(data.canvasId, userId);
+    // Verify user has EDIT permission (via ownership or share)
+    await requireCanvasAccess(data.canvasId, userId, email, 'EDIT');
 
     // Create item
     const item = await prisma.canvasItem.create({
@@ -64,6 +65,8 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/v1/canvas-items?canvasId={id}&type={NOTE|BOOKMARK}
  *
+ * Phase 3: Supports shared canvas access with VIEW permission
+ *
  * Supports viewport-based pagination:
  * - If minX, maxX, minY, maxY are provided: filters items by viewport intersection
  * - If viewport params are omitted: returns all items (backwards compatible)
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const searchParams = request.nextUrl.searchParams;
 
     // Check if viewport parameters are provided
@@ -109,8 +112,8 @@ export async function GET(request: NextRequest) {
           includeDeleted: searchParams.get('includeDeleted') === 'true',
         });
 
-    // Verify canvas ownership
-    await requireCanvasOwnership(query.canvasId, userId);
+    // Verify user has VIEW permission (via ownership or share)
+    await requireCanvasAccess(query.canvasId, userId, email, 'VIEW');
 
     // Base where clause (always applied)
     const baseWhere = {
