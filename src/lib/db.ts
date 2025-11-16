@@ -1,8 +1,17 @@
 /**
- * Prisma Client Singleton
- * Prevents multiple instances in development
+ * Prisma Database Client
  *
- * ENHANCED: Issue #13, #22 - Connection pool and timeout configuration
+ * Singleton instance of Prisma Client for database operations.
+ * Prevents multiple instances in development with hot-reloading.
+ *
+ * @module lib/db
+ *
+ * ## Configuration
+ * - Development: Logs queries, errors, and warnings
+ * - Production: Logs errors only
+ * - Singleton pattern prevents connection pool exhaustion
+ *
+ * ## ENHANCED: Issue #13, #22 - Connection pool and timeout configuration
  *
  * Connection Pooling Configuration:
  * The database connection pool is configured via DATABASE_URL query parameters:
@@ -18,6 +27,18 @@
  * - Vercel/AWS Lambda: connection_limit=5, pool_timeout=10
  * - Traditional server: connection_limit=20, pool_timeout=30
  * - Use PgBouncer for additional connection pooling
+ *
+ * ## Usage
+ * ```typescript
+ * import { prisma } from '@/lib/db';
+ *
+ * const users = await prisma.user.findMany();
+ * const canvas = await prisma.canvas.create({
+ *   data: { name: 'My Canvas', userId: user.id }
+ * });
+ * ```
+ *
+ * @see {@link https://www.prisma.io/docs Prisma Documentation}
  */
 
 import { PrismaClient } from '@prisma/client';

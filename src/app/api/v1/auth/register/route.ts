@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { hashPassword } from '@/lib/auth/password';
 import { validatePasswordStrength } from '@/lib/validation/password';
 import {
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error({ error }, 'Registration error');
     return problemToResponse(Problems.InternalServerError());
   }
 }

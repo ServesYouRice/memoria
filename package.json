@@ -70,7 +70,6 @@
     "@typescript-eslint/parser": "^8.15.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^2.1.6",
-    "canvas": "^2.11.2",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.0.3",
     "eslint-config-prettier": "^9.1.0",
@@ -100,5 +99,8 @@
     "*.{json,md}": [
       "prettier --write"
     ]
+  },
+  "optionalDependencies": {
+    "canvas": "^3.2.0"
   }
 }

@@ -21,12 +21,12 @@ import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
 export async function requireAuth() {
   const session = await auth();
 
-  if (!session || !session.user?.email) {
+  if (!session || !session.user?.email || !session.user?.id) {
     throw new UnauthorizedError('You must be logged in to access this resource');
   }
 
   return {
-    userId: session.user.id as string,
+    userId: session.user.id,
     email: session.user.email,
   };
 }

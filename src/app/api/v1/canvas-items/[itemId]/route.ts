@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireItemOwnership } from '@/lib/api/auth';
 import { errorResponse, NotFoundError, VersionMismatchError } from '@/lib/errors';
@@ -88,7 +89,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         ...(data.width !== undefined && { width: data.width }),
         ...(data.height !== undefined && { height: data.height }),
         ...(data.zIndex !== undefined && { zIndex: data.zIndex }),
-        ...(data.content !== undefined && { content: data.content as any }),
+        ...(data.content !== undefined && { content: data.content as Prisma.JsonValue }),
         ...(data.tags !== undefined && { tags: data.tags }),
         version: { increment: 1 },
         updatedById: userId,

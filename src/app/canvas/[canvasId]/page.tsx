@@ -10,7 +10,6 @@ import React, { useState, useRef } from 'react';
 import { Stage, Layer } from 'react-konva';
 import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
 import { NoteAdd, Bookmark } from '@mui/icons-material';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
 import { useSelectionBox } from '@/lib/hooks/use-selection-box';
@@ -25,8 +24,6 @@ import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
 import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplateDialog';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
-
-const queryClient = new QueryClient();
 
 interface CanvasPageProps {
   params: {
@@ -644,9 +641,6 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 }
 
 export default function CanvasPage({ params }: CanvasPageProps) {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <CanvasContent canvasId={params.canvasId} />
-    </QueryClientProvider>
-  );
+  // QueryClientProvider is already provided at the app level
+  return <CanvasContent canvasId={params.canvasId} />;
 }

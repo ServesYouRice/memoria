@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
+import { logger } from '@/lib/logger';
 
 /**
  * RFC 7807 Problem Details interface
@@ -379,7 +380,7 @@ export const Problems = {
  * NextResponse error handler (for Next.js API routes)
  */
 export function errorResponse(error: unknown, instance?: string): NextResponse<ProblemDetail> {
-  console.error('API Error:', error);
+  logger.error({ error, instance }, 'API Error');
 
   if (error instanceof ApiError) {
     const problemDetail = error.toProblemDetail(instance);
