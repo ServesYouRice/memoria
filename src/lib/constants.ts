@@ -342,3 +342,35 @@ export const MAX_SHARED_CHUNKS_SIZE_KB = 500;
  * Default: 250 KB
  */
 export const MAX_PAGE_BUNDLE_SIZE_KB = 250;
+
+// ============================================================================
+// Real-time Updates & Polling (Issue #31)
+// ============================================================================
+
+/**
+ * Polling interval for collaborative updates when tab is active
+ * Default: 5000ms (5 seconds)
+ *
+ * This provides near real-time updates for shared canvases without
+ * requiring WebSocket infrastructure. Balances responsiveness with
+ * server load and API rate limits.
+ */
+export const POLLING_INTERVAL_ACTIVE_MS = 5000;
+
+/**
+ * Polling interval for collaborative updates when tab is inactive
+ * Default: 30000ms (30 seconds)
+ *
+ * Reduced polling frequency when user is not actively viewing the tab.
+ * Conserves resources while still maintaining eventual consistency.
+ */
+export const POLLING_INTERVAL_INACTIVE_MS = 30000;
+
+/**
+ * Enable polling for shared canvases
+ * Default: true
+ *
+ * Set to false to disable polling and rely on manual refetches only.
+ * Polling provides collaborative updates without WebSocket infrastructure.
+ */
+export const ENABLE_COLLABORATIVE_POLLING = true;

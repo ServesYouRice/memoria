@@ -2,15 +2,23 @@
  * TanStack Query hooks for Canvas Items
  * Following ADR-0005: State Management Policy
  * Server state is managed via TanStack Query
+ *
+ * ENHANCED: Issue #31 - Polling-based real-time updates for collaboration
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import {
   CreateCanvasItemInput,
   UpdateCanvasItemInput,
   DeleteCanvasItemInput,
 } from '@/lib/validation/canvas-item';
+import {
+  POLLING_INTERVAL_ACTIVE_MS,
+  POLLING_INTERVAL_INACTIVE_MS,
+  ENABLE_COLLABORATIVE_POLLING,
+} from '@/lib/constants';
 
 /**
  * Viewport parameters for viewport-based loading
@@ -153,6 +161,92 @@ export function useCanvasItem(itemId: string) {
     queryKey: canvasItemKeys.detail(itemId),
     queryFn: () => api.getItem(itemId),
     enabled: !!itemId,
+  });
+}
+
+/**
+ * Custom hook to track page visibility for adaptive polling
+ * Uses the Page Visibility API to detect when tab is active/inactive
+ *
+ * FEATURE: Issue #31 - Real-time updates with adaptive polling
+ */
+function usePageVisibility() {
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsVisible(!document.hidden);
+    };
+
+    // Set initial visibility
+    setIsVisible(!document.hidden);
+
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  return isVisible;
+}
+
+/**
+ * List canvas items with polling-based real-time updates
+ *
+ * FEATURE: Issue #31 - Real-time updates for collaboration
+ *
+ * This hook extends useCanvasItems with adaptive polling that:
+ * - Polls every 5 seconds when tab is active
+ * - Polls every 30 seconds when tab is inactive (battery/resource saving)
+ * - Automatically pauses when polling is disabled
+ * - Provides near real-time collaboration without WebSocket infrastructure
+ *
+ * Usage for shared canvases:
+ * ```
+ * const { data, isLoading } = useCanvasItemsWithPolling(canvasId, {
+ *   enablePolling: canvas.isShared, // Only poll for shared canvases
+ *   viewport: { minX, maxX, minY, maxY },
+ * });
+ * ```
+ *
+ * @param canvasId - The canvas ID to fetch items for
+ * @param options - Configuration options
+ * @param options.type - Optional item type filter
+ * @param options.viewport - Optional viewport parameters for efficient loading
+ * @param options.enablePolling - Enable/disable polling (default: true for shared canvases)
+ */
+export function useCanvasItemsWithPolling(
+  canvasId: string,
+  options?: {
+    type?: ItemType;
+    viewport?: ViewportParams;
+    enablePolling?: boolean;
+  }
+) {
+  const isPageVisible = usePageVisibility();
+  const { type, viewport, enablePolling = ENABLE_COLLABORATIVE_POLLING } = options || {};
+
+  // Determine refetch interval based on visibility and polling config
+  const refetchInterval =
+    enablePolling && isPageVisible
+      ? POLLING_INTERVAL_ACTIVE_MS // 5s when active
+      : enablePolling && !isPageVisible
+      ? POLLING_INTERVAL_INACTIVE_MS // 30s when inactive
+      : false; // No polling if disabled
+
+  return useQuery({
+    queryKey: canvasItemKeys.list(canvasId, type, viewport),
+    queryFn: () => api.listItems(canvasId, type, viewport),
+    enabled: !!canvasId,
+    refetchInterval,
+    // Keep previous data while refetching to prevent UI flicker
+    placeholderData: (previousData) => previousData,
+    // Refetch on window focus for immediate updates when user returns
+    refetchOnWindowFocus: enablePolling,
+    // Stale time matches polling interval to prevent redundant fetches
+    staleTime: enablePolling ? POLLING_INTERVAL_ACTIVE_MS : Infinity,
   });
 }
 
