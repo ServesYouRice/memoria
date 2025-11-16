@@ -54,7 +54,7 @@ const eslintConfig = [
       'react-hooks/exhaustive-deps': 'error',
 
       // General code quality
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-console': 'error', // FIXED: Issue #36 - Use logger instead of console
       'prefer-const': 'error',
       'no-var': 'error',
     },

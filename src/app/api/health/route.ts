@@ -1,13 +1,30 @@
+/**
+ * Health Check Endpoint
+ *
+ * ENHANCED: Issue #28 - Detailed health checks
+ *
+ * Returns comprehensive health status including:
+ * - Database connectivity and response time
+ * - Memory usage and limits
+ * - System uptime
+ * - Application version
+ */
+
 import { NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
+import { API_VERSION } from '@/lib/api/versioning';
 
 const logger = createLogger('health');
-const prisma = new PrismaClient();
+
+// Track when the application started
+const startTime = Date.now();
 
 interface HealthCheck {
   status: 'healthy' | 'degraded' | 'unhealthy';
   timestamp: string;
+  version: string;
+  uptime: number;
   checks: {
     database: {
       status: 'pass' | 'fail';
@@ -19,6 +36,8 @@ interface HealthCheck {
       used: number;
       total: number;
       percentage: number;
+      rss: number;
+      external: number;
     };
   };
 }
@@ -56,15 +75,21 @@ function checkMemory(): HealthCheck['checks']['memory'] {
     used: usedMemory,
     total: totalMemory,
     percentage: Math.round(percentage * 100) / 100,
+    rss: usage.rss, // Resident Set Size - total memory allocated
+    external: usage.external, // Memory used by C++ objects bound to JS
   };
 }
 
 export async function GET() {
   try {
-    const [database, memory] = await Promise.all([checkDatabase(), Promise.resolve(checkMemory())]);
+    const [database, memory] = await Promise.all([
+      checkDatabase(),
+      Promise.resolve(checkMemory()),
+    ]);
 
     const checks = { database, memory };
 
+    // Calculate overall status
     let overallStatus: HealthCheck['status'] = 'healthy';
     if (database.status === 'fail') {
       overallStatus = 'unhealthy';
@@ -74,21 +99,33 @@ export async function GET() {
       overallStatus = 'unhealthy';
     }
 
+    // Calculate uptime in seconds
+    const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+
     const health: HealthCheck = {
       status: overallStatus,
       timestamp: new Date().toISOString(),
+      version: API_VERSION,
+      uptime: uptimeSeconds,
       checks,
     };
 
     const statusCode = overallStatus === 'healthy' ? 200 : 503;
 
-    return NextResponse.json(health, { status: statusCode });
+    // Add cache control headers - don't cache health checks
+    const response = NextResponse.json(health, { status: statusCode });
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+
+    return response;
   } catch (error) {
     logger.error({ error }, 'Health check failed');
     return NextResponse.json(
       {
         status: 'unhealthy',
         timestamp: new Date().toISOString(),
+        version: API_VERSION,
         error: 'Internal server error',
       },
       { status: 500 }

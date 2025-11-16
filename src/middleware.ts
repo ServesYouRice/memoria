@@ -1,15 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { nanoid } from 'nanoid';
 import { applyCSP } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';
-import { apiRateLimit } from './middleware/rate-limit';
+import { apiRateLimit, authRateLimit } from './middleware/rate-limit';
+import { applyCors, handleCorsPreflight } from './middleware/cors';
+import { getVersionHeaders, validateApiVersion } from './lib/api/versioning';
 import { createRequestLogger } from './lib/logger';
 
 export function middleware(request: NextRequest) {
+  // Generate or extract request ID for tracing (Issue #24)
+  const requestId = request.headers.get('x-request-id') || nanoid(16);
+
   const logger = createRequestLogger();
 
-  // Log incoming request
+  // Handle CORS preflight requests (Issue #15)
+  if (request.method === 'OPTIONS') {
+    const preflightResponse = handleCorsPreflight(request);
+    if (preflightResponse) {
+      return preflightResponse;
+    }
+  }
+
+  // Log incoming request with request ID
   logger.info(
     {
+      requestId,
       method: request.method,
       url: request.url,
       userAgent: request.headers.get('user-agent'),
@@ -17,7 +32,45 @@ export function middleware(request: NextRequest) {
     'Incoming request'
   );
 
-  // Apply rate limiting for API routes
+  // Validate API version (Issue #23)
+  const pathname = request.nextUrl.pathname;
+  if (pathname.startsWith('/api/v')) {
+    const versionError = validateApiVersion(pathname);
+    if (versionError) {
+      const errorResponse = NextResponse.json(
+        {
+          type: 'https://canvascollect.com/errors/unsupported-version',
+          title: 'Unsupported API Version',
+          status: 400,
+          detail: versionError,
+        },
+        { status: 400 }
+      );
+      errorResponse.headers.set('x-request-id', requestId);
+      return errorResponse;
+    }
+  }
+
+  // Apply rate limiting for authentication routes (Issue #19)
+  // Stricter rate limits to prevent brute force attacks
+  if (
+    request.nextUrl.pathname.startsWith('/api/v1/auth') ||
+    request.nextUrl.pathname.startsWith('/api/auth')
+  ) {
+    const rateLimitResponse = authRateLimit(request);
+    if (rateLimitResponse) {
+      logger.warn(
+        {
+          pathname: request.nextUrl.pathname,
+          ip: request.headers.get('x-forwarded-for'),
+        },
+        'Auth rate limit exceeded'
+      );
+      return rateLimitResponse;
+    }
+  }
+
+  // Apply rate limiting for general API routes
   if (request.nextUrl.pathname.startsWith('/api/v1')) {
     const rateLimitResponse = apiRateLimit(request);
     if (rateLimitResponse) {
@@ -28,11 +81,25 @@ export function middleware(request: NextRequest) {
   // Continue with request
   const response = NextResponse.next();
 
+  // Add request ID to response headers (Issue #24)
+  response.headers.set('x-request-id', requestId);
+
+  // Apply CORS headers (Issue #15)
+  applyCors(request, response);
+
   // Apply security headers
   applySecurityHeaders(response);
 
   // Apply CSP
   applyCSP(request, response);
+
+  // Add API version headers for API routes (Issue #23)
+  if (pathname.startsWith('/api/v')) {
+    const versionHeaders = getVersionHeaders(pathname);
+    Object.entries(versionHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+  }
 
   return response;
 }

@@ -3,11 +3,15 @@
  * Following ADR-0009: Autosave Delta Updates
  *
  * Debounces updates in 250-500ms windows to reduce write amplification
+ *
+ * FIXED: Issue #9 - Memory leak from unstable cleanup effect
+ * FIXED: Debugging audit - Race condition between flush() and timer
  */
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useUpdateCanvasItem } from './use-canvas-items';
 import { UpdateCanvasItemInput } from '@/lib/validation/canvas-item';
+import { AUTOSAVE_DEBOUNCE_MS } from '@/lib/constants';
 
 interface UseAutosaveOptions {
   itemId: string;
@@ -35,7 +39,7 @@ interface UseAutosaveOptions {
 export function useAutosave({
   itemId,
   version,
-  debounceMs = 500,
+  debounceMs = AUTOSAVE_DEBOUNCE_MS,
   onSuccess,
   onError,
 }: UseAutosaveOptions) {
@@ -43,20 +47,43 @@ export function useAutosave({
   const pendingChangesRef = useRef<Partial<UpdateCanvasItemInput>>({});
   const timerRef = useRef<NodeJS.Timeout>();
   const currentVersionRef = useRef(version);
+  const isFlushingRef = useRef(false); // FIXED: Track flush state to prevent race condition
 
-  // Update version ref when it changes
+  // Store callbacks in refs to avoid recreating flush on every callback change
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+
+  // Update refs when they change
   useEffect(() => {
     currentVersionRef.current = version;
   }, [version]);
 
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  }, [onSuccess]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
   /**
    * Flush pending changes immediately
+   * Stable function that doesn't depend on callbacks
+   *
+   * FIXED: Added flag to prevent race condition when flush is called
+   * while timer is still pending
    */
   const flush = useCallback(() => {
+    // Prevent multiple simultaneous flushes
+    if (isFlushingRef.current) {
+      return;
+    }
+
     if (Object.keys(pendingChangesRef.current).length === 0) {
       return;
     }
 
+    isFlushingRef.current = true;
     const changes = { ...pendingChangesRef.current };
     pendingChangesRef.current = {};
 
@@ -70,14 +97,16 @@ export function useAutosave({
       },
       {
         onSuccess: () => {
-          onSuccess?.();
+          isFlushingRef.current = false;
+          onSuccessRef.current?.();
         },
         onError: (error) => {
-          onError?.(error as Error);
+          isFlushingRef.current = false;
+          onErrorRef.current?.(error as Error);
         },
       }
     );
-  }, [itemId, updateItem, onSuccess, onError]);
+  }, [itemId, updateItem]);
 
   /**
    * Save changes with debouncing
@@ -95,6 +124,7 @@ export function useAutosave({
       // Set new timer
       timerRef.current = setTimeout(() => {
         flush();
+        timerRef.current = undefined; // Clear ref after flush
       }, debounceMs);
     },
     [flush, debounceMs]
@@ -102,6 +132,10 @@ export function useAutosave({
 
   /**
    * Cleanup: flush on unmount
+   *
+   * FIXED: Now depends on stable flush function
+   * This prevents the effect from re-running on every callback change,
+   * which was causing potential memory leaks and duplicate timers
    */
   useEffect(() => {
     return () => {

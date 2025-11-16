@@ -80,12 +80,38 @@ export interface ClientCanvasItem
 }
 
 /**
- * Type guards
+ * Type guards for canvas item content
+ * FIXED: Issue #38 - Added JSDoc to complex functions
+ */
+
+/**
+ * Type guard to check if content is a NoteContent object
+ *
+ * @param content - The content object to check
+ * @returns True if content has a 'text' property, indicating it's a NoteContent
+ * @example
+ * ```typescript
+ * if (isNoteContent(item.content)) {
+ *   console.log(item.content.text); // TypeScript knows this is safe
+ * }
+ * ```
  */
 export function isNoteContent(content: ItemContent): content is NoteContent {
   return 'text' in content;
 }
 
+/**
+ * Type guard to check if content is a BookmarkContent object
+ *
+ * @param content - The content object to check
+ * @returns True if content has a 'url' property, indicating it's a BookmarkContent
+ * @example
+ * ```typescript
+ * if (isBookmarkContent(item.content)) {
+ *   console.log(item.content.url); // TypeScript knows this is safe
+ * }
+ * ```
+ */
 export function isBookmarkContent(content: ItemContent): content is BookmarkContent {
   return 'url' in content;
 }

@@ -4,9 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/auth-options';
-import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { NotFoundError, UnauthorizedError } from '@/lib/errors';
 
 interface RouteContext {
@@ -47,8 +46,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
  * DELETE /api/v1/templates/[templateId]
  * Remove template status from a canvas (doesn't delete canvas)
  */
-export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in');
   }

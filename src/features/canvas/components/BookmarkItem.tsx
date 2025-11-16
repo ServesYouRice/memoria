@@ -1,6 +1,8 @@
 /**
  * BookmarkItem Konva Component
  *
+ * OPTIMIZED: Issue #30 - Canvas performance improvements
+ *
  * Renders a bookmark on the canvas with:
  * - URL display
  * - Drag to move
@@ -8,6 +10,7 @@
  * - Delete button
  * - Autosave on changes
  *
+ * Uses React.memo to prevent unnecessary re-renders.
  * Following ADR-0009: Autosave with debouncing
  */
 
@@ -32,7 +35,7 @@ const MIN_WIDTH = 200;
 const MIN_HEIGHT = 80;
 const DELETE_BUTTON_SIZE = 20;
 
-export function BookmarkItem({
+function BookmarkItemComponent({
   item,
   isSelected = false,
   onSelect,
@@ -318,3 +321,36 @@ export function BookmarkItem({
     </Group>
   );
 }
+
+/**
+ * Memoized BookmarkItem with custom comparison
+ *
+ * Same optimization strategy as NoteItem:
+ * - Prevents re-renders when other canvas items change
+ * - Only re-renders when the item itself is updated
+ * - Or when selection state changes
+ */
+export const BookmarkItem = React.memo(BookmarkItemComponent, (prevProps, nextProps) => {
+  // Re-render if item changed
+  if (prevProps.item.id !== nextProps.item.id) {
+    return false;
+  }
+
+  // Re-render if selection state changed
+  if (prevProps.isSelected !== nextProps.isSelected) {
+    return false;
+  }
+
+  // Re-render if item was updated
+  if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
+    return false;
+  }
+
+  // Re-render if version changed
+  if (prevProps.item.version !== nextProps.item.version) {
+    return false;
+  }
+
+  // No changes detected, skip re-render
+  return true;
+});

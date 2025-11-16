@@ -93,7 +93,7 @@ test.describe('Structured Logging', () => {
     expect(response).toBeTruthy();
   });
 
-  test('should redact sensitive information', async ({ page }) => {
+  test('should redact sensitive information', async ({ page: _page }) => {
     // This would require checking actual logs
     // Here we just document the requirement
     expect(true).toBe(true);

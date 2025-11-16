@@ -4,16 +4,21 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/auth-options';
-import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { UnauthorizedError, ValidationError } from '@/lib/errors';
+import {
+  MAX_TEMPLATE_DESCRIPTION_LENGTH,
+  MAX_CATEGORY_NAME_LENGTH,
+  DEFAULT_PAGE_LIMIT,
+  MAX_PAGE_LIMIT,
+} from '@/lib/constants';
 
 const saveAsTemplateSchema = z.object({
   canvasId: z.string().cuid(),
-  description: z.string().min(1).max(500).optional(),
-  category: z.string().min(1).max(50).optional(),
+  description: z.string().min(1).max(MAX_TEMPLATE_DESCRIPTION_LENGTH).optional(),
+  category: z.string().min(1).max(MAX_CATEGORY_NAME_LENGTH).optional(),
 });
 
 /**
@@ -21,7 +26,7 @@ const saveAsTemplateSchema = z.object({
  * Save a canvas as a template
  */
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in to create templates');
   }
@@ -74,11 +79,26 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/v1/templates
  * List all public templates (from any user)
+ *
+ * Query parameters:
+ * - category: Filter by template category
+ * - userId: Filter by template creator
+ * - limit: Number of templates to return (default: 50, max: 100)
+ * - offset: Number of templates to skip (default: 0)
+ *
+ * FIXED: Issue #16 - Added pagination limits to prevent fetching thousands of templates
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category');
   const userId = searchParams.get('userId'); // Optional: filter by user
+
+  // Pagination parameters with sensible defaults
+  const limit = Math.min(
+    parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10),
+    MAX_PAGE_LIMIT
+  );
+  const offset = parseInt(searchParams.get('offset') || '0', 10);
 
   const where: any = {
     isTemplate: true,
@@ -92,6 +112,10 @@ export async function GET(request: NextRequest) {
     where.userId = userId;
   }
 
+  // Get total count for pagination metadata
+  const total = await prisma.canvas.count({ where });
+
+  // Fetch templates with pagination
   const templates = await prisma.canvas.findMany({
     where,
     include: {
@@ -110,7 +134,17 @@ export async function GET(request: NextRequest) {
       { usageCount: 'desc' },
       { createdAt: 'desc' },
     ],
+    take: limit,
+    skip: offset,
   });
 
-  return NextResponse.json({ templates });
+  return NextResponse.json({
+    templates,
+    pagination: {
+      total,
+      limit,
+      offset,
+      hasMore: offset + limit < total,
+    },
+  });
 }

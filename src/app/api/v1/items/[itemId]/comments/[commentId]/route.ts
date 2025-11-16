@@ -4,18 +4,22 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth/auth-options';
-import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
+import { sanitizeComment } from '@/lib/sanitization';
 
 interface RouteContext {
   params: { itemId: string; commentId: string };
 }
 
 const updateCommentSchema = z.object({
-  content: z.string().min(1, 'Comment cannot be empty').max(5000, 'Comment too long'),
+  content: z
+    .string()
+    .min(1, 'Comment cannot be empty')
+    .max(5000, 'Comment too long')
+    .transform((val) => sanitizeComment(val)),
 });
 
 /**
@@ -23,7 +27,7 @@ const updateCommentSchema = z.object({
  * Update a comment (only by comment author)
  */
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in to update comments');
   }
@@ -78,8 +82,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
  * DELETE /api/v1/items/[itemId]/comments/[commentId]
  * Delete a comment (soft delete)
  */
-export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const session = await getServerSession(authOptions);
+export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+  const session = await auth();
   if (!session?.user?.id) {
     throw new UnauthorizedError('You must be logged in to delete comments');
   }

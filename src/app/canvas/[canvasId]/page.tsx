@@ -237,7 +237,8 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemId, allItems, deleteItem, createItem, canvasId, undo, redo, addCommand]);
+    // FIXED: Add selectedItemIds to dependencies (convert Set to Array for comparison)
+  }, [selectedItemId, Array.from(selectedItemIds), allItems, deleteItem, createItem, canvasId, undo, redo, addCommand]);
 
   // Prevent default context menu on stage
   React.useEffect(() => {

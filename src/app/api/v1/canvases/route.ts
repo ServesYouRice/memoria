@@ -1,18 +1,30 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
+import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/lib/constants';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('api:canvases');
 
 /**
  * GET /api/v1/canvases
  *
- * Fetch all canvases for the authenticated user
+ * Fetch canvases for the authenticated user
  * Per ADR-0001: API Versioning & Error Contract (RFC 7807)
+ *
+ * Query parameters:
+ * - limit: Number of canvases to return (default: 50, max: 100)
+ * - offset: Number of canvases to skip (default: 0)
+ *
+ * FIXED: Issue #16 - Added pagination limits
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  let session = null; // Declare outside try block to fix scope issue
+
   try {
     // Authentication check
-    const session = await auth();
+    session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         {
@@ -25,19 +37,41 @@ export async function GET() {
       );
     }
 
-    // Fetch all canvases for the user
+    // Pagination parameters
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(
+      parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10),
+      MAX_PAGE_LIMIT
+    );
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
+
+    const where = { userId: session.user.id };
+
+    // Get total count
+    const total = await prisma.canvas.count({ where });
+
+    // Fetch canvases with pagination
     const canvases = await prisma.canvas.findMany({
-      where: {
-        userId: session.user.id,
-      },
+      where,
       orderBy: {
         updatedAt: 'desc',
       },
+      take: limit,
+      skip: offset,
     });
 
-    return NextResponse.json(canvases);
+    return NextResponse.json({
+      canvases,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total,
+      },
+    });
   } catch (error) {
-    console.error('Error fetching canvases:', error);
+    // FIXED: Variable scope - session now accessible in catch block
+    logger.error({ error, userId: session?.user?.id }, 'Error fetching canvases');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',
@@ -106,7 +140,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error('Error creating canvas:', error);
+    logger.error({ error, userId: session?.user?.id }, 'Error creating canvas');
     return NextResponse.json(
       {
         type: 'https://canvascollect.com/errors/internal-error',
