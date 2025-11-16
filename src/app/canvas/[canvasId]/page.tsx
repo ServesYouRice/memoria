@@ -7,23 +7,40 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Stage, Layer } from 'react-konva';
+import { Stage, Layer, Circle, Text as KonvaText } from 'react-konva';
 import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
-import { NoteAdd, Bookmark } from '@mui/icons-material';
+import { NoteAdd, Bookmark, Image } from '@mui/icons-material';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { useCanvasHistory, Command } from '@/lib/hooks/use-canvas-history';
 import { useSelectionBox } from '@/lib/hooks/use-selection-box';
+import { useUpdateCanvasThumbnail } from '@/lib/hooks/use-canvases';
+import { useCollaboration } from '@/lib/hooks/use-collaboration';
+import { stripHtmlTags } from '@/lib/utils/html';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
+import { ImageItem } from '@/features/canvas/components/ImageItem';
 import { CreateBookmarkDialog } from '@/features/canvas/components/CreateBookmarkDialog';
 import { CreateNoteDialog } from '@/features/canvas/components/CreateNoteDialog';
+import { CreateImageDialog } from '@/features/canvas/components/CreateImageDialog';
+import { EditNoteDialog } from '@/features/canvas/components/EditNoteDialog';
+import { EditBookmarkDialog } from '@/features/canvas/components/EditBookmarkDialog';
+import { EditImageDialog } from '@/features/canvas/components/EditImageDialog';
 import { CanvasHeader } from '@/features/canvas/components/CanvasHeader';
 import { CanvasContextMenu, ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
 import { SelectionBox } from '@/features/canvas/components/SelectionBox';
 import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
 import { SaveAsTemplateDialog } from '@/features/canvas/components/SaveAsTemplateDialog';
+import { VersionHistoryDialog } from '@/features/canvas/components/VersionHistoryDialog';
+import { ExportDialog, ExportFormat, ExportOptions } from '@/features/canvas/components/ExportDialog';
+import { TagFilterPanel } from '@/features/canvas/components/TagFilterPanel';
+import { GridOverlay, snapPositionToGrid } from '@/features/canvas/components/GridOverlay';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
+import { jsPDF } from 'jspdf';
+
+const queryClient = new QueryClient();
 
 interface CanvasPageProps {
   params: {
@@ -36,16 +53,31 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false);
+  const [editingNoteItem, setEditingNoteItem] = useState<CanvasItem | null>(null);
+  const [editBookmarkDialogOpen, setEditBookmarkDialogOpen] = useState(false);
+  const [editingBookmarkItem, setEditingBookmarkItem] = useState<CanvasItem | null>(null);
+  const [editImageDialogOpen, setEditImageDialogOpen] = useState(false);
+  const [editingImageItem, setEditingImageItem] = useState<CanvasItem | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<ContextMenuPosition | null>(null);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsItemId, setCommentsItemId] = useState<string | null>(null);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [gridVisible, setGridVisible] = useState(false);
+  const [snapToGridEnabled, setSnapToGridEnabled] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const stageRef = useRef<Konva.Stage>(null);
+
+  const GRID_SIZE = 20; // Grid cell size in pixels
 
   // Fetch all items for this canvas
   const { data, isLoading, error } = useCanvasItems(canvasId);
@@ -55,6 +87,9 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
   // History manager for undo/redo
   const { addCommand, undo, redo, canUndo, canRedo } = useCanvasHistory();
+
+  // Thumbnail update
+  const updateThumbnail = useUpdateCanvasThumbnail();
 
   // Selection box for multi-select
   const {
@@ -67,22 +102,74 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     isItemInSelection,
   } = useSelectionBox();
 
-  // Filter items based on search query
-  const items = React.useMemo(() => {
-    if (!searchQuery.trim()) return allItems;
+  // Real-time collaboration (Phase 3)
+  const { data: session } = useSession();
+  const { users: collaborators, cursors, connected: collaborationConnected, updateCursor } = useCollaboration({
+    canvasId,
+    userId: session?.user?.id || 'anonymous',
+    email: session?.user?.email || 'anonymous@example.com',
+    name: session?.user?.name || undefined,
+    enabled: !!session?.user,
+  });
 
-    const query = searchQuery.toLowerCase();
-    return allItems.filter((item) => {
-      if (item.type === ItemType.NOTE) {
-        const noteContent = item.content as { text: string };
-        return noteContent.text.toLowerCase().includes(query);
-      } else if (item.type === ItemType.BOOKMARK) {
-        const bookmarkContent = item.content as { url: string };
-        return bookmarkContent.url.toLowerCase().includes(query);
+  // Extract unique tags and counts from all items
+  const { allTags, tagCounts } = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    allItems.forEach((item) => {
+      if (item.tags && Array.isArray(item.tags)) {
+        item.tags.forEach((tag) => {
+          counts[tag] = (counts[tag] || 0) + 1;
+        });
       }
-      return false;
     });
-  }, [allItems, searchQuery]);
+    return {
+      allTags: Object.keys(counts).sort(),
+      tagCounts: counts,
+    };
+  }, [allItems]);
+
+  // Filter items based on search query and tags
+  const items = React.useMemo(() => {
+    let filtered = allItems;
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((item) => {
+        if (item.type === ItemType.NOTE) {
+          const noteContent = item.content as { text: string };
+          // Strip HTML tags before searching
+          const plainText = stripHtmlTags(noteContent.text || '');
+          return plainText.toLowerCase().includes(query);
+        } else if (item.type === ItemType.BOOKMARK) {
+          const bookmarkContent = item.content as any;
+          return (
+            bookmarkContent.url?.toLowerCase().includes(query) ||
+            bookmarkContent.title?.toLowerCase().includes(query) ||
+            bookmarkContent.description?.toLowerCase().includes(query) ||
+            bookmarkContent.siteName?.toLowerCase().includes(query)
+          );
+        } else if (item.type === ItemType.IMAGE) {
+          const imageContent = item.content as any;
+          return (
+            imageContent.filename?.toLowerCase().includes(query) ||
+            imageContent.alt?.toLowerCase().includes(query)
+          );
+        }
+        return false;
+      });
+    }
+
+    // Filter by selected tags (items must have ALL selected tags)
+    if (selectedTags.length > 0) {
+      filtered = filtered.filter((item) => {
+        if (!item.tags || !Array.isArray(item.tags)) return false;
+        return selectedTags.every((tag) => item.tags.includes(tag));
+      });
+    }
+
+    return filtered;
+  }, [allItems, searchQuery, selectedTags]);
 
   // Fetch canvas details (name, zoom, pan)
   React.useEffect(() => {
@@ -234,8 +321,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-    // FIXED: Add selectedItemIds to dependencies (convert Set to Array for comparison)
-  }, [selectedItemId, Array.from(selectedItemIds), allItems, deleteItem, createItem, canvasId, undo, redo, addCommand]);
+  }, [selectedItemId, allItems, deleteItem, createItem, canvasId, undo, redo, addCommand]);
 
   // Prevent default context menu on stage
   React.useEffect(() => {
@@ -264,14 +350,23 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   };
 
   const handleStageMouseMove = (e: any) => {
-    if (isSelecting) {
-      const stage = e.target.getStage();
-      const pointerPos = stage.getPointerPosition();
-      if (pointerPos) {
+    const stage = e.target.getStage();
+    const pointerPos = stage.getPointerPosition();
+
+    if (pointerPos) {
+      // Update selection box if selecting
+      if (isSelecting) {
         updateSelection({
           x: (pointerPos.x - position.x) / zoom,
           y: (pointerPos.y - position.y) / zoom,
         });
+      }
+
+      // Broadcast cursor position for collaboration
+      if (updateCursor) {
+        const canvasX = (pointerPos.x - position.x) / zoom;
+        const canvasY = (pointerPos.y - position.y) / zoom;
+        updateCursor(canvasX, canvasY);
       }
     }
   };
@@ -348,6 +443,27 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     e.preventDefault();
     setSelectedItemId(itemId);
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleNoteDoubleClick = (item: CanvasItem) => {
+    if (item.type === ItemType.NOTE) {
+      setEditingNoteItem(item);
+      setEditNoteDialogOpen(true);
+    }
+  };
+
+  const handleBookmarkDoubleClick = (item: CanvasItem) => {
+    if (item.type === ItemType.BOOKMARK) {
+      setEditingBookmarkItem(item);
+      setEditBookmarkDialogOpen(true);
+    }
+  };
+
+  const handleImageDoubleClick = (item: CanvasItem) => {
+    if (item.type === ItemType.IMAGE) {
+      setEditingImageItem(item);
+      setEditImageDialogOpen(true);
+    }
   };
 
   const handleDeleteFromMenu = async () => {
@@ -432,26 +548,141 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
     setCommentsPanelOpen(true);
   };
 
-  const handleExportPNG = () => {
+  const generateThumbnail = React.useCallback(() => {
     if (!stageRef.current) return;
 
+    try {
+      // Generate a small thumbnail (300x200)
+      const thumbnail = stageRef.current.toDataURL({
+        pixelRatio: 0.3, // Low resolution for smaller file size
+        mimeType: 'image/jpeg',
+        quality: 0.6,
+      });
+
+      // Save thumbnail to backend
+      updateThumbnail.mutate({ canvasId, thumbnail });
+    } catch (err) {
+      console.error('Failed to generate thumbnail:', err);
+    }
+  }, [canvasId, updateThumbnail]);
+
+  // Auto-generate thumbnail when items change (debounced)
+  React.useEffect(() => {
+    if (allItems.length === 0) return;
+
+    const timeoutId = setTimeout(() => {
+      generateThumbnail();
+    }, 3000); // Wait 3 seconds after last change
+
+    return () => clearTimeout(timeoutId);
+  }, [allItems, generateThumbnail]);
+
+  const handleExport = (format: ExportFormat, options: ExportOptions) => {
+    switch (format) {
+      case 'png':
+        handleExportPNG(options);
+        break;
+      case 'pdf':
+        handleExportPDF(options);
+        break;
+      case 'json':
+        handleExportJSON(options);
+        break;
+      default:
+        alert(`${format.toUpperCase()} export is not yet implemented`);
+    }
+  };
+
+  const handleExportPNG = (options: ExportOptions) => {
+    if (!stageRef.current) return;
+
+    const pixelRatio = options.quality === 'low' ? 1 : options.quality === 'medium' ? 2 : 3;
+
     const uri = stageRef.current.toDataURL({
-      pixelRatio: 2, // Higher quality
+      pixelRatio,
     });
 
     // Create download link
     const link = document.createElement('a');
-    link.download = `${canvasName.replace(/\s+/g, '_')}.png`;
+    link.download = `${options.filename || canvasName.replace(/\s+/g, '_')}.png`;
     link.href = uri;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleExportPDF = () => {
-    // PDF export would require jsPDF library
-    // For now, just show an alert
-    alert('PDF export will be implemented in a future update. Use PNG export for now.');
+  const handleExportPDF = (options: ExportOptions) => {
+    if (!stageRef.current) return;
+
+    try {
+      // Get canvas as image
+      const uri = stageRef.current.toDataURL({
+        pixelRatio: 2,
+      });
+
+      // Get stage dimensions
+      const width = stageRef.current.width();
+      const height = stageRef.current.height();
+
+      // Create PDF with appropriate dimensions
+      const pdf = new jsPDF({
+        orientation: width > height ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [width, height],
+      });
+
+      // Add image to PDF
+      pdf.addImage(uri, 'PNG', 0, 0, width, height);
+
+      // Download
+      pdf.save(`${options.filename || canvasName.replace(/\s+/g, '_')}.pdf`);
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+
+  const handleExportJSON = (options: ExportOptions) => {
+    try {
+      // Prepare export data
+      const exportData = {
+        canvas: {
+          id: canvasId,
+          name: canvasName,
+          zoomLevel: zoom,
+          panX: position.x,
+          panY: position.y,
+          exportedAt: new Date().toISOString(),
+        },
+        items: allItems.map((item) => ({
+          type: item.type,
+          positionX: item.positionX,
+          positionY: item.positionY,
+          width: item.width,
+          height: item.height,
+          zIndex: item.zIndex,
+          content: item.content,
+          tags: item.tags || [],
+        })),
+      };
+
+      // Convert to JSON string
+      const jsonString = JSON.stringify(exportData, null, 2);
+
+      // Create blob and download
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `${options.filename || canvasName.replace(/\s+/g, '_')}.json`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export JSON:', err);
+      alert('Failed to export JSON. Please try again.');
+    }
   };
 
   if (isLoading) {
@@ -480,15 +711,23 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         zoom={zoom}
         onZoomChange={handleZoomChange}
         onFitToScreen={handleFitToScreen}
-        onExportPNG={handleExportPNG}
-        onExportPDF={handleExportPDF}
+        onExport={() => setExportDialogOpen(true)}
         onSaveAsTemplate={() => setTemplateDialogOpen(true)}
+        onVersionHistory={() => setVersionHistoryOpen(true)}
+        onTagFilter={() => setTagFilterOpen(true)}
+        activeTagCount={selectedTags.length}
+        gridVisible={gridVisible}
+        onGridToggle={() => setGridVisible(!gridVisible)}
+        snapEnabled={snapToGridEnabled}
+        onSnapToggle={() => setSnapToGridEnabled(!snapToGridEnabled)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
+        collaborators={collaborators}
+        collaborationConnected={collaborationConnected}
       />
 
       {/* Canvas */}
@@ -514,6 +753,16 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
             });
           }}
         >
+          {/* Grid Overlay */}
+          <GridOverlay
+            width={stageSize.width}
+            height={stageSize.height}
+            gridSize={GRID_SIZE}
+            visible={gridVisible}
+            offset={position}
+            zoom={zoom}
+          />
+
           <Layer>
             {items.map((item) => {
               const isItemSelected = selectedItemId === item.id || selectedItemIds.has(item.id);
@@ -526,6 +775,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
                     onDeselect={() => setSelectedItemId(null)}
+                    onDoubleClick={() => handleBookmarkDoubleClick(item)}
                     onContextMenu={(e: any) => {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
@@ -543,6 +793,25 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                     item={item}
                     isSelected={isItemSelected}
                     onSelect={() => setSelectedItemId(item.id)}
+                    onDoubleClick={() => handleNoteDoubleClick(item)}
+                    onContextMenu={(e: any) => {
+                      const stage = e.target.getStage();
+                      const pointerPosition = stage.getPointerPosition();
+                      handleContextMenu(
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        item.id
+                      );
+                    }}
+                  />
+                );
+              } else if (item.type === ItemType.IMAGE) {
+                return (
+                  <ImageItem
+                    key={item.id}
+                    item={item}
+                    isSelected={isItemSelected}
+                    onSelect={() => setSelectedItemId(item.id)}
+                    onDoubleClick={() => handleImageDoubleClick(item)}
                     onContextMenu={(e: any) => {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
@@ -566,6 +835,36 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                 height={selectionBox.height}
               />
             )}
+
+            {/* Collaboration Cursors */}
+            {cursors.map((cursor) => (
+              <React.Fragment key={cursor.userId}>
+                {/* Cursor pointer */}
+                <Circle
+                  x={cursor.x}
+                  y={cursor.y}
+                  radius={8}
+                  fill={cursor.color}
+                  shadowBlur={4}
+                  shadowColor="rgba(0, 0, 0, 0.3)"
+                />
+                {/* User name label */}
+                {cursor.name && (
+                  <>
+                    <KonvaText
+                      x={cursor.x + 12}
+                      y={cursor.y - 10}
+                      text={cursor.name}
+                      fontSize={12}
+                      fontStyle="bold"
+                      fill={cursor.color}
+                      shadowBlur={2}
+                      shadowColor="rgba(0, 0, 0, 0.5)"
+                    />
+                  </>
+                )}
+              </React.Fragment>
+            ))}
           </Layer>
         </Stage>
       </Box>
@@ -588,6 +887,12 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
           onClick={() => setNoteDialogOpen(true)}
           data-testid="add-note-button"
         />
+        <SpeedDialAction
+          icon={<Image />}
+          tooltipTitle="Add Image"
+          onClick={() => setImageDialogOpen(true)}
+          data-testid="add-image-button"
+        />
       </SpeedDial>
 
       {/* Create Bookmark Dialog */}
@@ -604,6 +909,44 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         onClose={() => setNoteDialogOpen(false)}
         canvasId={canvasId}
         initialPosition={{ x: 200, y: 200 }}
+      />
+
+      {/* Create Image Dialog */}
+      <CreateImageDialog
+        open={imageDialogOpen}
+        onClose={() => setImageDialogOpen(false)}
+        canvasId={canvasId}
+        initialPosition={{ x: 300, y: 300 }}
+      />
+
+      {/* Edit Note Dialog */}
+      <EditNoteDialog
+        open={editNoteDialogOpen}
+        onClose={() => {
+          setEditNoteDialogOpen(false);
+          setEditingNoteItem(null);
+        }}
+        item={editingNoteItem}
+      />
+
+      {/* Edit Bookmark Dialog */}
+      <EditBookmarkDialog
+        open={editBookmarkDialogOpen}
+        onClose={() => {
+          setEditBookmarkDialogOpen(false);
+          setEditingBookmarkItem(null);
+        }}
+        item={editingBookmarkItem}
+      />
+
+      {/* Edit Image Dialog */}
+      <EditImageDialog
+        open={editImageDialogOpen}
+        onClose={() => {
+          setEditImageDialogOpen(false);
+          setEditingImageItem(null);
+        }}
+        item={editingImageItem}
       />
 
       {/* Context Menu */}
@@ -636,11 +979,39 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
         canvasId={canvasId}
         canvasName={canvasName}
       />
+
+      {/* Version History Dialog */}
+      <VersionHistoryDialog
+        open={versionHistoryOpen}
+        onClose={() => setVersionHistoryOpen(false)}
+        canvasId={canvasId}
+      />
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        onExport={handleExport}
+        canvasName={canvasName}
+      />
+
+      {/* Tag Filter Panel */}
+      <TagFilterPanel
+        open={tagFilterOpen}
+        onClose={() => setTagFilterOpen(false)}
+        allTags={allTags}
+        selectedTags={selectedTags}
+        onTagsChange={setSelectedTags}
+        tagCounts={tagCounts}
+      />
     </Box>
   );
 }
 
 export default function CanvasPage({ params }: CanvasPageProps) {
-  // QueryClientProvider is already provided at the app level
-  return <CanvasContent canvasId={params.canvasId} />;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <CanvasContent canvasId={params.canvasId} />
+    </QueryClientProvider>
+  );
 }

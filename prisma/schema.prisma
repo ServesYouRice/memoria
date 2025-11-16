@@ -25,6 +25,35 @@ model User {
   updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
   deletedItems  CanvasItem[] @relation("ItemDeletedBy")
   comments      Comment[]
+  activities    Activity[]
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ActivityType
+  canvasId    String?
+  canvasName  String?
+  itemId      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([canvasId, createdAt])
+}
+
+enum ActivityType {
+  CANVAS_CREATED
+  CANVAS_UPDATED
+  CANVAS_DELETED
+  CANVAS_SHARED
+  ITEM_CREATED
+  ITEM_UPDATED
+  ITEM_DELETED
+  COMMENT_ADDED
+  TEMPLATE_CREATED
+  TEMPLATE_USED
 }
 
 model Canvas {
@@ -34,10 +63,14 @@ model Canvas {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items       CanvasItem[]
   shares      CanvasShare[]
+  versions    CanvasVersion[]
 
   zoomLevel   Float       @default(1.0)
   panX        Float       @default(0)
   panY        Float       @default(0)
+
+  // Thumbnail for preview (base64 encoded PNG)
+  thumbnail   String?     @db.Text
 
   // Sharing settings
   isPublic    Boolean     @default(false)
@@ -59,6 +92,17 @@ model Canvas {
   @@index([isPublic]) // For public canvas discovery (Issue #12)
   @@index([isTemplate, templateCategory])
   @@index([isTemplate, usageCount, createdAt])
+}
+
+model CanvasVersion {
+  id          String   @id @default(cuid())
+  canvasId    String
+  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  name        String
+  snapshot    Json     // Complete canvas state including items
+  createdAt   DateTime @default(now())
+
+  @@index([canvasId, createdAt])
 }
 
 model CanvasItem {
@@ -119,6 +163,7 @@ model Comment {
 enum ItemType {
   NOTE
   BOOKMARK
+  IMAGE
 }
 
 enum ShareRole {

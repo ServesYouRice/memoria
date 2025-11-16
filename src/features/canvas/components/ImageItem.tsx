@@ -1,0 +1,334 @@
+/**
+ * ImageItem Konva Component
+ *
+ * Displays uploaded images on the canvas
+ */
+
+'use client';
+
+import React, { useRef, useState, useEffect } from 'react';
+import { Group, Rect, Circle, Text, Image as KonvaImage } from 'react-konva';
+import Konva from 'konva';
+import { CanvasItem, ImageContent, isImageContent } from '@/types/canvas';
+import { useAutosave } from '@/lib/hooks/use-autosave';
+import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
+
+interface ImageItemProps {
+  item: CanvasItem;
+  isSelected?: boolean;
+  onSelect?: () => void;
+  onDoubleClick?: () => void;
+  onContextMenu?: (e: any) => void;
+}
+
+const RESIZE_HANDLE_SIZE = 8;
+const MIN_WIDTH = 100;
+const MIN_HEIGHT = 100;
+const DELETE_BUTTON_SIZE = 20;
+
+export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, onContextMenu }: ImageItemProps) {
+  const groupRef = useRef<Konva.Group>(null);
+  const [localPosition, setLocalPosition] = useState({
+    x: item.positionX,
+    y: item.positionY,
+  });
+  const [localSize, setLocalSize] = useState({
+    width: item.width,
+    height: item.height,
+  });
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+
+  const { saveChanges, isSaving } = useAutosave({
+    itemId: item.id,
+    version: item.version,
+    debounceMs: 500,
+  });
+
+  const deleteItem = useDeleteCanvasItem();
+
+  const content = isImageContent(item.content) ? item.content : { url: '', filename: 'Invalid image' };
+
+  useEffect(() => {
+    setLocalPosition({ x: item.positionX, y: item.positionY });
+    setLocalSize({ width: item.width, height: item.height });
+  }, [item.positionX, item.positionY, item.width, item.height]);
+
+  // Load the image
+  useEffect(() => {
+    if (content.url) {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        setImage(img);
+      };
+      img.onerror = () => {
+        console.error('Failed to load image:', content.url);
+      };
+      img.src = content.url;
+    }
+  }, [content.url]);
+
+  const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const node = e.target;
+    const newPos = {
+      x: node.x(),
+      y: node.y(),
+    };
+    setLocalPosition(newPos);
+  };
+
+  const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
+    const node = e.target;
+    saveChanges({
+      positionX: node.x(),
+      positionY: node.y(),
+    });
+  };
+
+  const handleResize = (
+    corner: 'se' | 'sw' | 'ne' | 'nw',
+    e: Konva.KonvaEventObject<MouseEvent>
+  ) => {
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    let newWidth = localSize.width;
+    let newHeight = localSize.height;
+    let newX = localPosition.x;
+    let newY = localPosition.y;
+
+    switch (corner) {
+      case 'se': // Bottom-right
+        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
+        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
+        break;
+      case 'sw': // Bottom-left
+        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
+        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
+        newX = localPosition.x + localSize.width - newWidth;
+        break;
+      case 'ne': // Top-right
+        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
+        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+        newY = localPosition.y + localSize.height - newHeight;
+        break;
+      case 'nw': // Top-left
+        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
+        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+        newX = localPosition.x + localSize.width - newWidth;
+        newY = localPosition.y + localSize.height - newHeight;
+        break;
+    }
+
+    setLocalSize({ width: newWidth, height: newHeight });
+    setLocalPosition({ x: newX, y: newY });
+  };
+
+  const handleResizeEnd = () => {
+    saveChanges({
+      positionX: localPosition.x,
+      positionY: localPosition.y,
+      width: localSize.width,
+      height: localSize.height,
+    });
+  };
+
+  const handleDelete = () => {
+    if (confirm('Delete this image?')) {
+      deleteItem.mutate({ itemId: item.id, version: item.version });
+    }
+  };
+
+  return (
+    <Group
+      ref={groupRef}
+      x={localPosition.x}
+      y={localPosition.y}
+      draggable
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDblClick={onDoubleClick}
+      onDblTap={onDoubleClick}
+      onContextMenu={onContextMenu}
+    >
+      {/* Border/Background */}
+      <Rect
+        width={localSize.width}
+        height={localSize.height}
+        fill="#ffffff"
+        stroke={isSelected ? '#2196F3' : '#e0e0e0'}
+        strokeWidth={isSelected ? 3 : 1}
+        shadowColor="black"
+        shadowBlur={5}
+        shadowOpacity={0.2}
+        shadowOffset={{ x: 2, y: 2 }}
+        cornerRadius={4}
+      />
+
+      {/* Image */}
+      {image && (
+        <KonvaImage
+          image={image}
+          x={0}
+          y={0}
+          width={localSize.width}
+          height={localSize.height}
+          cornerRadius={4}
+        />
+      )}
+
+      {/* Loading/Error state */}
+      {!image && (
+        <Text
+          x={10}
+          y={localSize.height / 2 - 10}
+          width={localSize.width - 20}
+          text="Loading image..."
+          fontSize={14}
+          fontFamily="Arial"
+          fill="#999"
+          align="center"
+        />
+      )}
+
+      {/* Alt text on hover (shown as overlay when selected) */}
+      {isSelected && content.alt && (
+        <Rect
+          x={0}
+          y={localSize.height - 30}
+          width={localSize.width}
+          height={30}
+          fill="rgba(0, 0, 0, 0.7)"
+          cornerRadius={[0, 0, 4, 4]}
+        />
+      )}
+      {isSelected && content.alt && (
+        <Text
+          x={8}
+          y={localSize.height - 22}
+          width={localSize.width - 16}
+          text={content.alt}
+          fontSize={12}
+          fontFamily="Arial"
+          fill="#ffffff"
+          wrap="none"
+          ellipsis={true}
+        />
+      )}
+
+      {/* Saving indicator */}
+      {isSaving && (
+        <Text x={localSize.width - 80} y={localSize.height - 25} text="Saving..." fontSize={10} fill="#999" />
+      )}
+
+      {/* Resize handles and delete button */}
+      {isSelected && (
+        <>
+          {/* Resize handles */}
+          <Circle
+            x={localSize.width}
+            y={localSize.height}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('se', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nwse-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          <Circle
+            x={0}
+            y={localSize.height}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('sw', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nesw-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          <Circle
+            x={localSize.width}
+            y={0}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('ne', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nesw-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          <Circle
+            x={0}
+            y={0}
+            radius={RESIZE_HANDLE_SIZE}
+            fill="#2196F3"
+            draggable
+            onDragMove={(e) => handleResize('nw', e)}
+            onDragEnd={handleResizeEnd}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'nwse-resize';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+
+          {/* Delete button */}
+          <Circle
+            x={localSize.width - DELETE_BUTTON_SIZE}
+            y={DELETE_BUTTON_SIZE}
+            radius={DELETE_BUTTON_SIZE}
+            fill="#F44336"
+            onClick={handleDelete}
+            onTap={handleDelete}
+            onMouseEnter={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'pointer';
+            }}
+            onMouseLeave={(e) => {
+              const stage = e.target.getStage();
+              if (stage) stage.container().style.cursor = 'default';
+            }}
+          />
+          <Text
+            x={localSize.width - DELETE_BUTTON_SIZE - 5}
+            y={DELETE_BUTTON_SIZE - 6}
+            text="×"
+            fontSize={20}
+            fill="white"
+            listening={false}
+          />
+        </>
+      )}
+    </Group>
+  );
+}

@@ -5,12 +5,13 @@
  * DELETE /api/v1/canvas-items/{itemId} - Soft delete an item
  *
  * Following ADR-0009: Optimistic Concurrency Control
+ * Phase 3: Supports shared canvas access
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireItemOwnership } from '@/lib/api/auth';
+import { requireAuth, requireItemAccess } from '@/lib/api/auth';
 import { errorResponse, NotFoundError, VersionMismatchError } from '@/lib/errors';
 import { updateCanvasItemSchema, deleteCanvasItemSchema } from '@/lib/validation/canvas-item';
 
@@ -21,14 +22,15 @@ interface RouteContext {
 /**
  * GET /api/v1/canvas-items/{itemId}
  * Get a specific canvas item
+ * Phase 3: Requires VIEW permission
  */
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const { itemId } = params;
 
-    // Verify ownership
-    await requireItemOwnership(itemId, userId);
+    // Verify user has VIEW permission
+    await requireItemAccess(itemId, userId, email, 'VIEW');
 
     // Fetch item
     const item = await prisma.canvasItem.findUnique({
@@ -50,18 +52,19 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
  * Update a canvas item with optimistic locking
  *
  * This implements ADR-0009: version field must match for update to succeed
+ * Phase 3: Requires EDIT permission
  */
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const { itemId } = params;
     const body = await request.json();
 
     // Validate input
     const data = updateCanvasItemSchema.parse(body);
 
-    // Verify ownership
-    await requireItemOwnership(itemId, userId);
+    // Verify user has EDIT permission
+    await requireItemAccess(itemId, userId, email, 'EDIT');
 
     // Get current item to check version
     const currentItem = await prisma.canvasItem.findUnique({
@@ -105,18 +108,19 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 /**
  * DELETE /api/v1/canvas-items/{itemId}
  * Soft delete a canvas item
+ * Phase 3: Requires EDIT permission
  */
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const { itemId } = params;
     const body = await request.json();
 
     // Validate input (requires version for optimistic locking)
     const data = deleteCanvasItemSchema.parse(body);
 
-    // Verify ownership
-    await requireItemOwnership(itemId, userId);
+    // Verify user has EDIT permission
+    await requireItemAccess(itemId, userId, email, 'EDIT');
 
     // Get current item to check version
     const currentItem = await prisma.canvasItem.findUnique({

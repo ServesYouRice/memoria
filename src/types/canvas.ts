@@ -6,6 +6,7 @@
 export enum ItemType {
   NOTE = 'NOTE',
   BOOKMARK = 'BOOKMARK',
+  IMAGE = 'IMAGE',
 }
 
 /**
@@ -28,23 +29,33 @@ export interface NoteContent {
 
 /**
  * Bookmark item content
- * Note: Unfurling (title, description, favicon, preview image) is Phase 2
- * For MVP, we only store the URL
+ * Includes unfurled metadata from the URL
  */
 export interface BookmarkContent {
   url: string;
-  // Phase 2 fields (not implemented in MVP):
-  // title?: string;
-  // description?: string;
-  // favicon?: string;
-  // previewImage?: string;
-  // unfurledAt?: string;
+  title?: string;
+  description?: string;
+  favicon?: string;
+  previewImage?: string;
+  siteName?: string;
+  unfurledAt?: string;
+}
+
+/**
+ * Image item content
+ */
+export interface ImageContent {
+  url: string; // URL to the uploaded image
+  filename: string; // Original filename
+  alt?: string; // Alternative text for accessibility
+  width?: number; // Original image width
+  height?: number; // Original image height
 }
 
 /**
  * Union type for all item content types
  */
-export type ItemContent = NoteContent | BookmarkContent;
+export type ItemContent = NoteContent | BookmarkContent | ImageContent;
 
 /**
  * Full canvas item (matches database schema)
@@ -113,7 +124,11 @@ export function isNoteContent(content: ItemContent): content is NoteContent {
  * ```
  */
 export function isBookmarkContent(content: ItemContent): content is BookmarkContent {
-  return 'url' in content;
+  return 'url' in content && !('filename' in content);
+}
+
+export function isImageContent(content: ItemContent): content is ImageContent {
+  return 'url' in content && 'filename' in content;
 }
 
 /**

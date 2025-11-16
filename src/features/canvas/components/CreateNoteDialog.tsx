@@ -25,6 +25,7 @@ import { z } from 'zod';
 import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { ItemType } from '@/types/canvas';
 import { TagInput } from './TagInput';
+import { RichTextEditor } from '@/components/RichTextEditor';
 
 interface CreateNoteDialogProps {
   open: boolean;
@@ -102,24 +103,29 @@ export function CreateNoteDialog({
               Create a sticky note on your canvas.
             </Typography>
 
-            <Controller
-              name="text"
-              control={control}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  label="Note Text"
-                  placeholder="Enter your note..."
-                  fullWidth
-                  multiline
-                  rows={4}
-                  autoFocus
-                  error={!!errors.text}
-                  helperText={errors.text?.message}
-                  disabled={isSubmitting}
-                />
+            <Box>
+              <Typography variant="subtitle2" gutterBottom sx={{ mb: 1 }}>
+                Note Content
+              </Typography>
+              <Controller
+                name="text"
+                control={control}
+                render={({ field }) => (
+                  <RichTextEditor
+                    content={field.value}
+                    onChange={field.onChange}
+                    placeholder="Enter your note..."
+                    minHeight={150}
+                    editable={!isSubmitting}
+                  />
+                )}
+              />
+              {errors.text && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                  {errors.text.message}
+                </Typography>
               )}
-            />
+            </Box>
 
             <Controller
               name="tags"

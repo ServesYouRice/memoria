@@ -14,6 +14,12 @@ import {
   Tooltip,
   Menu,
   MenuItem,
+  Badge,
+  ToggleButtonGroup,
+  ToggleButton,
+  Avatar,
+  AvatarGroup,
+  Chip,
 } from '@mui/material';
 import {
   ArrowBack,
@@ -26,8 +32,20 @@ import {
   Undo as UndoIcon,
   Redo as RedoIcon,
   Share as ShareIcon,
+  LocalOffer as TagIcon,
+  GridOn as GridOnIcon,
+  GridOff as GridOffIcon,
+  FiberManualRecord as OnlineIcon,
 } from '@mui/icons-material';
 import { ShareDialog } from './ShareDialog';
+import { ThemeToggle } from '@/components/ThemeToggle';
+
+export interface CollaboratorInfo {
+  userId: string;
+  email: string;
+  name?: string;
+  color: string;
+}
 
 export interface CanvasHeaderProps {
   canvasId: string;
@@ -36,15 +54,23 @@ export interface CanvasHeaderProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
   onFitToScreen: () => void;
-  onExportPNG?: () => void;
-  onExportPDF?: () => void;
+  onExport?: () => void;
   onSaveAsTemplate?: () => void;
+  onVersionHistory?: () => void;
+  onTagFilter?: () => void;
+  gridVisible?: boolean;
+  onGridToggle?: () => void;
+  snapEnabled?: boolean;
+  onSnapToggle?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  activeTagCount?: number;
+  collaborators?: CollaboratorInfo[];
+  collaborationConnected?: boolean;
 }
 
 const ZOOM_STEP = 0.1;
@@ -58,15 +84,23 @@ export function CanvasHeader({
   zoom,
   onZoomChange,
   onFitToScreen,
-  onExportPNG,
-  onExportPDF,
+  onExport,
   onSaveAsTemplate,
+  onVersionHistory,
+  onTagFilter,
+  gridVisible = false,
+  onGridToggle,
+  snapEnabled = false,
+  onSnapToggle,
   searchQuery = '',
   onSearchChange,
   canUndo = false,
   canRedo = false,
   onUndo,
   onRedo,
+  activeTagCount = 0,
+  collaborators = [],
+  collaborationConnected = false,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -211,6 +245,66 @@ export function CanvasHeader({
           </IconButton>
         </Tooltip>
 
+        {/* Collaboration Indicator */}
+        {collaborators.length > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', mr: 2, gap: 1 }}>
+            <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 32, height: 32, fontSize: 14 } }}>
+              {collaborators.map((collaborator) => (
+                <Tooltip
+                  key={collaborator.userId}
+                  title={`${collaborator.name || collaborator.email} (viewing)`}
+                >
+                  <Avatar
+                    sx={{
+                      bgcolor: collaborator.color,
+                      width: 32,
+                      height: 32,
+                      fontSize: 14,
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {(collaborator.name || collaborator.email).charAt(0).toUpperCase()}
+                  </Avatar>
+                </Tooltip>
+              ))}
+            </AvatarGroup>
+            {collaborationConnected && (
+              <Tooltip title="Real-time collaboration active">
+                <Chip
+                  icon={<OnlineIcon sx={{ fontSize: 12, color: '#4caf50' }} />}
+                  label="Live"
+                  size="small"
+                  sx={{
+                    height: 24,
+                    fontSize: 11,
+                    bgcolor: 'rgba(76, 175, 80, 0.1)',
+                    color: 'text.primary',
+                    '& .MuiChip-icon': {
+                      marginLeft: 0.5,
+                    },
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Box>
+        )}
+
+        {/* Theme Toggle */}
+        <Box sx={{ mr: 1 }}>
+          <ThemeToggle />
+        </Box>
+
+        {/* Tag Filter */}
+        {onTagFilter && (
+          <Tooltip title="Filter by Tags">
+            <IconButton onClick={onTagFilter} sx={{ mr: 1 }}>
+              <Badge badgeContent={activeTagCount} color="primary">
+                <TagIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+        )}
+
         {/* Search Toggle */}
         {onSearchChange && !showSearch && !isEditingName && (
           <Tooltip title="Search">
@@ -244,6 +338,30 @@ export function CanvasHeader({
           </Typography>
         </Box>
 
+        {/* Grid Controls */}
+        {(onGridToggle || onSnapToggle) && (
+          <Box sx={{ mr: 2 }}>
+            <ToggleButtonGroup size="small">
+              {onGridToggle && (
+                <ToggleButton value="grid" selected={gridVisible} onChange={onGridToggle}>
+                  <Tooltip title={gridVisible ? 'Hide Grid' : 'Show Grid'}>
+                    {gridVisible ? <GridOnIcon fontSize="small" /> : <GridOffIcon fontSize="small" />}
+                  </Tooltip>
+                </ToggleButton>
+              )}
+              {onSnapToggle && (
+                <ToggleButton value="snap" selected={snapEnabled} onChange={onSnapToggle}>
+                  <Tooltip title={snapEnabled ? 'Disable Snap to Grid' : 'Enable Snap to Grid'}>
+                    <Typography variant="caption" sx={{ fontWeight: snapEnabled ? 'bold' : 'normal' }}>
+                      SNAP
+                    </Typography>
+                  </Tooltip>
+                </ToggleButton>
+              )}
+            </ToggleButtonGroup>
+          </Box>
+        )}
+
         {/* Options Menu */}
         <Tooltip title="More Options">
           <IconButton onClick={handleMenuOpen}>
@@ -251,22 +369,16 @@ export function CanvasHeader({
           </IconButton>
         </Tooltip>
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-          <MenuItem
-            onClick={() => {
-              onExportPNG?.();
-              handleMenuClose();
-            }}
-          >
-            Export as PNG
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              onExportPDF?.();
-              handleMenuClose();
-            }}
-          >
-            Export as PDF
-          </MenuItem>
+          {onExport && (
+            <MenuItem
+              onClick={() => {
+                onExport();
+                handleMenuClose();
+              }}
+            >
+              Export Canvas...
+            </MenuItem>
+          )}
           {onSaveAsTemplate && (
             <MenuItem
               onClick={() => {
@@ -275,6 +387,16 @@ export function CanvasHeader({
               }}
             >
               Save as Template
+            </MenuItem>
+          )}
+          {onVersionHistory && (
+            <MenuItem
+              onClick={() => {
+                onVersionHistory();
+                handleMenuClose();
+              }}
+            >
+              Version History
             </MenuItem>
           )}
           <MenuItem onClick={handleMenuClose}>Canvas Settings</MenuItem>

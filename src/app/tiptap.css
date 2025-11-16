@@ -1,0 +1,172 @@
+/* Tiptap Editor Styles */
+
+/* Basic editor content styles */
+.ProseMirror {
+  > * + * {
+    margin-top: 0.75em;
+  }
+
+  /* Headings */
+  h1 {
+    font-size: 2em;
+    font-weight: bold;
+    margin-top: 0.67em;
+    margin-bottom: 0.67em;
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-top: 0.75em;
+    margin-bottom: 0.75em;
+    line-height: 1.3;
+  }
+
+  h3 {
+    font-size: 1.17em;
+    font-weight: bold;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+    line-height: 1.4;
+  }
+
+  /* Lists */
+  ul,
+  ol {
+    padding: 0 1rem;
+    margin: 0.5em 0;
+
+    li {
+      p {
+        margin: 0.25em 0;
+      }
+    }
+  }
+
+  ul {
+    list-style: disc;
+
+    ul {
+      list-style: circle;
+    }
+  }
+
+  ol {
+    list-style: decimal;
+  }
+
+  /* Blockquote */
+  blockquote {
+    border-left: 3px solid #cbd5e0;
+    padding-left: 1em;
+    margin: 1em 0;
+    font-style: italic;
+    color: #4a5568;
+  }
+
+  /* Code */
+  code {
+    background-color: rgba(97, 97, 97, 0.1);
+    color: #1a202c;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+  }
+
+  pre {
+    background-color: #2d3748;
+    color: #f7fafc;
+    border-radius: 5px;
+    padding: 0.75em 1em;
+    overflow-x: auto;
+    margin: 1em 0;
+
+    code {
+      background: none;
+      color: inherit;
+      font-size: 0.9em;
+      padding: 0;
+    }
+  }
+
+  /* Links */
+  a {
+    color: #3182ce;
+    text-decoration: underline;
+    cursor: pointer;
+    transition: color 0.2s;
+
+    &:hover {
+      color: #2c5282;
+    }
+  }
+
+  /* Strong and emphasis */
+  strong {
+    font-weight: bold;
+  }
+
+  em {
+    font-style: italic;
+  }
+
+  /* Strikethrough */
+  s {
+    text-decoration: line-through;
+  }
+
+  /* Horizontal rule */
+  hr {
+    border: none;
+    border-top: 2px solid #e2e8f0;
+    margin: 2em 0;
+  }
+
+  /* Placeholder */
+  p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: #adb5bd;
+    pointer-events: none;
+    height: 0;
+  }
+
+  /* Focus state */
+  &:focus {
+    outline: none;
+  }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .ProseMirror {
+    blockquote {
+      border-left-color: #4a5568;
+      color: #cbd5e0;
+    }
+
+    code {
+      background-color: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+    }
+
+    pre {
+      background-color: #1a202c;
+      color: #f7fafc;
+    }
+
+    a {
+      color: #63b3ed;
+
+      &:hover {
+        color: #90cdf4;
+      }
+    }
+
+    p.is-editor-empty:first-child::before {
+      color: #718096;
+    }
+  }
+}
