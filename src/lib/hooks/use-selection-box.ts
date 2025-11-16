@@ -2,9 +2,11 @@
  * Selection Box Hook
  *
  * Manages rectangle selection on canvas for multi-select functionality
+ *
+ * FIXED: Issue from debugging audit - setTimeout cleanup to prevent memory leaks
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 export interface SelectionBox {
   x: number;
@@ -22,6 +24,16 @@ export function useSelectionBox() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const startPoint = useRef<Point | null>(null);
+  const clearTimerRef = useRef<NodeJS.Timeout | null>(null); // FIXED: Store timer for cleanup
+
+  // FIXED: Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) {
+        clearTimeout(clearTimerRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Start selection at a point
@@ -54,15 +66,23 @@ export function useSelectionBox() {
 
   /**
    * End selection and return final box
+   *
+   * FIXED: Clear any existing timer before setting new one
    */
   const endSelection = useCallback((): SelectionBox | null => {
     setIsSelecting(false);
     const finalBox = selectionBox;
     startPoint.current = null;
 
+    // Clear any existing timer
+    if (clearTimerRef.current) {
+      clearTimeout(clearTimerRef.current);
+    }
+
     // Keep box visible briefly then clear
-    setTimeout(() => {
+    clearTimerRef.current = setTimeout(() => {
       setSelectionBox(null);
+      clearTimerRef.current = null;
     }, 100);
 
     return finalBox;
@@ -70,11 +90,19 @@ export function useSelectionBox() {
 
   /**
    * Cancel selection
+   *
+   * FIXED: Clear timer when canceling
    */
   const cancelSelection = useCallback(() => {
     setIsSelecting(false);
     setSelectionBox(null);
     startPoint.current = null;
+
+    // Clear any pending timer
+    if (clearTimerRef.current) {
+      clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
   }, []);
 
   /**
