@@ -19,16 +19,16 @@ import { authOptions } from '@/lib/auth-options';
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 // Allowed image MIME types
+// NOTE: SVG removed due to XSS security risk (SVG can contain embedded scripts)
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
-  'image/svg+xml',
 ];
 
 // Allowed file extensions
-const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 
 /**
  * Sanitize filename to prevent path traversal attacks
