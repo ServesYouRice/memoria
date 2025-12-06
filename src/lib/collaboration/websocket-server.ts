@@ -21,7 +21,11 @@ interface ClientConnection {
   canvasId: string;
   user: CollaborationUser;
   cursorPosition?: { x: number; y: number };
+  isAlive: boolean;
 }
+
+// Heartbeat interval for detecting zombie connections (30 seconds)
+const HEARTBEAT_INTERVAL = 30000;
 
 // Active connections per canvas
 const connections = new Map<string, Set<ClientConnection>>();
@@ -72,6 +76,33 @@ export function createCollaborationServer(server: any): WebSocketServer {
     await handleConnection(ws, request);
   });
 
+  // Heartbeat interval to detect and cleanup zombie connections
+  const heartbeatInterval = setInterval(() => {
+    connections.forEach((clients, canvasId) => {
+      clients.forEach((client) => {
+        if (!client.isAlive) {
+          // Connection didn't respond to ping, terminate it
+          console.log(`Terminating zombie connection for user ${client.user.userId} on canvas ${canvasId}`);
+          client.ws.terminate();
+          clients.delete(client);
+          return;
+        }
+        client.isAlive = false;
+        client.ws.ping();
+      });
+
+      // Cleanup empty canvas sets
+      if (clients.size === 0) {
+        connections.delete(canvasId);
+      }
+    });
+  }, HEARTBEAT_INTERVAL);
+
+  // Cleanup interval on server close
+  wss.on('close', () => {
+    clearInterval(heartbeatInterval);
+  });
+
   return wss;
 }
 
@@ -104,6 +135,7 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
     ws,
     canvasId,
     user,
+    isAlive: true,
   };
 
   // Add connection to canvas group
@@ -139,6 +171,11 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
     } catch (error) {
       console.error('Error handling message:', error);
     }
+  });
+
+  // Handle pong responses for heartbeat
+  ws.on('pong', () => {
+    connection.isAlive = true;
   });
 
   // Handle disconnection
