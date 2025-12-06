@@ -17,3 +17,16 @@ export * from './selection';
 
 // History (undo/redo)
 export * from './history';
+
+// Connections/arrows
+export * from './connections';
+
+// Viewport (zoom/pan)
+export * from './viewport';
+
+// Grid
+export * from './grid';
+
+// Clipboard
+export * from './clipboard';
+

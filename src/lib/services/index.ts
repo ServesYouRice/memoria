@@ -11,3 +11,6 @@ export * from './bookmark-metadata';
 export * from './feature-flags';
 export * from './notifications';
 export * from './search';
+export * from './share';
+export * from './templates';
+
