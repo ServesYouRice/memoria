@@ -21,14 +21,15 @@ export function buildCSP(nonce: string): string {
       ...(process.env.NODE_ENV === 'development' ? ["'unsafe-eval'"] : ["'strict-dynamic'"]),
     ],
     'style-src': ["'self'", "'nonce-" + nonce + "'"],
-    'img-src': ["'self'", 'data:', 'blob:'],
-    'font-src': ["'self'", 'data:'],
-    'connect-src': ["'self'"],
+    'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+    'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
+    'connect-src': ["'self'", 'wss:', 'https:'],
     'frame-ancestors': ["'none'"],
     'frame-src': ["'none'"],
     'object-src': ["'none'"],
     'base-uri': ["'self'"],
     'form-action': ["'self'"],
+    'report-uri': ['/api/csp-report'],
   };
 
   return Object.entries(directives)
