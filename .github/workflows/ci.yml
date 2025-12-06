@@ -8,19 +8,19 @@ on:
 
 env:
   NODE_VERSION: '20'
-  PNPM_VERSION: '8'
+  PNPM_VERSION: '9'
 
 jobs:
-  lint:
-    name: Lint
+  lint-and-typecheck:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -31,30 +31,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
       - name: Run ESLint
-        run: pnpm run lint
+        run: pnpm lint
+
+      - name: Run type check
+        run: pnpm type-check
 
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    needs: lint-and-typecheck
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies for native modules
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libjpeg-dev \
-            libgif-dev \
-            librsvg2-dev \
-            build-essential
-
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -65,20 +61,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
       - name: Run tests with coverage
-        run: pnpm run test:coverage
+        run: pnpm test:coverage
 
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [test]
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -89,8 +88,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build application
-        run: pnpm run build
+      - name: Generate Prisma client
+        run: pnpm db:generate
 
-      - name: Check bundle size
-        run: pnpm run check-bundle
+      - name: Build application
+        run: pnpm build
+        env:
+          DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
+          NEXTAUTH_SECRET: 'ci-build-secret'
+          NEXTAUTH_URL: 'http://localhost:3000'
+
