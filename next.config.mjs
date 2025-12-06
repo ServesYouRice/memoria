@@ -12,7 +12,7 @@
  * ENHANCED: Issue #27 - Bundle size analysis with @next/bundle-analyzer
  * Run: ANALYZE=true pnpm build
  */
-import { env } from './src/lib/env.ts';
+// import { env } from './src/lib/env.ts';
 import bundleAnalyzer from '@next/bundle-analyzer';
 
 const withBundleAnalyzer = bundleAnalyzer({
@@ -91,13 +91,13 @@ const nextConfig = {
             value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
           },
           // Strict Transport Security (HTTPS only in production)
-          ...(env.NODE_ENV === 'production'
+          ...(process.env.NODE_ENV === 'production'
             ? [
-                {
-                  key: 'Strict-Transport-Security',
-                  value: 'max-age=31536000; includeSubDomains',
-                },
-              ]
+              {
+                key: 'Strict-Transport-Security',
+                value: 'max-age=31536000; includeSubDomains',
+              },
+            ]
             : []),
         ],
       },

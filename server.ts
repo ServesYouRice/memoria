@@ -3,6 +3,7 @@
  * Following ADR-0010: Real-Time Collaboration Strategy
  */
 
+import 'dotenv-safe/config';
 import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
