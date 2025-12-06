@@ -332,13 +332,13 @@ const checkPasswordStrength = async (password: string) => {
 
 ### Pre-Launch Checklist
 
-- [ ] `pnpm remove redis jspdf` executed
-- [ ] DOMPurify installed and integrated
-- [ ] zxcvbn lazy-loaded
-- [ ] Yjs connected via PartyKit or similar
+- [x] `pnpm remove redis jspdf` executed ✓ (Dec 2025)
+- [x] DOMPurify installed and integrated ✓ (already existed)
+- [x] zxcvbn lazy-loaded ✓ (Dec 2025)
+- [ ] Yjs connected via PartyKit or similar (code exists, needs deployment)
 - [ ] Deploy to Vercel (free tier)
 - [ ] Database on Neon (free tier)
-- [ ] Basic error tracking (Sentry free tier)
+- [x] Basic error tracking (Sentry free tier) ✓ (Dec 2025)
 
 ---
 

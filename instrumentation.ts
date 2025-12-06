@@ -63,13 +63,17 @@ function checkNextAuthVersion(): void {
 
 export async function register() {
   if (process.env['NEXT_RUNTIME'] === 'nodejs') {
+    // Import Sentry server config
+    await import('./sentry.server.config');
+
     // Check NextAuth v5 beta status (Issue #6)
     checkNextAuthVersion();
 
     // Validate CORS configuration on startup (Issue #15)
     validateCorsConfig();
+
     // Handle unhandled promise rejections
-    process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+    process.on('unhandledRejection', async (reason: unknown, promise: Promise<unknown>) => {
       logger.error(
         {
           reason,
@@ -79,16 +83,16 @@ export async function register() {
         'Unhandled Promise Rejection'
       );
 
-      // In production, you might want to send this to an error tracking service
-      // like Sentry, Bugsnag, or Rollbar
+      // Send to Sentry in production
       if (process.env.NODE_ENV === 'production') {
-        // Example: Sentry.captureException(reason);
+        const Sentry = await import('@sentry/nextjs');
+        Sentry.captureException(reason);
         console.error('CRITICAL: Unhandled Promise Rejection:', reason);
       }
     });
 
     // Handle uncaught exceptions
-    process.on('uncaughtException', (error: Error) => {
+    process.on('uncaughtException', async (error: Error) => {
       logger.error(
         {
           error,
@@ -97,9 +101,10 @@ export async function register() {
         'Uncaught Exception'
       );
 
-      // In production, you might want to send this to an error tracking service
+      // Send to Sentry in production
       if (process.env.NODE_ENV === 'production') {
-        // Example: Sentry.captureException(error);
+        const Sentry = await import('@sentry/nextjs');
+        Sentry.captureException(error);
         console.error('CRITICAL: Uncaught Exception:', error);
       }
 
@@ -123,6 +128,12 @@ export async function register() {
       );
     });
 
-    logger.info('Global error handlers registered');
+    logger.info('Global error handlers registered (with Sentry integration)');
+  }
+
+  if (process.env['NEXT_RUNTIME'] === 'edge') {
+    // Import Sentry edge config
+    await import('./sentry.edge.config');
   }
 }
+
