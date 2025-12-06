@@ -703,41 +703,148 @@ Key items:
 
 ---
 
-## 7. Next Steps & Roadmap
+## 7. Future Vision & Roadmap
 
-### 7.1. Immediate Actions (This Week)
+> *This section incorporates findings from the December 2025 deep-dive analysis, competitive research, and innovative feature brainstorming. See `IMPROVEMENTS.md` for detailed technical specifications.*
 
-1. ✅ Complete comprehensive audit - **DONE**
-2. ✅ Fix critical import issues - **DONE**
-3. ✅ Add missing REST endpoints - **DONE**
-4. ✅ Remove XSS vulnerability - **DONE**
-5. ✅ Add pagination to prevent DoS - **DONE**
+---
 
-### 7.2. Short Term (Next 2 Weeks)
+### 7.1. Immediate Actions (Week 1-2) 🔴
 
-1. 🔴 Implement Redis-based rate limiting
-2. 🟡 Integrate email service (SendGrid/SES)
-3. 🟡 Complete WebSocket collaboration backend
-4. 🟡 Replace console.log with structured logger
-5. 🟡 Add ARIA labels for accessibility
+**Critical Security & Stability:**
 
-### 7.3. Medium Term (Next Month)
+| Task | Priority | Effort | Status |
+|------|----------|--------|--------|
+| Install `isomorphic-dompurify` for XSS protection | CRITICAL | 1 day | ⬜ |
+| Implement Redis-based rate limiting | CRITICAL | 3 days | ⬜ |
+| WebSocket authentication (session validation) | CRITICAL | 2 days | ⬜ |
+| Replace console.log with structured logger | HIGH | 1 day | ⬜ |
+| Account lockout after failed attempts | HIGH | 1 day | ⬜ |
 
-1. Resolve DOMPurify installation
-2. Expand test coverage to 80%
-3. Complete E2E test suite
-4. Integrate error tracking (Sentry)
-5. Implement zoom persistence
-6. Decide on SVG export (implement or remove)
+---
 
-### 7.4. Long Term (Next Quarter)
+### 7.2. Short Term (Week 3-4) 🟡
 
-1. Redis caching implementation (when ADR-0011 triggers met)
-2. Database read replicas (if needed for scale)
-3. Multi-region deployment (if global audience)
-4. Advanced analytics and insights
-5. Mobile-optimized touch gestures
-6. AI-powered features (auto-tagging, smart organization)
+**Performance & Quality:**
+
+| Task | Priority | Effort |
+|------|----------|--------|
+| Redis caching layer for canvas data | HIGH | 3 days |
+| Fix `useCreateCanvasItem` hook usage in Canvas.tsx | HIGH | 1 hour |
+| Remove duplicate `useDebounce` hooks | MEDIUM | 30 min |
+| Add Error Boundaries to Canvas components | MEDIUM | 2 hours |
+| Implement code splitting for dialogs | MEDIUM | 1 day |
+| Add ARIA labels for accessibility | MEDIUM | 2 days |
+
+---
+
+### 7.3. Medium Term - Catch Up to Competitors (Week 5-8) 🟢
+
+**Features competitors have that we don't:**
+
+#### AI Features (CRITICAL GAP)
+- [ ] AI note generation (GPT-4/Claude integration)
+- [ ] Smart summarization of canvas contents
+- [ ] Auto-tagging based on content
+- [ ] Bookmark insights extraction
+
+#### Integration Ecosystem
+- [ ] Browser extension for quick capture
+- [ ] Slack integration (share canvases, notifications)
+- [ ] Zapier connector for automation
+
+#### Drawing & Diagramming
+- [ ] Freehand drawing tools
+- [ ] Arrow connectors between items
+- [ ] Shape library (rectangles, circles, etc.)
+- [ ] Grouping/frames
+
+#### Collaboration Enhancements
+- [ ] Quick reactions (emoji stamps)
+- [ ] Cursor chat
+- [ ] Follow mode
+- [ ] Presentation mode
+
+#### Mobile & Offline
+- [ ] PWA improvements (touch gestures)
+- [ ] Offline mode with Y.js persistence
+- [ ] Native mobile app (React Native)
+
+#### Templates
+- [ ] 10+ starter templates
+- [ ] Template categories (brainstorming, planning, etc.)
+- [ ] Template marketplace
+
+---
+
+### 7.4. Long Term - Differentiation Features (Month 3+) 💡
+
+**Innovative features NO competitor has:**
+
+#### 🥇 Priority 1 - High Impact, Medium Effort
+
+| Feature | Description | Tagline |
+|---------|-------------|---------|
+| **Living Bookmarks** | Bookmarks auto-update when source page changes | *"Your bookmarks update themselves"* |
+| **Canvas Time Machine** | Visual time-lapse of canvas evolution | *"Watch your ideas evolve"* |
+| **AI Personas** | 5 AI assistants (Critic, Dreamer, Analyst, Connector, Simplifier) | *"Think with 5 different minds"* |
+
+#### 🥈 Priority 2 - Unique Value Propositions
+
+| Feature | Description |
+|---------|-------------|
+| **Serendipity Engine** | Surfaces forgotten connections between items |
+| **Canvas Rituals** | Built-in morning pages, weekly review, gratitude prompts |
+| **Canvas Autopilot** | AI continuously organizes your canvas |
+
+#### 🥉 Priority 3 - Future Innovation
+
+| Feature | Description |
+|---------|-------------|
+| **Canvas Genetics** | Fork and evolve canvases like GitHub repos |
+| **Spatial Audio** | Hear collaborators based on canvas position |
+| **AR Canvas Layer** | Overlay canvas on physical world |
+
+---
+
+### 7.5. Competitive Positioning
+
+**Current:** Basic infinite canvas for notes & bookmarks
+
+**Target Position (choose one):**
+
+1. **"The Developer's Canvas"**
+   - GitHub integration, code blocks, Markdown support
+   - Competition: Obsidian, Notion
+
+2. **"The Simple Collaboration Board"**
+   - Simpler than Miro, cheaper, faster
+   - Competition: FigJam, tldraw
+
+3. **"The AI-First Visual Workspace"**
+   - Best-in-class AI features
+   - Competition: Notion AI, AFFiNE
+
+---
+
+### 7.6. Testing & Quality Roadmap
+
+| Phase | Coverage | Timeline |
+|-------|----------|----------|
+| Current | ~15% | - |
+| Phase 1 | 40% (unit tests for utils) | 1 week |
+| Phase 2 | 60% (API integration tests) | 2 weeks |
+| Phase 3 | 80% (E2E + visual regression) | 1 month |
+
+---
+
+### 7.7. DevOps & Infrastructure
+
+- [ ] OpenTelemetry distributed tracing
+- [ ] GitHub Actions CI/CD workflow
+- [ ] Multi-stage Docker builds
+- [ ] Database read replicas (when needed)
+- [ ] Multi-region deployment (when global)
 
 ---
 
@@ -754,75 +861,82 @@ Key items:
 - ✅ Health checks implemented
 - ⚠️ Email service integration needed
 - ⚠️ Error tracking recommended
-- ⚠️ E2E tests should be complete
 
 **Status:** 🟢 Ready for single-instance production deployment
 
 ### 8.2. Multi-Instance/Scaled Deployment
 
-- ✅ All single-instance requirements
 - ❌ Redis-based rate limiting **REQUIRED**
-- ❌ Redis-based caching (if performance triggers met)
-- ❌ Session store clustering (or use database sessions)
-- ⚠️ WebSocket infrastructure for collaboration
-- ⚠️ Database connection pooling tuned
+- ❌ WebSocket authentication **REQUIRED**
+- ⚠️ Redis caching
 - ⚠️ Log aggregation service
 
 **Status:** 🔴 NOT ready for multi-instance without Redis
 
 ---
 
-## 9. Change Log
+## 9. Documentation Structure
+
+**Consolidated Documentation (6 files):**
+
+| File | Purpose |
+|------|---------|
+| **SENATE.md** | Master project guide (this file) |
+| **README.md** | Quick start and project overview |
+| **IMPROVEMENTS.md** | Deep-dive analysis, competitive research, feature specs |
+| **ARCHITECTURE.md** | System architecture diagrams and data flows |
+| **QUICKSTART.md** | Getting started guide |
+| **SETUP.md** | Environment setup instructions |
+
+**Additional Documentation:**
+- `docs/adr/` - Architectural Decision Records (ADR-0001 to ADR-0012)
+- `docs/API.md` - Complete API reference
+- `docs/operations/` - Backup and recovery procedures
+
+---
+
+## 10. Change Log
+
+### v4.0 (December 4, 2025)
+- **Consolidated:** Reduced documentation from 32 files to 6 files
+- **Added:** Comprehensive competitive analysis (Miro, FigJam, Obsidian, etc.)
+- **Added:** 20 innovative feature ideas (Living Bookmarks, AI Personas, etc.)
+- **Restructured:** Future roadmap with competitor-aware prioritization
+- **Identified:** Critical gaps (AI, integrations, drawing tools, mobile)
 
 ### v3.0 (November 17, 2025)
-- **Added:** Comprehensive deep-dive audit findings
 - **Fixed:** 5 critical issues (imports, endpoints, XSS, pagination, errors)
 - **Improved:** Security score from 7.5/10 to 8.1/10
 - **Added:** GET and DELETE endpoints for Canvas
-- **Added:** Pagination to comments endpoint
-- **Removed:** SVG upload support (XSS risk)
-- **Updated:** All documentation references and status
-- **Reorganized:** Issue tracking by current priorities
 
 ### v2.0 (Previous)
 - Completed Phase 1-4 implementation
 - Code audit with 45/45 issues resolved
 - Added sharing, templates, rich text, search
-- Comprehensive documentation
 
 ### v1.0 (MVP)
 - Initial MVP with 6 slices complete
-- Basic authentication and canvas CRUD
-- Note and bookmark items
 
 ---
 
-## 10. Glossary
+## 11. Glossary
 
-**ADR** - Architectural Decision Record
-**CRDT** - Conflict-free Replicated Data Type
-**CSP** - Content Security Policy
-**CSRF** - Cross-Site Request Forgery
-**DoS** - Denial of Service
-**E2E** - End-to-End (testing)
-**MVP** - Minimum Viable Product
-**OWASP** - Open Web Application Security Project
-**P0/P1/P2/P3** - Priority levels (0=Critical, 3=Low)
-**PII** - Personally Identifiable Information
-**PITR** - Point-in-Time Recovery
-**RBAC** - Role-Based Access Control
-**RFC 7807** - Problem Details for HTTP APIs
-**SSRF** - Server-Side Request Forgery
-**XSS** - Cross-Site Scripting
-**Y.js** - CRDT library for real-time collaboration
+| Term | Definition |
+|------|------------|
+| **ADR** | Architectural Decision Record |
+| **CRDT** | Conflict-free Replicated Data Type |
+| **CSP** | Content Security Policy |
+| **CSRF** | Cross-Site Request Forgery |
+| **Y.js** | CRDT library for real-time collaboration |
 
 ---
 
-**Document Version:** 3.0
-**Last Audit:** November 17, 2025
-**Next Review:** When Phase 3 collaboration is 100% complete
-**Maintained By:** Project Owner + AI Assistants (Claude, Gemini, CodexCLI)
+**Document Version:** 4.0
+**Last Updated:** December 4, 2025
+**Next Review:** When AI features are implemented
+**Maintained By:** Project Owner + AI Assistants
 
 ---
 
-*For questions about this document or to propose changes, create an issue or start a discussion with the project team.*
+*See `IMPROVEMENTS.md` for detailed technical specifications, code examples, and implementation guides.*
+

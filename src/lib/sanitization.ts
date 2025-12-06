@@ -2,16 +2,13 @@
  * Input Sanitization Utilities
  *
  * FIXED: Issue #38 - Added comprehensive JSDoc to complex functions
+ * UPDATED: December 2024 - Now uses DOMPurify for production-grade XSS protection
  *
  * Provides XSS protection for user input.
  * See CODE_AUDIT_REPORT.md Issue #18
- *
- * NOTE: For full XSS protection, install DOMPurify:
- *   pnpm add isomorphic-dompurify
- *
- * This module provides basic sanitization that works without external dependencies.
- * For production, consider using DOMPurify for more comprehensive sanitization.
  */
+
+import DOMPurify from 'isomorphic-dompurify';
 
 /**
  * Escapes HTML special characters to prevent XSS attacks
@@ -115,16 +112,15 @@ export function sanitizeUrl(url: string): string | null {
  * Basic sanitization for markdown - removes script tags and dangerous attributes
  */
 export function sanitizeMarkdown(markdown: string): string {
-  return markdown
-    // Remove script tags
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    // Remove event handlers
-    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
-    .replace(/on\w+\s*=\s*[^\s>]*/gi, '')
-    // Remove javascript: URLs
-    .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
-    .replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src=""')
-    .trim();
+  return DOMPurify.sanitize(markdown, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'em', 'code', 'pre',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li', 'a', 'blockquote',
+    ],
+    ALLOWED_ATTR: ['href', 'title'],
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  });
 }
 
 /**
@@ -132,14 +128,10 @@ export function sanitizeMarkdown(markdown: string): string {
  * Allows basic formatting but removes dangerous HTML
  */
 export function sanitizeComment(content: string): string {
-  // For now, use plain text sanitization
-  // In production, use DOMPurify with limited allowed tags:
-  // return DOMPurify.sanitize(content, {
-  //   ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre'],
-  //   ALLOWED_ATTR: [],
-  // });
-
-  return sanitizePlainText(content);
+  return DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: [],
+  });
 }
 
 /**
@@ -238,47 +230,3 @@ export function sanitizeFilename(filename: string): string {
     .replace(/\.{2,}/g, '.')
     .slice(0, 255);
 }
-
-/*
- * ============================================================================
- * PRODUCTION IMPLEMENTATION WITH DOMPURIFY
- * ============================================================================
- *
- * For production use, install DOMPurify for comprehensive XSS protection:
- *
- * 1. Install dependency:
- *    pnpm add isomorphic-dompurify
- *
- * 2. Replace the basic functions above with DOMPurify:
- *
- * ```typescript
- * import DOMPurify from 'isomorphic-dompurify';
- *
- * export function sanitizeComment(content: string): string {
- *   return DOMPurify.sanitize(content, {
- *     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li'],
- *     ALLOWED_ATTR: [],
- *   });
- * }
- *
- * export function sanitizeMarkdown(markdown: string): string {
- *   // Convert markdown to HTML first (using a markdown library)
- *   // then sanitize with DOMPurify
- *   return DOMPurify.sanitize(markdown, {
- *     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'blockquote'],
- *     ALLOWED_ATTR: ['href', 'title'],
- *     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
- *   });
- * }
- * ```
- *
- * Benefits of DOMPurify:
- * - ✅ Battle-tested against XSS attacks
- * - ✅ Regular security updates
- * - ✅ Configurable allowed tags and attributes
- * - ✅ Works in both browser and Node.js (isomorphic)
- * - ✅ Actively maintained
- * - ✅ Used by major companies
- *
- * See: https://github.com/cure53/DOMPurify
- */

@@ -51,7 +51,7 @@
  */
 
 import { create } from 'zustand';
-import { devtools } from 'zustand/middleware';
+import { devtools, persist } from 'zustand/middleware';
 
 /**
  * Available canvas tools for user interaction
@@ -86,37 +86,44 @@ interface CanvasUIState {
 
 export const useCanvasStore = create<CanvasUIState>()(
   devtools(
-    (set) => ({
-      // Initial state
-      currentZoom: 1.0,
-      currentPanX: 0,
-      currentPanY: 0,
-      activeTool: 'select',
-      selectedItemId: null,
-      isContextMenuOpen: false,
-      contextMenuPosition: null,
+    persist(
+      (set) => ({
+        // Initial state
+        currentZoom: 1.0,
+        currentPanX: 0,
+        currentPanY: 0,
+        activeTool: 'select',
+        selectedItemId: null,
+        isContextMenuOpen: false,
+        contextMenuPosition: null,
 
-      // Actions
-      setZoom: (zoom) => set({ currentZoom: zoom }),
+        // Actions
+        setZoom: (zoom) => set({ currentZoom: zoom }),
 
-      setPan: (x, y) => set({ currentPanX: x, currentPanY: y }),
+        setPan: (x, y) => set({ currentPanX: x, currentPanY: y }),
 
-      setActiveTool: (tool) => set({ activeTool: tool }),
+        setActiveTool: (tool) => set({ activeTool: tool }),
 
-      setSelectedItem: (id) => set({ selectedItemId: id }),
+        setSelectedItem: (id) => set({ selectedItemId: id }),
 
-      openContextMenu: (x, y) => set({ isContextMenuOpen: true, contextMenuPosition: { x, y } }),
+        openContextMenu: (x, y) => set({ isContextMenuOpen: true, contextMenuPosition: { x, y } }),
 
-      closeContextMenu: () => set({ isContextMenuOpen: false, contextMenuPosition: null }),
+        closeContextMenu: () => set({ isContextMenuOpen: false, contextMenuPosition: null }),
 
-      resetView: () =>
-        set({
-          currentZoom: 1.0,
-          currentPanX: 0,
-          currentPanY: 0,
-          selectedItemId: null,
-        }),
-    }),
+        resetView: () =>
+          set({
+            currentZoom: 1.0,
+            currentPanX: 0,
+            currentPanY: 0,
+            selectedItemId: null,
+          }),
+      }),
+      {
+        name: 'canvas-preferences',
+        // Only persist activeTool preference, not ephemeral state
+        partialize: (state) => ({ activeTool: state.activeTool }),
+      }
+    ),
     { name: 'CanvasStore' }
   )
 );

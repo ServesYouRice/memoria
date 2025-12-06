@@ -16,11 +16,58 @@ export function PasswordStrengthIndicator({
   password,
   userInputs = [],
 }: PasswordStrengthIndicatorProps) {
+  const [result, setResult] = React.useState<{
+    score: number;
+    feedback: { warning: string; suggestions: string[] };
+  } | null>(null);
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const validate = async () => {
+      if (!password) {
+        if (isMounted) setResult(null);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const strength = await validatePasswordStrength(password, userInputs);
+        if (isMounted) {
+          setResult(strength);
+        }
+      } catch (error) {
+        console.error('Password validation failed:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    const timeoutId = setTimeout(validate, 200); // Debounce slightly
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [password, userInputs]);
+
   if (!password) {
     return null;
   }
 
-  const result = validatePasswordStrength(password, userInputs);
+  if (isLoading || !result) {
+    return (
+      <Box sx={{ mt: 1 }}>
+        <Typography variant="caption" color="text.secondary">
+          Checking strength...
+        </Typography>
+        <LinearProgress sx={{ mt: 0.5, height: 6, borderRadius: 1 }} />
+      </Box>
+    );
+  }
+
   const { score, feedback } = result;
 
   return (

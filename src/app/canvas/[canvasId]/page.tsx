@@ -10,6 +10,7 @@ import React, { useState, useRef } from 'react';
 import { Stage, Layer, Circle, Text as KonvaText } from 'react-konva';
 import { Box, SpeedDial, SpeedDialAction, SpeedDialIcon, CircularProgress } from '@mui/material';
 import { NoteAdd, Bookmark, Image } from '@mui/icons-material';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { useCanvasItems, useDeleteCanvasItem, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
@@ -18,6 +19,7 @@ import { useSelectionBox } from '@/lib/hooks/use-selection-box';
 import { useUpdateCanvasThumbnail } from '@/lib/hooks/use-canvases';
 import { useCollaboration } from '@/lib/hooks/use-collaboration';
 import { stripHtmlTags } from '@/lib/utils/html';
+import { useGesture } from '@use-gesture/react';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { ImageItem } from '@/features/canvas/components/ImageItem';
@@ -76,6 +78,19 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const stageRef = useRef<Konva.Stage>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useGesture(
+    {
+      onPinch: ({ offset: [d] }) => {
+        handleZoomChange(d);
+      },
+    },
+    {
+      target: containerRef,
+      pinch: { scaleBounds: { min: 0.1, max: 5 }, from: () => [zoom, 0] },
+    }
+  );
 
   const GRID_SIZE = 20; // Grid cell size in pixels
 
@@ -702,7 +717,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
   }
 
   return (
-    <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <Box ref={containerRef} sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Canvas Header */}
       <CanvasHeader
         canvasId={canvasId}
@@ -780,7 +795,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
                       handleContextMenu(
-                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => { } } as React.MouseEvent,
                         item.id
                       );
                     }}
@@ -798,7 +813,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
                       handleContextMenu(
-                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => { } } as React.MouseEvent,
                         item.id
                       );
                     }}
@@ -816,7 +831,7 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
                       const stage = e.target.getStage();
                       const pointerPosition = stage.getPointerPosition();
                       handleContextMenu(
-                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => {} } as React.MouseEvent,
+                        { clientX: pointerPosition.x, clientY: pointerPosition.y, preventDefault: () => { } } as React.MouseEvent,
                         item.id
                       );
                     }}
@@ -1011,7 +1026,9 @@ function CanvasContent({ canvasId }: { canvasId: string }) {
 export default function CanvasPage({ params }: CanvasPageProps) {
   return (
     <QueryClientProvider client={queryClient}>
-      <CanvasContent canvasId={params.canvasId} />
+      <ErrorBoundary>
+        <CanvasContent canvasId={params.canvasId} />
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

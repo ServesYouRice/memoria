@@ -2,13 +2,29 @@
  * Root Layout
  *
  * ENHANCED: Issue #40 - Analytics integration
+ * ENHANCED: Modern UI with Inter font
  */
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
 import { Providers } from './providers';
 import { PWARegister } from '@/components/PWARegister';
 import './tiptap.css';
+
+// Load Inter font with all weights for premium typography
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+  weight: ['400', '500', '600', '700', '800'],
+});
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 export const metadata: Metadata = {
   title: 'CanvasCollect',
@@ -19,17 +35,12 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'CanvasCollect',
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={inter.variable}>
+      <body className={inter.className}>
         <PWARegister />
         <Providers>{children}</Providers>
         <Analytics />
@@ -37,3 +48,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+

@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Stage, Layer } from 'react-konva';
 import { Box, Button, CircularProgress, Alert } from '@mui/material';
 import { ItemType } from '@prisma/client';
 import { NoteItem } from './NoteItem';
-import { useCanvasItems, useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { useCanvasItems, useCreateCanvasItem, useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
 
 interface CanvasProps {
   canvasId: string;
@@ -17,7 +17,39 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: items, isLoading, error, refetch } = useCanvasItems(canvasId);
-  const createMutation = useCreateCanvasItem(canvasId);
+  const createMutation = useCreateCanvasItem();
+  const deleteMutation = useDeleteCanvasItem();
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Delete selected item
+    if (e.key === 'Delete' && selectedItemId) {
+      deleteMutation.mutate({ itemId: selectedItemId, canvasId });
+      setSelectedItemId(null);
+    }
+    // Escape to deselect
+    if (e.key === 'Escape') {
+      setSelectedItemId(null);
+    }
+    // Ctrl+N to add note (when not in input)
+    if (e.ctrlKey && e.key === 'n' && !(e.target as HTMLElement).matches('input, textarea')) {
+      e.preventDefault();
+      createMutation.mutate({
+        canvasId,
+        type: ItemType.NOTE,
+        positionX: stageSize.width / 2 - 100,
+        positionY: stageSize.height / 2 - 75,
+        width: 200,
+        height: 150,
+        content: { text: 'New Note' },
+      });
+    }
+  }, [selectedItemId, canvasId, deleteMutation, createMutation, stageSize]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   // Update stage size to match container
   useEffect(() => {
@@ -38,6 +70,7 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
   const handleCreateNote = () => {
     // Create a new note in the center of the visible area
     createMutation.mutate({
+      canvasId,
       type: ItemType.NOTE,
       positionX: stageSize.width / 2 - 100,
       positionY: stageSize.height / 2 - 75,

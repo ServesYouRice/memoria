@@ -1,4 +1,4 @@
-import zxcvbn from 'zxcvbn';
+// zxcvbn is now lazy-loaded
 
 export const PASSWORD_MIN_LENGTH = 10;
 export const PASSWORD_MIN_SCORE = 3; // zxcvbn score 0-4, we require >= 3
@@ -20,10 +20,18 @@ export interface PasswordStrengthResult {
  * @param userInputs - Optional array of user-specific inputs (email, name) to check against
  * @returns Password strength result
  */
-export function validatePasswordStrength(
+/**
+ * Validate password strength using zxcvbn (Lazy Loaded)
+ * Following ADR-0008: Enforce zxcvbn score >= 3
+ *
+ * @param password - The password to validate
+ * @param userInputs - Optional array of user-specific inputs (email, name) to check against
+ * @returns Password strength result
+ */
+export async function validatePasswordStrength(
   password: string,
   userInputs: string[] = []
-): PasswordStrengthResult {
+): Promise<PasswordStrengthResult> {
   if (password.length < PASSWORD_MIN_LENGTH) {
     return {
       score: 0,
@@ -35,6 +43,8 @@ export function validatePasswordStrength(
     };
   }
 
+  // @ts-ignore
+  const { default: zxcvbn } = await import('zxcvbn');
   const result = zxcvbn(password, userInputs);
 
   return {
