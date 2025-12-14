@@ -8,7 +8,7 @@
 
 export type EventHandler<T = unknown> = (data: T) => void;
 
-export class EventEmitter<Events extends Record<string, unknown>> {
+export class EventEmitter<Events extends object> {
     private handlers: Map<keyof Events, Set<EventHandler<any>>> = new Map();
 
     /**

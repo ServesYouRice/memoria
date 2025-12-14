@@ -12,8 +12,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth-options';
+
+import { auth } from '@/lib/auth';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('upload');
 
 // Maximum file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -63,7 +66,7 @@ function hasValidExtension(filename: string): boolean {
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -124,7 +127,7 @@ export async function POST(request: NextRequest) {
       type: file.type,
     });
   } catch (error) {
-    console.error('Upload error:', error);
+    logger.error({ error }, 'Upload error');
     return NextResponse.json(
       { error: 'Failed to upload file' },
       { status: 500 }

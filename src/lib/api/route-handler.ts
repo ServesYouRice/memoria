@@ -1,134 +1,185 @@
-/**
- * API Route Handler Wrapper
- *
- * Higher-order function to reduce try/catch duplication in API routes.
- * Provides consistent error handling, logging, and response formatting.
- *
- * @module lib/api/route-handler
- *
- * @example
- * ```typescript
- * // Instead of manually handling errors in each route:
- * export const GET = withApiHandler(async (req) => {
- *   const data = await fetchData();
- *   return NextResponse.json(data);
- * });
- * ```
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { logger } from '@/lib/logger';
-import { type ProblemDetails, Problems } from './error-handler';
+import { prisma } from '@/lib/db';
+import { ZodSchema } from 'zod';
+import { auth } from '@/lib/auth';
+import { createLogger } from '@/lib/logger';
+import { ApiError } from '@/lib/errors'; // Assuming this exists or using simple Error
 
-type ApiHandler<T = unknown> = (req: NextRequest) => Promise<NextResponse<T>>;
+const logger = createLogger('api');
+
+type RouteHandler<T = any> = (
+    req: NextRequest,
+    context?: any
+) => Promise<NextResponse<T> | Response>;
+
+type AuthenticatedRouteHandler<T = any> = (
+    req: NextRequest,
+    session: any, // Typed as Session from next-auth
+    context?: any
+) => Promise<NextResponse<T> | Response>;
 
 /**
- * Wrap an API route handler with consistent error handling
+ * Wrapper for API route handlers to provide centralized error handling
  */
-export function withApiHandler<T>(handler: ApiHandler<T>): ApiHandler<T | ProblemDetails> {
-    return async (req: NextRequest) => {
-        const startTime = Date.now();
-        const requestId = crypto.randomUUID();
+export function withApiHandler<T>(handler: RouteHandler<T>): RouteHandler<T> {
+    return async (req: NextRequest, context?: any) => {
+        try {
+            return await handler(req, context);
+        } catch (error) {
+            const correlationId = req.headers.get('x-correlation-id') || undefined;
+            logger.error({ error, correlationId }, 'API Error');
+
+            if (error instanceof ApiError) {
+                return NextResponse.json(
+                    { error: error.message },
+                    { status: error.status }
+                ) as any;
+            }
+
+            // Handle Zod errors if they bubble up
+            if ((error as any).name === 'ZodError') {
+                return NextResponse.json(
+                    { error: 'Validation Error', details: (error as any).errors },
+                    { status: 400 }
+                ) as any;
+            }
+
+            return NextResponse.json(
+                { error: 'Internal Server Error' },
+                { status: 500 }
+            ) as any;
+        }
+    };
+}
+
+/**
+ * Wrapper for API route handlers that require authentication
+ */
+export function withAuth<T>(handler: AuthenticatedRouteHandler<T>): RouteHandler<T> {
+    return async (req: NextRequest, context?: any) => {
+        try {
+            const session = await auth();
+
+            if (!session || !session.user) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) as any;
+            }
+
+            // Chain error handler inside auth
+            return await withApiHandler(async (r, c) => handler(r, session, c))(req, context);
+        } catch (error) {
+            logger.error({ error }, 'Auth Middleware Error');
+            return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 }) as any;
+        }
+    };
+}
+
+/**
+ * Wrapper for request validation
+ */
+export function withValidation<T>(
+    schema: ZodSchema<T>,
+    handler: (data: T, req: NextRequest, context?: any) => Promise<NextResponse>
+): RouteHandler {
+    return async (req: NextRequest, context?: any) => {
+        try {
+            const body = await req.json();
+            const validation = schema.safeParse(body);
+
+            if (!validation.success) {
+                return NextResponse.json(
+                    { error: 'Validation Error', details: validation.error.errors },
+                    { status: 400 }
+                ) as any;
+            }
+
+            return await handler(validation.data, req, context);
+        } catch (error) {
+            if (error instanceof SyntaxError) {
+                return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) as any;
+            }
+            throw error;
+        }
+    };
+}
+
+/**
+ * Wrapper for Idempotency
+ * Must be used INSIDE withAuth
+ */
+export function withIdempotency<T>(handler: AuthenticatedRouteHandler<T>): AuthenticatedRouteHandler<T> {
+    return async (req: NextRequest, session: any, context?: any) => {
+        const key = req.headers.get('x-idempotency-key');
+        if (!key) return handler(req, session, context);
+
+        const userId = session.user.id;
+        const method = req.method;
+        const path = req.nextUrl.pathname;
 
         try {
-            const response = await handler(req);
+            // Check for existing key
+            const existing = await prisma.idempotencyKey.findUnique({
+                where: { key }
+            });
 
-            // Log successful requests
-            logger.info({
-                requestId,
-                method: req.method,
-                url: req.url,
-                status: response.status,
-                duration: Date.now() - startTime,
-            }, 'API request completed');
+            if (existing) {
+                if (existing.userId !== userId) {
+                    return NextResponse.json({ error: 'Conflict' }, { status: 409 }) as any;
+                }
+
+                if (existing.responseCode) {
+                    return NextResponse.json(existing.responseBody, { status: existing.responseCode }) as any;
+                }
+                return NextResponse.json({ error: 'Request is currently being processed' }, { status: 409 }) as any;
+            }
+
+            // Create lock
+            await prisma.idempotencyKey.create({
+                data: { key, userId, method, path }
+            });
+        } catch (error) {
+            // Handle race condition
+            return NextResponse.json({ error: 'Conflict' }, { status: 409 }) as any;
+        }
+
+        try {
+            const response = await handler(req, session, context);
+
+            // Clone and save
+            const cloned = response.clone();
+            let body = null;
+            try {
+                body = await cloned.json();
+            } catch {
+                try {
+                    body = await cloned.text();
+                } catch { }
+            }
+
+            await prisma.idempotencyKey.update({
+                where: { key },
+                data: {
+                    responseCode: response.status,
+                    responseBody: body as any
+                }
+            });
 
             return response;
         } catch (error) {
-            // Handle Zod validation errors
-            if (error instanceof z.ZodError) {
-                const problem = Problems.Validation(
-                    error.errors.map((e) => ({
-                        field: e.path.join('.'),
-                        message: e.message,
-                    }))
-                );
-
-                logger.warn({
-                    requestId,
-                    method: req.method,
-                    url: req.url,
-                    errors: error.errors,
-                    duration: Date.now() - startTime,
-                }, 'Validation error');
-
-                return NextResponse.json(problem, { status: 400 });
-            }
-
-            // Handle known application errors
-            if (error instanceof Error) {
-                // Check for specific error types
-                if (error.message.includes('not found')) {
-                    const problem = Problems.NotFound(error.message);
-                    return NextResponse.json(problem, { status: 404 });
-                }
-
-                if (error.message.includes('unauthorized') || error.message.includes('Unauthorized')) {
-                    const problem = Problems.Unauthorized(error.message);
-                    return NextResponse.json(problem, { status: 401 });
-                }
-
-                if (error.message.includes('forbidden') || error.message.includes('Forbidden')) {
-                    const problem = Problems.Forbidden(error.message);
-                    return NextResponse.json(problem, { status: 403 });
-                }
-            }
-
-            // Log and return internal server error
-            logger.error({
-                requestId,
-                method: req.method,
-                url: req.url,
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-                duration: Date.now() - startTime,
-            }, 'API request failed');
-
-            const problem = Problems.Internal('An unexpected error occurred');
-            return NextResponse.json(problem, { status: 500 });
+            // Cleanup on error to allow retry
+            await prisma.idempotencyKey.delete({ where: { key } }).catch(() => { });
+            throw error;
         }
     };
 }
 
 /**
- * Wrap an API route handler with request body validation
+ * Wrapper for API route handlers that require BOTH authentication AND validation
  */
-export function withValidation<T extends z.ZodType>(schema: T) {
-    return function <R>(handler: (data: z.infer<T>, req: NextRequest) => Promise<NextResponse<R>>) {
-        return withApiHandler(async (req: NextRequest) => {
-            const body = await req.json();
-            const data = schema.parse(body);
-            return handler(data, req);
-        });
-    };
-}
-
-/**
- * Wrap an API route handler with authentication check
- */
-export function withAuth<T>(handler: ApiHandler<T>): ApiHandler<T | ProblemDetails> {
-    return withApiHandler(async (req: NextRequest) => {
-        // Import auth dynamically to avoid circular dependencies
-        const { auth } = await import('@/lib/auth');
-        const session = await auth();
-
-        if (!session?.user) {
-            throw new Error('Unauthorized');
-        }
-
-        // Attach user to request for downstream handlers
-        (req as any).user = session.user;
-
-        return handler(req);
+export function withAuthValidation<T>(
+    schema: ZodSchema<T>,
+    handler: (data: T, req: NextRequest, session: any, context?: any) => Promise<NextResponse>
+): RouteHandler {
+    return withAuth(async (req, session, context) => {
+        return withValidation(schema, (data, r, c) => handler(data, r, session, c))(req, context);
     });
 }

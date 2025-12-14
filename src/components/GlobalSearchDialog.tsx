@@ -110,7 +110,7 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
       <DialogTitle sx={{ pb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6">Search Across Canvases</Typography>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" aria-label="Close search">
             <CloseIcon />
           </IconButton>
         </Box>
@@ -135,6 +135,9 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
                 <CircularProgress size={20} />
               </InputAdornment>
             ) : null,
+          }}
+          inputProps={{
+            'aria-label': 'Search notes and bookmarks',
           }}
         />
 

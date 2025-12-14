@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { Box, Container, Typography, Avatar, alpha } from '@mui/material';
+import { Box, Container, Typography, Avatar } from '@mui/material';
 import { auth } from '@/lib/auth';
 import { LogoutButton } from '@/features/auth/components/LogoutButton';
 import { ThemeToggle } from '@/components/ThemeToggle';

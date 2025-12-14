@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Box, Button, Container, Typography } from '@mui/material';
-import { Home as HomeIcon, SearchOff as NotFoundIcon } from '@mui/icons-material';
+import { Home as HomeIcon, ErrorOutline as NotFoundIcon } from '@mui/icons-material';
 
 export default function NotFound() {
     return (

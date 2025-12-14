@@ -56,7 +56,15 @@ import { devtools, persist } from 'zustand/middleware';
 /**
  * Available canvas tools for user interaction
  */
-export type CanvasTool = 'select' | 'pan' | 'note' | 'bookmark';
+export type CanvasTool = 'select' | 'pan' | 'note' | 'bookmark' | 'draw' | 'shape' | 'arrow' | 'text';
+
+export interface DrawingState {
+  color: string;
+  strokeWidth: number;
+  opacity: number;
+  toolType: 'pen' | 'marker' | 'highlighter';
+}
+
 
 interface CanvasUIState {
   // Current view state (ephemeral, updated frequently during interactions)
@@ -70,17 +78,28 @@ interface CanvasUIState {
   // Selection state
   selectedItemId: string | null;
 
+  // Grid state
+  gridVisible: boolean;
+  snapToGrid: boolean;
+
   // UI element states
   isContextMenuOpen: boolean;
   contextMenuPosition: { x: number; y: number } | null;
+
+  // Drawing state
+  drawingState: DrawingState;
 
   // Actions
   setZoom: (zoom: number) => void;
   setPan: (x: number, y: number) => void;
   setActiveTool: (tool: CanvasTool) => void;
   setSelectedItem: (id: string | null) => void;
+  setDrawingState: (state: Partial<DrawingState>) => void;
+  setGridVisible: (visible: boolean) => void;
+  setSnapToGrid: (enabled: boolean) => void;
   openContextMenu: (x: number, y: number) => void;
   closeContextMenu: () => void;
+  clearSelection: () => void;
   resetView: () => void;
 }
 
@@ -96,6 +115,14 @@ export const useCanvasStore = create<CanvasUIState>()(
         selectedItemId: null,
         isContextMenuOpen: false,
         contextMenuPosition: null,
+        gridVisible: true,
+        snapToGrid: false,
+        drawingState: {
+          color: '#000000',
+          strokeWidth: 3,
+          opacity: 1,
+          toolType: 'pen'
+        },
 
         // Actions
         setZoom: (zoom) => set({ currentZoom: zoom }),
@@ -104,11 +131,21 @@ export const useCanvasStore = create<CanvasUIState>()(
 
         setActiveTool: (tool) => set({ activeTool: tool }),
 
+        setDrawingState: (newState) => set((state) => ({
+          drawingState: { ...state.drawingState, ...newState }
+        })),
+
         setSelectedItem: (id) => set({ selectedItemId: id }),
+
+        setGridVisible: (visible) => set({ gridVisible: visible }),
+
+        setSnapToGrid: (enabled) => set({ snapToGrid: enabled }),
 
         openContextMenu: (x, y) => set({ isContextMenuOpen: true, contextMenuPosition: { x, y } }),
 
         closeContextMenu: () => set({ isContextMenuOpen: false, contextMenuPosition: null }),
+
+        clearSelection: () => set({ selectedItemId: null }),
 
         resetView: () =>
           set({
@@ -120,8 +157,13 @@ export const useCanvasStore = create<CanvasUIState>()(
       }),
       {
         name: 'canvas-preferences',
-        // Only persist activeTool preference, not ephemeral state
-        partialize: (state) => ({ activeTool: state.activeTool }),
+        // Only persist activeTool and grid preferences, not ephemeral state
+        partialize: (state) => ({
+          activeTool: state.activeTool,
+          gridVisible: state.gridVisible,
+          snapToGrid: state.snapToGrid,
+          drawingState: state.drawingState,
+        }),
       }
     ),
     { name: 'CanvasStore' }

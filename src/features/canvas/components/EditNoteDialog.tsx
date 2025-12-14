@@ -79,8 +79,8 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
 
       await updateItem.mutateAsync({
         itemId: item.id,
-        version: item.version,
-        updates: {
+        data: {
+          version: item.version,
           content: {
             text: data.text,
           },

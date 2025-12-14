@@ -9,7 +9,7 @@ import { requireAuth } from '@/lib/api/auth';
 import { errorResponse, ForbiddenError, NotFoundError } from '@/lib/errors';
 
 interface RouteContext {
-  params: { canvasId: string; shareId: string };
+  params: Promise<{ canvasId: string; shareId: string }>;
 }
 
 /**
@@ -18,7 +18,7 @@ interface RouteContext {
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId } = await requireAuth();
-    const { canvasId, shareId } = params;
+    const { canvasId, shareId } = await params;
 
     // Check if user owns this canvas
     const canvas = await prisma.canvas.findUnique({

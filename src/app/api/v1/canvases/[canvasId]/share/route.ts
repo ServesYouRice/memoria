@@ -16,7 +16,7 @@ const shareCanvasSchema = z.object({
 });
 
 interface RouteContext {
-  params: { canvasId: string };
+  params: Promise<{ canvasId: string }>;
 }
 
 /**
@@ -25,7 +25,7 @@ interface RouteContext {
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId } = await requireAuth();
-    const { canvasId } = params;
+    const { canvasId } = await params;
     const body = await request.json();
 
     // Validate input
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId } = await requireAuth();
-    const { canvasId } = params;
+    const { canvasId } = await params;
 
     // Check if user owns this canvas
     const canvas = await prisma.canvas.findUnique({

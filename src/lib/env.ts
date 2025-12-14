@@ -21,6 +21,13 @@ const envSchema = z.object({
   // Optional: OAuth providers (can be added later)
   // GOOGLE_CLIENT_ID: z.string().optional(),
   // GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+  // Sentry
+  NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
+  SENTRY_DSN: z.string().optional(),
+
+  // Cron
+  CRON_SECRET: z.string().optional(),
 });
 
 // Validate environment variables
@@ -39,6 +46,6 @@ export const env = parsed.data;
 // Type-safe environment variables
 declare global {
   namespace NodeJS {
-    interface ProcessEnv extends z.infer<typeof envSchema> {}
+    interface ProcessEnv extends z.infer<typeof envSchema> { }
   }
 }

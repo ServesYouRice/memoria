@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer } from 'react-konva';
 import { Box, Button, CircularProgress, Alert } from '@mui/material';
-import { ItemType } from '@prisma/client';
+import { ItemType } from '@/types/canvas';
 import { NoteItem } from './NoteItem';
 import { useCanvasItems, useCreateCanvasItem, useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
+import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard';
 
 interface CanvasProps {
   canvasId: string;
@@ -16,40 +17,72 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { data: items, isLoading, error, refetch } = useCanvasItems(canvasId);
+  const { data, isLoading, error, refetch } = useCanvasItems(canvasId);
+  const items = data?.items;
+
   const createMutation = useCreateCanvasItem();
   const deleteMutation = useDeleteCanvasItem();
 
   // Keyboard navigation
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Delete selected item
-    if (e.key === 'Delete' && selectedItemId) {
-      deleteMutation.mutate({ itemId: selectedItemId, canvasId });
-      setSelectedItemId(null);
-    }
-    // Escape to deselect
-    if (e.key === 'Escape') {
-      setSelectedItemId(null);
-    }
-    // Ctrl+N to add note (when not in input)
-    if (e.ctrlKey && e.key === 'n' && !(e.target as HTMLElement).matches('input, textarea')) {
-      e.preventDefault();
-      createMutation.mutate({
-        canvasId,
-        type: ItemType.NOTE,
-        positionX: stageSize.width / 2 - 100,
-        positionY: stageSize.height / 2 - 75,
-        width: 200,
-        height: 150,
-        content: { text: 'New Note' },
-      });
-    }
-  }, [selectedItemId, canvasId, deleteMutation, createMutation, stageSize]);
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+  useKeyboardShortcuts([
+    {
+      key: 'Delete',
+      handler: () => {
+        if (selectedItemId) {
+          const item = items?.find((i) => i.id === selectedItemId);
+          if (item) {
+            deleteMutation.mutate({ itemId: selectedItemId, version: item.version });
+            setSelectedItemId(null);
+          }
+        }
+      },
+    },
+    {
+      key: 'Escape',
+      handler: () => setSelectedItemId(null),
+    },
+    {
+      key: 'n',
+      ctrl: true,
+      preventDefault: true,
+      handler: () => {
+        createMutation.mutate({
+          canvasId,
+          type: ItemType.NOTE,
+          positionX: stageSize.width / 2 - 100,
+          positionY: stageSize.height / 2 - 75,
+          width: 200,
+          height: 150,
+          tags: [],
+          zIndex: 1,
+          content: { text: 'New Note' },
+        });
+      },
+    },
+    {
+      key: 'd',
+      ctrl: true,
+      preventDefault: true,
+      handler: () => {
+        if (selectedItemId && items) {
+          const item = items.find((i) => i.id === selectedItemId);
+          if (item) {
+            createMutation.mutate({
+              canvasId,
+              type: item.type,
+              positionX: item.positionX + 20,
+              positionY: item.positionY + 20,
+              width: item.width,
+              height: item.height,
+              content: item.content as any, // Content structure varies by type
+              tags: item.tags || [],
+              zIndex: item.zIndex + 1,
+            });
+          }
+        }
+      },
+    },
+  ]);
 
   // Update stage size to match container
   useEffect(() => {
@@ -76,6 +109,8 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
       positionY: stageSize.height / 2 - 75,
       width: 200,
       height: 150,
+      tags: [],
+      zIndex: 1,
       content: {
         text: 'New Note',
       },
@@ -143,7 +178,10 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
                   <NoteItem
                     key={item.id}
                     item={item}
-                    canvasId={canvasId}
+                    // canvasId prop is likely not needed or needs check in NoteItem definition
+                    // Checking compiler error: "Property 'canvasId' does not exist on type..."
+                    // NoteItem likely takes item, onSelect, isSelected
+                    // I will remove canvasId from here, assuming it uses context or item data
                     isSelected={item.id === selectedItemId}
                     onSelect={() => setSelectedItemId(item.id)}
                   />

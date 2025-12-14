@@ -8,6 +8,9 @@ import { IncomingMessage } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import { getDocument } from './yjs-provider';
+import { decode } from 'next-auth/jwt';
+import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
 
 export interface CollaborationUser {
   userId: string;
@@ -22,10 +25,15 @@ interface ClientConnection {
   user: CollaborationUser;
   cursorPosition?: { x: number; y: number };
   isAlive: boolean;
+  messageCount: number;
+  rateLimitReset: number;
 }
 
 // Heartbeat interval for detecting zombie connections (30 seconds)
 const HEARTBEAT_INTERVAL = 30000;
+// Rate limit: 60 messages per minute
+const RATE_LIMIT_MAX = 60;
+const RATE_LIMIT_WINDOW = 60000;
 
 // Active connections per canvas
 const connections = new Map<string, Set<ClientConnection>>();
@@ -50,7 +58,24 @@ let colorIndex = 0;
 function getNextUserColor(): string {
   const color = USER_COLORS[colorIndex];
   colorIndex = (colorIndex + 1) % USER_COLORS.length;
-  return color;
+  return color || USER_COLORS[0];
+}
+
+/**
+ * Helper to parse cookies from header
+ */
+function parseCookies(request: IncomingMessage): Record<string, string> {
+  const list: Record<string, string> = {};
+  const rc = request.headers.cookie;
+
+  rc && rc.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    const name = parts.shift()?.trim();
+    const value = decodeURIComponent(parts.join('='));
+    if (name) list[name] = value;
+  });
+
+  return list;
 }
 
 /**
@@ -60,14 +85,90 @@ export function createCollaborationServer(server: any): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
 
   // Handle WebSocket upgrade
-  server.on('upgrade', (request: IncomingMessage, socket: any, head: Buffer) => {
+  server.on('upgrade', async (request: IncomingMessage, socket: any, head: Buffer) => {
     const url = new URL(request.url || '', `http://${request.headers.host}`);
 
     // Only handle collaboration WebSocket connections
     if (url.pathname.startsWith('/api/collaboration/')) {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-      });
+      try {
+        const pathParts = url.pathname.split('/');
+        const canvasId = pathParts[pathParts.length - 1];
+
+        if (!canvasId) {
+          socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        // 1. Authentication
+        const cookies = parseCookies(request);
+        const token = cookies['next-auth.session-token'] || cookies['__Secure-next-auth.session-token'];
+
+        if (!token) {
+          logger.warn('WebSocket connection attempt without token');
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        const decoded = await decode({
+          token,
+          secret: process.env['AUTH_SECRET']!,
+          salt: cookies['__Secure-next-auth.session-token'] ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+        });
+
+        if (!decoded || !decoded.email) {
+          logger.warn('Invalid token for WebSocket connection');
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        // 2. Authorization
+        const user = await prisma.user.findUnique({
+          where: { email: decoded.email as string },
+        });
+
+        if (!user) {
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        // Check if user has access to canvas
+        const canvas = await prisma.canvas.findUnique({
+          where: { id: canvasId },
+          include: {
+            shares: {
+              where: { email: user.email },
+            },
+          },
+        });
+
+        // Authorization Rule: User must own the canvas OR have an existing share record
+        if (!canvas || (canvas.userId !== user.id && canvas.shares.length === 0)) {
+          logger.warn({ userId: user.id, canvasId }, `User denied access to canvas`);
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        // Attach user to request for handleConnection
+        (request as any).user = {
+          userId: user.id,
+          email: user.email,
+          name: user.name || undefined,
+          color: getNextUserColor(),
+        };
+
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      } catch (error) {
+        logger.error({ error }, 'WebSocket upgrade error');
+        socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+        socket.destroy();
+      }
     }
   });
 
@@ -76,13 +177,12 @@ export function createCollaborationServer(server: any): WebSocketServer {
     await handleConnection(ws, request);
   });
 
-  // Heartbeat interval to detect and cleanup zombie connections
+  // Heartbeat interval
   const heartbeatInterval = setInterval(() => {
     connections.forEach((clients, canvasId) => {
       clients.forEach((client) => {
         if (!client.isAlive) {
-          // Connection didn't respond to ping, terminate it
-          console.log(`Terminating zombie connection for user ${client.user.userId} on canvas ${canvasId}`);
+          logger.info({ userId: client.user.userId, canvasId }, 'Terminating zombie connection');
           client.ws.terminate();
           clients.delete(client);
           return;
@@ -91,14 +191,12 @@ export function createCollaborationServer(server: any): WebSocketServer {
         client.ws.ping();
       });
 
-      // Cleanup empty canvas sets
       if (clients.size === 0) {
         connections.delete(canvasId);
       }
     });
   }, HEARTBEAT_INTERVAL);
 
-  // Cleanup interval on server close
   wss.on('close', () => {
     clearInterval(heartbeatInterval);
   });
@@ -114,85 +212,72 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
   const pathParts = url.pathname.split('/');
   const canvasId = pathParts[pathParts.length - 1];
 
-  if (!canvasId) {
-    ws.close(1008, 'Canvas ID required');
+  // User is already authenticated and attached to request
+  const user = (request as any).user as CollaborationUser;
+
+  if (!user || !canvasId) {
+    ws.close(1008, 'Internal Error');
     return;
   }
-
-  // Extract user info from query params (in production, validate session)
-  const userId = url.searchParams.get('userId') || 'anonymous';
-  const email = url.searchParams.get('email') || 'anonymous@example.com';
-  const name = url.searchParams.get('name') || undefined;
-
-  const user: CollaborationUser = {
-    userId,
-    email,
-    name,
-    color: getNextUserColor(),
-  };
 
   const connection: ClientConnection = {
     ws,
     canvasId,
     user,
     isAlive: true,
+    messageCount: 0,
+    rateLimitReset: Date.now() + RATE_LIMIT_WINDOW,
   };
 
-  // Add connection to canvas group
   if (!connections.has(canvasId)) {
     connections.set(canvasId, new Set());
   }
   connections.get(canvasId)!.add(connection);
 
-  console.log(`User ${user.email} connected to canvas ${canvasId}`);
+  logger.info({ userId: user.userId, canvasId }, 'User connected to canvas');
 
-  // Get Y.js document for this canvas
   const doc = await getDocument(canvasId);
 
-  // Send initial document state
-  const stateVector = Y.encodeStateVector(doc);
-  const update = Y.encodeStateAsUpdate(doc, stateVector);
+  try {
+    const stateVector = Y.encodeStateVector(doc);
+    const update = Y.encodeStateAsUpdate(doc, stateVector);
 
-  ws.send(
-    JSON.stringify({
-      type: 'sync',
-      update: Array.from(update),
-    })
-  );
+    ws.send(
+      JSON.stringify({
+        type: 'sync',
+        update: Array.from(update),
+      })
+    );
+  } catch (error) {
+    logger.error({ error, canvasId }, 'Error sending initial sync');
+  }
 
-  // Send current presence (who's online)
   broadcastPresence(canvasId);
 
-  // Handle incoming messages
   ws.on('message', async (data: Buffer) => {
     try {
       const message = JSON.parse(data.toString());
       await handleMessage(connection, message, doc);
     } catch (error) {
-      console.error('Error handling message:', error);
+      logger.error({ error, canvasId }, 'Error handling message');
     }
   });
 
-  // Handle pong responses for heartbeat
   ws.on('pong', () => {
     connection.isAlive = true;
   });
 
-  // Handle disconnection
   ws.on('close', () => {
     connections.get(canvasId)?.delete(connection);
     if (connections.get(canvasId)?.size === 0) {
       connections.delete(canvasId);
     }
-    console.log(`User ${user.email} disconnected from canvas ${canvasId}`);
-
-    // Broadcast updated presence
+    logger.info({ userId: user.userId, canvasId }, 'User disconnected from canvas');
     broadcastPresence(canvasId);
   });
 
-  // Handle errors
   ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
+    logger.error({ error, canvasId }, 'WebSocket error');
   });
 }
 
@@ -204,32 +289,66 @@ async function handleMessage(
   message: any,
   doc: Y.Doc
 ): Promise<void> {
+  // Rate Limit Check
+  const now = Date.now();
+  if (now > connection.rateLimitReset) {
+    connection.messageCount = 0;
+    connection.rateLimitReset = now + RATE_LIMIT_WINDOW;
+  }
+
+  connection.messageCount++;
+  if (connection.messageCount > RATE_LIMIT_MAX) {
+    logger.warn({ userId: connection.user.userId }, 'Rate limit exceeded. Terminating connection.');
+    connection.ws.close(1008, 'Rate limit exceeded');
+    return;
+  }
+
   switch (message.type) {
     case 'update':
-      // Apply Y.js update
       const update = new Uint8Array(message.update);
       Y.applyUpdate(doc, update);
-
-      // Broadcast to other clients
       broadcastUpdate(connection.canvasId, update, connection);
       break;
 
     case 'cursor':
-      // Update cursor position
       connection.cursorPosition = message.position;
       broadcastCursors(connection.canvasId);
       break;
 
     case 'awareness':
-      // Update user awareness state
       broadcastPresence(connection.canvasId);
+      break;
+
+    case 'message':
+      broadcastMessagePayload(connection.canvasId, message.payload, connection);
       break;
   }
 }
 
 /**
- * Broadcast Y.js update to all clients except sender
+ * Broadcast helpers
  */
+function broadcastMessagePayload(canvasId: string, payload: any, sender: ClientConnection): void {
+  const clients = connections.get(canvasId);
+  if (!clients) return;
+
+  const message = JSON.stringify({
+    type: 'message',
+    payload: {
+      ...payload,
+      userId: sender.user.userId,
+      timestamp: Date.now(),
+    },
+  });
+
+  clients.forEach((client) => {
+    // Send to everyone including sender? Usually chat is optimistic, but reactions might be good to bounce back or filter at client.
+    // Let's send to everyone so they see their own reaction if not optimistic.
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(message);
+    }
+  });
+}
 function broadcastUpdate(canvasId: string, update: Uint8Array, sender: ClientConnection): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
@@ -246,9 +365,6 @@ function broadcastUpdate(canvasId: string, update: Uint8Array, sender: ClientCon
   });
 }
 
-/**
- * Broadcast presence information (who's online)
- */
 function broadcastPresence(canvasId: string): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
@@ -272,9 +388,6 @@ function broadcastPresence(canvasId: string): void {
   });
 }
 
-/**
- * Broadcast cursor positions
- */
 function broadcastCursors(canvasId: string): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
@@ -299,9 +412,6 @@ function broadcastCursors(canvasId: string): void {
   });
 }
 
-/**
- * Get connection count for monitoring
- */
 export function getConnectionCount(): number {
   let count = 0;
   connections.forEach((clients) => {
@@ -310,9 +420,6 @@ export function getConnectionCount(): number {
   return count;
 }
 
-/**
- * Get active canvas count for monitoring
- */
 export function getActiveCanvasCount(): number {
   return connections.size;
 }

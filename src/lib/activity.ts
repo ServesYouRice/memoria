@@ -2,7 +2,7 @@
  * Activity logging utilities
  */
 
-import { prisma } from './prisma';
+import { prisma } from './db';
 
 export enum ActivityType {
   CANVAS_CREATED = 'CANVAS_CREATED',
@@ -38,7 +38,7 @@ export async function logActivity(options: LogActivityOptions): Promise<void> {
         canvasId: options.canvasId,
         canvasName: options.canvasName,
         itemId: options.itemId,
-        metadata: options.metadata || null,
+        metadata: options.metadata || undefined,
       },
     });
   } catch (error) {

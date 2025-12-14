@@ -39,13 +39,13 @@ export const DEPRECATED_VERSIONS: Array<{
   sunsetDate: string;
   migrationGuide: string;
 }> = [
-  // Example when v2 is released:
-  // {
-  //   version: 'v1',
-  //   sunsetDate: '2026-01-01',
-  //   migrationGuide: 'https://docs.canvascollect.com/migration/v1-to-v2',
-  // },
-];
+    // Example when v2 is released:
+    // {
+    //   version: 'v1',
+    //   sunsetDate: '2026-01-01',
+    //   migrationGuide: 'https://docs.canvascollect.com/migration/v1-to-v2',
+    // },
+  ];
 
 /**
  * Check if a version is deprecated
@@ -76,7 +76,7 @@ export function isVersionSupported(version: string): boolean {
  */
 export function extractVersionFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/api\/(v\d+)\//);
-  return match ? match[1] : null;
+  return match?.[1] ?? null;
 }
 
 /**

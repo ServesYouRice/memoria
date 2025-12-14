@@ -4,8 +4,12 @@
  * Following ADR-0010: Real-Time Collaboration Strategy
  */
 
+
 import * as Y from 'yjs';
 import { prisma } from '@/lib/db';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('yjs-provider');
 
 interface DocumentStore {
   doc: Y.Doc;
@@ -92,7 +96,7 @@ async function loadDocumentState(canvasId: string, doc: Y.Doc): Promise<void> {
       yItems.set(item.id, yItem);
     });
   } catch (error) {
-    console.error(`Failed to load document state for canvas ${canvasId}:`, error);
+    logger.error({ error, canvasId }, 'Failed to load document state');
   }
 }
 
@@ -117,7 +121,7 @@ function schedulePersistence(canvasId: string): void {
     if (timeSinceLastAccess > DOCUMENT_TIMEOUT) {
       // Remove from memory
       documents.delete(canvasId);
-      console.log(`Removed canvas ${canvasId} from memory (inactive)`);
+      logger.info({ canvasId }, 'Removed canvas from memory (inactive)');
     } else {
       // Schedule next persistence
       schedulePersistence(canvasId);
@@ -158,8 +162,8 @@ async function persistDocument(canvasId: string): Promise<void> {
       }
     });
 
-    // Batch update items in database
-    await Promise.all(
+    // Batch update items in database using transaction
+    await prisma.$transaction(
       updates.map((update) =>
         prisma.canvasItem.updateMany({
           where: {
@@ -171,9 +175,9 @@ async function persistDocument(canvasId: string): Promise<void> {
       )
     );
 
-    console.log(`Persisted ${updates.length} items for canvas ${canvasId}`);
+    logger.debug({ canvasId, itemCount: updates.length }, 'Persisted items for canvas');
   } catch (error) {
-    console.error(`Failed to persist document for canvas ${canvasId}:`, error);
+    logger.error({ error, canvasId }, 'Failed to persist document for canvas');
   }
 }
 

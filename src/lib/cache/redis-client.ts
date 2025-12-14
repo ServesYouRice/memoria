@@ -4,6 +4,9 @@
  */
 
 import Redis from 'ioredis';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('redis-client');
 
 let redis: Redis | null = null;
 
@@ -13,9 +16,9 @@ let redis: Redis | null = null;
  */
 export function getRedisClient(): Redis | null {
   // Check if Redis is enabled
-  const redisUrl = process.env.REDIS_URL;
+  const redisUrl = process.env['REDIS_URL'];
   if (!redisUrl) {
-    console.warn('Redis URL not configured, caching disabled');
+    logger.warn('Redis URL not configured, caching disabled');
     return null;
   }
 
@@ -37,16 +40,16 @@ export function getRedisClient(): Redis | null {
     });
 
     redis.on('error', (error) => {
-      console.error('Redis connection error:', error);
+      logger.error({ error }, 'Redis connection error');
     });
 
     redis.on('connect', () => {
-      console.log('Redis connected successfully');
+      logger.info('Redis connected successfully');
     });
 
     return redis;
   } catch (error) {
-    console.error('Failed to initialize Redis client:', error);
+    logger.error({ error }, 'Failed to initialize Redis client');
     return null;
   }
 }

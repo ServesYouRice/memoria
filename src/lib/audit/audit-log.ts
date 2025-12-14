@@ -94,10 +94,10 @@ export function createSnapshot(data: unknown): Record<string, unknown> | undefin
 
     // Remove sensitive fields
     const snapshot = { ...(data as Record<string, unknown>) };
-    delete snapshot.passwordHash;
-    delete snapshot.password;
-    delete snapshot.token;
-    delete snapshot.secret;
+    delete snapshot['passwordHash'];
+    delete snapshot['password'];
+    delete snapshot['token'];
+    delete snapshot['secret'];
 
     return snapshot;
 }

@@ -33,7 +33,7 @@ describe('bookmarkContentSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toContain('http');
+      expect(result.error.errors[0]?.message).toContain('http');
     }
   });
 
@@ -57,7 +57,7 @@ describe('bookmarkContentSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toContain('Invalid URL');
+      expect(result.error.errors[0]?.message).toContain('Invalid URL');
     }
   });
 
@@ -68,7 +68,7 @@ describe('bookmarkContentSchema', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toContain('2048');
+      expect(result.error.errors[0]?.message).toContain('2048');
     }
   });
 

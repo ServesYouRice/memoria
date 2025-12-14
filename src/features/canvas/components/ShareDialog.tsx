@@ -25,7 +25,7 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
+
   Switch,
   FormControlLabel,
   InputAdornment,
@@ -47,7 +47,7 @@ interface Share {
 }
 
 export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialogProps) {
-  const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 

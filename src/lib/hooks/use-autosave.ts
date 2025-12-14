@@ -45,7 +45,7 @@ export function useAutosave({
 }: UseAutosaveOptions) {
   const updateItem = useUpdateCanvasItem();
   const pendingChangesRef = useRef<Partial<UpdateCanvasItemInput>>({});
-  const timerRef = useRef<NodeJS.Timeout>();
+  const timerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const currentVersionRef = useRef(version);
   const isFlushingRef = useRef(false); // FIXED: Track flush state to prevent race condition
 

@@ -20,7 +20,6 @@ import {
   BrushOutlined as CanvasIcon,
   BookmarkBorder as BookmarkIcon,
   Groups as CollaborationIcon,
-  AutoAwesome as AIIcon,
 } from '@mui/icons-material';
 
 export default async function Home() {

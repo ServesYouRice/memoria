@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
 }
 
 datasource db {
@@ -20,12 +21,15 @@ model User {
   canvases      Canvas[]
   sessions      Session[]
   accounts      Account[]
+  workspaces    Workspace[]
 
   createdItems  CanvasItem[] @relation("ItemCreatedBy")
   updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
   deletedItems  CanvasItem[] @relation("ItemDeletedBy")
   comments      Comment[]
+
   activities    Activity[]
+  apiKeys       ApiKey[]
 }
 
 model Activity {
@@ -81,6 +85,12 @@ model Canvas {
   templateDescription String?
   templateCategory String?
   usageCount  Int         @default(0)
+  itemCount   Int         @default(0) // Denormalized count
+
+  workspaceId String?
+  workspace   Workspace?  @relation(fields: [workspaceId], references: [id])
+  savedViews  SavedView[]
+  connections ItemConnection[]
 
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -92,6 +102,7 @@ model Canvas {
   @@index([isPublic]) // For public canvas discovery (Issue #12)
   @@index([isTemplate, templateCategory])
   @@index([isTemplate, usageCount, createdAt])
+  @@index([workspaceId])
 }
 
 model CanvasVersion {
@@ -140,7 +151,9 @@ model CanvasItem {
   @@index([canvasId, positionX, positionY])
   @@index([canvasId, createdById]) // For filtering by creator (Issue #12)
 
-  comments    Comment[]
+  comments      Comment[]
+  connectionsFrom ItemConnection[] @relation("ConnectionFrom")
+  connectionsTo   ItemConnection[] @relation("ConnectionTo")
 }
 
 model Comment {
@@ -164,6 +177,13 @@ enum ItemType {
   NOTE
   BOOKMARK
   IMAGE
+  DRAWING
+  SHAPE
+  ARROW
+  TEXT
+  FRAME
+  EMBED
+  POLL
 }
 
 enum ShareRole {
@@ -241,4 +261,94 @@ model EmailVerificationToken {
 
   @@index([email, expiresAt])
   @@index([token, expiresAt])
+}
+
+// Phase 5: New Models
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+}
+
+model ItemConnection {
+  id        String   @id @default(cuid())
+  canvasId  String
+  canvas    Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  fromId    String
+  fromItem  CanvasItem @relation("ConnectionFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  toItem    CanvasItem @relation("ConnectionTo", fields: [toId], references: [id], onDelete: Cascade)
+  label     String?
+  style     String   @default("SOLID")
+  createdAt DateTime @default(now())
+
+  @@unique([canvasId, fromId, toId])
+  @@index([canvasId])
+  @@index([fromId])
+  @@index([toId])
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvases  Canvas[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SavedView {
+  id        String   @id @default(cuid())
+  name      String
+  canvasId  String
+  canvas    Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  filters   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([canvasId])
+}
+
+model IdempotencyKey {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  userId      String
+  path        String
+  method      String
+  createdAt   DateTime @default(now())
+  lockedAt    DateTime @default(now())
+  
+  responseCode Int?
+  responseBody Json?
+
+  @@index([userId, key])
+  @@index([createdAt]) // For cleanup cron jobs
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  name      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+  lastUsedAt DateTime?
+  
+  @@index([userId])
+  @@index([key])
 }

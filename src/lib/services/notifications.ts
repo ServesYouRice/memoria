@@ -81,7 +81,7 @@ export async function notifyPromise<T>(
         error: string | ((error: unknown) => string);
     }
 ): Promise<T> {
-    return toast.promise(promise, {
+    toast.promise(promise, {
         loading: messages.loading,
         success: typeof messages.success === 'function'
             ? messages.success
@@ -90,6 +90,7 @@ export async function notifyPromise<T>(
             ? messages.error
             : () => messages.error as string,
     });
+    return promise;
 }
 
 /**

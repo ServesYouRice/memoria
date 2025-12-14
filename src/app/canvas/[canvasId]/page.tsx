@@ -8,11 +8,8 @@
 
 import React from 'react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { CanvasSkeleton } from '@/features/canvas/components/CanvasSkeleton';
-
-const queryClient = new QueryClient();
 
 // Dynamically import CanvasBoard with SSR disabled to avoid Konva server-side issues
 const CanvasBoard = dynamic(
@@ -24,17 +21,17 @@ const CanvasBoard = dynamic(
 );
 
 interface CanvasPageProps {
-  params: {
+  params: Promise<{
     canvasId: string;
-  };
+  }>;
 }
 
 export default function CanvasPage({ params }: CanvasPageProps) {
+  const { canvasId } = React.use(params);
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <ErrorBoundary>
-        <CanvasBoard canvasId={params.canvasId} />
-      </ErrorBoundary>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <CanvasBoard canvasId={canvasId} />
+    </ErrorBoundary>
   );
 }

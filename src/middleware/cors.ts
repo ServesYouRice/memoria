@@ -36,16 +36,16 @@ interface CorsConfig {
 function getCorsConfig(): CorsConfig {
   // Default to same-origin in production, all origins in development
   const defaultOrigins =
-    process.env.NODE_ENV === 'production'
-      ? [process.env.NEXTAUTH_URL || 'https://localhost:3000']
+    process.env['NODE_ENV'] === 'production'
+      ? [process.env['NEXTAUTH_URL'] || 'https://localhost:3000']
       : ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
-  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
-    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
+  const allowedOrigins = process.env['CORS_ALLOWED_ORIGINS']
+    ? process.env['CORS_ALLOWED_ORIGINS'].split(',').map((origin) => origin.trim())
     : defaultOrigins;
 
-  const allowedMethods = process.env.CORS_ALLOWED_METHODS
-    ? process.env.CORS_ALLOWED_METHODS.split(',').map((method) => method.trim())
+  const allowedMethods = process.env['CORS_ALLOWED_METHODS']
+    ? process.env['CORS_ALLOWED_METHODS'].split(',').map((method) => method.trim())
     : ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
 
   const allowedHeaders = [
@@ -56,9 +56,9 @@ function getCorsConfig(): CorsConfig {
     'Origin',
   ];
 
-  const allowCredentials = process.env.CORS_ALLOW_CREDENTIALS !== 'false';
+  const allowCredentials = process.env['CORS_ALLOW_CREDENTIALS'] !== 'false';
 
-  const maxAge = parseInt(process.env.CORS_MAX_AGE || '86400', 10);
+  const maxAge = parseInt(process.env['CORS_MAX_AGE'] || '86400', 10);
 
   return {
     allowedOrigins,
@@ -76,7 +76,7 @@ function isOriginAllowed(origin: string | null, allowedOrigins: string[]): boole
   if (!origin) {
     // Allow requests with no origin (e.g., mobile apps, curl, Postman)
     // In production, you might want to be stricter
-    return process.env.NODE_ENV === 'development';
+    return process.env['NODE_ENV'] === 'development';
   }
 
   // Check for exact match
@@ -180,12 +180,12 @@ export function handleCorsPreflight(request: NextRequest): NextResponse | null {
 export function validateCorsConfig(): void {
   const config = getCorsConfig();
 
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env['NODE_ENV'] === 'production') {
     // Warn if using wildcard in production
     if (config.allowedOrigins.some((origin) => origin === '*')) {
       logger.warn(
         'CORS is configured to allow all origins (*) in production. ' +
-          'This is a security risk. Set CORS_ALLOWED_ORIGINS environment variable.'
+        'This is a security risk. Set CORS_ALLOWED_ORIGINS environment variable.'
       );
     }
 
@@ -196,15 +196,15 @@ export function validateCorsConfig(): void {
     ) {
       logger.error(
         'CORS cannot allow credentials with wildcard origin (*). ' +
-          'This configuration will not work. Set specific origins in CORS_ALLOWED_ORIGINS.'
+        'This configuration will not work. Set specific origins in CORS_ALLOWED_ORIGINS.'
       );
     }
 
     // Warn if no NEXTAUTH_URL is set
-    if (!process.env.NEXTAUTH_URL && !process.env.CORS_ALLOWED_ORIGINS) {
+    if (!process.env['NEXTAUTH_URL'] && !process.env['CORS_ALLOWED_ORIGINS']) {
       logger.warn(
         'Neither NEXTAUTH_URL nor CORS_ALLOWED_ORIGINS is set. ' +
-          'CORS may not work correctly in production.'
+        'CORS may not work correctly in production.'
       );
     }
   }

@@ -7,6 +7,13 @@ export enum ItemType {
   NOTE = 'NOTE',
   BOOKMARK = 'BOOKMARK',
   IMAGE = 'IMAGE',
+  DRAWING = 'DRAWING',
+  SHAPE = 'SHAPE',
+  ARROW = 'ARROW',
+  TEXT = 'TEXT',
+  FRAME = 'FRAME',
+  EMBED = 'EMBED',
+  POLL = 'POLL',
 }
 
 /**
@@ -53,9 +60,105 @@ export interface ImageContent {
 }
 
 /**
+ * Single stroke path for drawing
+ */
+export interface DrawingPath {
+  points: number[];
+  stroke: string;
+  strokeWidth: number;
+  opacity?: number;
+  tension?: number;
+}
+
+/**
+ * Drawing item content (collection of paths)
+ */
+export interface DrawingContent {
+  paths: DrawingPath[];
+}
+
+/**
+ * Shape item content
+ */
+export interface ShapeContent {
+  shapeType: 'rectangle' | 'circle' | 'triangle' | 'diamond' | 'star' | 'arrow_shape';
+  stroke?: string;
+  fill?: string;
+  strokeWidth?: number;
+  radius?: number; // For rounded corners or circle radius
+}
+
+/**
+ * Arrow connector content
+ */
+export interface ArrowContent {
+  startItemId?: string;
+  endItemId?: string;
+  startPoint?: { x: number; y: number };
+  endPoint?: { x: number; y: number };
+  stroke?: string;
+  strokeWidth?: number;
+  arrowHeadStart?: 'none' | 'arrow' | 'circle';
+  arrowHeadEnd?: 'none' | 'arrow' | 'circle';
+  label?: string;
+}
+
+/**
+ * Text item content
+ */
+export interface TextContent {
+  text: string;
+  fontSize?: number;
+  fontFamily?: string;
+  align?: 'left' | 'center' | 'right';
+  color?: string;
+}
+
+/**
+ * Frame item content
+ */
+export interface FrameContent {
+  title?: string;
+  backgroundColor?: string;
+}
+
+/**
+ * Embed item content
+ */
+export interface EmbedContent {
+  url: string;
+  embedType: 'youtube' | 'figma' | 'loom' | 'generic';
+}
+
+/**
+ * Poll item content
+ */
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: string[]; // Array of user IDs
+}
+
+export interface PollContent {
+  question: string;
+  options: PollOption[];
+  multipleChoice?: boolean; // Default false (single choice)
+}
+
+/**
  * Union type for all item content types
  */
-export type ItemContent = NoteContent | BookmarkContent | ImageContent;
+export type ItemContent =
+  | NoteContent
+  | BookmarkContent
+  | ImageContent
+  | DrawingContent
+  | ShapeContent
+  | ArrowContent
+  | TextContent
+  | FrameContent
+  | EmbedContent
+  | PollContent;
 
 /**
  * Full canvas item (matches database schema)
@@ -131,6 +234,39 @@ export function isImageContent(content: ItemContent): content is ImageContent {
   return 'url' in content && 'filename' in content;
 }
 
+export function isDrawingContent(content: ItemContent): content is DrawingContent {
+  return 'paths' in content;
+}
+
+export function isShapeContent(content: ItemContent): content is ShapeContent {
+  return 'shapeType' in content;
+}
+
+export function isArrowContent(content: ItemContent): content is ArrowContent {
+  return 'startItemId' in content || 'startPoint' in content;
+}
+
+export function isTextContent(content: ItemContent): content is TextContent {
+  // Distinguish from NoteContent which also has 'text' but might be structurally different in future.
+  // For now, if we use a discriminator field in types it would be safer.
+  // Assuming NoteContent is specifically for sticky notes and TextContent for standalone text.
+  // We might need a better guard if they overlap. For now simple check.
+  // CHECK: NoteContent has 'text' only?
+  return 'text' in content && 'fontSize' in content;
+}
+
+export function isFrameContent(content: ItemContent): content is FrameContent {
+  return 'backgroundColor' in content || ('title' in content && !('url' in content));
+}
+
+export function isEmbedContent(content: ItemContent): content is EmbedContent {
+  return 'embedType' in content;
+}
+
+export function isPollContent(content: ItemContent): content is PollContent {
+  return 'question' in content && 'options' in content;
+}
+
 /**
  * Canvas viewport state
  */
@@ -138,4 +274,30 @@ export interface CanvasViewport {
   zoomLevel: number;
   panX: number;
   panY: number;
+}
+
+/**
+ * Canvas entity type
+ */
+export interface Canvas {
+  id: string;
+  name: string;
+  userId: string;
+  isPublic: boolean;
+  zoomLevel: number;
+  panX: number;
+  panY: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Payload for updating a canvas
+ */
+export interface CanvasUpdatePayload {
+  name?: string;
+  isPublic?: boolean;
+  zoomLevel?: number;
+  panX?: number;
+  panY?: number;
 }

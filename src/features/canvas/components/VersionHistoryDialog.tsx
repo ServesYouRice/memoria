@@ -28,6 +28,7 @@ import {
   useRestoreVersion,
 } from '@/lib/hooks/use-canvas-versions';
 import { formatDistanceToNow } from 'date-fns';
+import { useQueryClient } from '@tanstack/react-query';
 
 export interface VersionHistoryDialogProps {
   open: boolean;
@@ -40,6 +41,7 @@ export function VersionHistoryDialog({ open, onClose, canvasId }: VersionHistory
   const { data, isLoading, error } = useCanvasVersions(canvasId);
   const { mutateAsync: createVersion, isPending: isCreating } = useCreateVersion();
   const { mutateAsync: restoreVersion } = useRestoreVersion();
+  const queryClient = useQueryClient();
 
   const versions = data?.versions || [];
 
@@ -58,7 +60,9 @@ export function VersionHistoryDialog({ open, onClose, canvasId }: VersionHistory
     try {
       await restoreVersion({ canvasId, versionId });
       onClose();
-      window.location.reload();
+      // Invalidate queries to refresh canvas data instead of full page reload
+      await queryClient.invalidateQueries({ queryKey: ['canvas', canvasId] });
+      await queryClient.invalidateQueries({ queryKey: ['canvasItems', canvasId] });
     } catch (err) {
       console.error('Failed to restore version:', err);
     } finally {

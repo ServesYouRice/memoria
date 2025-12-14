@@ -63,8 +63,9 @@ export async function getCanvasAccess(canvasId: string, userId: string, userEmai
   }
 
   // Check if user has shared access
-  if (canvas.shares.length > 0) {
-    return canvas.shares[0].role as CanvasAccessLevel;
+  const share = canvas.shares[0];
+  if (canvas.shares.length > 0 && share) {
+    return share.role as CanvasAccessLevel;
   }
 
   return 'NONE';

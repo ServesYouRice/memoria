@@ -27,13 +27,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'CanvasCollect',
+  title: 'Memoria',
   description: 'A collaborative canvas for notes and bookmarks',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'CanvasCollect',
+    title: 'Memoria',
   },
 };
 

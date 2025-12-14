@@ -25,16 +25,17 @@ export function exportToJSON(canvas: CanvasWithItems): string {
         canvas: {
             id: canvas.id,
             name: canvas.name,
-            description: canvas.description,
-            backgroundColor: canvas.backgroundColor,
+            zoomLevel: canvas.zoomLevel,
+            panX: canvas.panX,
+            panY: canvas.panY,
             createdAt: canvas.createdAt,
             updatedAt: canvas.updatedAt,
         },
         items: canvas.items.map((item) => ({
             id: item.id,
             type: item.type,
-            x: item.x,
-            y: item.y,
+            x: item.positionX,
+            y: item.positionY,
             width: item.width,
             height: item.height,
             zIndex: item.zIndex,
@@ -60,11 +61,6 @@ export function exportToMarkdown(canvas: CanvasWithItems): string {
     // Header
     lines.push(`# ${canvas.name || 'Untitled Canvas'}`);
     lines.push('');
-
-    if (canvas.description) {
-        lines.push(`> ${canvas.description}`);
-        lines.push('');
-    }
 
     lines.push(`*Exported on ${new Date().toLocaleDateString()}*`);
     lines.push('');

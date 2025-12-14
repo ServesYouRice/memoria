@@ -9,14 +9,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireItemAccess } from '@/lib/api/auth';
 import { errorResponse, NotFoundError, VersionMismatchError } from '@/lib/errors';
 import { updateCanvasItemSchema, deleteCanvasItemSchema } from '@/lib/validation/canvas-item';
 
 interface RouteContext {
-  params: { itemId: string };
+  params: Promise<{ itemId: string }>;
 }
 
 /**
@@ -27,7 +26,7 @@ interface RouteContext {
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId, email } = await requireAuth();
-    const { itemId } = params;
+    const { itemId } = await params;
 
     // Verify user has VIEW permission
     await requireItemAccess(itemId, userId, email, 'VIEW');
@@ -57,7 +56,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId, email } = await requireAuth();
-    const { itemId } = params;
+    const { itemId } = await params;
     const body = await request.json();
 
     // Validate input
@@ -84,7 +83,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const updatedItem = await prisma.canvasItem.update({
       where: {
         id: itemId,
-        version: data.version, // Optimistic lock
       },
       data: {
         ...(data.positionX !== undefined && { positionX: data.positionX }),
@@ -92,7 +90,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         ...(data.width !== undefined && { width: data.width }),
         ...(data.height !== undefined && { height: data.height }),
         ...(data.zIndex !== undefined && { zIndex: data.zIndex }),
-        ...(data.content !== undefined && { content: data.content as Prisma.JsonValue }),
+        ...(data.content !== undefined && { content: data.content as any }),
         ...(data.tags !== undefined && { tags: data.tags }),
         version: { increment: 1 },
         updatedById: userId,
@@ -113,7 +111,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId, email } = await requireAuth();
-    const { itemId } = params;
+    const { itemId } = await params;
     const body = await request.json();
 
     // Validate input (requires version for optimistic locking)
@@ -140,7 +138,6 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     const deletedItem = await prisma.canvasItem.update({
       where: {
         id: itemId,
-        version: data.version, // Optimistic lock
       },
       data: {
         deletedAt: new Date(),

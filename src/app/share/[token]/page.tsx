@@ -5,11 +5,10 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, use } from 'react';
 import { Box, CircularProgress, Alert, Typography, Button, AppBar, Toolbar, ButtonGroup, Tooltip } from '@mui/material';
 import { ZoomIn, ZoomOut, FitScreen } from '@mui/icons-material';
 import { Stage, Layer } from 'react-konva';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
@@ -17,9 +16,9 @@ import { ItemType, CanvasItem } from '@/types/canvas';
 import Konva from 'konva';
 
 interface SharePageProps {
-  params: {
+  params: Promise<{
     token: string;
-  };
+  }>;
 }
 
 const ZOOM_STEP = 0.1;
@@ -27,7 +26,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 
 export default function SharePage({ params }: SharePageProps) {
-  const router = useRouter();
+  const { token } = use(params);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<any>(null);
@@ -44,7 +43,7 @@ export default function SharePage({ params }: SharePageProps) {
   useEffect(() => {
     const fetchCanvas = async () => {
       try {
-        const response = await fetch(`/api/v1/share/${params.token}`);
+        const response = await fetch(`/api/v1/share/${token}`);
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -71,7 +70,7 @@ export default function SharePage({ params }: SharePageProps) {
     };
 
     fetchCanvas();
-  }, [params.token]);
+  }, [token]);
 
   // Update stage size on mount and resize
   useEffect(() => {

@@ -9,7 +9,6 @@ import { Box, IconButton, Divider, Tooltip, ToggleButtonGroup, ToggleButton } fr
 import {
   FormatBold,
   FormatItalic,
-  FormatUnderlined,
   FormatStrikethrough,
   Code,
   FormatQuote,
@@ -222,13 +221,14 @@ export function RichTextEditor({
             size="small"
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
             color={editor.isActive('blockquote') ? 'primary' : 'default'}
+            aria-label="Quote"
           >
             <Tooltip title="Quote">
               <FormatQuote fontSize="small" />
             </Tooltip>
           </IconButton>
 
-          <IconButton size="small" onClick={addLink} color={editor.isActive('link') ? 'primary' : 'default'}>
+          <IconButton size="small" onClick={addLink} color={editor.isActive('link') ? 'primary' : 'default'} aria-label="Add Link">
             <Tooltip title="Add Link">
               <LinkIcon fontSize="small" />
             </Tooltip>
@@ -241,6 +241,7 @@ export function RichTextEditor({
             size="small"
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
+            aria-label="Undo"
           >
             <Tooltip title="Undo (Ctrl+Z)">
               <UndoIcon fontSize="small" />
@@ -250,6 +251,7 @@ export function RichTextEditor({
             size="small"
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
+            aria-label="Redo"
           >
             <Tooltip title="Redo (Ctrl+Y)">
               <RedoIcon fontSize="small" />

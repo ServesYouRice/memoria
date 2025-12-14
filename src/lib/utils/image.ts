@@ -157,7 +157,14 @@ export function fileToDataUrl(file: File): Promise<string> {
  * Convert data URL to blob
  */
 export function dataUrlToBlob(dataUrl: string): Blob {
-    const [header, data] = dataUrl.split(',');
+    const parts = dataUrl.split(',');
+    const header = parts[0] || '';
+    const data = parts[1];
+
+    if (!data) {
+        throw new Error('Invalid data URL format - missing data');
+    }
+
     const mimeMatch = header.match(/:(.*?);/);
     const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
     const binary = atob(data);

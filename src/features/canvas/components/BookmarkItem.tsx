@@ -19,7 +19,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Group, Rect, Text, Circle, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
-import { CanvasItem, BookmarkContent, isBookmarkContent } from '@/types/canvas';
+import { CanvasItem, isBookmarkContent } from '@/types/canvas';
 import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
 
@@ -30,6 +30,7 @@ interface BookmarkItemProps {
   onDeselect?: () => void;
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
+  onDragEnd?: (e: any) => void;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -41,9 +42,10 @@ function BookmarkItemComponent({
   item,
   isSelected = false,
   onSelect,
-  onDeselect,
+
   onDoubleClick,
   onContextMenu,
+  onDragEnd,
 }: BookmarkItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -109,6 +111,10 @@ function BookmarkItemComponent({
       positionX: node.x(),
       positionY: node.y(),
     });
+
+    if (onDragEnd) {
+      onDragEnd(e);
+    }
   };
 
   // Handle resize

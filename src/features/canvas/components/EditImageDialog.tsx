@@ -81,14 +81,12 @@ export function EditImageDialog({ open, onClose, item }: EditImageDialogProps) {
 
       await updateItem.mutateAsync({
         itemId: item.id,
-        version: item.version,
-        updates: {
+        data: {
+          version: item.version,
           content: {
             url: item.content.url,
             filename: item.content.filename,
             alt: data.alt || '',
-            mimeType: item.content.mimeType,
-            size: item.content.size,
           },
           tags: data.tags || [],
         },

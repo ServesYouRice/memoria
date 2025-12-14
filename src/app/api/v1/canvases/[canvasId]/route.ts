@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, requireCanvasOwnership, requireCanvasAccess } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
 import { z } from 'zod';
-import { NotFoundError, ForbiddenError } from '@/lib/errors';
-import { errorResponse } from '@/lib/api/error-handler';
+import { NotFoundError } from '@/lib/errors';
+import { getCachedCanvas, setCachedCanvas, invalidateCanvasCache } from '@/lib/cache/canvas-cache';
+import { withApiHandler } from '@/lib/api/route-handler';
 
 const updateCanvasSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -13,112 +13,108 @@ const updateCanvasSchema = z.object({
   panY: z.number().optional(),
 });
 
-/**
- * GET /api/v1/canvases/[canvasId]
- *
- * Retrieve a single canvas by ID
- * User must own the canvas or have shared access
- */
-export async function GET(
-  request: Request,
+export const GET = withApiHandler(async (
+  _request: Request,
   { params }: { params: { canvasId: string } }
-) {
-  try {
-    const { userId, email } = await requireAuth();
-    const { canvasId } = params;
+) => {
+  const { userId, email } = await requireAuth();
+  const { canvasId } = params;
 
-    // Verify canvas access (ownership or share)
-    await requireCanvasAccess(canvasId, userId, email, 'VIEW');
+  // Verify canvas access (ownership or share)
+  await requireCanvasAccess(canvasId, userId, email, 'VIEW');
 
-    // Fetch canvas with items
-    const canvas = await prisma.canvas.findUnique({
+  // 1. Try to get canvas data (canvas + items) from cache
+  let canvasData = await getCachedCanvas(canvasId);
+
+  if (!canvasData) {
+    // 2. Cache miss: Fetch from database (global state only)
+    const data = await prisma.canvas.findUnique({
       where: { id: canvasId },
       include: {
         items: {
           where: { deletedAt: null },
           orderBy: { zIndex: 'asc' },
         },
-        shares: {
-          where: { email },
-          select: {
-            id: true,
-            role: true,
-            createdAt: true,
-          },
-        },
+        // Do NOT include user-specific shares here as they are dynamic
       },
     });
 
-    if (!canvas) {
+    if (!data) {
       throw new NotFoundError('Canvas not found');
     }
 
-    return NextResponse.json(canvas);
-  } catch (error) {
-    return errorResponse(error, request.url);
-  }
-}
+    canvasData = data;
 
-/**
- * PATCH /api/v1/canvases/[canvasId]
- *
- * Update canvas properties (name, zoom, pan)
- * Per ADR-0001: API Versioning & Error Contract (RFC 7807)
- */
-export async function PATCH(
+    // 3. Store in cache
+    await setCachedCanvas(canvasData);
+  }
+
+  // 4. Fetch user-specific share info (always fresh)
+  const shares = await prisma.canvasShare.findMany({
+    where: {
+      canvasId,
+      email,
+    },
+    select: {
+      id: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  // 5. Return combined response
+  return NextResponse.json({
+    ...canvasData,
+    shares,
+  });
+});
+
+export const PATCH = withApiHandler(async (
   request: Request,
   { params }: { params: { canvasId: string } }
-) {
-  try {
-    const { userId } = await requireAuth();
-    const { canvasId } = params;
+) => {
+  const { userId } = await requireAuth();
+  const { canvasId } = params;
 
-    // Verify canvas ownership
-    await requireCanvasOwnership(canvasId, userId);
+  // Verify canvas ownership
+  await requireCanvasOwnership(canvasId, userId);
 
-    // Parse and validate request body
-    const body = await request.json();
-    const validatedData = updateCanvasSchema.parse(body);
+  // Parse and validate request body
+  const body = await request.json();
+  const validatedData = updateCanvasSchema.parse(body);
 
-    // Update canvas
-    const updatedCanvas = await prisma.canvas.update({
-      where: { id: canvasId },
-      data: validatedData,
-    });
+  // Update canvas
+  const updatedCanvas = await prisma.canvas.update({
+    where: { id: canvasId },
+    data: validatedData,
+  });
 
-    return NextResponse.json(updatedCanvas);
-  } catch (error) {
-    return errorResponse(error, request.url);
-  }
-}
+  // Invalidate cache
+  await invalidateCanvasCache(canvasId);
 
-/**
- * DELETE /api/v1/canvases/[canvasId]
- *
- * Delete a canvas and all associated items
- * Only the canvas owner can delete it
- */
-export async function DELETE(
-  request: Request,
+  return NextResponse.json(updatedCanvas);
+});
+
+export const DELETE = withApiHandler(async (
+  _request: Request,
   { params }: { params: { canvasId: string } }
-) {
-  try {
-    const { userId } = await requireAuth();
-    const { canvasId } = params;
+) => {
+  const { userId } = await requireAuth();
+  const { canvasId } = params;
 
-    // Verify canvas ownership
-    await requireCanvasOwnership(canvasId, userId);
+  // Verify canvas ownership
+  await requireCanvasOwnership(canvasId, userId);
 
-    // Delete canvas (cascade will delete items, shares, etc.)
-    await prisma.canvas.delete({
-      where: { id: canvasId },
-    });
+  // Delete canvas (cascade will delete items, shares, etc.)
+  await prisma.canvas.delete({
+    where: { id: canvasId },
+  });
 
-    return NextResponse.json(
-      { message: 'Canvas deleted successfully' },
-      { status: 200 }
-    );
-  } catch (error) {
-    return errorResponse(error, request.url);
-  }
-}
+  // Invalidate cache
+  await invalidateCanvasCache(canvasId);
+
+  return NextResponse.json(
+    { message: 'Canvas deleted successfully' },
+    { status: 200 }
+  );
+});

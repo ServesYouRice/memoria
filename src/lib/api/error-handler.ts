@@ -23,7 +23,7 @@ export type ApiRouteHandler = (
 /**
  * Error response following RFC 7807 (Problem Details)
  */
-interface ProblemDetails {
+export interface ProblemDetails {
   type: string;
   title: string;
   status: number;
@@ -32,10 +32,47 @@ interface ProblemDetails {
   errors?: Array<{ field: string; message: string }>;
 }
 
+export const Problems = {
+  Validation: (errors: Array<{ field: string; message: string }>): ProblemDetails => ({
+    type: 'https://canvascollect.com/errors/validation-error',
+    title: 'Validation Error',
+    status: 400,
+    detail: 'Invalid request data',
+    errors
+  }),
+  NotFound: (detail: string): ProblemDetails => ({
+    type: 'https://canvascollect.com/errors/not-found',
+    title: 'Not Found',
+    status: 404,
+    detail
+  }),
+  Unauthorized: (detail: string): ProblemDetails => ({
+    type: 'https://canvascollect.com/errors/unauthorized',
+    title: 'Unauthorized',
+    status: 401,
+    detail
+  }),
+  Forbidden: (detail: string): ProblemDetails => ({
+    type: 'https://canvascollect.com/errors/forbidden',
+    title: 'Forbidden',
+    status: 403,
+    detail
+  }),
+  Internal: (detail: string): ProblemDetails => ({
+    type: 'https://canvascollect.com/errors/internal-error',
+    title: 'Internal Server Error',
+    status: 500,
+    detail
+  })
+};
+
 /**
  * Create a standardized error response
  */
-function createErrorResponse(
+/**
+ * Create a standardized error response
+ */
+export function createErrorResponse(
   error: unknown,
   requestUrl: string,
   status: number = 500
@@ -245,3 +282,5 @@ export function withApiHandler(
   const { timeout = 10000 } = options;
   return withErrorHandler(withTimeout(handler, timeout));
 }
+
+export { createErrorResponse as errorResponse };

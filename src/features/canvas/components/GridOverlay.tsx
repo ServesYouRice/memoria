@@ -25,7 +25,7 @@ export function GridOverlay({
 }: GridOverlayProps) {
   if (!visible) return null;
 
-  const lines: JSX.Element[] = [];
+  const lines: React.ReactElement[] = [];
 
   // Calculate adjusted grid size based on zoom
   const adjustedGridSize = gridSize;

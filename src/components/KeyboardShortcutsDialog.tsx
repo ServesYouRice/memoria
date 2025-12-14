@@ -74,6 +74,7 @@ export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDial
         <IconButton
           onClick={onClose}
           sx={{ position: 'absolute', right: 8, top: 8 }}
+          aria-label="Close"
         >
           <Close />
         </IconButton>

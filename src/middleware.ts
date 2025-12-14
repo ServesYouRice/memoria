@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { applyCSP } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';
-import { apiRateLimit, authRateLimit } from './middleware/rate-limit';
+import {
+  apiRateLimit,
+  authRateLimit,
+  uploadRateLimit,
+  canvasesRateLimit,
+  itemsRateLimit,
+} from './middleware/rate-limit';
 import { applyCors, handleCorsPreflight } from './middleware/cors';
 import { getVersionHeaders, validateApiVersion } from './lib/api/versioning';
 import { createRequestLogger } from './lib/logger';
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   // Generate or extract request ID for tracing (Issue #24)
   const requestId = request.headers.get('x-request-id') || nanoid(16);
 
@@ -57,7 +63,7 @@ export function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/api/v1/auth') ||
     request.nextUrl.pathname.startsWith('/api/auth')
   ) {
-    const rateLimitResponse = authRateLimit(request);
+    const rateLimitResponse = await authRateLimit(request);
     if (rateLimitResponse) {
       logger.warn(
         {
@@ -70,9 +76,39 @@ export function middleware(request: NextRequest) {
     }
   }
 
+  // Apply rate limiting for file uploads (stricter)
+  if (request.nextUrl.pathname.startsWith('/api/v1/upload')) {
+    const rateLimitResponse = await uploadRateLimit(request);
+    if (rateLimitResponse) {
+      logger.warn(
+        {
+          pathname: request.nextUrl.pathname,
+          ip: request.headers.get('x-forwarded-for'),
+        },
+        'Upload rate limit exceeded'
+      );
+      return rateLimitResponse;
+    }
+  }
+
+  // Apply rate limiting for canvas operations
+  if (request.nextUrl.pathname.startsWith('/api/v1/canvases')) {
+    const rateLimitResponse = await canvasesRateLimit(request);
+    if (rateLimitResponse) return rateLimitResponse;
+  }
+
+  // Apply rate limiting for item operations
+  if (
+    request.nextUrl.pathname.startsWith('/api/v1/canvas-items') ||
+    request.nextUrl.pathname.startsWith('/api/v1/items')
+  ) {
+    const rateLimitResponse = await itemsRateLimit(request);
+    if (rateLimitResponse) return rateLimitResponse;
+  }
+
   // Apply rate limiting for general API routes
   if (request.nextUrl.pathname.startsWith('/api/v1')) {
-    const rateLimitResponse = apiRateLimit(request);
+    const rateLimitResponse = await apiRateLimit(request);
     if (rateLimitResponse) {
       return rateLimitResponse;
     }

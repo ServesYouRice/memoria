@@ -5,7 +5,7 @@ import {
   Box,
   Chip,
   TextField,
-  Stack,
+
   Autocomplete,
 } from '@mui/material';
 
@@ -32,16 +32,6 @@ export function TagInput({
     onChange(tags.filter((tag) => tag !== tagToDelete));
   };
 
-  const handleAdd = (newTag: string | null) => {
-    if (!newTag) return;
-
-    const trimmedTag = newTag.trim();
-    if (trimmedTag && !tags.includes(trimmedTag) && tags.length < maxTags) {
-      onChange([...tags, trimmedTag]);
-      setInputValue('');
-    }
-  };
-
   return (
     <Box>
       <Autocomplete
@@ -57,15 +47,18 @@ export function TagInput({
         }}
         options={suggestions}
         renderTags={(value, getTagProps) =>
-          value.map((option, index) => (
-            <Chip
-              label={option}
-              size="small"
-              onDelete={() => handleDelete(option)}
-              {...getTagProps({ index })}
-              key={option}
-            />
-          ))
+          value.map((option, index) => {
+            const { key, ...tagProps } = getTagProps({ index });
+            return (
+              <Chip
+                key={key}
+                label={option}
+                size="small"
+                {...tagProps}
+                onDelete={() => handleDelete(option)}
+              />
+            );
+          })
         }
         renderInput={(params) => (
           <TextField

@@ -34,8 +34,8 @@
  *
  * Set environment variables to configure the email provider:
  * - `EMAIL_PROVIDER`: 'console' | 'smtp' | 'sendgrid' | 'resend' (default: 'console')
- * - `EMAIL_FROM`: From email address (default: 'noreply@canvascollect.com')
- * - `EMAIL_FROM_NAME`: From name (default: 'CanvasCollect')
+ * - `EMAIL_FROM`: From email address (default: 'noreply@memoria.com')
+ * - `EMAIL_FROM_NAME`: From name (default: 'Memoria')
  *
  * ### SMTP Configuration
  * - `SMTP_HOST`: SMTP server host
@@ -60,44 +60,48 @@ import type {
 } from './types';
 import { ConsoleEmailProvider } from './providers/console';
 import { SMTPEmailProvider } from './providers/smtp';
+import { SendGridEmailProvider } from './providers/sendgrid';
+import { ResendEmailProvider } from './providers/resend';
 import {
   passwordResetTemplate,
   emailVerificationTemplate,
   welcomeEmailTemplate,
 } from './templates';
 
+// ... (skipping getEmailConfig, it is fine) -> No, I need to put it back.
+
 /**
  * Email service configuration from environment
  */
 function getEmailConfig(): EmailServiceConfig {
-  const provider = (process.env.EMAIL_PROVIDER || 'console') as EmailServiceConfig['provider'];
+  const provider = (process.env['EMAIL_PROVIDER'] || 'console') as EmailServiceConfig['provider'];
 
   const config: EmailServiceConfig = {
     provider,
     from: {
-      email: process.env.EMAIL_FROM || 'noreply@canvascollect.com',
-      name: process.env.EMAIL_FROM_NAME || 'CanvasCollect',
+      email: process.env['EMAIL_FROM'] || 'noreply@memoria.com',
+      name: process.env['EMAIL_FROM_NAME'] || 'Memoria',
     },
   };
 
   // Provider-specific configuration
   if (provider === 'smtp') {
     config.smtp = {
-      host: process.env.SMTP_HOST || 'localhost',
-      port: parseInt(process.env.SMTP_PORT || '587', 10),
-      secure: process.env.SMTP_SECURE === 'true',
+      host: process.env['SMTP_HOST'] || 'localhost',
+      port: parseInt(process.env['SMTP_PORT'] || '587', 10),
+      secure: process.env['SMTP_SECURE'] === 'true',
       auth: {
-        user: process.env.SMTP_USER || '',
-        pass: process.env.SMTP_PASS || '',
+        user: process.env['SMTP_USER'] || '',
+        pass: process.env['SMTP_PASS'] || '',
       },
     };
   } else if (provider === 'sendgrid') {
     config.sendgrid = {
-      apiKey: process.env.SENDGRID_API_KEY || '',
+      apiKey: process.env['SENDGRID_API_KEY'] || '',
     };
   } else if (provider === 'resend') {
     config.resend = {
-      apiKey: process.env.RESEND_API_KEY || '',
+      apiKey: process.env['RESEND_API_KEY'] || '',
     };
   }
 
@@ -121,12 +125,18 @@ function createEmailProvider(config: EmailServiceConfig): EmailService {
       return new SMTPEmailProvider(config.smtp);
 
     case 'sendgrid':
-      // Future implementation
-      throw new Error('SendGrid provider not yet implemented. Use console or smtp provider.');
+      if (!config.sendgrid) {
+        throw new Error('SendGrid configuration is required');
+      }
+      logger.info('Using SendGrid email provider');
+      return new SendGridEmailProvider(config.sendgrid);
 
     case 'resend':
-      // Future implementation
-      throw new Error('Resend provider not yet implemented. Use console or smtp provider.');
+      if (!config.resend) {
+        throw new Error('Resend configuration is required');
+      }
+      logger.info('Using Resend email provider');
+      return new ResendEmailProvider(config.resend);
 
     default:
       logger.warn({ provider: config.provider }, 'Unknown email provider, falling back to console');

@@ -9,12 +9,39 @@ import {
 
 const logger = createLogger('rate-limit');
 
-// In-memory store for rate limiting (DEVELOPMENT ONLY - use Redis in production)
-// This implementation is NOT suitable for:
-// - Production deployments
-// - Serverless/Edge environments (Vercel, AWS Lambda)
-// - Multi-instance deployments
-// See CODE_AUDIT_REPORT.md Issue #5 for Redis implementation
+// Redis client (lazy loaded)
+let redis: any = null;
+
+async function getRedis() {
+  if (redis) return redis;
+
+  // Check for standard Redis URL or Upstash Redis URL
+  const redisUrl = process.env['REDIS_URL'] || process.env['UPSTASH_REDIS_REST_URL'];
+
+  if (!redisUrl) return null;
+
+  try {
+    // Dynamically import ioredis to avoid bundling issues if not used
+    const Redis = (await import('ioredis')).default;
+    redis = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2000,
+      lazyConnect: true
+    });
+
+    // Handle error events to prevent crashing
+    redis.on('error', (err: any) => {
+      logger.warn({ err }, 'Redis rate limit error');
+    });
+
+    return redis;
+  } catch (error) {
+    logger.warn({ error }, 'Failed to initialize Redis for rate limiting');
+    return null;
+  }
+}
+
+// In-memory store for development/fallback
 interface RateLimitEntry {
   count: number;
   resetAt: number;
@@ -22,13 +49,6 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
-/**
- * Lazy cleanup of expired entries
- * Called on each rate limit check to avoid memory leaks in serverless
- *
- * IMPORTANT: This replaces the previous setInterval approach which caused
- * memory leaks in serverless environments (Issue #2)
- */
 function cleanupExpiredEntries(): void {
   const now = Date.now();
   const keysToDelete: string[] = [];
@@ -40,10 +60,6 @@ function cleanupExpiredEntries(): void {
   }
 
   keysToDelete.forEach(key => rateLimitStore.delete(key));
-
-  if (keysToDelete.length > 0) {
-    logger.debug({ cleaned: keysToDelete.length }, 'Cleaned up expired rate limit entries');
-  }
 }
 
 export interface RateLimitConfig {
@@ -53,44 +69,85 @@ export interface RateLimitConfig {
 }
 
 /**
- * Rate limiting middleware
- *
- * DEVELOPMENT ONLY: This in-memory implementation is suitable for development only.
- * For production, use Redis-based rate limiting (see below for implementation)
- *
- * Production alternatives:
- * 1. Upstash Redis: https://upstash.com/
- * 2. Vercel Edge Config: https://vercel.com/docs/storage/edge-config
- * 3. Redis Cloud: https://redis.com/
+ * Rate limiting middleware with Redis support
  */
 export function rateLimit(config: RateLimitConfig) {
   const { maxRequests, windowMs, keyPrefix = 'rl' } = config;
 
-  return function checkRateLimit(request: NextRequest): NextResponse | null {
-    // Cleanup expired entries (lazy cleanup to avoid memory leaks)
-    cleanupExpiredEntries();
-
-    // Get identifier (IP or user ID)
+  return async function checkRateLimit(request: NextRequest): Promise<NextResponse | null> {
     const identifier =
       request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
 
-    const key = keyPrefix + ':' + identifier;
+    const key = `${keyPrefix}:${identifier}`;
     const now = Date.now();
+
+    try {
+      const client = await getRedis();
+
+      if (client) {
+        // Redis implementation (sliding window approximated with fixed window + expiration)
+
+        // Use a transaction
+        const multi = client.multi();
+        multi.incr(key);
+        multi.pttl(key);
+        const results = await multi.exec();
+
+        if (!results) throw new Error('Redis transaction failed');
+
+        const [incrErr, currentCount] = results[0];
+        const [, ttl] = results[1];
+
+        if (incrErr) throw incrErr;
+
+        // If new key (ttl is -1 or similar depending on redis version/client), set expiration
+        if (typeof ttl === 'number' && ttl < 0) {
+          await client.pexpire(key, windowMs);
+        }
+
+        const count = Number(currentCount);
+
+        if (count > maxRequests) {
+          logger.warn({ identifier, key, count }, 'Rate limit exceeded (Redis)');
+          return NextResponse.json(
+            {
+              error: 'Too many requests',
+              retryAfter: Math.ceil(windowMs / 1000),
+            },
+            {
+              status: 429,
+              headers: {
+                'X-RateLimit-Limit': maxRequests.toString(),
+                'X-RateLimit-Remaining': '0',
+                'X-RateLimit-Reset': (now + windowMs).toString()
+              }
+            }
+          );
+        }
+
+        return null;
+      }
+    } catch (error) {
+      // Fallback to in-memory if Redis fails
+      logger.warn({ error }, 'Rate limit Redis error, falling back to in-memory');
+    }
+
+    // In-memory implementation (Fallback)
+    cleanupExpiredEntries();
 
     let entry = rateLimitStore.get(key);
 
     if (!entry || entry.resetAt < now) {
-      // Create new entry
       entry = {
         count: 1,
         resetAt: now + windowMs,
       };
       rateLimitStore.set(key, entry);
-      return null; // Allow request
+      return null;
     }
 
     if (entry.count >= maxRequests) {
-      logger.warn({ identifier, key }, 'Rate limit exceeded');
+      logger.warn({ identifier, key }, 'Rate limit exceeded (Memory)');
       return NextResponse.json(
         {
           error: 'Too many requests',
@@ -101,7 +158,7 @@ export function rateLimit(config: RateLimitConfig) {
     }
 
     entry.count++;
-    return null; // Allow request
+    return null;
   };
 }
 
@@ -120,95 +177,20 @@ export const apiRateLimit = rateLimit({
   keyPrefix: 'api',
 });
 
-/*
- * ============================================================================
- * PRODUCTION-READY REDIS IMPLEMENTATION (Recommended for Production)
- * ============================================================================
- *
- * To migrate to Redis-based rate limiting, follow these steps:
- *
- * 1. Install dependencies:
- *    pnpm add @upstash/redis @upstash/ratelimit
- *
- * 2. Add environment variables to .env:
- *    UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
- *    UPSTASH_REDIS_REST_TOKEN=your_token_here
- *
- * 3. Replace this file with the implementation below:
- *
- * ```typescript
- * import { Ratelimit } from '@upstash/ratelimit';
- * import { Redis } from '@upstash/redis';
- * import { NextRequest, NextResponse } from 'next/server';
- *
- * // Initialize Redis client
- * const redis = new Redis({
- *   url: process.env.UPSTASH_REDIS_REST_URL!,
- *   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
- * });
- *
- * // Create rate limiters
- * const authRateLimiter = new Ratelimit({
- *   redis,
- *   limiter: Ratelimit.slidingWindow(5, '15 m'), // 5 requests per 15 minutes
- *   analytics: true,
- *   prefix: 'auth',
- * });
- *
- * const apiRateLimiter = new Ratelimit({
- *   redis,
- *   limiter: Ratelimit.slidingWindow(100, '15 m'), // 100 requests per 15 minutes
- *   analytics: true,
- *   prefix: 'api',
- * });
- *
- * // Middleware function
- * export async function checkRateLimit(
- *   request: NextRequest,
- *   limiter: Ratelimit
- * ): Promise<NextResponse | null> {
- *   const identifier =
- *     request.headers.get('x-forwarded-for') ||
- *     request.headers.get('x-real-ip') ||
- *     'unknown';
- *
- *   const { success, limit, remaining, reset } = await limiter.limit(identifier);
- *
- *   if (!success) {
- *     return NextResponse.json(
- *       {
- *         error: 'Too many requests',
- *         retryAfter: Math.ceil((reset - Date.now()) / 1000),
- *       },
- *       {
- *         status: 429,
- *         headers: {
- *           'X-RateLimit-Limit': limit.toString(),
- *           'X-RateLimit-Remaining': remaining.toString(),
- *           'X-RateLimit-Reset': reset.toString(),
- *         },
- *       }
- *     );
- *   }
- *
- *   return null; // Allow request
- * }
- *
- * // Export rate limit functions
- * export const authRateLimit = (request: NextRequest) =>
- *   checkRateLimit(request, authRateLimiter);
- *
- * export const apiRateLimit = (request: NextRequest) =>
- *   checkRateLimit(request, apiRateLimiter);
- * ```
- *
- * Benefits of Redis-based rate limiting:
- * - ✅ Works across multiple server instances
- * - ✅ Persists across deployments
- * - ✅ No memory leaks in serverless
- * - ✅ Accurate rate limiting in distributed systems
- * - ✅ Built-in analytics and monitoring
- * - ✅ Sliding window algorithm for better accuracy
- *
- * See: https://upstash.com/docs/oss/sdks/ts/ratelimit/overview
- */
+export const uploadRateLimit = rateLimit({
+  maxRequests: 10, // 10 uploads per hour
+  windowMs: 60 * 60 * 1000,
+  keyPrefix: 'upload',
+});
+
+export const canvasesRateLimit = rateLimit({
+  maxRequests: 50,
+  windowMs: 60 * 1000,
+  keyPrefix: 'canvases',
+});
+
+export const itemsRateLimit = rateLimit({
+  maxRequests: 200,
+  windowMs: 60 * 1000,
+  keyPrefix: 'items',
+});

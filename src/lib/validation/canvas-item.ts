@@ -68,7 +68,109 @@ export const bookmarkContentSchema = z.object({
     }
     return sanitized;
   }),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  favicon: z.string().optional(),
+  previewImage: z.string().optional(),
+  siteName: z.string().optional(),
+  unfurledAt: z.string().optional(),
 });
+
+/**
+ * Image content validation
+ */
+export const imageContentSchema = z.object({
+  url: z.string().url(),
+  filename: z.string().min(1),
+  alt: z.string().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+});
+
+/**
+ * Drawing path validation
+ */
+const drawingPathSchema = z.object({
+  points: z.array(z.number()),
+  stroke: z.string(),
+  strokeWidth: z.number().positive(),
+  opacity: z.number().min(0).max(1).optional(),
+  tension: z.number().optional(),
+});
+
+/**
+ * Drawing content validation
+ */
+export const drawingContentSchema = z.object({
+  paths: z.array(drawingPathSchema),
+});
+
+/**
+ * Shape content validation
+ */
+export const shapeContentSchema = z.object({
+  shapeType: z.enum(['rectangle', 'circle', 'triangle', 'diamond', 'star', 'arrow_shape']),
+  stroke: z.string().optional(),
+  fill: z.string().optional(),
+  strokeWidth: z.number().positive().optional(),
+  radius: z.number().nonnegative().optional(),
+});
+
+/**
+ * Arrow content validation
+ */
+export const arrowContentSchema = z.object({
+  startItemId: z.string().cuid().optional(),
+  endItemId: z.string().cuid().optional(),
+  startPoint: z.object({ x: z.number(), y: z.number() }).optional(),
+  endPoint: z.object({ x: z.number(), y: z.number() }).optional(),
+  stroke: z.string().optional(),
+  strokeWidth: z.number().positive().optional(),
+  arrowHeadStart: z.enum(['none', 'arrow', 'circle']).optional(),
+  arrowHeadEnd: z.enum(['none', 'arrow', 'circle']).optional(),
+  label: z.string().optional(),
+});
+
+/**
+ * Text content validation
+ */
+export const textContentSchema = z.object({
+  text: z.string(),
+  fontSize: z.number().positive().optional(),
+  fontFamily: z.string().optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+  color: z.string().optional(),
+});
+
+/**
+ * Frame content validation
+ */
+export const frameContentSchema = z.object({
+  title: z.string().optional(),
+  backgroundColor: z.string().optional(),
+});
+
+/**
+ * Embed content validation
+ */
+export const embedContentSchema = z.object({
+  url: z.string().url(),
+  embedType: z.enum(['youtube', 'figma', 'loom', 'generic']),
+});
+
+/**
+ * Poll content validation
+ */
+export const pollContentSchema = z.object({
+  question: z.string().min(1),
+  options: z.array(z.object({
+    id: z.string(),
+    text: z.string(),
+    votes: z.array(z.string())
+  })),
+  multipleChoice: z.boolean().optional(),
+});
+
 
 /**
  * Geometry validation
@@ -92,7 +194,18 @@ export const createCanvasItemSchema = z.object({
   width: z.number().positive().finite(),
   height: z.number().positive().finite(),
   zIndex: z.number().int().min(0).max(MAX_ZINDEX).default(0),
-  content: z.union([noteContentSchema, bookmarkContentSchema]),
+  content: z.union([
+    noteContentSchema,
+    bookmarkContentSchema,
+    imageContentSchema,
+    drawingContentSchema,
+    shapeContentSchema,
+    arrowContentSchema,
+    textContentSchema,
+    frameContentSchema,
+    embedContentSchema,
+    pollContentSchema
+  ]),
   tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_ITEM).default([]),
 });
 
@@ -107,7 +220,18 @@ export const updateCanvasItemSchema = z.object({
   width: z.number().positive().finite().optional(),
   height: z.number().positive().finite().optional(),
   zIndex: z.number().int().min(0).max(MAX_ZINDEX).optional(),
-  content: z.union([noteContentSchema, bookmarkContentSchema]).optional(),
+  content: z.union([
+    noteContentSchema,
+    bookmarkContentSchema,
+    imageContentSchema,
+    drawingContentSchema,
+    shapeContentSchema,
+    arrowContentSchema,
+    textContentSchema,
+    frameContentSchema,
+    embedContentSchema,
+    pollContentSchema
+  ]).optional(),
   tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_ITEM).optional(),
 });
 

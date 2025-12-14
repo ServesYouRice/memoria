@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
-import { Box, Dialog } from '@mui/material';
+import { Dialog } from '@mui/material';
 import {
   Add as AddIcon,
   Search as SearchIcon,

@@ -9,6 +9,7 @@ export interface CanvasVersion {
   id: string;
   name: string;
   createdAt: string;
+  snapshot?: any;
 }
 
 interface VersionsResponse {

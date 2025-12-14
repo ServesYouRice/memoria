@@ -3,12 +3,12 @@
  * Search across all user's canvases and items
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { authOptions } from '@/lib/auth';
-import { UnauthorizedError, ValidationError } from '@/lib/errors';
+import { Prisma } from '@prisma/client';
+
 import { stripHtmlTags } from '@/lib/utils/html';
+import { logger } from '@/lib/logger';
 
 interface SearchResult {
   itemId: string;
@@ -26,114 +26,106 @@ interface SearchResult {
  * Search across all canvases and items
  * GET /api/v1/search?q=query&tags=tag1,tag2&canvasId=id
  */
-export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+import { withAuth } from '@/lib/api/route-handler';
 
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in');
-  }
-
+export const GET = withAuth<any>(async (request, session) => {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   const tagsParam = searchParams.get('tags');
   const canvasIdFilter = searchParams.get('canvasId');
 
   if (!query || query.trim().length < 2) {
-    throw new ValidationError('Search query must be at least 2 characters');
+    return NextResponse.json({ error: 'Search query must be at least 2 characters' }, { status: 400 });
   }
 
   const tags = tagsParam ? tagsParam.split(',').map((t) => t.trim()).filter(Boolean) : [];
+  const userId = session.user.id;
 
-  // Build the where clause
-  const where: any = {
-    canvas: {
-      userId: session.user.id,
-    },
-    deletedAt: null,
-  };
+  logger.info({ userId, query, tags }, 'Executing search');
 
-  // Filter by canvas if specified
-  if (canvasIdFilter) {
-    where.canvasId = canvasIdFilter;
-  }
+  /**
+   * Optimized Search using Raw SQL for case-insensitive JSON search
+   * We select items where:
+   * 1. Canvas belongs to user
+   * 2. Item is not deleted
+   * 3. Matches tags (if provided)
+   * 4. Matches query in content (case insensitive)
+   */
 
-  // Filter by tags if specified
-  if (tags.length > 0) {
-    where.tags = {
-      hasEvery: tags,
-    };
-  }
+  const searchTerm = `%${query}%`;
 
-  // Search for items
-  const items = await prisma.canvasItem.findMany({
-    where,
-    include: {
-      canvas: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-    orderBy: {
-      updatedAt: 'desc',
-    },
-    take: 50, // Limit results
-  });
+  // Using prisma.$queryRaw for maximum control over the JSON search
+  const items = await prisma.$queryRaw<any[]>`
+      SELECT 
+        i."id", 
+        i."canvasId", 
+        i."type", 
+        i."content", 
+        i."tags", 
+        i."createdAt", 
+        i."updatedAt",
+        c."name" as "canvasName"
+      FROM "CanvasItem" i
+      JOIN "Canvas" c ON i."canvasId" = c."id"
+      WHERE 
+        c."userId" = ${userId}
+        AND i."deletedAt" IS NULL
+        AND (
+          ${canvasIdFilter ? Prisma.sql`i."canvasId" = ${canvasIdFilter} AND` : Prisma.empty}
+          true
+        )
+        AND (
+          ${tags.length > 0 ? Prisma.sql`i."tags" @> ${tags}::text[] AND` : Prisma.empty}
+          true
+        )
+        AND (
+          -- Case insensitive search across common text fields in JSON
+          i."content"->>'text' ILIKE ${searchTerm}
+          OR i."content"->>'title' ILIKE ${searchTerm}
+          OR i."content"->>'description' ILIKE ${searchTerm}
+          OR i."content"->>'url' ILIKE ${searchTerm}
+          OR i."content"->>'alt' ILIKE ${searchTerm}
+          OR i."content"->>'name' ILIKE ${searchTerm}
+          OR i."content"->>'filename' ILIKE ${searchTerm}
+        )
+      ORDER BY i."updatedAt" DESC
+      LIMIT 50;
+    `;
 
-  // Filter by content search and create results
+  // Create results with snippets
   const queryLower = query.toLowerCase();
-  const results: SearchResult[] = items
-    .filter((item) => {
-      const content = item.content as any;
-      if (item.type === 'NOTE') {
-        // Strip HTML tags before searching
-        const plainText = stripHtmlTags(content.text || '');
-        return plainText.toLowerCase().includes(queryLower);
-      } else if (item.type === 'BOOKMARK') {
-        return (
-          content.url?.toLowerCase().includes(queryLower) ||
-          content.title?.toLowerCase().includes(queryLower) ||
-          content.description?.toLowerCase().includes(queryLower) ||
-          content.siteName?.toLowerCase().includes(queryLower)
-        );
-      } else if (item.type === 'IMAGE') {
-        return (
-          content.filename?.toLowerCase().includes(queryLower) ||
-          content.alt?.toLowerCase().includes(queryLower)
-        );
-      }
-      return false;
-    })
-    .map((item) => {
-      const content = item.content as any;
-      let snippet = '';
+  const results: SearchResult[] = items.map((item) => {
+    const content = item.content as any;
+    let snippet = '';
 
-      if (item.type === 'NOTE') {
-        // Strip HTML tags for snippet as well
-        const plainText = stripHtmlTags(content.text || '');
-        const index = plainText.toLowerCase().indexOf(queryLower);
+    if (item.type === 'NOTE') {
+      const plainText = stripHtmlTags(content.text || '');
+      const index = plainText.toLowerCase().indexOf(queryLower);
+      if (index !== -1) {
         const start = Math.max(0, index - 50);
         const end = Math.min(plainText.length, index + queryLower.length + 50);
         snippet = (start > 0 ? '...' : '') + plainText.substring(start, end) + (end < plainText.length ? '...' : '');
-      } else if (item.type === 'BOOKMARK') {
-        snippet = content.title || content.url || '';
-      } else if (item.type === 'IMAGE') {
-        snippet = content.alt || content.filename || 'Image';
+      } else {
+        snippet = plainText.substring(0, 100) + '...';
       }
+    } else if (item.type === 'BOOKMARK') {
+      snippet = content.title || content.url || '';
+    } else if (item.type === 'IMAGE') {
+      snippet = content.alt || content.filename || 'Image';
+    }
 
-      return {
-        itemId: item.id,
-        canvasId: item.canvasId,
-        canvasName: item.canvas.name,
-        itemType: item.type,
-        content: item.content,
-        tags: item.tags || [],
-        snippet,
-        createdAt: item.createdAt.toISOString(),
-        updatedAt: item.updatedAt.toISOString(),
-      };
-    });
+    return {
+      itemId: item.id,
+      canvasId: item.canvasId,
+      canvasName: item.canvasName, // Joined column
+      itemType: item.type,
+      content: item.content,
+      tags: item.tags || [],
+      snippet,
+      createdAt: new Date(item.createdAt).toISOString(),
+      updatedAt: new Date(item.updatedAt).toISOString(),
+    };
+  });
 
   return NextResponse.json({
     query,
@@ -141,4 +133,4 @@ export async function GET(request: NextRequest) {
     totalResults: results.length,
     results,
   });
-}
+});

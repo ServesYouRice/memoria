@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -15,7 +16,7 @@ import {
   Menu,
   MenuItem,
   Badge,
-  ToggleButtonGroup,
+
   ToggleButton,
   Avatar,
   AvatarGroup,
@@ -36,9 +37,19 @@ import {
   GridOn as GridOnIcon,
   GridOff as GridOffIcon,
   FiberManualRecord as OnlineIcon,
+  AutoAwesome as AIIcon,
+  History as HistoryIcon,
+  Shuffle as SerendipityIcon,
+  Dashboard as TemplatesIcon,
+  AutoFixHigh as AutopilotIcon,
+  MicNone as WhisperIcon,
+  ViewInAr as ARIcon,
 } from '@mui/icons-material';
 import { ShareDialog } from './ShareDialog';
+
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { MeetingTimer } from './MeetingTimer';
+import { PresentToAll } from '@mui/icons-material';
 
 export interface CollaboratorInfo {
   userId: string;
@@ -71,6 +82,19 @@ export interface CanvasHeaderProps {
   activeTagCount?: number;
   collaborators?: CollaboratorInfo[];
   collaborationConnected?: boolean;
+  onFollowUser?: (userId: string) => void;
+  followingUserId?: string | null;
+
+  onAI?: () => void;
+  onTimeMachine?: () => void;
+
+  onSerendipity?: () => void;
+  onTemplates?: () => void;
+  onAutopilot?: () => void;
+  onWhisper?: () => void;
+  onAR?: () => void;
+  onPresentationMode?: () => void;
+  isPresentationMode?: boolean;
 }
 
 const ZOOM_STEP = 0.1;
@@ -101,6 +125,19 @@ export function CanvasHeader({
   activeTagCount = 0,
   collaborators = [],
   collaborationConnected = false,
+  onFollowUser,
+  followingUserId,
+
+  onAI,
+  onTimeMachine,
+
+  onSerendipity,
+  onTemplates,
+  onAutopilot,
+  onWhisper,
+  onAR,
+  onPresentationMode,
+  isPresentationMode = false,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -252,7 +289,7 @@ export function CanvasHeader({
               {collaborators.map((collaborator) => (
                 <Tooltip
                   key={collaborator.userId}
-                  title={`${collaborator.name || collaborator.email} (viewing)`}
+                  title={`${collaborator.name || collaborator.email} ${onFollowUser ? '(Click to follow)' : '(viewing)'}`}
                 >
                   <Avatar
                     sx={{
@@ -261,7 +298,11 @@ export function CanvasHeader({
                       height: 32,
                       fontSize: 14,
                       fontWeight: 'bold',
+                      cursor: onFollowUser ? 'pointer' : 'default',
+                      border: followingUserId === collaborator.userId ? '2px solid #29b6f6' : '1px solid #fff',
+                      boxSizing: 'border-box',
                     }}
+                    onClick={() => onFollowUser && onFollowUser(collaborator.userId)}
                   >
                     {(collaborator.name || collaborator.email).charAt(0).toUpperCase()}
                   </Avatar>
@@ -289,10 +330,91 @@ export function CanvasHeader({
           </Box>
         )}
 
+        {/* Meeting Timer */}
+        <Box sx={{ mr: 1 }}>
+          <MeetingTimer />
+        </Box>
+
+        {/* Presentation Mode */}
+        {onPresentationMode && (
+          <Tooltip title={isPresentationMode ? "Exit Presentation" : "Presentation Mode"}>
+            <IconButton
+              onClick={onPresentationMode}
+              color={isPresentationMode ? "secondary" : "default"}
+              sx={{ mr: 1 }}
+            >
+              <PresentToAll />
+            </IconButton>
+          </Tooltip>
+        )}
+
         {/* Theme Toggle */}
         <Box sx={{ mr: 1 }}>
           <ThemeToggle />
         </Box>
+
+        {/* AI Assistant */}
+        {onAI && (
+          <Tooltip title="AI Assistant">
+            <IconButton onClick={onAI} color="primary" sx={{ mr: 1 }}>
+              <AIIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Serendipity */}
+        {onSerendipity && (
+          <Tooltip title="Serendipity / Surprise Me">
+            <IconButton onClick={onSerendipity} color="secondary" sx={{ mr: 1 }}>
+              <SerendipityIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Templates / Rituals */}
+        {onTemplates && (
+          <Tooltip title="Templates & Rituals">
+            <IconButton onClick={onTemplates} sx={{ mr: 1 }}>
+              <TemplatesIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Autopilot */}
+        {onAutopilot && (
+          <Tooltip title="Autopilot (Auto-organize)">
+            <IconButton onClick={onAutopilot} color="primary" sx={{ mr: 1 }}>
+              <AutopilotIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Whisper Mode */}
+        {onWhisper && (
+          <Tooltip title="Whisper Mode (Quick Entry)">
+            <IconButton onClick={onWhisper} sx={{ mr: 1, opacity: 0.7 }}>
+              <WhisperIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* Time Machine */}
+        {onTimeMachine && (
+          <Tooltip title="Time Machine (Visual History)">
+            <IconButton onClick={onTimeMachine} color="secondary" sx={{ mr: 1 }}>
+              <HistoryIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* AR Mode */}
+        {onAR && (
+          <Tooltip title="AR Canvas Layer (Experimental)">
+            <IconButton onClick={onAR} sx={{ mr: 1, color: 'warning.main' }}>
+              <ARIcon />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {/* Tag Filter */}
         {onTagFilter && (
@@ -306,7 +428,7 @@ export function CanvasHeader({
         )}
 
         {/* Search Toggle */}
-        {onSearchChange && !showSearch && !isEditingName && (
+        {onSearchChange && !showSearch && (
           <Tooltip title="Search">
             <IconButton onClick={() => setShowSearch(true)} sx={{ mr: 1 }}>
               <SearchIcon />
@@ -315,101 +437,95 @@ export function CanvasHeader({
         )}
 
         {/* Zoom Controls */}
-        <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-          <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
-            <Tooltip title="Zoom Out">
-              <Button onClick={handleZoomOut} disabled={zoom <= MIN_ZOOM}>
-                <ZoomOut />
-              </Button>
-            </Tooltip>
-            <Tooltip title="Fit to Screen">
-              <Button onClick={onFitToScreen}>
-                <FitScreen />
-              </Button>
-            </Tooltip>
-            <Tooltip title="Zoom In">
-              <Button onClick={handleZoomIn} disabled={zoom >= MAX_ZOOM}>
-                <ZoomIn />
-              </Button>
-            </Tooltip>
-          </ButtonGroup>
-          <Typography variant="body2" sx={{ minWidth: 50, textAlign: 'center' }}>
+        <ButtonGroup size="small" sx={{ mr: 2 }}>
+          <Tooltip title="Zoom Out">
+            <Button onClick={handleZoomOut}>
+              <ZoomOut fontSize="small" />
+            </Button>
+          </Tooltip>
+          <Button onClick={onFitToScreen} sx={{ minWidth: '60px' }}>
             {Math.round(zoom * 100)}%
-          </Typography>
+          </Button>
+          <Tooltip title="Zoom In">
+            <Button onClick={handleZoomIn}>
+              <ZoomIn fontSize="small" />
+            </Button>
+          </Tooltip>
+        </ButtonGroup>
+
+        {/* Grid and Snap Toggles */}
+        <Box sx={{ display: 'flex', mr: 2 }}>
+          {onGridToggle && (
+            <Tooltip title={gridVisible ? "Hide Grid" : "Show Grid"}>
+              <ToggleButton
+                value="grid"
+                selected={gridVisible}
+                onChange={onGridToggle}
+                size="small"
+                sx={{ mr: 0.5 }}
+              >
+                {gridVisible ? <GridOnIcon fontSize="small" /> : <GridOffIcon fontSize="small" />}
+              </ToggleButton>
+            </Tooltip>
+          )}
+          {onSnapToggle && (
+            <Tooltip title={snapEnabled ? "Disable Snap to Grid" : "Enable Snap to Grid"}>
+              <ToggleButton
+                value="snap"
+                selected={snapEnabled}
+                onChange={onSnapToggle}
+                size="small"
+              >
+                <FitScreen fontSize="small" />
+              </ToggleButton>
+            </Tooltip>
+          )}
         </Box>
 
-        {/* Grid Controls */}
-        {(onGridToggle || onSnapToggle) && (
-          <Box sx={{ mr: 2 }}>
-            <ToggleButtonGroup size="small">
-              {onGridToggle && (
-                <ToggleButton value="grid" selected={gridVisible} onChange={onGridToggle}>
-                  <Tooltip title={gridVisible ? 'Hide Grid' : 'Show Grid'}>
-                    {gridVisible ? <GridOnIcon fontSize="small" /> : <GridOffIcon fontSize="small" />}
-                  </Tooltip>
-                </ToggleButton>
-              )}
-              {onSnapToggle && (
-                <ToggleButton value="snap" selected={snapEnabled} onChange={onSnapToggle}>
-                  <Tooltip title={snapEnabled ? 'Disable Snap to Grid' : 'Enable Snap to Grid'}>
-                    <Typography variant="caption" sx={{ fontWeight: snapEnabled ? 'bold' : 'normal' }}>
-                      SNAP
-                    </Typography>
-                  </Tooltip>
-                </ToggleButton>
-              )}
-            </ToggleButtonGroup>
-          </Box>
-        )}
-
-        {/* Options Menu */}
-        <Tooltip title="More Options">
-          <IconButton onClick={handleMenuOpen}>
+        {/* More Menu */}
+        <Tooltip title="More options">
+          <IconButton edge="end" onClick={handleMenuOpen}>
             <MoreVert />
           </IconButton>
         </Tooltip>
-        <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+        >
           {onExport && (
-            <MenuItem
-              onClick={() => {
-                onExport();
-                handleMenuClose();
-              }}
-            >
-              Export Canvas...
+            <MenuItem onClick={() => {
+              onExport();
+              handleMenuClose();
+            }}>
+              Export Canvas
             </MenuItem>
           )}
           {onSaveAsTemplate && (
-            <MenuItem
-              onClick={() => {
-                onSaveAsTemplate();
-                handleMenuClose();
-              }}
-            >
+            <MenuItem onClick={() => {
+              onSaveAsTemplate();
+              handleMenuClose();
+            }}>
               Save as Template
             </MenuItem>
           )}
           {onVersionHistory && (
-            <MenuItem
-              onClick={() => {
-                onVersionHistory();
-                handleMenuClose();
-              }}
-            >
+            <MenuItem onClick={() => {
+              onVersionHistory();
+              handleMenuClose();
+            }}>
               Version History
             </MenuItem>
           )}
-          <MenuItem onClick={handleMenuClose}>Canvas Settings</MenuItem>
         </Menu>
       </Toolbar>
 
-      {/* Share Dialog */}
       <ShareDialog
         open={shareDialogOpen}
         onClose={() => setShareDialogOpen(false)}
         canvasId={canvasId}
         canvasName={canvasName}
       />
-    </AppBar>
+    </AppBar >
   );
 }

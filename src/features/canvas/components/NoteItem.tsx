@@ -10,7 +10,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Group, Rect, Text, Circle } from 'react-konva';
 import Konva from 'konva';
-import { CanvasItem, NoteContent, isNoteContent } from '@/types/canvas';
+import { CanvasItem, isNoteContent } from '@/types/canvas';
 import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { stripHtmlTags } from '@/lib/utils/html';
@@ -21,6 +21,8 @@ interface NoteItemProps {
   onSelect?: () => void;
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
+  onDragEnd?: (e: any) => void;
+  onChange?: (data: any) => void;
 }
 
 const RESIZE_HANDLE_SIZE = 8;

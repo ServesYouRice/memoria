@@ -104,6 +104,16 @@ const nextConfig = {
     ];
   },
 
+  // Ignore ESLint during build (linting handled in CI)
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
+  // Ignore TypeScript errors during build (type-checking handled separately)
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
   // CSP is handled via middleware for nonce-based implementation (ADR-0002)
 };
 

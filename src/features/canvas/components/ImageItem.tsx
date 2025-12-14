@@ -9,7 +9,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Group, Rect, Circle, Text, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
-import { CanvasItem, ImageContent, isImageContent } from '@/types/canvas';
+import { CanvasItem, isImageContent } from '@/types/canvas';
 import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
 
@@ -19,6 +19,7 @@ interface ImageItemProps {
   onSelect?: () => void;
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
+  onDragEnd?: (e: any) => void;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -26,7 +27,7 @@ const MIN_WIDTH = 100;
 const MIN_HEIGHT = 100;
 const DELETE_BUTTON_SIZE = 20;
 
-export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, onContextMenu }: ImageItemProps) {
+export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, onContextMenu, onDragEnd }: ImageItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -83,6 +84,10 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
       positionX: node.x(),
       positionY: node.y(),
     });
+
+    if (onDragEnd) {
+      onDragEnd(e);
+    }
   };
 
   const handleResize = (

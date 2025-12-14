@@ -71,7 +71,7 @@ export function getShortcutsByCategory(): Record<string, ShortcutDefinition[]> {
         if (!groups[shortcut.category]) {
             groups[shortcut.category] = [];
         }
-        groups[shortcut.category].push(shortcut);
+        groups[shortcut.category]!.push(shortcut);
     }
     return groups;
 }

@@ -181,6 +181,10 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           html: {
             scrollBehavior: 'smooth',
+            '& *:focus-visible': {
+              outline: `2px solid ${colors.primary.main}`,
+              outlineOffset: '2px',
+            },
           },
           body: {
             scrollbarWidth: 'thin',

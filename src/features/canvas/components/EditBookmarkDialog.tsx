@@ -136,8 +136,8 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
 
       await updateItem.mutateAsync({
         itemId: item.id,
-        version: item.version,
-        updates: {
+        data: {
+          version: item.version,
           content: updatedContent,
           tags: data.tags || [],
         },

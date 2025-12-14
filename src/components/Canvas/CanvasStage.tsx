@@ -46,7 +46,7 @@ export function CanvasStage({ canvasId }: CanvasStageProps) {
   }, [canvas, setZoom, setPan]);
 
   // Debounced save to server
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const saveCanvasState = useCallback(
     (zoom: number, panX: number, panY: number) => {
       if (saveTimeoutRef.current) {

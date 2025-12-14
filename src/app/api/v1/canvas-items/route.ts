@@ -14,6 +14,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCanvasAccess } from '@/lib/api/auth';
 import { errorResponse } from '@/lib/errors';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 import {
   createCanvasItemSchema,
   listCanvasItemsSchema,
@@ -48,13 +49,16 @@ export async function POST(request: NextRequest) {
         width: data.width,
         height: data.height,
         zIndex: data.zIndex,
-        content: data.content as Prisma.JsonValue, // FIXED: Use proper Prisma Json type instead of any
+        content: data.content ?? Prisma.JsonNull,
         tags: data.tags || [],
         version: 1,
         createdById: userId,
         updatedById: userId,
       },
     });
+
+    // Invalidate canvas cache
+    await invalidateCanvasCache(data.canvasId);
 
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
@@ -96,21 +100,21 @@ export async function GET(request: NextRequest) {
     // Parse query params with viewport support
     const query = hasViewportParams
       ? viewportPaginationSchema.parse({
-          canvasId: searchParams.get('canvasId'),
-          type: searchParams.get('type') || undefined,
-          includeDeleted: searchParams.get('includeDeleted') === 'true',
-          minX: searchParams.has('minX') ? parseFloat(searchParams.get('minX')!) : undefined,
-          maxX: searchParams.has('maxX') ? parseFloat(searchParams.get('maxX')!) : undefined,
-          minY: searchParams.has('minY') ? parseFloat(searchParams.get('minY')!) : undefined,
-          maxY: searchParams.has('maxY') ? parseFloat(searchParams.get('maxY')!) : undefined,
-          limit: searchParams.has('limit') ? parseInt(searchParams.get('limit')!, 10) : 100,
-          offset: searchParams.has('offset') ? parseInt(searchParams.get('offset')!, 10) : 0,
-        })
+        canvasId: searchParams.get('canvasId'),
+        type: searchParams.get('type') || undefined,
+        includeDeleted: searchParams.get('includeDeleted') === 'true',
+        minX: searchParams.has('minX') ? parseFloat(searchParams.get('minX')!) : undefined,
+        maxX: searchParams.has('maxX') ? parseFloat(searchParams.get('maxX')!) : undefined,
+        minY: searchParams.has('minY') ? parseFloat(searchParams.get('minY')!) : undefined,
+        maxY: searchParams.has('maxY') ? parseFloat(searchParams.get('maxY')!) : undefined,
+        limit: searchParams.has('limit') ? parseInt(searchParams.get('limit')!, 10) : 100,
+        offset: searchParams.has('offset') ? parseInt(searchParams.get('offset')!, 10) : 0,
+      })
       : listCanvasItemsSchema.parse({
-          canvasId: searchParams.get('canvasId'),
-          type: searchParams.get('type') || undefined,
-          includeDeleted: searchParams.get('includeDeleted') === 'true',
-        });
+        canvasId: searchParams.get('canvasId'),
+        type: searchParams.get('type') || undefined,
+        includeDeleted: searchParams.get('includeDeleted') === 'true',
+      });
 
     // Verify user has VIEW permission (via ownership or share)
     await requireCanvasAccess(query.canvasId, userId, email, 'VIEW');
@@ -138,7 +142,6 @@ export async function GET(request: NextRequest) {
 
       // FIXED: Use parameterized queries instead of string concatenation
       // This prevents SQL injection even though inputs are validated
-      const { Prisma } = prisma;
 
       // Build type filter fragment
       const typeFilter = query.type

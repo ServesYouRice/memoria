@@ -5,6 +5,9 @@
  */
 
 import { getRedisClient } from './redis-client';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('unfurl-cache');
 
 interface UnfurledMetadata {
   title?: string;
@@ -37,7 +40,7 @@ export async function getCachedUnfurl(url: string): Promise<UnfurledMetadata | n
 
     return JSON.parse(cached) as UnfurledMetadata;
   } catch (error) {
-    console.error('Error getting cached unfurl:', error);
+    logger.error({ error }, 'Error getting cached unfurl');
     return null;
   }
 }
@@ -53,7 +56,7 @@ export async function setCachedUnfurl(url: string, metadata: UnfurledMetadata): 
     const normalizedUrl = normalizeUrl(url);
     await redis.setex(`unfurl:${normalizedUrl}`, UNFURL_CACHE_TTL, JSON.stringify(metadata));
   } catch (error) {
-    console.error('Error setting cached unfurl:', error);
+    logger.error({ error }, 'Error setting cached unfurl');
   }
 }
 
@@ -68,7 +71,7 @@ export async function invalidateUnfurlCache(url: string): Promise<void> {
     const normalizedUrl = normalizeUrl(url);
     await redis.del(`unfurl:${normalizedUrl}`);
   } catch (error) {
-    console.error('Error invalidating unfurl cache:', error);
+    logger.error({ error }, 'Error invalidating unfurl cache');
   }
 }
 
@@ -118,14 +121,14 @@ export async function getUnfurlCacheStats(): Promise<{
     const keys = await redis.keys('unfurl:*');
     const info = await redis.info('memory');
     const memoryMatch = info.match(/used_memory_human:(.+)/);
-    const memoryUsage = memoryMatch ? memoryMatch[1].trim() : 'unknown';
+    const memoryUsage = memoryMatch?.[1] ? memoryMatch[1].trim() : 'unknown';
 
     return {
       totalKeys: keys.length,
       memoryUsage,
     };
   } catch (error) {
-    console.error('Error getting unfurl cache stats:', error);
+    logger.error({ error }, 'Error getting unfurl cache stats');
     return null;
   }
 }

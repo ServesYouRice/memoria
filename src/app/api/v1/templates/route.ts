@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const validation = saveAsTemplateSchema.safeParse(body);
   if (!validation.success) {
-    throw new ValidationError(validation.error.errors[0].message);
+    throw new ValidationError(validation.error.errors[0]?.message || 'Validation error');
   }
 
   const { canvasId, description, category } = validation.data;

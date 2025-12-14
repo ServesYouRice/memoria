@@ -38,7 +38,6 @@ import {
     Delete as DeleteIcon,
     Logout as LogoutIcon,
     Save as SaveIcon,
-    Check as CheckIcon,
 } from '@mui/icons-material';
 import { useThemeMode } from '@/contexts/ThemeContext';
 
@@ -90,11 +89,18 @@ export function SettingsContent({ user }: SettingsContentProps) {
     const handleSaveProfile = async () => {
         try {
             setSaving(true);
-            // TODO: Implement profile update API call
-            await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulated delay
+            const response = await fetch('/api/v1/users/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to update profile');
+            }
             setSnackbar({ open: true, message: 'Profile updated successfully!', severity: 'success' });
         } catch (error) {
-            setSnackbar({ open: true, message: 'Failed to update profile', severity: 'error' });
+            setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Failed to update profile', severity: 'error' });
         } finally {
             setSaving(false);
         }
@@ -113,14 +119,21 @@ export function SettingsContent({ user }: SettingsContentProps) {
 
         try {
             setSavingPassword(true);
-            // TODO: Implement password change API call
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            const response = await fetch('/api/v1/users/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ currentPassword, newPassword }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to change password');
+            }
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
             setSnackbar({ open: true, message: 'Password changed successfully!', severity: 'success' });
         } catch (error) {
-            setSnackbar({ open: true, message: 'Failed to change password', severity: 'error' });
+            setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Failed to change password', severity: 'error' });
         } finally {
             setSavingPassword(false);
         }
@@ -130,13 +143,24 @@ export function SettingsContent({ user }: SettingsContentProps) {
     const handleDeleteAccount = async () => {
         if (deleteConfirmText !== 'DELETE') return;
 
+        // Prompt for password
+        const password = prompt('Enter your password to confirm account deletion:');
+        if (!password) return;
+
         try {
             setDeleting(true);
-            // TODO: Implement account deletion API call
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const response = await fetch('/api/v1/users/account', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password, confirmation: 'DELETE' }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to delete account');
+            }
             await signOut({ callbackUrl: '/' });
         } catch (error) {
-            setSnackbar({ open: true, message: 'Failed to delete account', severity: 'error' });
+            setSnackbar({ open: true, message: error instanceof Error ? error.message : 'Failed to delete account', severity: 'error' });
             setDeleting(false);
         }
     };

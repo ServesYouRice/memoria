@@ -21,7 +21,7 @@ Sentry.init({
     debug: false,
 
     // Capture unhandled promise rejections
-    beforeSend(event, hint) {
+    beforeSend(event) {
         // Filter out common noise
         if (event.exception?.values?.[0]?.value?.includes("ECONNREFUSED")) {
             return null;

@@ -39,7 +39,7 @@
  * @see {@link useCanvasItemsWithPolling} for collaborative real-time updates
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { ItemType, CanvasItem } from '@/types/canvas';
 import {
@@ -189,10 +189,9 @@ export const canvasItemKeys = {
  * ```
  */
 export function useCanvasItems(canvasId: string, type?: ItemType, viewport?: ViewportParams) {
-  return useQuery({
+  return useSuspenseQuery({
     queryKey: canvasItemKeys.list(canvasId, type, viewport),
     queryFn: () => api.listItems(canvasId, type, viewport),
-    enabled: !!canvasId,
   });
 }
 
@@ -291,8 +290,8 @@ export function useCanvasItemsWithPolling(
     enablePolling && isPageVisible
       ? POLLING_INTERVAL_ACTIVE_MS // 5s when active
       : enablePolling && !isPageVisible
-      ? POLLING_INTERVAL_INACTIVE_MS // 30s when inactive
-      : false; // No polling if disabled
+        ? POLLING_INTERVAL_INACTIVE_MS // 30s when inactive
+        : false; // No polling if disabled
 
   return useQuery({
     queryKey: canvasItemKeys.list(canvasId, type, viewport),

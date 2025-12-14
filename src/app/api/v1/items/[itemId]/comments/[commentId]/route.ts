@@ -1,124 +1,61 @@
-/**
- * Individual Comment API
- * Handles updating and deleting specific comments
- */
-
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { z } from 'zod';
-import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
-import { sanitizeComment } from '@/lib/sanitization';
+// import { createLogger } from '@/lib/logger';
 
-interface RouteContext {
-  params: { itemId: string; commentId: string };
-}
+import { withApiHandler } from '@/lib/api/route-handler';
+import { notFoundError, forbiddenError, unauthorizedError } from '@/lib/errors';
 
-const updateCommentSchema = z.object({
-  content: z
-    .string()
-    .min(1, 'Comment cannot be empty')
-    .max(5000, 'Comment too long')
-    .transform((val) => sanitizeComment(val)),
-});
+// const _logger = createLogger('comments-api');
 
-/**
- * PATCH /api/v1/items/[itemId]/comments/[commentId]
- * Update a comment (only by comment author)
- */
-export async function PATCH(request: NextRequest, { params }: RouteContext) {
+export const GET = withApiHandler(async (_req: NextRequest, { params }: { params: { itemId: string; commentId: string } }) => {
   const session = await auth();
   if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in to update comments');
+    throw unauthorizedError();
   }
 
   const { commentId } = params;
 
-  // Validate request body
-  const body = await request.json();
-  const validation = updateCommentSchema.safeParse(body);
-  if (!validation.success) {
-    throw new ValidationError(validation.error.errors[0].message);
-  }
-
-  const { content } = validation.data;
-
-  // Find comment and check ownership
   const comment = await prisma.comment.findUnique({
     where: { id: commentId },
-    include: {
-      user: true,
-    },
-  });
-
-  if (!comment || comment.deletedAt) {
-    throw new NotFoundError('Comment not found');
-  }
-
-  if (comment.userId !== session.user.id) {
-    throw new UnauthorizedError('You can only edit your own comments');
-  }
-
-  // Update the comment
-  const updatedComment = await prisma.comment.update({
-    where: { id: commentId },
-    data: { content },
     include: {
       user: {
         select: {
           id: true,
           name: true,
-          email: true,
           image: true,
         },
       },
     },
   });
 
-  return NextResponse.json(updatedComment);
-}
-
-/**
- * DELETE /api/v1/items/[itemId]/comments/[commentId]
- * Delete a comment (soft delete)
- */
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in to delete comments');
+  if (!comment) {
+    throw notFoundError('Comment', commentId);
   }
 
-  const { commentId } = params;
-
-  // Find comment and check ownership
-  const comment = await prisma.comment.findUnique({
-    where: { id: commentId },
+  // Check access to the item/canvas
+  const item = await prisma.canvasItem.findUnique({
+    where: { id: comment.itemId },
     include: {
-      item: {
+      canvas: {
         include: {
-          canvas: true,
+          shares: true,
         },
       },
     },
   });
 
-  if (!comment || comment.deletedAt) {
-    throw new NotFoundError('Comment not found');
+  if (!item) {
+    throw notFoundError('CanvasItem', comment.itemId);
   }
 
-  // Allow deletion by comment author or canvas owner
-  const isCommentAuthor = comment.userId === session.user.id;
-  const isCanvasOwner = comment.item.canvas.userId === session.user.id;
+  const hasAccess =
+    item.canvas.userId === session.user.id ||
+    item.canvas.shares.some((share) => share.email === session.user?.email);
 
-  if (!isCommentAuthor && !isCanvasOwner) {
-    throw new UnauthorizedError('You can only delete your own comments or comments on your canvas');
+  if (!hasAccess && !item.canvas.isPublic) {
+    throw forbiddenError();
   }
 
-  // Soft delete the comment
-  await prisma.comment.update({
-    where: { id: commentId },
-    data: { deletedAt: new Date() },
-  });
-
-  return NextResponse.json({ success: true }, { status: 200 });
-}
+  return NextResponse.json(comment);
+});

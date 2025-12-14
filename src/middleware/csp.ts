@@ -45,7 +45,7 @@ export function buildCSP(nonce: string): string {
 /**
  * Middleware to add CSP header with nonce
  */
-export function applyCSP(request: NextRequest, response: NextResponse): void {
+export function applyCSP(_request: NextRequest, response: NextResponse): void {
   const nonce = generateNonce();
   response.headers.set('x-nonce', nonce);
   const csp = buildCSP(nonce);

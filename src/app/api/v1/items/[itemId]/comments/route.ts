@@ -13,7 +13,7 @@ import { errorResponse } from '@/lib/api/error-handler';
 import type { CanvasShare } from '@prisma/client';
 
 interface RouteContext {
-  params: { itemId: string };
+  params: Promise<{ itemId: string }>;
 }
 
 const createCommentSchema = z.object({
@@ -35,13 +35,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       throw new UnauthorizedError('You must be logged in to comment');
     }
 
-    const { itemId } = params;
+    const { itemId } = await params;
 
     // Validate request body
     const body = await request.json();
     const validation = createCommentSchema.safeParse(body);
     if (!validation.success) {
-      throw new ValidationError(validation.error.errors[0].message);
+      throw new ValidationError(validation.error.errors[0]?.message || 'Validation error');
     }
 
     const { content } = validation.data;
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const session = await auth();
-    const { itemId } = params;
+    const { itemId } = await params;
 
     // Parse pagination params
     const { searchParams } = new URL(request.url);

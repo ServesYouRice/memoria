@@ -32,9 +32,10 @@ export interface CommentsPanelProps {
   onClose: () => void;
   itemId: string;
   itemType: string;
+  collaborators?: { userId: string; name?: string; email: string; color: string }[];
 }
 
-export function CommentsPanel({ open, onClose, itemId, itemType }: CommentsPanelProps) {
+export function CommentsPanel({ open, onClose, itemId, itemType, collaborators = [] }: CommentsPanelProps) {
   const { data: session } = useSession();
   const [newComment, setNewComment] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -43,6 +44,52 @@ export function CommentsPanel({ open, onClose, itemId, itemType }: CommentsPanel
     element: HTMLElement;
     commentId: string;
   } | null>(null);
+
+  // Mention state
+  const [mentionAnchorEl, setMentionAnchorEl] = useState<HTMLElement | null>(null);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [cursorPosition, setCursorPosition] = useState(0);
+
+  const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setNewComment(val);
+
+    // Simple atomic check for @ mention at cursor
+    const cursor = e.target.selectionStart || 0;
+    setCursorPosition(cursor);
+
+    // Look back from cursor to find @
+    const textBeforeCursor = val.slice(0, cursor);
+    const lastAt = textBeforeCursor.lastIndexOf('@');
+
+    if (lastAt !== -1 && (lastAt === 0 || textBeforeCursor[lastAt - 1] === ' ')) {
+      const query = textBeforeCursor.slice(lastAt + 1);
+      // Only show if no spaces in query yet (simple username search)
+      if (!query.includes(' ')) {
+        setMentionQuery(query);
+        // Use a ref or simple anchor if possible, but for TextArea it is hard to get position.
+        // We'll just anchor to the input itself for now as a fallback
+        setMentionAnchorEl(e.currentTarget);
+        return;
+      }
+    }
+    setMentionAnchorEl(null);
+  };
+
+  const handleMentionSelect = (user: { name?: string; email: string }) => {
+    if (!mentionAnchorEl) return;
+    const textBeforeCursor = newComment.slice(0, cursorPosition);
+    const lastAt = textBeforeCursor.lastIndexOf('@');
+    const textAfterCursor = newComment.slice(cursorPosition);
+
+    const userName = user.name || user.email.split('@')[0];
+    const newText = textBeforeCursor.slice(0, lastAt) + `@${userName} ` + textAfterCursor;
+
+    setNewComment(newText);
+    setMentionAnchorEl(null);
+    // Focus back would be ideal but skipped for brevity
+  };
+
 
   const { data, isLoading, error } = useComments(itemId);
   const { mutateAsync: createComment, isPending: isCreating } = useCreateComment();
@@ -158,7 +205,7 @@ export function CommentsPanel({ open, onClose, itemId, itemType }: CommentsPanel
                       alt={comment.user.name || comment.user.email}
                       sx={{ mr: 2, mt: 0.5 }}
                     >
-                      {(comment.user.name || comment.user.email)[0].toUpperCase()}
+                      {((comment.user.name || comment.user.email)?.[0] || '?').toUpperCase()}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
@@ -246,8 +293,8 @@ export function CommentsPanel({ open, onClose, itemId, itemType }: CommentsPanel
           >
             <TextField
               value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Add a comment..."
+              onChange={handleCommentChange}
+              placeholder="Add a comment... (Use @ to mention)"
               multiline
               rows={3}
               fullWidth
@@ -310,6 +357,30 @@ export function CommentsPanel({ open, onClose, itemId, itemType }: CommentsPanel
         >
           Delete
         </MenuItem>
+      </Menu>
+      <Menu
+        anchorEl={mentionAnchorEl}
+        open={Boolean(mentionAnchorEl)}
+        onClose={() => setMentionAnchorEl(null)}
+        PaperProps={{ sx: { maxHeight: 200 } }}
+      >
+        {collaborators
+          .filter(c =>
+          (c.name?.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+            c.email.toLowerCase().includes(mentionQuery.toLowerCase()))
+          )
+          .map(c => (
+            <MenuItem key={c.userId} onClick={() => handleMentionSelect(c)}>
+              <Avatar sx={{ width: 24, height: 24, mr: 1, bgcolor: c.color }}>
+                {((c.name || c.email)?.[0] || '?').toUpperCase()}
+              </Avatar>
+              <Box>
+                <Typography variant="body2">{c.name || c.email}</Typography>
+              </Box>
+            </MenuItem>
+          ))
+        }
+        {collaborators.length === 0 && <MenuItem disabled>No collaborators found</MenuItem>}
       </Menu>
     </Drawer>
   );

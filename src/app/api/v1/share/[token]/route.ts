@@ -8,7 +8,7 @@ import { prisma } from '@/lib/db';
 import { errorResponse, NotFoundError, ForbiddenError } from '@/lib/errors';
 
 interface RouteContext {
-  params: { token: string };
+  params: Promise<{ token: string }>;
 }
 
 /**
@@ -17,7 +17,7 @@ interface RouteContext {
  */
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    const { token } = params;
+    const { token } = await params;
 
     // Find canvas by share token
     const canvas = await prisma.canvas.findUnique({
