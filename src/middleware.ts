@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-import { applyCSP } from './middleware/csp';
+import { applyCSP, generateNonce } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';
 import {
   apiRateLimit,
@@ -114,8 +114,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  const nonce = generateNonce();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+
   // Continue with request
-  const response = NextResponse.next();
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 
   // Add request ID to response headers (Issue #24)
   response.headers.set('x-request-id', requestId);
@@ -127,7 +135,7 @@ export async function middleware(request: NextRequest) {
   applySecurityHeaders(response);
 
   // Apply CSP
-  applyCSP(request, response);
+  applyCSP(response, nonce);
 
   // Add API version headers for API routes (Issue #23)
   if (pathname.startsWith('/api/v')) {

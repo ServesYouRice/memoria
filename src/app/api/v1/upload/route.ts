@@ -9,8 +9,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, writeFile } from 'fs/promises';
+import { join, resolve, sep } from 'path';
 import { randomBytes } from 'crypto';
 
 import { auth } from '@/lib/auth';
@@ -112,7 +112,15 @@ export async function POST(request: NextRequest) {
 
     // Define the upload path
     const uploadDir = join(process.cwd(), 'public', 'uploads');
-    const filePath = join(uploadDir, uniqueFilename);
+    const resolvedUploadDir = resolve(uploadDir);
+    const filePath = resolve(uploadDir, uniqueFilename);
+
+    const uploadPrefix = resolvedUploadDir.endsWith(sep) ? resolvedUploadDir : resolvedUploadDir + sep;
+    if (!filePath.startsWith(uploadPrefix)) {
+      return NextResponse.json({ error: 'Invalid upload path' }, { status: 400 });
+    }
+
+    await mkdir(resolvedUploadDir, { recursive: true });
 
     // Write file to disk
     await writeFile(filePath, buffer);

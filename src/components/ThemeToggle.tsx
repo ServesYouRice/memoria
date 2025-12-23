@@ -3,7 +3,7 @@
 import React from 'react';
 import { IconButton, Tooltip, IconButtonProps } from '@mui/material';
 import { Brightness4, Brightness7 } from '@mui/icons-material';
-import { useThemeMode } from '@/contexts/ThemeContext';
+import { useThemeMode } from '@/lib/theme-context';
 
 export function ThemeToggle(props: IconButtonProps) {
   const { mode, toggleTheme } = useThemeMode();

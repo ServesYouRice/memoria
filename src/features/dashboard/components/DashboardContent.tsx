@@ -42,7 +42,7 @@ import { useCanvases, useCreateCanvas, useDuplicateCanvas } from '@/lib/hooks/us
 import { ActivityFeed } from './ActivityFeed';
 import { GlobalSearchDialog } from '@/components/GlobalSearchDialog';
 import { CommandPalette } from '@/components/CommandPalette';
-import { useThemeMode } from '@/contexts/ThemeContext';
+import { useThemeMode } from '@/lib/theme-context';
 import Link from 'next/link';
 
 // Skeleton loading component for canvas cards
@@ -86,7 +86,7 @@ export function DashboardContent() {
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  const { data: canvases, isLoading, error } = useCanvases();
+  const { data: canvasesData, isLoading, error } = useCanvases();
   const createCanvas = useCreateCanvas();
   const duplicateCanvas = useDuplicateCanvas();
   const { mode, toggleTheme } = useThemeMode();
@@ -143,8 +143,9 @@ export function DashboardContent() {
     }
   };
 
+  const canvases = canvasesData?.canvases ?? [];
+
   const selectAll = () => {
-    if (!canvases) return;
     setSelectedCanvasIds(new Set(canvases.map((c) => c.id)));
   };
 
@@ -198,7 +199,7 @@ export function DashboardContent() {
     }
   };
 
-  const hasCanvases = canvases && canvases.length > 0;
+  const hasCanvases = canvases.length > 0;
 
   return (
     <>
@@ -221,7 +222,7 @@ export function DashboardContent() {
                 My Canvases
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {isLoading ? 'Loading...' : `${canvases?.length || 0} canvases`}
+                {isLoading ? 'Loading...' : `${canvases.length} canvases`}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -303,7 +304,7 @@ export function DashboardContent() {
                     Clear
                   </Button>
                 )}
-                {selectedCanvasIds.size !== canvases?.length && (
+                {selectedCanvasIds.size !== canvases.length && (
                   <Button size="small" onClick={selectAll}>
                     Select All
                   </Button>

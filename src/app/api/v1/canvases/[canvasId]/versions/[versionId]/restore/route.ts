@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { NotFoundError, ForbiddenError, errorResponse } from '@/lib/errors';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 
 interface RouteContext {
   params: Promise<{ canvasId: string; versionId: string }>;
@@ -100,6 +101,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         });
       }
     });
+
+    await invalidateCanvasCache(canvasId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

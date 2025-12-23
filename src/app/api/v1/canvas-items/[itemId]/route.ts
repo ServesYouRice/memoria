@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireItemAccess } from '@/lib/api/auth';
 import { errorResponse, NotFoundError, VersionMismatchError } from '@/lib/errors';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 import { updateCanvasItemSchema, deleteCanvasItemSchema } from '@/lib/validation/canvas-item';
 
 interface RouteContext {
@@ -97,6 +98,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       },
     });
 
+    await invalidateCanvasCache(updatedItem.canvasId);
+
     return NextResponse.json(updatedItem);
   } catch (error) {
     return errorResponse(error, request.url);
@@ -145,6 +148,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
         version: { increment: 1 },
       },
     });
+
+    await invalidateCanvasCache(deletedItem.canvasId);
 
     return NextResponse.json({ success: true, item: deletedItem });
   } catch (error) {

@@ -218,3 +218,49 @@ Each critique from Section 2 is voted on by all three LLMs to determine implemen
 ---
 
 *Consensus determined by majority vote across all three LLMs.*
+
+---
+
+## Section 4: Implementation Status
+
+> **Last Updated**: 2025-12-23
+
+### ✅ Completed Critical Fixes
+
+| # | Issue | Status | Date | Notes |
+|---|-------|--------|------|-------|
+| 1 | **CSP/nonce fix for MUI/Emotion** | ✅ DONE | 2025-12-23 | Added `getNonce()` utility, updated layout.tsx to pass nonce to Providers, updated `AppRouterCacheProvider` to use nonce option |
+| 2 | **cuid-vs-uuid validation fix** | ✅ DONE | 2025-12-23 | Changed `z.string().uuid()` to `z.string().min(1)` in `extension.ts` and `ai.ts` validation schemas |
+| 3 | **Hash API keys at rest** | ✅ DONE | 2025-12-23 | Created `api-key.ts` utility with Argon2id hashing, updated `api-key-auth.ts` to verify against hashes with auto-migration for legacy plaintext keys |
+
+### 🔲 Remaining Critical Items
+
+| # | Issue | Priority | Notes |
+|---|-------|----------|-------|
+| 4 | Cache invalidation on mutations | High | Stale data after edits |
+| 5 | `getState()` reactivity bug fix | High | `CanvasBoard.tsx:986` |
+| 6 | Canvas Error Boundary | Medium | Single error crashes entire page |
+| 7 | Delete `next.config.js` | Low | Duplicate config |
+| 8 | Wire `env.ts` to startup | Medium | Invalid configs don't fail fast |
+| 9 | Re-enable TS/ESLint in build | Medium | CI passes broken code |
+| 10 | Harden upload handler | High | Directory/quota/scanning |
+| 11 | Upload path traversal protection | High | Security vulnerability |
+| 12 | WS reconnect/backoff + status UI | Medium | Socket drops = silent offline |
+| 13 | YJS create/delete persistence | High | New items vanish on restart |
+| 14 | Silent failure handling for canvas | Medium | User doesn't know about failures |
+| 15 | IdempotencyKey redesign | Medium | Add scoping + expiry |
+
+### Files Modified (2025-12-23)
+
+- `src/lib/nonce.ts` - **NEW** - Server-side utility to read CSP nonce from headers
+- `src/lib/api/api-key.ts` - **NEW** - Secure API key generation and verification with Argon2id
+- `src/app/layout.tsx` - **MODIFIED** - Fetches nonce and passes to Providers
+- `src/app/providers.tsx` - **MODIFIED** - Accepts nonce prop and passes to `AppRouterCacheProvider`
+- `src/lib/api/api-key-auth.ts` - **MODIFIED** - Uses hash-based verification with auto-migration
+- `src/lib/validation/extension.ts` - **MODIFIED** - Fixed uuid→cuid validation
+- `src/lib/validation/ai.ts` - **MODIFIED** - Fixed uuid→cuid validation
+
+---
+
+*Implementation tracked by Antigravity (Google DeepMind)*
+

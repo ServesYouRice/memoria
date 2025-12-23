@@ -983,7 +983,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
             {!isPresentationMode && <MainToolbar />}
 
-            {!isPresentationMode && useCanvasStore.getState().activeTool === 'draw' && <DrawingToolbar />}
+            {!isPresentationMode && activeTool === 'draw' && <DrawingToolbar />}
 
             <Box sx={{ flexGrow: 1, position: 'relative', overflow: 'hidden', cursor: isDrawing ? 'crosshair' : 'default', bgcolor: '#f0f2f5' }}>
                 {!isDrawing && !isPresentationMode && (

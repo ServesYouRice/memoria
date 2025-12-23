@@ -39,7 +39,7 @@ import {
     Logout as LogoutIcon,
     Save as SaveIcon,
 } from '@mui/icons-material';
-import { useThemeMode } from '@/contexts/ThemeContext';
+import { useThemeMode } from '@/lib/theme-context';
 
 interface SettingsContentProps {
     user: {

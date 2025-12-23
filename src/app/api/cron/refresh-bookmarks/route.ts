@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 import { safeFetch } from '@/lib/utils/ssrf-protection';
 import { extractMetadata, validateMetadata } from '@/lib/utils/metadata-extractor';
 import { ItemType } from '@/types/canvas';
@@ -16,7 +17,12 @@ interface BookmarkContent {
 
 export const GET = async (req: Request) => {
     const authHeader = req.headers.get('authorization');
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+        return new NextResponse('Cron secret not configured', { status: 500 });
+    }
+
+    if (authHeader !== `Bearer ${cronSecret}`) {
         return new NextResponse('Unauthorized', { status: 401 });
     }
 
@@ -28,6 +34,7 @@ export const GET = async (req: Request) => {
     });
 
     const results = [];
+    const invalidatedCanvasIds = new Set<string>();
 
     for (const item of bookmarks) {
         try {
@@ -64,6 +71,7 @@ export const GET = async (req: Request) => {
                         }
                     }
                 });
+                invalidatedCanvasIds.add(item.canvasId);
                 results.push({ id: item.id, status: 'updated' });
             } else {
                 // Just touch updatedAt
@@ -71,11 +79,16 @@ export const GET = async (req: Request) => {
                     where: { id: item.id },
                     data: { updatedAt: new Date() } // Force update to move to back of queue
                 });
+                invalidatedCanvasIds.add(item.canvasId);
                 results.push({ id: item.id, status: 'unchanged' });
             }
         } catch (e) {
             results.push({ id: item.id, status: 'error' });
         }
+    }
+
+    for (const canvasId of invalidatedCanvasIds) {
+        await invalidateCanvasCache(canvasId);
     }
 
     return NextResponse.json({ results });

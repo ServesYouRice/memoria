@@ -37,6 +37,16 @@ export interface CreateCanvasInput {
   name?: string;
 }
 
+export interface CanvasesListResponse {
+  canvases: Canvas[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
 /**
  * API client functions
  */
@@ -44,7 +54,7 @@ const api = {
   async listCanvases() {
     const response = await fetch('/api/v1/canvases');
     if (!response.ok) throw new Error('Failed to fetch canvases');
-    return response.json() as Promise<Canvas[]>;
+    return response.json() as Promise<CanvasesListResponse>;
   },
 
   async listSharedCanvases() {

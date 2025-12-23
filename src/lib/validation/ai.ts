@@ -11,7 +11,7 @@ export const chatSchema = z.object({
 });
 
 export const serendipitySchema = z.object({
-    canvasId: z.string().uuid(),
+    canvasId: z.string().cuid(),
     keywords: z.array(z.string()).optional()
 });
 
@@ -22,5 +22,5 @@ export const generateSchema = z.object({
 });
 
 export const summarizeSchema = z.object({
-    canvasId: z.string().uuid(),
+    canvasId: z.string().cuid(),
 });

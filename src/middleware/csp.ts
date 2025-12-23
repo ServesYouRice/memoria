@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 
 /**
@@ -45,8 +45,7 @@ export function buildCSP(nonce: string): string {
 /**
  * Middleware to add CSP header with nonce
  */
-export function applyCSP(_request: NextRequest, response: NextResponse): void {
-  const nonce = generateNonce();
+export function applyCSP(response: NextResponse, nonce: string): void {
   response.headers.set('x-nonce', nonce);
   const csp = buildCSP(nonce);
   response.headers.set('Content-Security-Policy', csp);

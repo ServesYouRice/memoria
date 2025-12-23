@@ -3,6 +3,7 @@
  *
  * ENHANCED: Issue #40 - Analytics integration
  * ENHANCED: Modern UI with Inter font
+ * ENHANCED: CSP nonce integration for MUI/Emotion
  */
 
 import type { Metadata, Viewport } from 'next';
@@ -10,6 +11,7 @@ import { Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
 import { Providers } from './providers';
 import { PWARegister } from '@/components/PWARegister';
+import { getNonce } from '@/lib/nonce';
 import './tiptap.css';
 
 // Load Inter font with all weights for premium typography
@@ -37,12 +39,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = await getNonce();
+
   return (
     <html lang="en" className={inter.variable}>
       <body className={inter.className}>
         <PWARegister />
-        <Providers>{children}</Providers>
+        <Providers nonce={nonce}>{children}</Providers>
         <Analytics />
       </body>
     </html>

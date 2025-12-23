@@ -4,6 +4,7 @@ import { withValidation } from '@/lib/api/route-handler';
 import { clipSchema } from '@/lib/validation/extension';
 import { ItemType } from '@/types/canvas';
 import { authenticateApiKey } from '@/lib/api/api-key-auth';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 
 export const POST = withValidation(clipSchema, async ({ url, title, selection, canvasId }, req) => {
     const user = await authenticateApiKey(req);
@@ -68,6 +69,8 @@ export const POST = withValidation(clipSchema, async ({ url, title, selection, c
             createdById: user.id
         }
     });
+
+    await invalidateCanvasCache(targetCanvasId);
 
     return NextResponse.json({ success: true, item });
 });

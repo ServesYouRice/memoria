@@ -4,7 +4,7 @@ export const clipSchema = z.object({
     url: z.string().url(),
     title: z.string().optional(),
     selection: z.string().optional(),
-    canvasId: z.string().uuid().optional(),
+    canvasId: z.string().cuid().optional(),
 });
 
 export const webhookSchema = z.object({
@@ -12,5 +12,5 @@ export const webhookSchema = z.object({
     content: z.string(),
     title: z.string().optional(),
     description: z.string().optional(),
-    canvasId: z.string().uuid().optional(),
+    canvasId: z.string().cuid().optional(),
 });

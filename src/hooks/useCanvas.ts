@@ -155,18 +155,18 @@ export function useUpdateCanvas(canvasId: string) {
  * Retrieves a list of all canvases owned by or shared with the authenticated user.
  * Results are sorted by update time (most recent first) on the server.
  *
- * @returns TanStack Query result with array of canvases
+ * @returns TanStack Query result with canvases and pagination metadata
  *
  * @example
  * ```typescript
  * function CanvasList() {
- *   const { data: canvases, isLoading } = useCanvases();
+ *   const { data, isLoading } = useCanvases();
  *
  *   if (isLoading) return <div>Loading canvases...</div>;
  *
  *   return (
  *     <ul>
- *       {canvases?.map(canvas => (
+ *       {data?.canvases.map(canvas => (
  *         <li key={canvas.id}>{canvas.name}</li>
  *       ))}
  *     </ul>
@@ -177,7 +177,15 @@ export function useUpdateCanvas(canvasId: string) {
 export function useCanvases() {
   return useQuery({
     queryKey: canvasKeys.lists(),
-    queryFn: async (): Promise<Canvas[]> => {
+    queryFn: async (): Promise<{
+      canvases: Canvas[];
+      pagination: {
+        total: number;
+        limit: number;
+        offset: number;
+        hasMore: boolean;
+      };
+    }> => {
       const response = await fetch('/api/v1/canvases');
 
       if (!response.ok) {

@@ -3,13 +3,14 @@
  *
  * ENHANCED: Issue #42 - Dark mode support
  * ENHANCED: Phase 4 - Global keyboard shortcuts
+ * ENHANCED: CSP nonce integration for MUI/Emotion styles
  *
  * Wraps the application with necessary providers:
  * - ErrorBoundary for React error handling
  * - SessionProvider for authentication
  * - QueryClientProvider for server state
  * - ThemeModeProvider for dark mode state
- * - ThemeProvider for MUI theming
+ * - ThemeProvider for MUI theming (with CSP nonce)
  * - GlobalShortcutsProvider for keyboard shortcuts
  */
 
@@ -43,15 +44,20 @@ const queryClient = new QueryClient({
   },
 });
 
+interface ThemedProvidersProps {
+  children: React.ReactNode;
+  nonce?: string;
+}
+
 /**
  * Inner providers that depend on theme context
  */
-function ThemedProviders({ children }: { children: React.ReactNode }) {
+function ThemedProviders({ children, nonce }: ThemedProvidersProps) {
   const { mode } = useThemeMode();
   const theme = React.useMemo(() => createAppTheme(mode), [mode]);
 
   return (
-    <AppRouterCacheProvider>
+    <AppRouterCacheProvider options={{ nonce }}>
       <MuiThemeProvider theme={theme}>
         <CssBaseline />
         <GlobalShortcutsProvider>
@@ -63,19 +69,25 @@ function ThemedProviders({ children }: { children: React.ReactNode }) {
   );
 }
 
+interface ProvidersProps {
+  children: React.ReactNode;
+  nonce?: string;
+}
+
 /**
  * Main providers component
  */
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children, nonce }: ProvidersProps) {
   return (
     <ErrorBoundary>
       <SessionProvider>
         <QueryClientProvider client={queryClient}>
           <ThemeModeProvider>
-            <ThemedProviders>{children}</ThemedProviders>
+            <ThemedProviders nonce={nonce}>{children}</ThemedProviders>
           </ThemeModeProvider>
         </QueryClientProvider>
       </SessionProvider>
     </ErrorBoundary>
   );
 }
+
