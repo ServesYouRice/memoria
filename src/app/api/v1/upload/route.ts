@@ -183,7 +183,7 @@ async function runMalwareScan(buffer: Buffer, filename: string, contentType: str
   }
 
   const formData = new FormData();
-  formData.append('file', new Blob([buffer], { type: contentType }), filename);
+  formData.append('file', new Blob([new Uint8Array(buffer)], { type: contentType }), filename);
 
   const timeoutMs = Number(process.env.UPLOAD_SCAN_TIMEOUT_MS || DEFAULT_SCAN_TIMEOUT_MS);
   const controller = new AbortController();

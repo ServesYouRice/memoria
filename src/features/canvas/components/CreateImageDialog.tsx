@@ -106,7 +106,7 @@ export function CreateImageDialog({
       const data = await response.json();
 
       // Load image to get dimensions
-      const img = new Image();
+      const img = new globalThis.Image();
       img.onload = () => {
         setUploadedImage({
           url: data.url,

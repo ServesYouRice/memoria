@@ -74,5 +74,5 @@ export function useElementSize<T extends HTMLElement>(): [
         return () => observer.disconnect();
     }, [ref]);
 
-    return [ref, size];
+    return [ref as React.RefObject<T>, size];
 }

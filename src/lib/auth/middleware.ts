@@ -1,4 +1,4 @@
-import { auth } from './index';
+import { auth } from '@/lib/auth';
 import { Problems, problemToResponse } from '@/lib/errors';
 import { prisma } from '@/lib/db';
 
