@@ -5,7 +5,7 @@
  * Sends a verification email to the user
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { sendEmailVerification } from '@/lib/email';

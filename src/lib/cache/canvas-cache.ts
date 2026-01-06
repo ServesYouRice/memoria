@@ -6,7 +6,7 @@
 
 
 import { getRedisClient } from './redis-client';
-import { Canvas, CanvasItem } from '@prisma/client';
+import { type Canvas, type CanvasItem } from '@prisma/client';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('canvas-cache');

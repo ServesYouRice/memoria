@@ -15,7 +15,7 @@ import {
   CircularProgress
 } from '@mui/material';
 import { Download, Description, Code, PictureAsPdf } from '@mui/icons-material';
-import { CanvasItem } from '@/types/canvas';
+import { type CanvasItem } from '@/types/canvas';
 import { exportToJSON, exportToMarkdown, exportToPDF } from '@/lib/export/export-utils';
 
 export type ExportFormat = 'json' | 'markdown' | 'pdf' | 'png';

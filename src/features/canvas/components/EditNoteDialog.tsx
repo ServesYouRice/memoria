@@ -22,7 +22,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useUpdateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { CanvasItem, isNoteContent } from '@/types/canvas';
+import { type CanvasItem, isNoteContent } from '@/types/canvas';
 import { TagInput } from './TagInput';
 import { RichTextEditor } from '@/components/RichTextEditor';
 

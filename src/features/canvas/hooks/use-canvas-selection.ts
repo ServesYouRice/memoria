@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { CanvasItem } from '@/types/canvas';
+import { type CanvasItem } from '@/types/canvas';
 import { useCanvasStore } from '@/stores/canvasStore';
 
 /**

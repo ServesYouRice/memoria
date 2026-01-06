@@ -64,54 +64,17 @@ const nextConfig = {
     return config;
   },
 
-  // Security Headers (ADR-0012: Security Headers & CORS Policy)
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          // Referrer Policy
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-          // Prevent MIME type sniffing
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          // Prevent clickjacking
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          // Minimal Permissions Policy
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
-          },
-          // Strict Transport Security (HTTPS only in production)
-          ...(process.env.NODE_ENV === 'production'
-            ? [
-              {
-                key: 'Strict-Transport-Security',
-                value: 'max-age=31536000; includeSubDomains',
-              },
-            ]
-            : []),
-        ],
-      },
-    ];
-  },
+  // Security headers are applied in middleware (src/middleware/security-headers.ts)
 
-  // Ignore ESLint during build (linting handled in CI)
+  // ESLint: Enforced during Next.js build to keep CI gate intact
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
 
-  // Ignore TypeScript errors during build (type-checking handled separately)
+  // TypeScript: Build will fail on type errors (OPUS.md Issue #9 - re-enabled)
+  // TypeScript compiles cleanly: npx tsc --noEmit passes with no errors
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
 
   // CSP is handled via middleware for nonce-based implementation (ADR-0002)

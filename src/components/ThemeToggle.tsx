@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { IconButton, Tooltip, IconButtonProps } from '@mui/material';
+import { IconButton, Tooltip, type IconButtonProps } from '@mui/material';
 import { Brightness4, Brightness7 } from '@mui/icons-material';
 import { useThemeMode } from '@/lib/theme-context';
 

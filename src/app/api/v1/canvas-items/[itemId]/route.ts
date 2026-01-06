@@ -8,7 +8,7 @@
  * Phase 3: Supports shared canvas access
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireItemAccess } from '@/lib/api/auth';
 import { errorResponse, NotFoundError, VersionMismatchError } from '@/lib/errors';

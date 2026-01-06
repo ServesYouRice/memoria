@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { ItemType } from '@/types/canvas';
+import { ItemType, type PollContent } from '@/types/canvas';
 import { nanoid } from 'nanoid';
 
 interface CreatePollDialogProps {
@@ -43,6 +43,16 @@ export function CreatePollDialog({ open, onClose, canvasId, initialPosition }: C
         const validOptions = options.filter(o => o.trim() !== '');
         if (!question.trim() || validOptions.length < 2) return;
 
+        const pollContent: PollContent = {
+            question,
+            options: validOptions.map(text => ({
+                id: nanoid(),
+                text,
+                votes: []
+            })),
+            multipleChoice
+        };
+
         createItem({
             canvasId,
             type: ItemType.POLL,
@@ -51,15 +61,7 @@ export function CreatePollDialog({ open, onClose, canvasId, initialPosition }: C
             width: 300,
             height: 300, // Default, will be used by renderer
             zIndex: 1,
-            content: {
-                question,
-                options: validOptions.map(text => ({
-                    id: nanoid(),
-                    text,
-                    votes: []
-                })),
-                multipleChoice
-            } as any,
+            content: pollContent,
             tags: []
         });
         onClose();

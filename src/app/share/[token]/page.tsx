@@ -12,8 +12,8 @@ import { Stage, Layer } from 'react-konva';
 import Link from 'next/link';
 import { NoteItem } from '@/features/canvas/components/NoteItem';
 import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
-import { ItemType, CanvasItem } from '@/types/canvas';
-import Konva from 'konva';
+import { ItemType, type CanvasItem } from '@/types/canvas';
+import type Konva from 'konva';
 
 interface SharePageProps {
   params: Promise<{
@@ -62,7 +62,7 @@ export default function SharePage({ params }: SharePageProps) {
         setItems(data.items || []);
         setZoom(data.zoomLevel || 1);
         setPosition({ x: data.panX || 0, y: data.panY || 0 });
-      } catch (err) {
+      } catch {
         setError('Failed to load canvas');
       } finally {
         setLoading(false);

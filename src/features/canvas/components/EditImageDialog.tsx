@@ -25,7 +25,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useUpdateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { CanvasItem, isImageContent } from '@/types/canvas';
+import { type CanvasItem, isImageContent } from '@/types/canvas';
 import { TagInput } from './TagInput';
 
 interface EditImageDialogProps {

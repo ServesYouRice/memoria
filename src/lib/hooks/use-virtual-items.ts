@@ -83,6 +83,7 @@ export function useVirtualItems<T extends VirtualItem>(
     options: UseVirtualItemsOptions
 ): T[] {
     const { viewport, zoom, padding = 200, threshold = 50 } = options;
+    const { x, y, width, height } = viewport;
 
     return useMemo(() => {
         // Skip virtualization for small item counts
@@ -91,8 +92,8 @@ export function useVirtualItems<T extends VirtualItem>(
         }
 
         // Filter to only visible items
-        return items.filter((item) => isInViewport(item, viewport, zoom, padding));
-    }, [items, viewport.x, viewport.y, viewport.width, viewport.height, zoom, padding, threshold]);
+        return items.filter((item) => isInViewport(item, { x, y, width, height }, zoom, padding));
+    }, [items, x, y, width, height, zoom, padding, threshold]);
 }
 
 /**

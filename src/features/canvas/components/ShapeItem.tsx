@@ -1,6 +1,6 @@
 import React from 'react';
 import { Rect, Circle, RegularPolygon, Star, Arrow as KonvaArrow, Group } from 'react-konva';
-import { CanvasItem, isShapeContent } from '@/types/canvas';
+import { type CanvasItem, isShapeContent } from '@/types/canvas';
 
 interface ShapeItemProps {
     item: CanvasItem;

@@ -101,7 +101,7 @@ function normalizeUrl(url: string): string {
     }
 
     return normalized;
-  } catch (error) {
+  } catch {
     // If URL parsing fails, return original
     return url.toLowerCase();
   }

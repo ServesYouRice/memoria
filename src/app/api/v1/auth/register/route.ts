@@ -6,7 +6,7 @@
  * Following ADR-0008: Argon2id password hashing, zxcvbn >= 3 validation
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';

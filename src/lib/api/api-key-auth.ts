@@ -8,10 +8,46 @@
  * - Otherwise, it's plaintext (legacy) - compare directly and upgrade
  */
 
-import { NextRequest } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
 import { verifyApiKey, isValidApiKeyFormat } from './api-key';
 import * as argon2 from 'argon2';
+import { createRateLimiter } from '@/lib/rate-limit';
+import type { RateLimitResult } from '@/lib/rate-limit';
+
+const API_KEY_RATE_LIMIT_MAX = 300;
+const API_KEY_RATE_LIMIT_WINDOW = 60;
+const apiKeyLimiter = createRateLimiter({
+    maxRequests: API_KEY_RATE_LIMIT_MAX,
+    windowSeconds: API_KEY_RATE_LIMIT_WINDOW,
+    keyPrefix: 'api-key',
+});
+
+export interface ApiKeyAuthResult {
+    user: {
+        id: string;
+        name: string | null;
+        email: string;
+        image: string | null;
+    };
+    apiKeyId: string;
+    apiKeyName: string;
+}
+
+interface KeyIdentifier {
+    prefix?: string;
+    suffix?: string;
+}
+
+function getKeyIdentifier(key: string): KeyIdentifier {
+    if (key.length < 8) {
+        return {};
+    }
+    return {
+        prefix: key.slice(0, 7),
+        suffix: key.slice(-4),
+    };
+}
 
 /**
  * Authenticate a request using an API key
@@ -24,23 +60,44 @@ export async function authenticateApiKey(req: NextRequest) {
     if (!header) return null;
 
     // Quick format check before database lookup
-    if (!isValidApiKeyFormat(header)) {
+    // Allow legacy keys that don't match the new prefix as long as they are reasonably long.
+    if (!isValidApiKeyFormat(header) && header.length < 20) {
         return null;
+    }
+
+    const now = new Date();
+    const { prefix, suffix } = getKeyIdentifier(header);
+
+    const lookupWhere = {
+        revokedAt: null,
+        OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: now } }
+        ],
+        ...(suffix ? { keySuffix: suffix } : {}),
+    };
+
+    let apiKeys = await prisma.apiKey.findMany({
+        where: lookupWhere,
+        include: { user: true }
+    });
+
+    if (apiKeys.length === 0) {
+        // Fallback to full scan for legacy keys without suffix
+        apiKeys = await prisma.apiKey.findMany({
+            where: {
+                revokedAt: null,
+                OR: [
+                    { expiresAt: null },
+                    { expiresAt: { gt: now } }
+                ]
+            },
+            include: { user: true }
+        });
     }
 
     // Find all API keys for the user to check against
     // We need to iterate because we can't query by hash directly
-    const apiKeys = await prisma.apiKey.findMany({
-        where: {
-            // Filter by non-expired keys first
-            OR: [
-                { expiresAt: null },
-                { expiresAt: { gt: new Date() } }
-            ]
-        },
-        include: { user: true }
-    });
-
     for (const apiKey of apiKeys) {
         let isValid = false;
         let needsUpgrade = false;
@@ -58,7 +115,7 @@ export async function authenticateApiKey(req: NextRequest) {
 
         if (isValid) {
             // Update last used timestamp (fire-and-forget)
-            const updateData: { lastUsedAt: Date; key?: string } = {
+            const updateData: { lastUsedAt: Date; key?: string; keyPrefix?: string | null; keySuffix?: string | null } = {
                 lastUsedAt: new Date()
             };
 
@@ -77,15 +134,37 @@ export async function authenticateApiKey(req: NextRequest) {
                 }
             }
 
+            if (!apiKey.keyPrefix || !apiKey.keySuffix) {
+                updateData.keyPrefix = prefix || apiKey.keyPrefix;
+                updateData.keySuffix = suffix || apiKey.keySuffix;
+            }
+
             prisma.apiKey.update({
                 where: { id: apiKey.id },
                 data: updateData
             }).catch(() => { /* fire-and-forget */ });
 
-            return apiKey.user;
+            return {
+                user: apiKey.user,
+                apiKeyId: apiKey.id,
+                apiKeyName: apiKey.name,
+            };
         }
     }
 
     return null;
+}
+
+export async function checkApiKeyRateLimit(apiKeyId: string): Promise<RateLimitResult> {
+    return apiKeyLimiter.check(apiKeyId);
+}
+
+export function getApiKeyRateLimitHeaders(result: RateLimitResult): Record<string, string> {
+    return {
+        'X-RateLimit-Limit': String(result.limit),
+        'X-RateLimit-Remaining': String(result.remaining),
+        'X-RateLimit-Reset': String(result.resetAt),
+        'X-RateLimit-Window': String(result.resetIn),
+    };
 }
 

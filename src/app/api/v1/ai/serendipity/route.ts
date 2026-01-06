@@ -7,7 +7,8 @@ export const POST = withAuthValidation(serendipitySchema, async ({ canvasId, key
     const results = await findSerendipitousItems(
         session.user.id,
         canvasId,
-        keywords || []
+        keywords || [],
+        session.user.email || undefined
     );
 
     return NextResponse.json({ results });

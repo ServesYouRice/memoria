@@ -101,9 +101,14 @@ describe('Item Validation Schemas', () => {
 
 describe('API Error Handling', () => {
   it('should create proper error responses', async () => {
-    const { ApiError } = await import('@/lib/api-error');
+    const { ApiError } = await import('@/lib/errors');
 
-    const error = new ApiError(404, 'Not Found', 'Item not found');
+    const error = new ApiError(
+      404,
+      'https://canvascollect.com/errors/not-found',
+      'Not Found',
+      'Item not found'
+    );
     expect(error.status).toBe(404);
     expect(error.title).toBe('Not Found');
     expect(error.detail).toBe('Item not found');

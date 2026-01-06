@@ -13,18 +13,44 @@ interface CachedResponse {
 }
 
 /**
+ * Options for scoped idempotency keys (OPUS.md Issue #15)
+ */
+export interface IdempotencyKeyOptions {
+    /** The client-provided idempotency key */
+    key: string;
+    /** The user ID making the request */
+    userId: string;
+    /** HTTP method (GET, POST, etc.) */
+    method: string;
+    /** API path (e.g., /api/v1/canvases) */
+    path: string;
+}
+
+/**
+ * Build a scoped idempotency key that includes user, method, and path
+ * This ensures the same client key for different endpoints or users won't collide
+ */
+export function buildScopedKey(options: IdempotencyKeyOptions): string {
+    return `idempotency:${options.userId}:${options.method}:${options.path}:${options.key}`;
+}
+
+/**
  * Check if a request with the given idempotency key has already been processed
+ * @param key - Raw key string (legacy) OR scoped key from buildScopedKey
  */
 export async function checkIdempotency(key: string): Promise<NextResponse | null> {
     const redis = getRedisClient();
     if (!redis) return null; // Fail open if Redis is down
 
+    // If key doesn't start with 'idempotency:', add the prefix
+    const fullKey = key.startsWith('idempotency:') ? key : `idempotency:${key}`;
+
     try {
-        const cached = await redis.get(`idempotency:${key}`);
+        const cached = await redis.get(fullKey);
         if (!cached) return null;
 
         const data: CachedResponse = JSON.parse(cached);
-        logger.info({ key }, 'Idempotency hit');
+        logger.info({ key: fullKey }, 'Idempotency hit');
 
         return NextResponse.json(data.body, {
             status: data.status,
@@ -34,59 +60,26 @@ export async function checkIdempotency(key: string): Promise<NextResponse | null
             },
         });
     } catch (error) {
-        logger.error({ error, key }, 'Error checking idempotency');
+        logger.error({ error, key: fullKey }, 'Error checking idempotency');
         return null;
     }
+}
+
+/**
+ * Check idempotency with scoped options
+ */
+export async function checkScopedIdempotency(options: IdempotencyKeyOptions): Promise<NextResponse | null> {
+    return checkIdempotency(buildScopedKey(options));
 }
 
 /**
  * Store the result of a request for idempotency
  */
 export async function storeIdempotencyResult(
-    key: string,
-    response: NextResponse
+    _key: string,
+    _response: NextResponse
 ): Promise<void> {
-    const redis = getRedisClient();
-    if (!redis) return;
-
-    try {
-        // We need to clone the response to read the body without consuming it
-        // But NextResponse body is a stream. Ideally, we should capture the body *before* creating response
-        // Or assume the caller passes the JSON body separate from response.
-        // However, to keep it simple and generic, we might assume JSON responses.
-
-        // For now, since we can't easily read body from response object cleanly without side effects, 
-        // we might need a different signature if we want to store the body.
-        // But sticking to the interface:
-
-        // NOTE: This implementation assumes the response body hasn't been locked yet.
-        // Also reading it might consume it.
-        // A better pattern for the caller is: 
-        // const body = { ... }; 
-        // await storeIdempotencyResult(key, { status: 200, body });
-        // return NextResponse.json(body);
-
-        // But let's try to adapt to response object if possible, or expect this function to take data, not response.
-        // Given the difficulty of reading body from NextResponse, let's change signature to take data.
-        // But wait, the plan said "storeIdempotencyResult(key, response)".
-        // Let's implement it by trying to peek at body or just saving metadata if generic.
-
-        // Actually, simpler approach: The caller usually constructs response.
-        // Let's change signature to accept status and body directly to be safe.
-        // Or try to extract from NextResponse if it's JSON.
-
-        // Let's strictly follow the plan interface but maybe fallback if body unreadable.
-        // Actually, `response.json()` returns a promise that resolves to body.
-        // But if we use it, we consume it.
-
-        // REVISION: I will define it as taking status and body to be safe and performant.
-        // But to match "response" arg, I'll extract it.
-
-        // Wait, I can't easily extract body from NextResponse without consuming stream.
-        // I'll define a helper interface for the "response logic".
-    } catch (error) {
-        // ...
-    }
+    // TODO: implement with saveIdempotencyResponse once response bodies are available safely.
 }
 
 // Redefining implementation to be robust:
@@ -98,19 +91,33 @@ export async function saveIdempotencyResponse(
     const redis = getRedisClient();
     if (!redis) return;
 
+    // If key doesn't start with 'idempotency:', add the prefix
+    const fullKey = key.startsWith('idempotency:') ? key : `idempotency:${key}`;
+
     try {
         const data: CachedResponse = {
             status,
             body,
-            headers: {}, // TODO: Capture headers if needed
+            headers: {},
         };
 
         await redis.setex(
-            `idempotency:${key}`,
+            fullKey,
             IDEMPOTENCY_TTL,
             JSON.stringify(data)
         );
     } catch (error) {
-        logger.error({ error, key }, 'Error storing idempotency');
+        logger.error({ error, key: fullKey }, 'Error storing idempotency');
     }
+}
+
+/**
+ * Save idempotency response with scoped options
+ */
+export async function saveScopedIdempotencyResponse(
+    options: IdempotencyKeyOptions,
+    status: number,
+    body: any
+): Promise<void> {
+    return saveIdempotencyResponse(buildScopedKey(options), status, body);
 }

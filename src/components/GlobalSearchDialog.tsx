@@ -152,7 +152,7 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
         {query.length >= 2 && totalResults === 0 && !loading && (
           <Box sx={{ textAlign: 'center', py: 4 }}>
             <Typography variant="body2" color="text.secondary">
-              No results found for "{query}"
+              No results found for &quot;{query}&quot;
             </Typography>
           </Box>
         )}

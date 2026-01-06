@@ -62,12 +62,12 @@ yItems.set(itemId, yItem)
    - Store Y.js binary updates in PostgreSQL as `BYTEA` in a new `CanvasUpdate` table
    - Periodically compact updates into snapshots
    - Keep existing `CanvasItem` table as the "source of truth" for queries
-   - Sync Y.js state → PostgreSQL on debounced intervals
+   - Sync Y.js state -> PostgreSQL on debounced intervals
 
 3. **Transport Layer:**
-   - **WebSocket Server:** Use `y-websocket` for real-time sync
-   - **Provider:** `@y-sweet/client` or custom WebSocket provider
-   - **Fallback:** HTTP polling for clients that can't establish WebSocket
+   - **WebSocket Server:** Custom `ws` server (see `src/lib/collaboration/websocket-server.ts`)
+   - **Provider:** `useCollaboration` hook (custom client provider)
+   - **Fallback:** HTTP polling via `useCanvasItemsWithPolling` for clients that can't establish WebSocket
 
 4. **Migration Path:**
    - Phase 1-2: Continue using existing autosave + version control
@@ -90,7 +90,7 @@ awareness.setLocalState({
 
 **During Transition:**
 - Y.js handles real-time updates between connected clients
-- When syncing Y.js → Database:
+- When syncing Y.js -> Database:
   - Extract current item state from YMap
   - Update database with `WHERE version = lastKnownVersion`
   - If version mismatch, Y.js state is canonical (overwrite)
@@ -104,11 +104,11 @@ awareness.setLocalState({
 
 | Approach | Pros | Cons | Decision |
 |----------|------|------|----------|
-| **Y.js (CRDT)** | Offline-first, conflict-free, proven, active ecosystem | Learning curve, binary format | ✅ SELECTED |
-| **Automerge (CRDT)** | Pure JS, great TypeScript support | Less mature, smaller ecosystem | ❌ Rejected |
-| **OT (ShareDB)** | Well-understood, text-focused | Requires central server, no offline | ❌ Rejected |
-| **Firebase Realtime Database** | Hosted solution, easy setup | Vendor lock-in, cost, less control | ❌ Rejected |
-| **WebSocket + Manual Merging** | Full control | High complexity, reinventing wheel | ❌ Rejected |
+| **Y.js (CRDT)** | Offline-first, conflict-free, proven, active ecosystem | Learning curve, binary format |  SELECTED |
+| **Automerge (CRDT)** | Pure JS, great TypeScript support | Less mature, smaller ecosystem |  Rejected |
+| **OT (ShareDB)** | Well-understood, text-focused | Requires central server, no offline |  Rejected |
+| **Firebase Realtime Database** | Hosted solution, easy setup | Vendor lock-in, cost, less control |  Rejected |
+| **WebSocket + Manual Merging** | Full control | High complexity, reinventing wheel |  Rejected |
 
 ## Consequences
 
@@ -131,14 +131,14 @@ awareness.setLocalState({
 ## Implementation Checklist
 
 Phase 3.1 (Foundation):
-- [ ] Install Y.js and y-websocket dependencies
+- [x] Install Yjs and custom `ws` collaboration server (Redis fanout optional)
 - [ ] Create `CanvasUpdate` table for Y.js binary persistence
 - [ ] Implement Y.js document initialization from database state
 - [ ] Build WebSocket server for Y.js sync (Next.js API route or separate server)
 - [ ] Add Y.js provider to canvas page
 
 Phase 3.2 (Real-Time Sync):
-- [ ] Implement bidirectional sync: Y.js ↔ PostgreSQL
+- [ ] Implement bidirectional sync: Y.js  PostgreSQL
 - [ ] Add conflict resolution logic (Y.js canonical during real-time)
 - [ ] Implement presence/awareness (cursors, active users)
 - [ ] Add connection state UI (online/offline/syncing)
@@ -158,8 +158,8 @@ Phase 3.3 (Production Hardening):
 
 ## References
 
-- SENATE.md §3.2 (Phase 3: Collaboration)
-- SENATE.md §3.5 (Real-Time Strategy placeholder)
+- SENATE.md 3.2 (Phase 3: Collaboration)
+- SENATE.md 3.5 (Real-Time Strategy placeholder)
 - ADR-0009 (Autosave & Concurrency - current MVP approach)
 - Y.js Documentation: https://docs.yjs.dev/
 - Y.js Demos: https://github.com/yjs/yjs-demos

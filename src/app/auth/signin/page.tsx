@@ -1,17 +1,10 @@
+import { redirect } from 'next/navigation';
+
 /**
- * Sign-In Page Placeholder
+ * Sign-In route redirect
  *
- * This is a placeholder for Slice 2 (Auth & Data Model)
- * For Slice 3 testing, we assume authentication is already implemented
+ * This route is kept for legacy links and forwards to the primary login page.
  */
 export default function SignInPage() {
-  return (
-    <div style={{ padding: '2rem' }}>
-      <h1>Sign In</h1>
-      <p>
-        This is a placeholder for the authentication UI. Authentication implementation is part of
-        Slice 2.
-      </p>
-    </div>
-  );
+  redirect('/auth/login');
 }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { applyCSP, generateNonce } from './middleware/csp';
 import { applySecurityHeaders } from './middleware/security-headers';

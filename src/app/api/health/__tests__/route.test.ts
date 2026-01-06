@@ -6,9 +6,22 @@
  * Tests for the /api/health endpoint
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { GET } from '@/app/api/health/route';
-import { prisma } from '@/lib/db';
+
+vi.mock('@/lib/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    $queryRaw: vi.fn().mockResolvedValue([{ result: 1 }]),
+  },
+}));
 
 describe('/api/health', () => {
   describe('GET', () => {

@@ -36,7 +36,7 @@
  * @see {@link sendPasswordResetEmail} for email template details
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { sendPasswordResetEmail } from '@/lib/email';

@@ -1,17 +1,28 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { withValidation } from '@/lib/api/route-handler';
+import { withApiHandler, withValidation } from '@/lib/api/route-handler';
 import { clipSchema } from '@/lib/validation/extension';
 import { ItemType } from '@/types/canvas';
-import { authenticateApiKey } from '@/lib/api/api-key-auth';
+import { authenticateApiKey, checkApiKeyRateLimit, getApiKeyRateLimitHeaders } from '@/lib/api/api-key-auth';
 import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
+import { Problems, notFoundError, unauthorizedError } from '@/lib/errors';
 
-export const POST = withValidation(clipSchema, async ({ url, title, selection, canvasId }, req) => {
-    const user = await authenticateApiKey(req);
-    if (!user) {
-        return NextResponse.json({ error: 'Invalid API Key' }, { status: 401 });
+export const POST = withApiHandler(
+    withValidation(clipSchema, async ({ url, title, selection, canvasId }, req) => {
+    const authResult = await authenticateApiKey(req);
+    if (!authResult) {
+        throw unauthorizedError('Invalid API Key');
     }
 
+    const rateLimit = await checkApiKeyRateLimit(authResult.apiKeyId);
+    if (!rateLimit.allowed) {
+        return NextResponse.json(
+            Problems.TooManyRequests('Rate limit exceeded', rateLimit.resetIn),
+            { status: 429, headers: getApiKeyRateLimitHeaders(rateLimit) }
+        );
+    }
+
+    const user = authResult.user;
     let targetCanvasId = canvasId;
 
     if (!targetCanvasId) {
@@ -47,7 +58,7 @@ export const POST = withValidation(clipSchema, async ({ url, title, selection, c
     if (canvasId) {
         const canvas = await prisma.canvas.findUnique({ where: { id: canvasId } });
         if (!canvas || canvas.userId !== user.id) {
-            return NextResponse.json({ error: 'Canvas not found or unauthorized' }, { status: 404 });
+            throw notFoundError('Canvas', canvasId);
         }
     }
 
@@ -73,4 +84,4 @@ export const POST = withValidation(clipSchema, async ({ url, title, selection, c
     await invalidateCanvasCache(targetCanvasId);
 
     return NextResponse.json({ success: true, item });
-});
+}));

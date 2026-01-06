@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, ButtonProps } from '@mui/material';
+import { Button, type ButtonProps } from '@mui/material';
 import { signOut } from 'next-auth/react';
 
 export function LogoutButton(props: ButtonProps) {

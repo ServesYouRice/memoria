@@ -1,6 +1,6 @@
 
 import { prisma } from '@/lib/db';
-import { CanvasItem, Prisma } from '@prisma/client';
+import { type CanvasItem, Prisma } from '@prisma/client';
 
 export interface SerendipityResult {
     item: CanvasItem;
@@ -17,18 +17,32 @@ export async function findSerendipitousItems(
     userId: string,
     currentCanvasId: string,
     contextKeywords: string[] = [],
+    userEmail?: string,
     limit: number = 3
 ): Promise<SerendipityResult[]> {
+    const normalizedEmail = userEmail?.toLowerCase();
+    const canvasAccessFilter = normalizedEmail
+        ? {
+            id: { not: currentCanvasId },
+            OR: [
+                { userId },
+                {
+                    shares: {
+                        some: { email: normalizedEmail }
+                    }
+                }
+            ]
+        }
+        : {
+            id: { not: currentCanvasId },
+            userId
+        };
+
     // 1. Fetch candidate items from OTHER canvases owned by the user
     // We restrict to Notes and Text to ensure content relevance
     const candidates = await prisma.canvasItem.findMany({
         where: {
-            canvas: {
-                userId: userId,
-                NOT: {
-                    id: currentCanvasId
-                }
-            },
+            canvas: canvasAccessFilter,
             type: {
                 in: ['NOTE', 'TEXT']
             },

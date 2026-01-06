@@ -1,6 +1,6 @@
 'use client';
 
-import { createTheme, PaletteMode, alpha } from '@mui/material/styles';
+import { createTheme, type PaletteMode, alpha } from '@mui/material/styles';
 
 /**
  * Modern Theme Configuration for CanvasCollect

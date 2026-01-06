@@ -28,6 +28,23 @@ const envSchema = z.object({
 
   // Cron
   CRON_SECRET: z.string().optional(),
+
+  // Redis (optional)
+  REDIS_URL: z.string().url().optional(),
+
+  // Upload storage
+  UPLOAD_STORAGE: z.enum(['local', 's3']).optional(),
+  UPLOADS_PUBLIC_URL: z.string().url().optional(),
+  UPLOAD_SCAN_URL: z.string().url().optional(),
+  UPLOAD_SCAN_REQUIRED: z.enum(['true', 'false']).optional(),
+  UPLOAD_SCAN_TIMEOUT_MS: z.string().optional(),
+
+  // S3-compatible storage (optional)
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
+  S3_ENDPOINT: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
 });
 
 // Validate environment variables
@@ -45,7 +62,9 @@ export const env = parsed.data;
 
 // Type-safe environment variables
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace NodeJS {
-    interface ProcessEnv extends z.infer<typeof envSchema> { }
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    interface ProcessEnv extends z.infer<typeof envSchema> {}
   }
 }

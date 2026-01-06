@@ -6,7 +6,7 @@
  * Following ADR-0008: Auth, Session & CSRF Policy
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import * as argon2 from 'argon2';
 import { prisma } from '@/lib/db';

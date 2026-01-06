@@ -3,10 +3,11 @@
  * Update canvas thumbnail preview image
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { NotFoundError, ForbiddenError, ValidationError, errorResponse } from '@/lib/errors';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
@@ -53,6 +54,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       data: { thumbnail },
     });
 
+    await invalidateCanvasCache(canvasId);
+
     return NextResponse.json(updatedCanvas, { status: 200 });
   } catch (error) {
     return errorResponse(error, request.url);
@@ -87,6 +90,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       where: { id: canvasId },
       data: { thumbnail: null },
     });
+
+    await invalidateCanvasCache(canvasId);
 
     return NextResponse.json(updatedCanvas, { status: 200 });
   } catch (error) {

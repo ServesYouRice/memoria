@@ -79,7 +79,7 @@ export default function ForgotPasswordPage() {
           </Typography>
 
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Enter your email address and we'll send you instructions to reset your password.
+            Enter your email address and we&apos;ll send you instructions to reset your password.
           </Typography>
 
           {success ? (
@@ -126,7 +126,7 @@ export default function ForgotPasswordPage() {
 
                 <Box sx={{ textAlign: 'center', mt: 2 }}>
                   <Typography variant="body2" color="text.secondary">
-                    Don't have an account?{' '}
+                    Don&apos;t have an account?{' '}
                     <Link href="/auth/register" style={{ color: 'inherit', textDecoration: 'underline' }}>
                       Sign Up
                     </Link>

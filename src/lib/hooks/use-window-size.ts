@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface WindowSize {
     width: number;
@@ -54,7 +54,7 @@ export function useElementSize<T extends HTMLElement>(): [
     React.RefObject<T>,
     { width: number; height: number }
 ] {
-    const ref = { current: null as T | null };
+    const ref = useRef<T | null>(null);
     const [size, setSize] = useState({ width: 0, height: 0 });
 
     useEffect(() => {
@@ -72,7 +72,7 @@ export function useElementSize<T extends HTMLElement>(): [
 
         observer.observe(ref.current);
         return () => observer.disconnect();
-    }, []);
+    }, [ref]);
 
-    return [ref as React.RefObject<T>, size];
+    return [ref, size];
 }

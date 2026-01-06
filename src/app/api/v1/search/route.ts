@@ -1,6 +1,9 @@
 /**
  * Global Search API
  * Search across all user's canvases and items
+ * 
+ * Uses PostgreSQL Full-Text Search for fast, ranked results.
+ * Falls back to ILIKE if searchVector column is not available.
  */
 
 import { NextResponse } from 'next/server';
@@ -9,52 +12,146 @@ import { Prisma } from '@prisma/client';
 
 import { stripHtmlTags } from '@/lib/utils/html';
 import { logger } from '@/lib/logger';
+import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/lib/constants';
+import { BadRequestError } from '@/lib/errors';
+import { withAuth } from '@/lib/api/route-handler';
 
 interface SearchResult {
   itemId: string;
   canvasId: string;
   canvasName: string;
   itemType: string;
-  content: any;
+  content: unknown;
   tags: string[];
   snippet: string;
   createdAt: string;
   updatedAt: string;
 }
 
+let ftsAvailable: boolean | null = null;
+
+async function hasSearchVectorColumn(): Promise<boolean> {
+  if (ftsAvailable !== null) return ftsAvailable;
+
+  try {
+    const result = await prisma.$queryRaw<[{ exists: boolean }]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'CanvasItem'
+          AND column_name = 'searchVector'
+      ) AS "exists"
+    `;
+
+    ftsAvailable = Boolean(result[0]?.exists);
+  } catch (error) {
+    logger.warn({ error }, 'Failed to detect searchVector column, falling back to ILIKE search');
+    ftsAvailable = false;
+  }
+
+  return ftsAvailable;
+}
+
 /**
  * Search across all canvases and items
  * GET /api/v1/search?q=query&tags=tag1,tag2&canvasId=id
  */
-import { withAuth } from '@/lib/api/route-handler';
-
-export const GET = withAuth<any>(async (request, session) => {
+export const GET = withAuth(async (request, session) => {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
+  const rawQuery = searchParams.get('q');
   const tagsParam = searchParams.get('tags');
   const canvasIdFilter = searchParams.get('canvasId');
+  const limit = Math.min(
+    parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10),
+    MAX_PAGE_LIMIT
+  );
+  const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-  if (!query || query.trim().length < 2) {
-    return NextResponse.json({ error: 'Search query must be at least 2 characters' }, { status: 400 });
+  if (!rawQuery || rawQuery.trim().length < 2) {
+    throw new BadRequestError('Search query must be at least 2 characters');
   }
 
+  const query = rawQuery.trim();
   const tags = tagsParam ? tagsParam.split(',').map((t) => t.trim()).filter(Boolean) : [];
   const userId = session.user.id;
+  const email = session.user.email?.toLowerCase() || '';
 
   logger.info({ userId, query, tags }, 'Executing search');
 
   /**
-   * Optimized Search using Raw SQL for case-insensitive JSON search
-   * We select items where:
-   * 1. Canvas belongs to user
-   * 2. Item is not deleted
-   * 3. Matches tags (if provided)
-   * 4. Matches query in content (case insensitive)
+   * Full-Text Search using PostgreSQL tsvector
+   * Falls back to ILIKE if searchVector column is not available
+   * 
+   * The searchVector column is a generated column created by:
+   * prisma/fts-migration.sql
    */
 
-  const searchTerm = `%${query}%`;
+  const accessFilter = Prisma.sql`
+    (
+      c."userId" = ${userId}
+      OR EXISTS (
+        SELECT 1 FROM "CanvasShare" s
+        WHERE s."canvasId" = c."id"
+          AND LOWER(s."email") = ${email}
+      )
+    )
+  `;
+  const canvasFilter = canvasIdFilter ? Prisma.sql`AND i."canvasId" = ${canvasIdFilter}` : Prisma.empty;
+  const tagsFilter = tags.length > 0 ? Prisma.sql`AND i."tags" @> ${tags}::text[]` : Prisma.empty;
 
-  // Using prisma.$queryRaw for maximum control over the JSON search
+  const useFts = await hasSearchVectorColumn();
+
+  const searchTerm = `%${query}%`;
+  const tsQuery = Prisma.sql`plainto_tsquery('english', ${query})`;
+
+  // Use FTS with plainto_tsquery for proper word stemming and ranking
+  // This is much faster than ILIKE and provides relevance ranking
+  // FTS filter - uses the generated searchVector column when available
+  const searchFilter = useFts
+    ? Prisma.sql`
+        AND (
+          i."searchVector" @@ ${tsQuery}
+          OR i."content"->>'text' ILIKE ${searchTerm}
+          OR i."content"->>'title' ILIKE ${searchTerm}
+          OR i."content"->>'description' ILIKE ${searchTerm}
+          OR i."content"->>'url' ILIKE ${searchTerm}
+        )
+      `
+    : Prisma.sql`
+        AND (
+          i."content"->>'text' ILIKE ${searchTerm}
+          OR i."content"->>'title' ILIKE ${searchTerm}
+          OR i."content"->>'description' ILIKE ${searchTerm}
+          OR i."content"->>'url' ILIKE ${searchTerm}
+        )
+      `;
+
+  const rankSelect = useFts
+    ? Prisma.sql`, ts_rank(COALESCE(i."searchVector", ''::tsvector), ${tsQuery}) as rank`
+    : Prisma.sql`, 0 as rank`;
+
+  const orderBy = useFts
+    ? Prisma.sql`ORDER BY rank DESC, i."updatedAt" DESC`
+    : Prisma.sql`ORDER BY i."updatedAt" DESC`;
+
+  // Count query
+  const countResult = await prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*)::int as count
+      FROM "CanvasItem" i
+      JOIN "Canvas" c ON i."canvasId" = c."id"
+      WHERE 
+        ${accessFilter}
+        AND i."deletedAt" IS NULL
+        ${canvasFilter}
+        ${tagsFilter}
+        ${searchFilter}
+    `;
+
+  const total = Number(countResult[0]?.count || 0);
+
+  // Main query with relevance ranking
+  // ts_rank orders results by relevance to the query
   const items = await prisma.$queryRaw<any[]>`
       SELECT 
         i."id", 
@@ -65,41 +162,27 @@ export const GET = withAuth<any>(async (request, session) => {
         i."createdAt", 
         i."updatedAt",
         c."name" as "canvasName"
+        ${rankSelect}
       FROM "CanvasItem" i
       JOIN "Canvas" c ON i."canvasId" = c."id"
       WHERE 
-        c."userId" = ${userId}
+        ${accessFilter}
         AND i."deletedAt" IS NULL
-        AND (
-          ${canvasIdFilter ? Prisma.sql`i."canvasId" = ${canvasIdFilter} AND` : Prisma.empty}
-          true
-        )
-        AND (
-          ${tags.length > 0 ? Prisma.sql`i."tags" @> ${tags}::text[] AND` : Prisma.empty}
-          true
-        )
-        AND (
-          -- Case insensitive search across common text fields in JSON
-          i."content"->>'text' ILIKE ${searchTerm}
-          OR i."content"->>'title' ILIKE ${searchTerm}
-          OR i."content"->>'description' ILIKE ${searchTerm}
-          OR i."content"->>'url' ILIKE ${searchTerm}
-          OR i."content"->>'alt' ILIKE ${searchTerm}
-          OR i."content"->>'name' ILIKE ${searchTerm}
-          OR i."content"->>'filename' ILIKE ${searchTerm}
-        )
-      ORDER BY i."updatedAt" DESC
-      LIMIT 50;
+        ${canvasFilter}
+        ${tagsFilter}
+        ${searchFilter}
+      ${orderBy}
+      LIMIT ${limit} OFFSET ${offset};
     `;
 
   // Create results with snippets
   const queryLower = query.toLowerCase();
   const results: SearchResult[] = items.map((item) => {
-    const content = item.content as any;
+    const content = item.content as Record<string, unknown>;
     let snippet = '';
 
     if (item.type === 'NOTE') {
-      const plainText = stripHtmlTags(content.text || '');
+      const plainText = stripHtmlTags((content.text as string) || '');
       const index = plainText.toLowerCase().indexOf(queryLower);
       if (index !== -1) {
         const start = Math.max(0, index - 50);
@@ -109,15 +192,15 @@ export const GET = withAuth<any>(async (request, session) => {
         snippet = plainText.substring(0, 100) + '...';
       }
     } else if (item.type === 'BOOKMARK') {
-      snippet = content.title || content.url || '';
+      snippet = (content.title as string) || (content.url as string) || '';
     } else if (item.type === 'IMAGE') {
-      snippet = content.alt || content.filename || 'Image';
+      snippet = (content.alt as string) || (content.filename as string) || 'Image';
     }
 
     return {
       itemId: item.id,
       canvasId: item.canvasId,
-      canvasName: item.canvasName, // Joined column
+      canvasName: item.canvasName,
       itemType: item.type,
       content: item.content,
       tags: item.tags || [],
@@ -130,7 +213,13 @@ export const GET = withAuth<any>(async (request, session) => {
   return NextResponse.json({
     query,
     tags,
-    totalResults: results.length,
+    totalResults: total,
     results,
+    pagination: {
+      total,
+      limit,
+      offset,
+      hasMore: offset + results.length < total,
+    },
   });
 });

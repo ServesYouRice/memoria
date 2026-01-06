@@ -260,15 +260,15 @@ This document summarizes the implementation of Slice 6 (MVP Hardening & Testing)
 
 ### Runtime:
 - `argon2` - Password hashing (Argon2id)
-- `jose` - JWT handling
 - `nanoid` - Secure ID generation
-- `prom-client` - Prometheus metrics
 - `pino` - Structured logging
-- `pino-pretty` - Development logging
 - `zxcvbn` - Password strength validation
 - `@hookform/resolvers` - Form validation with Zod
 - `@emotion/cache` - MUI emotion caching
 - `dotenv-safe` - Environment validation
+
+### Optional:
+- `pino-pretty` - Development logging (install on demand)
 
 ### Development:
 - `@testing-library/react` - React testing utilities

@@ -82,6 +82,7 @@ export interface CanvasHeaderProps {
   activeTagCount?: number;
   collaborators?: CollaboratorInfo[];
   collaborationConnected?: boolean;
+  collaborationStatus?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
   onFollowUser?: (userId: string) => void;
   followingUserId?: string | null;
 
@@ -125,6 +126,7 @@ export function CanvasHeader({
   activeTagCount = 0,
   collaborators = [],
   collaborationConnected = false,
+  collaborationStatus = 'idle',
   onFollowUser,
   followingUserId,
 
@@ -190,6 +192,18 @@ export function CanvasHeader({
   const handleMenuClose = () => {
     setAnchorEl(null);
   };
+
+  const statusConfig = {
+    connected: { label: 'Live', color: 'success', tooltip: 'Real-time collaboration active', iconColor: '#4caf50' },
+    connecting: { label: 'Connecting', color: 'info', tooltip: 'Connecting to collaboration server', iconColor: '#29b6f6' },
+    reconnecting: { label: 'Reconnecting', color: 'warning', tooltip: 'Reconnecting to collaboration server', iconColor: '#ffb74d' },
+    disconnected: { label: 'Offline', color: 'default', tooltip: 'Collaboration offline', iconColor: '#9e9e9e' },
+    error: { label: 'Offline', color: 'error', tooltip: 'Collaboration error', iconColor: '#f44336' },
+    idle: { label: 'Offline', color: 'default', tooltip: 'Collaboration idle', iconColor: '#9e9e9e' },
+  } as const;
+
+  const statusDisplay = statusConfig[collaborationStatus];
+  const showStatus = collaborationStatus !== 'idle' || collaborationConnected;
 
   return (
     <AppBar position="static" color="default" elevation={1}>
@@ -283,42 +297,45 @@ export function CanvasHeader({
         </Tooltip>
 
         {/* Collaboration Indicator */}
-        {collaborators.length > 0 && (
+        {(collaborators.length > 0 || showStatus) && (
           <Box sx={{ display: 'flex', alignItems: 'center', mr: 2, gap: 1 }}>
-            <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 32, height: 32, fontSize: 14 } }}>
-              {collaborators.map((collaborator) => (
-                <Tooltip
-                  key={collaborator.userId}
-                  title={`${collaborator.name || collaborator.email} ${onFollowUser ? '(Click to follow)' : '(viewing)'}`}
-                >
-                  <Avatar
-                    sx={{
-                      bgcolor: collaborator.color,
-                      width: 32,
-                      height: 32,
-                      fontSize: 14,
-                      fontWeight: 'bold',
-                      cursor: onFollowUser ? 'pointer' : 'default',
-                      border: followingUserId === collaborator.userId ? '2px solid #29b6f6' : '1px solid #fff',
-                      boxSizing: 'border-box',
-                    }}
-                    onClick={() => onFollowUser && onFollowUser(collaborator.userId)}
+            {collaborators.length > 0 && (
+              <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 32, height: 32, fontSize: 14 } }}>
+                {collaborators.map((collaborator) => (
+                  <Tooltip
+                    key={collaborator.userId}
+                    title={`${collaborator.name || collaborator.email} ${onFollowUser ? '(Click to follow)' : '(viewing)'}`}
                   >
-                    {(collaborator.name || collaborator.email).charAt(0).toUpperCase()}
-                  </Avatar>
-                </Tooltip>
-              ))}
-            </AvatarGroup>
-            {collaborationConnected && (
-              <Tooltip title="Real-time collaboration active">
+                    <Avatar
+                      sx={{
+                        bgcolor: collaborator.color,
+                        width: 32,
+                        height: 32,
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        cursor: onFollowUser ? 'pointer' : 'default',
+                        border: followingUserId === collaborator.userId ? '2px solid #29b6f6' : '1px solid #fff',
+                        boxSizing: 'border-box',
+                      }}
+                      onClick={() => onFollowUser && onFollowUser(collaborator.userId)}
+                    >
+                      {(collaborator.name || collaborator.email).charAt(0).toUpperCase()}
+                    </Avatar>
+                  </Tooltip>
+                ))}
+              </AvatarGroup>
+            )}
+            {showStatus && (
+              <Tooltip title={statusDisplay.tooltip}>
                 <Chip
-                  icon={<OnlineIcon sx={{ fontSize: 12, color: '#4caf50' }} />}
-                  label="Live"
+                  icon={<OnlineIcon sx={{ fontSize: 12, color: statusDisplay.iconColor }} />}
+                  label={statusDisplay.label}
                   size="small"
+                  color={statusDisplay.color}
+                  variant={collaborationStatus === 'connected' ? 'filled' : 'outlined'}
                   sx={{
                     height: 24,
                     fontSize: 11,
-                    bgcolor: 'rgba(76, 175, 80, 0.1)',
                     color: 'text.primary',
                     '& .MuiChip-icon': {
                       marginLeft: 0.5,

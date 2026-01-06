@@ -262,7 +262,8 @@ describe('Rate Limit Utilities', () => {
 
 describe('Rate Limit Middleware', () => {
   it('should check rate limit for request', async () => {
-    const { checkRateLimit, RATE_LIMITS } = await import('@/lib/rate-limit');
+    const { RATE_LIMITS } = await import('@/lib/rate-limit');
+    const { checkRateLimit } = await import('@/lib/rate-limit/middleware');
 
     const request = new Request('http://localhost', {
       headers: {
@@ -277,7 +278,8 @@ describe('Rate Limit Middleware', () => {
   });
 
   it('should check rate limit by user ID', async () => {
-    const { checkRateLimitByUser, RATE_LIMITS } = await import('@/lib/rate-limit/middleware');
+    const { RATE_LIMITS } = await import('@/lib/rate-limit');
+    const { checkRateLimitByUser } = await import('@/lib/rate-limit/middleware');
 
     const result = await checkRateLimitByUser('user-123', {
       maxRequests: RATE_LIMITS.api.maxRequests,

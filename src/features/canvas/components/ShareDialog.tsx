@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -63,14 +63,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
   const [sharingWithUser, setSharingWithUser] = useState(false);
 
   // Load existing shares
-  useEffect(() => {
-    if (open) {
-      loadShares();
-      checkPublicStatus();
-    }
-  }, [open, canvasId]);
-
-  const loadShares = async () => {
+  const loadShares = useCallback(async () => {
     try {
       const response = await fetch(`/api/v1/canvases/${canvasId}/share`);
       if (response.ok) {
@@ -80,9 +73,9 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
     } catch (err) {
       console.error('Failed to load shares:', err);
     }
-  };
+  }, [canvasId]);
 
-  const checkPublicStatus = async () => {
+  const checkPublicStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/v1/canvases/${canvasId}`);
       if (response.ok) {
@@ -96,7 +89,14 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
     } catch (err) {
       console.error('Failed to check public status:', err);
     }
-  };
+  }, [canvasId]);
+
+  useEffect(() => {
+    if (open) {
+      loadShares();
+      checkPublicStatus();
+    }
+  }, [open, loadShares, checkPublicStatus]);
 
   const handleTogglePublic = async () => {
     setGeneratingLink(true);
@@ -181,7 +181,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
 
       setSuccess(`Access revoked for ${shareEmail}`);
       loadShares();
-    } catch (err) {
+    } catch {
       setError('Failed to revoke share');
     }
   };
@@ -189,7 +189,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
-        Share "{canvasName}"
+        Share &quot;{canvasName}&quot;
         <IconButton
           onClick={onClose}
           sx={{ position: 'absolute', right: 8, top: 8 }}
@@ -265,7 +265,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as any)}
+                  onChange={(e) => setRole(e.target.value as 'VIEW' | 'COMMENT' | 'EDIT')}
                   disabled={sharingWithUser}
                 >
                   <MenuItem value="VIEW">View</MenuItem>

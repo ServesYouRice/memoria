@@ -1,0 +1,32 @@
+version: 2
+snapshot:
+  widths:
+    - 1280
+    - 375
+  min-height: 1024
+  percy-css: |
+    /* Hide dynamic elements that could cause flaky visual diffs */
+    .cursor-overlay,
+    .collaboration-cursors,
+    [data-testid="remote-cursor"],
+    [data-testid="typing-indicator"],
+    .loading-skeleton,
+    .timestamp {
+      display: none !important;
+    }
+    
+    /* Stabilize animations */
+    *, *::before, *::after {
+      animation-duration: 0s !important;
+      transition-duration: 0s !important;
+    }
+
+storybook:
+  # If you add Storybook later
+  enabled: false
+
+discovery:
+  # Wait for network idle before snapshot
+  network-idle-timeout: 500
+  # Disable JavaScript for more stable snapshots (optional)
+  disable-javascript: false

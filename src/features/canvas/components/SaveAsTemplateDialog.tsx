@@ -101,7 +101,7 @@ export function SaveAsTemplateDialog({
     try {
       setError(null);
       await saveTemplateMutation.mutateAsync({ ...data, canvasId });
-    } catch (err) {
+    } catch {
       // Error handled in onError
     }
   };

@@ -5,7 +5,7 @@
  * These reports help identify XSS attempts and misconfigured CSP directives.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
 
 interface CSPViolationReport {

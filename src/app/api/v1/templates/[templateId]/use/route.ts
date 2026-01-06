@@ -3,11 +3,12 @@
  * Create a new canvas from a template
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { NotFoundError, UnauthorizedError, errorResponse } from '@/lib/errors';
-import { Prisma } from '@prisma/client';
+import { type Prisma } from '@prisma/client';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 
 interface RouteContext {
   params: Promise<{ templateId: string }>;
@@ -74,6 +75,8 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
         usageCount: { increment: 1 },
       },
     });
+
+    await invalidateCanvasCache(templateId);
 
     return NextResponse.json(newCanvas, { status: 201 });
   } catch (error) {

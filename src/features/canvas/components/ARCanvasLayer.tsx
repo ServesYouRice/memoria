@@ -11,6 +11,7 @@ import {
     Paper,
     Slide,
     Alert,
+    type SlideProps,
 } from '@mui/material';
 import {
     CameraAlt as CameraIcon,
@@ -46,20 +47,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Start camera when dialog opens
-    useEffect(() => {
-        if (open) {
-            startCamera();
-        } else {
-            stopCamera();
-        }
-
-        return () => {
-            stopCamera();
-        };
-    }, [open]);
-
-    const startCamera = async () => {
+    const startCamera = useCallback(async () => {
         try {
             setError(null);
             const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -79,7 +67,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
                 'Unable to access camera. Please ensure camera permissions are granted.'
             );
         }
-    };
+    }, []);
 
     const stopCamera = useCallback(() => {
         if (stream) {
@@ -87,6 +75,19 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
             setStream(null);
         }
     }, [stream]);
+
+    // Start camera when dialog opens
+    useEffect(() => {
+        if (open) {
+            startCamera();
+        } else {
+            stopCamera();
+        }
+
+        return () => {
+            stopCamera();
+        };
+    }, [open, startCamera, stopCamera]);
 
     const toggleFullscreen = async () => {
         if (!containerRef.current) return;
@@ -128,13 +129,14 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
         return 'Canvas Item';
     };
 
+    const SlideTransition = (props: SlideProps) => <Slide {...props} direction="up" />;
+
     return (
         <Dialog
             open={open}
             onClose={onClose}
             fullScreen
-            TransitionComponent={Slide}
-            TransitionProps={{ direction: 'up' } as any}
+            TransitionComponent={SlideTransition}
         >
             <Box
                 ref={containerRef}

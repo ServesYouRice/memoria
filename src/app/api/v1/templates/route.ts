@@ -3,11 +3,13 @@
  * Manage canvas templates
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { UnauthorizedError, ValidationError } from '@/lib/errors';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
+import { requireAuth } from '@/lib/api/auth';
+import { withApiHandler } from '@/lib/api/route-handler';
 import {
   MAX_TEMPLATE_DESCRIPTION_LENGTH,
   MAX_CATEGORY_NAME_LENGTH,
@@ -25,11 +27,8 @@ const saveAsTemplateSchema = z.object({
  * POST /api/v1/templates
  * Save a canvas as a template
  */
-export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new UnauthorizedError('You must be logged in to create templates');
-  }
+export const POST = withApiHandler(async (request: NextRequest) => {
+  const { userId } = await requireAuth();
 
   const body = await request.json();
   const validation = saveAsTemplateSchema.safeParse(body);
@@ -49,7 +48,7 @@ export async function POST(request: NextRequest) {
     throw new ValidationError('Canvas not found');
   }
 
-  if (canvas.userId !== session.user.id) {
+  if (canvas.userId !== userId) {
     throw new UnauthorizedError('You can only create templates from your own canvases');
   }
 
@@ -73,8 +72,10 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  await invalidateCanvasCache(canvasId);
+
   return NextResponse.json(template, { status: 200 });
-}
+});
 
 /**
  * GET /api/v1/templates
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
  *
  * FIXED: Issue #16 - Added pagination limits to prevent fetching thousands of templates
  */
-export async function GET(request: NextRequest) {
+export const GET = withApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category');
   const userId = searchParams.get('userId'); // Optional: filter by user
@@ -147,4 +148,4 @@ export async function GET(request: NextRequest) {
       hasMore: offset + limit < total,
     },
   });
-}
+});

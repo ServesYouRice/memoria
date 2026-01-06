@@ -62,7 +62,36 @@ export function useCreateComment() {
 
       return response.json();
     },
-    onSuccess: (_, variables) => {
+    onMutate: async (newComment) => {
+      await queryClient.cancelQueries({ queryKey: ['comments', newComment.itemId] });
+      const previousComments = queryClient.getQueryData(['comments', newComment.itemId]);
+
+      queryClient.setQueryData(['comments', newComment.itemId], (old: CommentsResponse | undefined) => {
+        const optimisticComment: Comment = {
+          id: 'temp-' + Date.now(),
+          itemId: newComment.itemId,
+          userId: 'current-user', // Should be replaced by actual user ID if available, but for UI it's fine
+          content: newComment.content,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          user: { // Optimistic user needed
+            id: 'current-user',
+            name: 'You',
+            email: '',
+            image: null
+          } // Ideally we get this from session context, but complex to pass here.
+        };
+        return {
+          comments: [...(old?.comments || []), optimisticComment]
+        };
+      });
+
+      return { previousComments };
+    },
+    onError: (err, newComment, context) => {
+      queryClient.setQueryData(['comments', newComment.itemId], context?.previousComments);
+    },
+    onSettled: (_, __, variables) => {
       // Invalidate comments query to refetch
       queryClient.invalidateQueries({ queryKey: ['comments', variables.itemId] });
     },
@@ -98,6 +127,24 @@ export function useUpdateComment() {
 
       return response.json();
     },
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['comments', variables.itemId] });
+      const previousComments = queryClient.getQueryData(['comments', variables.itemId]);
+
+      queryClient.setQueryData(['comments', variables.itemId], (old: CommentsResponse | undefined) => {
+        if (!old) return old;
+        return {
+          comments: old.comments.map(c =>
+            c.id === variables.commentId ? { ...c, content: variables.content, updatedAt: new Date().toISOString() } : c
+          )
+        };
+      });
+
+      return { previousComments };
+    },
+    onError: (err, variables, context: any) => {
+      queryClient.setQueryData(['comments', variables.itemId], context?.previousComments);
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['comments', variables.itemId] });
     },
@@ -123,7 +170,23 @@ export function useDeleteComment() {
 
       return response.json();
     },
-    onSuccess: (_, variables) => {
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['comments', variables.itemId] });
+      const previousComments = queryClient.getQueryData(['comments', variables.itemId]);
+
+      queryClient.setQueryData(['comments', variables.itemId], (old: CommentsResponse | undefined) => {
+        if (!old) return old;
+        return {
+          comments: old.comments.filter(c => c.id !== variables.commentId)
+        };
+      });
+
+      return { previousComments };
+    },
+    onError: (err, variables, context: any) => {
+      queryClient.setQueryData(['comments', variables.itemId], context?.previousComments);
+    },
+    onSettled: (_, __, variables) => {
       queryClient.invalidateQueries({ queryKey: ['comments', variables.itemId] });
     },
   });

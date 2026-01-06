@@ -3,7 +3,7 @@
  * Fetch user activity feed
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { errorResponse } from '@/lib/errors';

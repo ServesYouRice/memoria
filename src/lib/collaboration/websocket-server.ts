@@ -4,25 +4,29 @@
  * Handles Y.js synchronization and presence awareness
  */
 
-import { IncomingMessage } from 'http';
+import { type IncomingMessage } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import { getDocument } from './yjs-provider';
 import { decode } from 'next-auth/jwt';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { nanoid } from 'nanoid';
+import { getRedisClient } from '@/lib/cache/redis-client';
 
 export interface CollaborationUser {
   userId: string;
   email: string;
   name?: string;
   color: string;
+  accessLevel?: 'OWNER' | 'EDIT' | 'COMMENT' | 'VIEW';
 }
 
 interface ClientConnection {
   ws: WebSocket;
   canvasId: string;
   user: CollaborationUser;
+  accessLevel: 'OWNER' | 'EDIT' | 'COMMENT' | 'VIEW';
   cursorPosition?: { x: number; y: number };
   isAlive: boolean;
   messageCount: number;
@@ -31,12 +35,44 @@ interface ClientConnection {
 
 // Heartbeat interval for detecting zombie connections (30 seconds)
 const HEARTBEAT_INTERVAL = 30000;
-// Rate limit: 60 messages per minute
-const RATE_LIMIT_MAX = 60;
+// Rate limit: 6000 messages per minute (supports frequent cursor + Yjs updates)
+const RATE_LIMIT_MAX = 6000;
 const RATE_LIMIT_WINDOW = 60000;
+const REDIS_CHANNEL_PREFIX = 'collaboration:canvas:';
+
+interface CursorPosition {
+  userId: string;
+  color: string;
+  position: { x: number; y: number };
+}
+
+interface CollaborationBusMessage {
+  type: 'update' | 'presence' | 'cursors';
+  canvasId: string;
+  instanceId: string;
+  payload: any;
+  timestamp: number;
+}
 
 // Active connections per canvas
 const connections = new Map<string, Set<ClientConnection>>();
+const subscriptions = new Map<string, number>();
+const remotePresence = new Map<string, Map<string, CollaborationUser[]>>();
+const remoteCursors = new Map<string, Map<string, CursorPosition[]>>();
+
+const instanceId = nanoid(8);
+const redisPublisher = getRedisClient();
+const redisSubscriber = redisPublisher ? redisPublisher.duplicate() : null;
+
+if (redisSubscriber) {
+  redisSubscriber.on('message', (channel, message) => {
+    void handleRedisMessage(channel, message);
+  });
+
+  redisSubscriber.on('error', (error) => {
+    logger.error({ error }, 'Redis subscriber error');
+  });
+}
 
 // User colors for cursor rendering
 const USER_COLORS = [
@@ -68,14 +104,196 @@ function parseCookies(request: IncomingMessage): Record<string, string> {
   const list: Record<string, string> = {};
   const rc = request.headers.cookie;
 
-  rc && rc.split(';').forEach((cookie) => {
-    const parts = cookie.split('=');
-    const name = parts.shift()?.trim();
-    const value = decodeURIComponent(parts.join('='));
-    if (name) list[name] = value;
-  });
+  if (rc) {
+    rc.split(';').forEach((cookie) => {
+      const parts = cookie.split('=');
+      const name = parts.shift()?.trim();
+      const value = decodeURIComponent(parts.join('='));
+      if (name) list[name] = value;
+    });
+  }
 
   return list;
+}
+
+function decodeUpdatePayload(payload: unknown): Uint8Array | null {
+  if (!payload) return null;
+
+  if (payload instanceof Uint8Array) {
+    return payload;
+  }
+
+  if (Array.isArray(payload)) {
+    return new Uint8Array(payload);
+  }
+
+  if (typeof payload === 'string') {
+    return new Uint8Array(Buffer.from(payload, 'base64'));
+  }
+
+  return null;
+}
+
+function encodeUpdatePayload(update: Uint8Array): string {
+  return Buffer.from(update).toString('base64');
+}
+
+function getChannel(canvasId: string): string {
+  return `${REDIS_CHANNEL_PREFIX}${canvasId}`;
+}
+
+async function subscribeToCanvas(canvasId: string): Promise<void> {
+  if (!redisSubscriber) return;
+  const count = subscriptions.get(canvasId) || 0;
+  if (count === 0) {
+    await redisSubscriber.subscribe(getChannel(canvasId));
+  }
+  subscriptions.set(canvasId, count + 1);
+}
+
+async function unsubscribeFromCanvas(canvasId: string): Promise<void> {
+  if (!redisSubscriber) return;
+  const count = subscriptions.get(canvasId) || 0;
+  if (count <= 1) {
+    await redisSubscriber.unsubscribe(getChannel(canvasId));
+    subscriptions.delete(canvasId);
+    remotePresence.delete(canvasId);
+    remoteCursors.delete(canvasId);
+  } else {
+    subscriptions.set(canvasId, count - 1);
+  }
+}
+
+function publishMessage(message: CollaborationBusMessage): void {
+  if (!redisPublisher) return;
+  redisPublisher
+    .publish(getChannel(message.canvasId), JSON.stringify(message))
+    .catch((error) => logger.error({ error }, 'Redis publish error'));
+}
+
+function publishPresence(canvasId: string): void {
+  const clients = connections.get(canvasId);
+  if (!clients || !redisPublisher) return;
+
+  const users = Array.from(clients).map((client) => ({
+    userId: client.user.userId,
+    email: client.user.email,
+    name: client.user.name,
+    color: client.user.color,
+    accessLevel: client.user.accessLevel,
+  }));
+
+  publishMessage({
+    type: 'presence',
+    canvasId,
+    instanceId,
+    payload: { users },
+    timestamp: Date.now(),
+  });
+}
+
+function publishCursors(canvasId: string): void {
+  const clients = connections.get(canvasId);
+  if (!clients || !redisPublisher) return;
+
+  const cursors = Array.from(clients)
+    .filter((client) => client.cursorPosition)
+    .map((client) => ({
+      userId: client.user.userId,
+      color: client.user.color,
+      position: client.cursorPosition!,
+    }));
+
+  publishMessage({
+    type: 'cursors',
+    canvasId,
+    instanceId,
+    payload: { cursors },
+    timestamp: Date.now(),
+  });
+}
+
+function getRemoteUsers(canvasId: string, localUserIds: Set<string>): CollaborationUser[] {
+  const presence = remotePresence.get(canvasId);
+  if (!presence) return [];
+
+  const users: CollaborationUser[] = [];
+  const seen = new Set(localUserIds);
+
+  presence.forEach((remoteUsers) => {
+    remoteUsers.forEach((user) => {
+      if (!seen.has(user.userId)) {
+        seen.add(user.userId);
+        users.push(user);
+      }
+    });
+  });
+
+  return users;
+}
+
+function getRemoteCursors(canvasId: string, localUserIds: Set<string>): CursorPosition[] {
+  const cursorsByInstance = remoteCursors.get(canvasId);
+  if (!cursorsByInstance) return [];
+
+  const cursors: CursorPosition[] = [];
+  const seen = new Set(localUserIds);
+
+  cursorsByInstance.forEach((instanceCursors) => {
+    instanceCursors.forEach((cursor) => {
+      if (!seen.has(cursor.userId)) {
+        seen.add(cursor.userId);
+        cursors.push(cursor);
+      }
+    });
+  });
+
+  return cursors;
+}
+
+async function handleRedisMessage(channel: string, payload: string): Promise<void> {
+  if (!channel.startsWith(REDIS_CHANNEL_PREFIX)) return;
+
+  let message: CollaborationBusMessage;
+  try {
+    message = JSON.parse(payload) as CollaborationBusMessage;
+  } catch (error) {
+    logger.warn({ error }, 'Invalid Redis collaboration message');
+    return;
+  }
+
+  if (message.instanceId === instanceId) return;
+
+  const { canvasId } = message;
+
+  switch (message.type) {
+    case 'update': {
+      const update = decodeUpdatePayload(message.payload?.update);
+      if (!update) return;
+      const doc = await getDocument(canvasId);
+      Y.applyUpdate(doc, update, 'redis');
+      broadcastUpdate(canvasId, update);
+      break;
+    }
+    case 'presence': {
+      const users = Array.isArray(message.payload?.users) ? message.payload.users : [];
+      if (!remotePresence.has(canvasId)) {
+        remotePresence.set(canvasId, new Map());
+      }
+      remotePresence.get(canvasId)!.set(message.instanceId, users);
+      broadcastPresence(canvasId);
+      break;
+    }
+    case 'cursors': {
+      const cursors = Array.isArray(message.payload?.cursors) ? message.payload.cursors : [];
+      if (!remoteCursors.has(canvasId)) {
+        remoteCursors.set(canvasId, new Map());
+      }
+      remoteCursors.get(canvasId)!.set(message.instanceId, cursors);
+      broadcastCursors(canvasId);
+      break;
+    }
+  }
 }
 
 /**
@@ -111,9 +329,17 @@ export function createCollaborationServer(server: any): WebSocketServer {
           return;
         }
 
+        const secret = process.env['NEXTAUTH_SECRET'] || process.env['AUTH_SECRET'];
+        if (!secret) {
+          logger.error('Missing NEXTAUTH_SECRET/AUTH_SECRET for WebSocket auth');
+          socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
         const decoded = await decode({
           token,
-          secret: process.env['AUTH_SECRET']!,
+          secret,
           salt: cookies['__Secure-next-auth.session-token'] ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
         });
 
@@ -141,6 +367,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
           include: {
             shares: {
               where: { email: user.email },
+              select: { role: true },
             },
           },
         });
@@ -153,12 +380,18 @@ export function createCollaborationServer(server: any): WebSocketServer {
           return;
         }
 
+        const accessLevel =
+          canvas.userId === user.id
+            ? 'OWNER'
+            : canvas.shares[0]?.role || 'VIEW';
+
         // Attach user to request for handleConnection
         (request as any).user = {
           userId: user.id,
           email: user.email,
           name: user.name || undefined,
           color: getNextUserColor(),
+          accessLevel,
         };
 
         wss.handleUpgrade(request, socket, head, (ws) => {
@@ -213,7 +446,7 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
   const canvasId = pathParts[pathParts.length - 1];
 
   // User is already authenticated and attached to request
-  const user = (request as any).user as CollaborationUser;
+  const user = (request as any).user as CollaborationUser & { accessLevel?: ClientConnection['accessLevel'] };
 
   if (!user || !canvasId) {
     ws.close(1008, 'Internal Error');
@@ -224,6 +457,7 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
     ws,
     canvasId,
     user,
+    accessLevel: user.accessLevel || 'VIEW',
     isAlive: true,
     messageCount: 0,
     rateLimitReset: Date.now() + RATE_LIMIT_WINDOW,
@@ -233,30 +467,31 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
     connections.set(canvasId, new Set());
   }
   connections.get(canvasId)!.add(connection);
+  await subscribeToCanvas(canvasId);
 
   logger.info({ userId: user.userId, canvasId }, 'User connected to canvas');
 
   const doc = await getDocument(canvasId);
 
   try {
-    const stateVector = Y.encodeStateVector(doc);
-    const update = Y.encodeStateAsUpdate(doc, stateVector);
-
-    ws.send(
-      JSON.stringify({
-        type: 'sync',
-        update: Array.from(update),
-      })
-    );
+    const update = Y.encodeStateAsUpdate(doc);
+    ws.send(update);
   } catch (error) {
     logger.error({ error, canvasId }, 'Error sending initial sync');
   }
 
   broadcastPresence(canvasId);
+  publishPresence(canvasId);
 
-  ws.on('message', async (data: Buffer) => {
+  ws.on('message', async (data: Buffer, isBinary: boolean) => {
     try {
-      const message = JSON.parse(data.toString());
+      if (isBinary) {
+        const update = new Uint8Array(data);
+        await handleBinaryUpdate(connection, update, doc);
+        return;
+      }
+
+      const message = typeof data === 'string' ? JSON.parse(data) : JSON.parse(data.toString());
       await handleMessage(connection, message, doc);
     } catch (error) {
       logger.error({ error, canvasId }, 'Error handling message');
@@ -274,6 +509,8 @@ async function handleConnection(ws: WebSocket, request: IncomingMessage): Promis
     }
     logger.info({ userId: user.userId, canvasId }, 'User disconnected from canvas');
     broadcastPresence(canvasId);
+    publishPresence(canvasId);
+    void unsubscribeFromCanvas(canvasId);
   });
 
   ws.on('error', (error) => {
@@ -289,7 +526,73 @@ async function handleMessage(
   message: any,
   doc: Y.Doc
 ): Promise<void> {
-  // Rate Limit Check
+  if (!applyRateLimit(connection)) {
+    return;
+  }
+
+  switch (message.type) {
+    case 'update':
+      {
+        const update = decodeUpdatePayload(message.update);
+        if (!update) {
+          logger.warn({ userId: connection.user.userId }, 'Invalid update payload');
+          return;
+        }
+        await handleClientUpdate(connection, update, doc);
+      }
+      break;
+
+    case 'cursor':
+      connection.cursorPosition = message.position;
+      broadcastCursors(connection.canvasId);
+      publishCursors(connection.canvasId);
+      break;
+
+    case 'awareness':
+      broadcastPresence(connection.canvasId);
+      publishPresence(connection.canvasId);
+      break;
+
+    case 'message':
+      broadcastMessagePayload(connection.canvasId, message.payload, connection);
+      break;
+  }
+}
+
+async function handleBinaryUpdate(
+  connection: ClientConnection,
+  update: Uint8Array,
+  doc: Y.Doc
+): Promise<void> {
+  if (!applyRateLimit(connection)) {
+    return;
+  }
+
+  await handleClientUpdate(connection, update, doc);
+}
+
+async function handleClientUpdate(
+  connection: ClientConnection,
+  update: Uint8Array,
+  doc: Y.Doc
+): Promise<void> {
+  if (connection.accessLevel !== 'OWNER' && connection.accessLevel !== 'EDIT') {
+    connection.ws.close(1008, 'Insufficient permissions');
+    return;
+  }
+
+  Y.applyUpdate(doc, update, 'ws');
+  broadcastUpdate(connection.canvasId, update, connection);
+  publishMessage({
+    type: 'update',
+    canvasId: connection.canvasId,
+    instanceId,
+    payload: { update: encodeUpdatePayload(update) },
+    timestamp: Date.now(),
+  });
+}
+
+function applyRateLimit(connection: ClientConnection): boolean {
   const now = Date.now();
   if (now > connection.rateLimitReset) {
     connection.messageCount = 0;
@@ -300,29 +603,10 @@ async function handleMessage(
   if (connection.messageCount > RATE_LIMIT_MAX) {
     logger.warn({ userId: connection.user.userId }, 'Rate limit exceeded. Terminating connection.');
     connection.ws.close(1008, 'Rate limit exceeded');
-    return;
+    return false;
   }
 
-  switch (message.type) {
-    case 'update':
-      const update = new Uint8Array(message.update);
-      Y.applyUpdate(doc, update);
-      broadcastUpdate(connection.canvasId, update, connection);
-      break;
-
-    case 'cursor':
-      connection.cursorPosition = message.position;
-      broadcastCursors(connection.canvasId);
-      break;
-
-    case 'awareness':
-      broadcastPresence(connection.canvasId);
-      break;
-
-    case 'message':
-      broadcastMessagePayload(connection.canvasId, message.payload, connection);
-      break;
-  }
+  return true;
 }
 
 /**
@@ -349,18 +633,15 @@ function broadcastMessagePayload(canvasId: string, payload: any, sender: ClientC
     }
   });
 }
-function broadcastUpdate(canvasId: string, update: Uint8Array, sender: ClientConnection): void {
+function broadcastUpdate(canvasId: string, update: Uint8Array, sender?: ClientConnection): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
 
-  const message = JSON.stringify({
-    type: 'update',
-    update: Array.from(update),
-  });
+  const message = Buffer.from(update);
 
   clients.forEach((client) => {
     if (client !== sender && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
+      client.ws.send(message, { binary: true });
     }
   });
 }
@@ -369,12 +650,15 @@ function broadcastPresence(canvasId: string): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
 
-  const users = Array.from(clients).map((client) => ({
+  const localUsers = Array.from(clients).map((client) => ({
     userId: client.user.userId,
     email: client.user.email,
     name: client.user.name,
     color: client.user.color,
+    accessLevel: client.user.accessLevel,
   }));
+  const localUserIds = new Set(localUsers.map((user) => user.userId));
+  const users = [...localUsers, ...getRemoteUsers(canvasId, localUserIds)];
 
   const message = JSON.stringify({
     type: 'presence',
@@ -392,13 +676,16 @@ function broadcastCursors(canvasId: string): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
 
-  const cursors = Array.from(clients)
+  const localUserIds = new Set(Array.from(clients).map((client) => client.user.userId));
+  const localCursors = Array.from(clients)
     .filter((client) => client.cursorPosition)
     .map((client) => ({
       userId: client.user.userId,
       color: client.user.color,
       position: client.cursorPosition,
     }));
+
+  const cursors = [...localCursors, ...getRemoteCursors(canvasId, localUserIds)];
 
   const message = JSON.stringify({
     type: 'cursors',

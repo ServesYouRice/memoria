@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validatePasswordStrength } from '../src/lib/validation/password';
+import { validatePasswordStrength } from '@/lib/validation/password';
 
 describe('Password Validation', () => {
     it('should fail for short passwords', async () => {

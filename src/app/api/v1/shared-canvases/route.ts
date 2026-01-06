@@ -3,7 +3,7 @@
  * GET /api/v1/shared-canvases - List canvases shared with the current user
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/api/auth';
 import { errorResponse } from '@/lib/errors';

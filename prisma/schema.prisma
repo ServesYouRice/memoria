@@ -299,6 +299,7 @@ model ItemConnection {
   @@index([toId])
 }
 
+// Workspace model - allows users to organize canvases into groups
 model Workspace {
   id        String   @id @default(cuid())
   name      String
@@ -311,6 +312,8 @@ model Workspace {
   @@index([userId])
 }
 
+/// @deprecated This model is unused and will be removed in a future release.
+// Deprecated: SavedView is currently unused. Keep for backwards compatibility, remove after migration plan.
 model SavedView {
   id        String   @id @default(cuid())
   name      String
@@ -325,7 +328,7 @@ model SavedView {
 
 model IdempotencyKey {
   id          String   @id @default(cuid())
-  key         String   @unique
+  key         String
   userId      String
   path        String
   method      String
@@ -335,6 +338,7 @@ model IdempotencyKey {
   responseCode Int?
   responseBody Json?
 
+  @@unique([key, userId, method, path])
   @@index([userId, key])
   @@index([createdAt]) // For cleanup cron jobs
 }
@@ -342,12 +346,15 @@ model IdempotencyKey {
 model ApiKey {
   id        String   @id @default(cuid())
   key       String   @unique
+  keyPrefix String?
+  keySuffix String?
   name      String
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   expiresAt DateTime?
   lastUsedAt DateTime?
+  revokedAt DateTime?
   
   @@index([userId])
   @@index([key])

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { generateText } from '@/lib/ai/service';
 import { withAuthValidation } from '@/lib/api/route-handler';
 import { chatSchema } from '@/lib/validation/ai';
-import { PERSONAS, PersonaKey } from '@/lib/ai/personas';
+import { PERSONAS, type PersonaKey } from '@/lib/ai/personas';
 
 export const POST = withAuthValidation(chatSchema, async ({ message, context, persona }) => {
     const personaDef = PERSONAS[persona as PersonaKey];

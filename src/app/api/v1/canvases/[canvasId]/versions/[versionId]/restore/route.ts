@@ -3,7 +3,7 @@
  * Restore canvas to a previous version
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { NotFoundError, ForbiddenError, errorResponse } from '@/lib/errors';
@@ -14,6 +14,7 @@ interface RouteContext {
 }
 
 interface SnapshotItem {
+  id?: string;
   type: string;
   positionX: number;
   positionY: number;
@@ -22,6 +23,9 @@ interface SnapshotItem {
   zIndex: number;
   content: unknown;
   tags?: string[];
+  version?: number;
+  createdById?: string;
+  updatedById?: string | null;
 }
 
 interface Snapshot {
@@ -64,14 +68,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const snapshot = version.snapshot as Snapshot;
+    const snapshotItems = Array.isArray(snapshot.items) ? snapshot.items : [];
+    const hasLegacyItems = snapshotItems.some((item) => !item.id);
 
     // Perform restore in a transaction
     await prisma.$transaction(async (tx) => {
-      // Delete all current items
-      await tx.canvasItem.deleteMany({
-        where: { canvasId },
-      });
-
       // Restore canvas settings
       await tx.canvas.update({
         where: { id: canvasId },
@@ -83,10 +84,25 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         },
       });
 
-      // Restore items
-      if (snapshot.items && Array.isArray(snapshot.items)) {
+      if (snapshotItems.length === 0) {
+        await tx.canvasItem.updateMany({
+          where: { canvasId, deletedAt: null },
+          data: {
+            deletedAt: new Date(),
+            deletedById: userId,
+            updatedById: userId,
+          },
+        });
+        return;
+      }
+
+      if (hasLegacyItems) {
+        await tx.canvasItem.deleteMany({
+          where: { canvasId },
+        });
+
         await tx.canvasItem.createMany({
-          data: snapshot.items.map((item) => ({
+          data: snapshotItems.map((item) => ({
             canvasId,
             type: item.type as any,
             positionX: item.positionX,
@@ -96,8 +112,61 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             zIndex: item.zIndex,
             content: item.content as any,
             tags: item.tags || [],
-            createdById: userId,
+            version: item.version ?? 1,
+            createdById: item.createdById || userId,
+            updatedById: item.updatedById || userId,
           })),
+        });
+        return;
+      }
+
+      const snapshotIds = snapshotItems.map((item) => item.id as string);
+
+      await tx.canvasItem.updateMany({
+        where: {
+          canvasId,
+          id: { notIn: snapshotIds },
+          deletedAt: null,
+        },
+        data: {
+          deletedAt: new Date(),
+          deletedById: userId,
+          updatedById: userId,
+        },
+      });
+
+      for (const item of snapshotItems) {
+        await tx.canvasItem.upsert({
+          where: { id: item.id as string },
+          update: {
+            type: item.type as any,
+            positionX: item.positionX,
+            positionY: item.positionY,
+            width: item.width,
+            height: item.height,
+            zIndex: item.zIndex,
+            content: item.content as any,
+            tags: item.tags || [],
+            deletedAt: null,
+            deletedById: null,
+            updatedById: userId,
+            version: item.version ?? 1,
+          },
+          create: {
+            id: item.id as string,
+            canvasId,
+            type: item.type as any,
+            positionX: item.positionX,
+            positionY: item.positionY,
+            width: item.width,
+            height: item.height,
+            zIndex: item.zIndex,
+            content: item.content as any,
+            tags: item.tags || [],
+            version: item.version ?? 1,
+            createdById: item.createdById || userId,
+            updatedById: userId,
+          },
         });
       }
     });

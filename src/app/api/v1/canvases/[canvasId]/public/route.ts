@@ -4,10 +4,11 @@
  * DELETE /api/v1/canvases/[canvasId]/public - Make canvas private
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/api/auth';
 import { errorResponse, ForbiddenError } from '@/lib/errors';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 import { nanoid } from 'nanoid';
 
 interface RouteContext {
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         shareToken,
       },
     });
+
+    await invalidateCanvasCache(canvasId);
 
     // Generate share URL
     const shareUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/share/${shareToken}`;
@@ -80,6 +83,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
         isPublic: false,
       },
     });
+
+    await invalidateCanvasCache(canvasId);
 
     return NextResponse.json({
       isPublic: updatedCanvas.isPublic,

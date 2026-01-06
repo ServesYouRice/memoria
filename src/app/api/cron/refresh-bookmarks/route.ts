@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 import { safeFetch } from '@/lib/utils/ssrf-protection';
 import { extractMetadata, validateMetadata } from '@/lib/utils/metadata-extractor';
 import { ItemType } from '@/types/canvas';
+import { withApiHandler } from '@/lib/api/route-handler';
+import { InternalServerError, UnauthorizedError } from '@/lib/errors';
 
 // Helper for type safety
 interface BookmarkContent {
@@ -15,15 +17,15 @@ interface BookmarkContent {
     [key: string]: any;
 }
 
-export const GET = async (req: Request) => {
+export const GET = withApiHandler(async (req: NextRequest) => {
     const authHeader = req.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = process.env.CRON_SECRET?.trim();
     if (!cronSecret) {
-        return new NextResponse('Cron secret not configured', { status: 500 });
+        throw new InternalServerError('Cron secret not configured');
     }
 
     if (authHeader !== `Bearer ${cronSecret}`) {
-        return new NextResponse('Unauthorized', { status: 401 });
+        throw new UnauthorizedError('Invalid cron secret');
     }
 
     // Fetch oldest updated bookmarks
@@ -82,7 +84,7 @@ export const GET = async (req: Request) => {
                 invalidatedCanvasIds.add(item.canvasId);
                 results.push({ id: item.id, status: 'unchanged' });
             }
-        } catch (e) {
+        } catch {
             results.push({ id: item.id, status: 'error' });
         }
     }
@@ -92,4 +94,4 @@ export const GET = async (req: Request) => {
     }
 
     return NextResponse.json({ results });
-};
+});

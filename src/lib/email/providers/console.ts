@@ -3,6 +3,8 @@
  * Logs emails to console - useful for development and testing
  */
 
+/* eslint-disable no-console -- console provider intentionally logs emails for local development. */
+
 import { logger } from '@/lib/logger';
 import type { EmailService, SendEmailOptions } from '../types';
 

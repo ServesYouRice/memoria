@@ -249,6 +249,8 @@ export const listCanvasItemsSchema = z.object({
   canvasId: z.string().cuid(),
   type: z.nativeEnum(ItemType).optional(),
   includeDeleted: z.boolean().default(false),
+  limit: z.number().int().positive().max(MAX_VIEWPORT_ITEMS).default(MAX_VIEWPORT_ITEMS),
+  offset: z.number().int().nonnegative().default(0),
 });
 
 /**

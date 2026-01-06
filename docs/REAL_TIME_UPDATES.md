@@ -1,21 +1,20 @@
 # Real-time Updates
 
-**Status**: ✅ Implemented (Issue #31)
-**Last Updated**: 2025-11-16
+**Status**: Implemented (Issue #31)
+**Last Updated**: 2026-01-05
 
 ## Overview
 
-CanvasCollect implements polling-based real-time updates for collaborative canvas editing. This provides near real-time synchronization for shared canvases without requiring complex WebSocket infrastructure.
+CanvasCollect uses WebSocket + Yjs for real-time collaboration, with polling as an optional fallback when sockets are disabled or for non-collab views.
 
 ## Architecture Decision
 
-### Why Polling Instead of WebSockets?
+### Why a Hybrid Approach?
 
-1. **Simplicity**: No external service dependencies (Pusher, Ably, Socket.io)
-2. **Infrastructure**: Works with serverless/edge deployments (Vercel, AWS Lambda)
-3. **Scalability**: No persistent connection overhead
-4. **Cost**: No additional service costs for WebSocket providers
-5. **Reliability**: More resilient to network interruptions
+1. **WebSocket for collaboration**: Instant updates and shared cursors.
+2. **Polling fallback**: Keeps simple canvases working without a persistent socket.
+3. **Resilience**: If sockets drop, polling still keeps data fresh.
+4. **Cost control**: Polling is only enabled when needed.
 
 ### Trade-offs
 
@@ -25,9 +24,22 @@ CanvasCollect implements polling-based real-time updates for collaborative canva
 
 ## Implementation
 
-### Adaptive Polling Strategy
+### WebSocket Collaboration
 
-The system uses the **Page Visibility API** to optimize polling frequency:
+```typescript
+import { useCollaboration } from '@/lib/hooks/use-collaboration';
+
+const { doc, users, cursors, status } = useCollaboration({
+  canvasId,
+  userId,
+  email,
+  name,
+});
+```
+
+### Polling Fallback Strategy
+
+Polling is used only when explicitly enabled (for example, shared canvases without an active socket). The system uses the **Page Visibility API** to optimize polling frequency:
 
 | Tab State | Polling Interval | Use Case |
 |-----------|-----------------|----------|
@@ -231,31 +243,8 @@ useEffect(() => {
 
 ## Future Enhancements
 
-### Phase 2: WebSocket Support (Optional)
-
-If real-time performance becomes critical:
-
-```typescript
-// Future implementation with Pusher/Ably
-import Pusher from 'pusher-js';
-
-const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY, {
-  cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
-});
-
-const channel = pusher.subscribe(`canvas-${canvasId}`);
-channel.bind('item-updated', (data) => {
-  queryClient.invalidateQueries(['canvas-items', canvasId]);
-});
-```
-
-### Hybrid Approach
-
-Combine polling with WebSocket for best of both worlds:
-
-- **Polling**: Fallback for reliability
-- **WebSocket**: Instant updates when available
-- **Automatic failover**: Switch to polling if WebSocket disconnects
+- Add presence-aware retry UI and reconnect telemetry.
+- Track collaboration health metrics for multi-instance deployments.
 
 ## Troubleshooting
 
@@ -326,5 +315,5 @@ test('polls every 5 seconds when tab is active', async () => {
 ---
 
 **Issue**: #31 - WebSocket/Real-time Updates
-**Implementation**: Polling-based with adaptive intervals
-**Status**: ✅ Production Ready
+**Implementation**: WebSocket primary with adaptive polling fallback
+**Status**: Production Ready

@@ -3,7 +3,7 @@
  * GET /api/v1/share/[token] - Get publicly shared canvas (no auth required)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { errorResponse, NotFoundError, ForbiddenError } from '@/lib/errors';
 

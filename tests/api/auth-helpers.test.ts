@@ -6,8 +6,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock dependencies
-vi.mock('next-auth', () => ({
-  getServerSession: vi.fn(),
+vi.mock('@/lib/auth', () => ({
+  auth: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -28,10 +28,10 @@ describe('Auth Helpers', () => {
 
   describe('requireAuth', () => {
     it('should return userId and email when session is valid', async () => {
-      const { getServerSession } = await import('next-auth');
+      const { auth } = await import('@/lib/auth');
       const { requireAuth } = await import('@/lib/api/auth');
 
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: {
           id: 'user123',
           email: 'test@example.com',
@@ -48,21 +48,21 @@ describe('Auth Helpers', () => {
     });
 
     it('should throw when session is null', async () => {
-      const { getServerSession } = await import('next-auth');
+      const { auth } = await import('@/lib/auth');
       const { requireAuth } = await import('@/lib/api/auth');
       const { UnauthorizedError } = await import('@/lib/errors');
 
-      vi.mocked(getServerSession).mockResolvedValue(null);
+      vi.mocked(auth).mockResolvedValue(null);
 
       await expect(requireAuth()).rejects.toThrow(UnauthorizedError);
     });
 
     it('should throw when session.user is null', async () => {
-      const { getServerSession } = await import('next-auth');
+      const { auth } = await import('@/lib/auth');
       const { requireAuth } = await import('@/lib/api/auth');
       const { UnauthorizedError } = await import('@/lib/errors');
 
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: null,
         expires: '2025-12-31',
       });
@@ -71,11 +71,11 @@ describe('Auth Helpers', () => {
     });
 
     it('should throw when session.user.email is missing', async () => {
-      const { getServerSession } = await import('next-auth');
+      const { auth } = await import('@/lib/auth');
       const { requireAuth } = await import('@/lib/api/auth');
       const { UnauthorizedError } = await import('@/lib/errors');
 
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: {
           id: 'user123',
           email: null,
@@ -87,11 +87,11 @@ describe('Auth Helpers', () => {
     });
 
     it('should throw when session.user.id is missing (type guard check)', async () => {
-      const { getServerSession } = await import('next-auth');
+      const { auth } = await import('@/lib/auth');
       const { requireAuth } = await import('@/lib/api/auth');
       const { UnauthorizedError } = await import('@/lib/errors');
 
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: {
           id: null,
           email: 'test@example.com',
@@ -103,10 +103,10 @@ describe('Auth Helpers', () => {
     });
 
     it('should not use unsafe type casts (no "as string")', async () => {
-      const { getServerSession } = await import('next-auth');
+      const { auth } = await import('@/lib/auth');
       const { requireAuth } = await import('@/lib/api/auth');
 
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: {
           id: 'user123',
           email: 'test@example.com',

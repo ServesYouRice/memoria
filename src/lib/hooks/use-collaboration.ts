@@ -37,6 +37,7 @@ export interface UseCollaborationResult {
   users: CollaborationUser[];
   cursors: CursorPosition[];
   connected: boolean;
+  status: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
   updateCursor: (x: number, y: number) => void;
   broadcastMessage: (payload: any) => void;
 }
@@ -51,28 +52,48 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   const [users, setUsers] = useState<CollaborationUser[]>([]);
   const [cursors, setCursors] = useState<CursorPosition[]>([]);
   const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'>('idle');
 
   const wsRef = useRef<WebSocket | null>(null);
   const docRef = useRef<Y.Doc | null>(null);
   const onMessageRef = useRef(onMessage);
+  const statusRef = useRef(status);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const shouldReconnectRef = useRef(true);
+
+  const BASE_RECONNECT_DELAY_MS = 1000;
+  const MAX_RECONNECT_DELAY_MS = 15000;
 
   // Update ref when onMessage changes
   useEffect(() => {
     onMessageRef.current = onMessage;
   }, [onMessage]);
 
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
   // Handle incoming WebSocket messages
   const handleMessage = useCallback((message: any, yDoc: Y.Doc) => {
     switch (message.type) {
       case 'sync':
         // Apply initial state
-        const syncUpdate = new Uint8Array(message.update);
+        const syncUpdate = decodeUpdatePayload(message.update);
+        if (!syncUpdate) {
+          logger.warn('Invalid sync update payload');
+          return;
+        }
         Y.applyUpdate(yDoc, syncUpdate, 'remote');
         break;
 
       case 'update':
         // Apply update from other client
-        const update = new Uint8Array(message.update);
+        const update = decodeUpdatePayload(message.update);
+        if (!update) {
+          logger.warn('Invalid update payload');
+          return;
+        }
         Y.applyUpdate(yDoc, update, 'remote');
         break;
 
@@ -95,65 +116,137 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     }
   }, []);
 
-  // Connect to WebSocket server
+  // Connect to WebSocket server with reconnect/backoff
   useEffect(() => {
-    if (!enabled || !canvasId) return;
+    if (!enabled || !canvasId) {
+      shouldReconnectRef.current = false;
+      setStatus('idle');
+      setConnected(false);
+      return;
+    }
+
+    shouldReconnectRef.current = true;
 
     // Create Y.js document
     const yDoc = new Y.Doc();
     docRef.current = yDoc;
     setDoc(yDoc);
 
-    // Connect to WebSocket server
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/collaboration/${canvasId}`;
-
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      logger.info('Connected to collaboration server');
-      setConnected(true);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        handleMessage(message, yDoc);
-      } catch (error) {
-        logger.error({ error }, 'Error handling WebSocket message');
-      }
-    };
-
-    ws.onerror = (error) => {
-      logger.error({ error }, 'WebSocket error');
-    };
-
-    ws.onclose = () => {
-      logger.info('Disconnected from collaboration server');
-      setConnected(false);
-    };
-
     // Listen for local Y.js changes and send to server
     const updateHandler = (update: Uint8Array, origin: any) => {
       // Don't send updates that came from the server
-      if (origin !== 'remote' && ws.readyState === WebSocket.OPEN) {
-        ws.send(
-          JSON.stringify({
-            type: 'update',
-            update: Array.from(update),
-          })
-        );
+      if (origin !== 'remote' && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(update);
       }
     };
 
     yDoc.on('update', updateHandler);
 
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/collaboration/${canvasId}`;
+
+    const scheduleReconnect = () => {
+      if (!shouldReconnectRef.current) return;
+
+      setStatus('reconnecting');
+      const attempt = reconnectAttemptsRef.current + 1;
+      reconnectAttemptsRef.current = attempt;
+
+      const delay = Math.min(
+        MAX_RECONNECT_DELAY_MS,
+        BASE_RECONNECT_DELAY_MS * Math.pow(2, attempt - 1)
+      );
+      const jitter = Math.random() * delay * 0.3;
+
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connect();
+      }, delay + jitter);
+    };
+
+    const connect = () => {
+      if (!shouldReconnectRef.current) return;
+
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        return;
+      }
+
+      setStatus(reconnectAttemptsRef.current > 0 ? 'reconnecting' : 'connecting');
+
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        logger.info('Connected to collaboration server');
+        reconnectAttemptsRef.current = 0;
+        setConnected(true);
+        setStatus('connected');
+      };
+
+      ws.onmessage = async (event) => {
+        try {
+          if (event.data instanceof ArrayBuffer) {
+            Y.applyUpdate(yDoc, new Uint8Array(event.data), 'remote');
+            return;
+          }
+
+          if (event.data instanceof Blob) {
+            const buffer = await event.data.arrayBuffer();
+            Y.applyUpdate(yDoc, new Uint8Array(buffer), 'remote');
+            return;
+          }
+
+          const message = JSON.parse(event.data);
+          handleMessage(message, yDoc);
+        } catch (error) {
+          logger.error({ error }, 'Error handling WebSocket message');
+        }
+      };
+
+      ws.onerror = (error) => {
+        logger.error({ error }, 'WebSocket error');
+        setStatus('error');
+      };
+
+      ws.onclose = () => {
+        logger.info('Disconnected from collaboration server');
+        setConnected(false);
+        setUsers([]);
+        setCursors([]);
+        if (shouldReconnectRef.current) {
+          scheduleReconnect();
+        } else {
+          setStatus('disconnected');
+        }
+      };
+    };
+
+    connect();
+
+    const handleOnline = () => {
+      if (statusRef.current === 'disconnected' || statusRef.current === 'error') {
+        reconnectAttemptsRef.current = 0;
+        connect();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+
     // Cleanup
     return () => {
+      window.removeEventListener('online', handleOnline);
+      shouldReconnectRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       yDoc.off('update', updateHandler);
-      ws.close();
       yDoc.destroy();
+      wsRef.current?.close();
+      wsRef.current = null;
+      setConnected(false);
+      setStatus('disconnected');
+      setUsers([]);
+      setCursors([]);
     };
   }, [canvasId, userId, email, name, enabled, handleMessage]);
 
@@ -191,7 +284,35 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     users,
     cursors,
     connected,
+    status,
     updateCursor,
     broadcastMessage,
   };
+}
+
+function decodeUpdatePayload(payload: unknown): Uint8Array | null {
+  if (!payload) return null;
+
+  if (payload instanceof Uint8Array) {
+    return payload;
+  }
+
+  if (Array.isArray(payload)) {
+    return new Uint8Array(payload);
+  }
+
+  if (typeof payload === 'string') {
+    try {
+      const binary = atob(payload);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }

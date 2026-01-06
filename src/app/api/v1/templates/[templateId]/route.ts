@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
 import { z } from 'zod';
 import { withApiHandler } from '@/lib/api/route-handler';
-import { notFoundError, forbiddenError, unauthorizedError } from '@/lib/errors';
+import { fromZodError, notFoundError, forbiddenError, unauthorizedError } from '@/lib/errors';
+import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
 
 const logger = createLogger('templates-api');
 
@@ -20,6 +21,32 @@ interface RouteContext {
   params: Promise<{ templateId: string }>;
 }
 
+export const GET = withApiHandler(async (_req: NextRequest, { params }: RouteContext) => {
+  const { templateId } = await params;
+
+  const template = await prisma.canvas.findUnique({
+    where: { id: templateId },
+    include: {
+      items: {
+        where: { deletedAt: null },
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!template || !template.isTemplate) {
+    throw notFoundError('Template', templateId);
+  }
+
+  return NextResponse.json(template);
+});
+
 export const PUT = withApiHandler(async (req: NextRequest, { params }: RouteContext) => {
   const session = await auth();
   if (!session?.user?.id) {
@@ -31,7 +58,7 @@ export const PUT = withApiHandler(async (req: NextRequest, { params }: RouteCont
   const validation = updateTemplateSchema.safeParse(body);
 
   if (!validation.success) {
-    return NextResponse.json({ error: 'Validation Error', details: validation.error.errors }, { status: 400 });
+    throw fromZodError(validation.error);
   }
 
   const { data } = validation;
@@ -69,5 +96,42 @@ export const PUT = withApiHandler(async (req: NextRequest, { params }: RouteCont
 
   logger.info({ templateId, userId: session.user.id }, 'Template updated');
 
+  await invalidateCanvasCache(templateId);
+
   return NextResponse.json(updatedCanvas);
+});
+
+export const DELETE = withApiHandler(async (_req: NextRequest, { params }: RouteContext) => {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw unauthorizedError();
+  }
+
+  const { templateId } = await params;
+
+  const canvas = await prisma.canvas.findUnique({
+    where: { id: templateId },
+  });
+
+  if (!canvas) {
+    throw notFoundError('Template', templateId);
+  }
+
+  if (canvas.userId !== session.user.id) {
+    throw forbiddenError();
+  }
+
+  const updated = await prisma.canvas.update({
+    where: { id: templateId },
+    data: {
+      isTemplate: false,
+      templateDescription: null,
+      templateCategory: null,
+      isPublic: false,
+    },
+  });
+
+  await invalidateCanvasCache(templateId);
+
+  return NextResponse.json(updated);
 });

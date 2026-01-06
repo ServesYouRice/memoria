@@ -15,7 +15,7 @@ import {
     Chip
 } from '@mui/material';
 import { AutoAwesome, Shuffle, Add as AddIcon } from '@mui/icons-material';
-import { ItemType } from '@/types/canvas';
+import { type ItemType } from '@/types/canvas';
 
 interface SerendipityResult {
     item: {

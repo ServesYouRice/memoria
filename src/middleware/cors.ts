@@ -7,7 +7,7 @@
  * Follows best practices from OWASP and ADR-0012: Security Headers & CORS Policy.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('cors');

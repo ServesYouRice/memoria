@@ -56,7 +56,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { CanvasItem, ItemType } from '@/types/canvas';
+import { type CanvasItem } from '@/types/canvas';
 import { logger } from '@/lib/logger';
 
 export interface Command {

@@ -9,8 +9,8 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Group, Rect, Text, Circle } from 'react-konva';
-import Konva from 'konva';
-import { CanvasItem, isNoteContent } from '@/types/canvas';
+import type Konva from 'konva';
+import { type CanvasItem, isNoteContent } from '@/types/canvas';
 import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
 import { stripHtmlTags } from '@/lib/utils/html';

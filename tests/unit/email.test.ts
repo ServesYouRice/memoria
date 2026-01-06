@@ -75,7 +75,8 @@ describe('Console Email Provider', () => {
     });
 
     expect(consoleSpy).toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Test Email'));
+    const output = consoleSpy.mock.calls.flat().join(' ');
+    expect(output).toContain('Test Email');
 
     consoleSpy.mockRestore();
   });
@@ -117,6 +118,7 @@ describe('Email Service', () => {
     vi.clearAllMocks();
     // Reset environment
     delete process.env.EMAIL_PROVIDER;
+    vi.resetModules();
   });
 
   it('should use console provider by default', async () => {
@@ -182,9 +184,8 @@ describe('Email Service', () => {
   });
 
   it('should handle email send errors gracefully', async () => {
-    const { sendEmail } = await import('@/lib/email/index');
-
     // Mock provider to throw error
+    vi.resetModules();
     vi.doMock('@/lib/email/providers/console', () => ({
       ConsoleEmailProvider: class {
         async send() {
@@ -195,6 +196,8 @@ describe('Email Service', () => {
         }
       },
     }));
+
+    const { sendEmail } = await import('@/lib/email/index');
 
     await expect(
       sendEmail({

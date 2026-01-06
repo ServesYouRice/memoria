@@ -58,6 +58,18 @@ export function sanitizePlainText(input: string): string {
 }
 
 /**
+ * Strip HTML tags while removing script/style contents entirely.
+ *
+ * @param input - The HTML string to sanitize
+ * @returns Plain text with tags removed and whitespace trimmed
+ */
+export function stripHtml(input: string): string {
+  const withoutScripts = input.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  const withoutStyles = withoutScripts.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  return withoutStyles.replace(/<[^>]*>/g, '').trim();
+}
+
+/**
  * Validates and sanitizes URLs to prevent XSS attacks via dangerous protocols
  *
  * Blocks dangerous URL protocols including:
@@ -83,6 +95,9 @@ export function sanitizePlainText(input: string): string {
  */
 export function sanitizeUrl(url: string): string | null {
   const trimmed = url.trim();
+  if (!trimmed) {
+    return null;
+  }
 
   // Check for dangerous protocols
   const dangerousProtocols = [
@@ -94,7 +109,14 @@ export function sanitizeUrl(url: string): string | null {
   ];
 
   const lowerUrl = trimmed.toLowerCase();
-  if (dangerousProtocols.some(protocol => lowerUrl.startsWith(protocol))) {
+  let decodedUrl = lowerUrl;
+  try {
+    decodedUrl = decodeURIComponent(lowerUrl);
+  } catch {
+    decodedUrl = lowerUrl;
+  }
+
+  if (dangerousProtocols.some(protocol => lowerUrl.startsWith(protocol) || decodedUrl.startsWith(protocol))) {
     return null;
   }
 
@@ -138,7 +160,18 @@ export function sanitizeComment(content: string): string {
  * Sanitize note content (JSON)
  * Validates and sanitizes note content structure
  */
-export function sanitizeNoteContent(content: unknown): { text: string } | null {
+export function sanitizeNoteContent(content: unknown): string | { text: string } | null {
+  if (typeof content === 'string') {
+    const sanitized = DOMPurify.sanitize(content, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'a'],
+      ALLOWED_ATTR: ['href', 'title'],
+    });
+    if (!sanitized && content.trim()) {
+      return stripHtml(content);
+    }
+    return sanitized;
+  }
+
   if (typeof content !== 'object' || content === null) {
     return null;
   }
@@ -186,6 +219,46 @@ export function sanitizeBookmarkContent(
   }
 
   return result;
+}
+
+/**
+ * Sanitize bookmark metadata from external sources
+ */
+export function sanitizeBookmarkMetadata(input: {
+  url?: string;
+  title?: string;
+  description?: string;
+}): { url: string; title: string; description: string } {
+  const sanitizedUrl = input.url ? sanitizeUrl(input.url) : null;
+
+  return {
+    url: sanitizedUrl || '',
+    title: sanitizePlainText(input.title || ''),
+    description: sanitizePlainText(input.description || ''),
+  };
+}
+
+/**
+ * Recursively sanitize arbitrary content objects/arrays by stripping HTML strings.
+ */
+export function sanitizeContent<T>(input: T): T {
+  if (typeof input === 'string') {
+    return stripHtml(input) as T;
+  }
+
+  if (Array.isArray(input)) {
+    return input.map((item) => sanitizeContent(item)) as T;
+  }
+
+  if (typeof input === 'object' && input !== null) {
+    const entries = Object.entries(input as Record<string, unknown>).map(([key, value]) => [
+      key,
+      sanitizeContent(value),
+    ]);
+    return Object.fromEntries(entries) as T;
+  }
+
+  return input;
 }
 
 /**

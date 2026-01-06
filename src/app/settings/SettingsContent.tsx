@@ -423,6 +423,36 @@ export function SettingsContent({ user }: SettingsContentProps) {
                         </Paper>
                     </Grid>
 
+                    {/* API Keys Section */}
+                    <Grid item xs={12}>
+                        <Paper
+                            sx={{
+                                p: 4,
+                                borderRadius: 3,
+                                animation: 'fadeIn 0.5s ease-out 0.35s both', // Slight delay
+                            }}
+                        >
+                            <Typography variant="h6" fontWeight={600} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <ThemeIcon color="primary" /> Developer Settings
+                            </Typography>
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box>
+                                    <Typography variant="subtitle1" fontWeight={600}>API Keys</Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Manage API keys for external access and extensions
+                                    </Typography>
+                                </Box>
+                                <Button
+                                    variant="outlined"
+                                    onClick={() => router.push('/api-keys')}
+                                >
+                                    Manage Keys
+                                </Button>
+                            </Box>
+                        </Paper>
+                    </Grid>
+
                     {/* Danger Zone */}
                     <Grid item xs={12}>
                         <Paper

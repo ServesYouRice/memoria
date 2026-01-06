@@ -9,12 +9,13 @@
  * Following ADR-0009: Autosave & Concurrency Control
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCanvasAccess } from '@/lib/api/auth';
 import { errorResponse } from '@/lib/errors';
 import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
+import { runIdempotent } from '@/lib/api/route-handler';
 import {
   createCanvasItemSchema,
   listCanvasItemsSchema,
@@ -31,36 +32,38 @@ import type { CanvasItem } from '@prisma/client';
 export async function POST(request: NextRequest) {
   try {
     const { userId, email } = await requireAuth();
-    const body = await request.json();
+    return await runIdempotent(request, userId, async () => {
+      const body = await request.json();
 
-    // Validate input
-    const data = createCanvasItemSchema.parse(body);
+      // Validate input
+      const data = createCanvasItemSchema.parse(body);
 
-    // Verify user has EDIT permission (via ownership or share)
-    await requireCanvasAccess(data.canvasId, userId, email, 'EDIT');
+      // Verify user has EDIT permission (via ownership or share)
+      await requireCanvasAccess(data.canvasId, userId, email, 'EDIT');
 
-    // Create item
-    const item = await prisma.canvasItem.create({
-      data: {
-        canvasId: data.canvasId,
-        type: data.type,
-        positionX: data.positionX,
-        positionY: data.positionY,
-        width: data.width,
-        height: data.height,
-        zIndex: data.zIndex,
-        content: data.content ?? Prisma.JsonNull,
-        tags: data.tags || [],
-        version: 1,
-        createdById: userId,
-        updatedById: userId,
-      },
+      // Create item
+      const item = await prisma.canvasItem.create({
+        data: {
+          canvasId: data.canvasId,
+          type: data.type,
+          positionX: data.positionX,
+          positionY: data.positionY,
+          width: data.width,
+          height: data.height,
+          zIndex: data.zIndex,
+          content: data.content ?? Prisma.JsonNull,
+          tags: data.tags || [],
+          version: 1,
+          createdById: userId,
+          updatedById: userId,
+        },
+      });
+
+      // Invalidate canvas cache
+      await invalidateCanvasCache(data.canvasId);
+
+      return NextResponse.json(item, { status: 201 });
     });
-
-    // Invalidate canvas cache
-    await invalidateCanvasCache(data.canvasId);
-
-    return NextResponse.json(item, { status: 201 });
   } catch (error) {
     return errorResponse(error, request.url);
   }
@@ -114,6 +117,8 @@ export async function GET(request: NextRequest) {
         canvasId: searchParams.get('canvasId'),
         type: searchParams.get('type') || undefined,
         includeDeleted: searchParams.get('includeDeleted') === 'true',
+        limit: searchParams.has('limit') ? parseInt(searchParams.get('limit')!, 10) : undefined,
+        offset: searchParams.has('offset') ? parseInt(searchParams.get('offset')!, 10) : undefined,
       });
 
     // Verify user has VIEW permission (via ownership or share)
@@ -186,14 +191,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items, total, offset, limit });
     }
 
-    // Backwards compatible response (no viewport params)
-    // Fetch all items (no viewport filtering)
+    const { limit, offset } = query;
+    const total = await prisma.canvasItem.count({ where: baseWhere });
+
     const items = await prisma.canvasItem.findMany({
       where: baseWhere,
       orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
+      take: limit,
+      skip: offset,
     });
 
-    return NextResponse.json({ items });
+    return NextResponse.json({
+      items,
+      total,
+      offset,
+      limit,
+      hasMore: offset + items.length < total,
+    });
   } catch (error) {
     return errorResponse(error, request.url);
   }

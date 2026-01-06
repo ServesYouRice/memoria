@@ -1,4 +1,4 @@
-import { CanvasItem, ItemType } from '@/types/canvas';
+import { type CanvasItem, ItemType, isNoteContent, isTextContent, isBookmarkContent, isImageContent, type NoteContent, type TextContent, type BookmarkContent, type ImageContent } from '@/types/canvas';
 
 
 /**
@@ -44,16 +44,22 @@ export async function exportToMarkdown(
         switch (item.type) {
             case ItemType.NOTE:
             case ItemType.TEXT:
-                // @ts-ignore
-                md += `${item.content.text || ''}\n\n`;
+                if (isNoteContent(item.content) || isTextContent(item.content)) {
+                    const textContent = item.content as NoteContent | TextContent;
+                    md += `${textContent.text || ''}\n\n`;
+                }
                 break;
             case ItemType.BOOKMARK:
-                // @ts-ignore
-                md += `[${item.content.title || item.content.url}](${item.content.url})\n\n`;
+                if (isBookmarkContent(item.content)) {
+                    const bookmarkContent = item.content as BookmarkContent;
+                    md += `[${bookmarkContent.title || bookmarkContent.url}](${bookmarkContent.url})\n\n`;
+                }
                 break;
             case ItemType.IMAGE:
-                // @ts-ignore
-                md += `![${item.content.alt || 'Image'}](${item.content.url})\n\n`;
+                if (isImageContent(item.content)) {
+                    const imageContent = item.content as ImageContent;
+                    md += `![${imageContent.alt || 'Image'}](${imageContent.url})\n\n`;
+                }
                 break;
             // Add other types as needed
         }

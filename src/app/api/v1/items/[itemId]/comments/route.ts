@@ -3,13 +3,13 @@
  * Handles creating and listing comments on canvas items
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
 import { sanitizeComment } from '@/lib/sanitization';
-import { errorResponse } from '@/lib/api/error-handler';
+import { errorResponse } from '@/lib/errors';
 import type { CanvasShare } from '@prisma/client';
 
 interface RouteContext {

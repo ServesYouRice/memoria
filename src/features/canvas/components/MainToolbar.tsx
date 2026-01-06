@@ -9,7 +9,7 @@ import {
     ArrowForward, // Arrow
     TextFields // Text
 } from '@mui/icons-material';
-import { useCanvasStore, CanvasTool } from '@/stores/canvasStore';
+import { useCanvasStore, type CanvasTool } from '@/stores/canvasStore';
 
 export const MainToolbar: React.FC = () => {
     const { activeTool, setActiveTool } = useCanvasStore();

@@ -3,156 +3,76 @@
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Browser (Client)                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │              Canvas Component                          │    │
-│  │  - Konva Stage/Layer                                   │    │
-│  │  - Item selection state                                │    │
-│  │  - Toolbar (Add Note button)                          │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │           NoteItem Component (Konva)                   │    │
-│  │  - Text display                                        │    │
-│  │  - Drag handlers (move)                               │    │
-│  │  - Resize handles (4 corners)                         │    │
-│  │  - Delete button                                       │    │
-│  │  - Local state (smooth UX)                            │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │         useDebounce Hook (300ms)                       │    │
-│  │  - Delays API calls                                    │    │
-│  │  - Reduces network traffic                            │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │      TanStack Query Hooks                              │    │
-│  │  - useCanvasItems() - Fetch items                     │    │
-│  │  - useCreateCanvasItem() - Create                     │    │
-│  │  - useUpdateCanvasItem() - Update + version check    │    │
-│  │  - useDeleteCanvasItem() - Soft delete               │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-└────────────────────────┼─────────────────────────────────────────┘
-                         │
-                    HTTP/JSON
-                         │
-┌────────────────────────▼─────────────────────────────────────────┐
-│                    Next.js Server (API)                           │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │         API Routes (/api/v1/canvases/:id/items)        │    │
-│  │                                                         │    │
-│  │  GET    /items        → Fetch all items               │    │
-│  │  POST   /items        → Create item                   │    │
-│  │  PATCH  /items/:id    → Update item (version check)   │    │
-│  │  DELETE /items/:id    → Soft delete item              │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │           Validation Layer (Zod)                       │    │
-│  │  - createItemSchema                                    │    │
-│  │  - updateItemSchema (requires version)                │    │
-│  │  - noteContentSchema                                   │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │         Authorization Layer                            │    │
-│  │  - getCurrentUserId()                                  │    │
-│  │  - Verify canvas ownership                            │    │
-│  │  - Check permissions                                   │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │      Business Logic + Concurrency Control              │    │
-│  │  - Version checking                                    │    │
-│  │  - Optimistic concurrency (409 on conflict)           │    │
-│  │  - Auto-increment version                              │    │
-│  │  - Soft delete (deletedAt timestamp)                  │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │           Prisma ORM Layer                             │    │
-│  │  - Type-safe queries                                   │    │
-│  │  - SQL injection prevention                            │    │
-│  │  - Transaction support                                 │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-└────────────────────────┼─────────────────────────────────────────┘
-                         │
-                     SQL/TCP
-                         │
-┌────────────────────────▼─────────────────────────────────────────┐
-│                    PostgreSQL Database                            │
-├───────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  Tables:                                                          │
-│  - User (id, email, passwordHash, ...)                          │
-│  - Canvas (id, name, userId, zoomLevel, ...)                    │
-│  - CanvasItem (id, canvasId, type, position, content, ...)     │
-│  - Session (id, sessionToken, userId, ...)                      │
-│  - Account (id, userId, provider, ...)                          │
-│                                                                   │
-│  Indexes:                                                         │
-│  - (canvasId, deletedAt) - Fast active item queries            │
-│  - (canvasId, type) - Filter by type                           │
-│  - (canvasId, zIndex) - Ordering                               │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+Browser (Client)
+  | HTTP/JSON
+  v
+Next.js App Router + API (server.ts)
+  | Prisma ORM
+  v
+PostgreSQL
+
+WebSocket /api/collaboration/:canvasId
+  | Yjs updates
+  v
+Collaboration Server (ws)
+  | Redis pub/sub (optional)
+  v
+Other instances
 ```
+
+Additional Components
+- Custom Node server (`server.ts`) hosts Next.js and the collaboration WebSocket server.
+- WebSocket collaboration uses Yjs docs with database persistence and optional Redis pub/sub fanout.
+- Redis is optional for caching (canvas snapshots, unfurl) and rate limiting.
+- Uploads support local disk storage or S3-compatible object storage via `UPLOAD_STORAGE`.
 
 ## Data Flow
 
 ### 1. Create Note Flow
 ```
 User clicks "Add Note"
-  ↓
+  ->
 Canvas component calls useCreateCanvasItem()
-  ↓
-TanStack Query mutation → POST /api/v1/canvases/:id/items
-  ↓
+  ->
+TanStack Query mutation -> POST /api/v1/canvases/:id/items
+  ->
 API validates with Zod schema
-  ↓
+  ->
 API verifies canvas ownership
-  ↓
+  ->
 Prisma creates CanvasItem (version=1, zIndex=auto)
-  ↓
+  ->
 Returns 201 Created with new item
-  ↓
+  ->
 TanStack Query invalidates cache
-  ↓
+  ->
 Canvas refetches items
-  ↓
+  ->
 NoteItem component renders on canvas
 ```
 
 ### 2. Move Note Flow (with Debounce)
 ```
 User drags note to new position
-  ↓
+  ->
 NoteItem updates local state (instant visual feedback)
-  ↓
-onDragEnd → calls debouncedUpdatePosition(x, y)
-  ↓
+  ->
+onDragEnd -> calls debouncedUpdatePosition(x, y)
+  ->
 Debounce waits 300ms (no more drag events)
-  ↓
-useUpdateCanvasItem() mutation → PATCH /api/v1/.../items/:id
-  ↓
+  ->
+useUpdateCanvasItem() mutation -> PATCH /api/v1/.../items/:id
+  ->
 Request includes: { positionX, positionY, version }
-  ↓
+  ->
 API validates version matches current item.version
-  ↓
-If version mismatch → 409 Conflict
-  ↓
-If version OK → update item, increment version
-  ↓
+  ->
+If version mismatch -> 409 Conflict
+  ->
+If version OK -> update item, increment version
+  ->
 Returns updated item
-  ↓
+  ->
 TanStack Query updates cache
 ```
 
@@ -160,42 +80,42 @@ TanStack Query updates cache
 ```
 Tab A: User moves note (version 1)
 Tab B: User resizes same note (version 1)
-  ↓
-Tab A: PATCH with version=1 → Success (now version 2)
-  ↓
-Tab B: PATCH with version=1 → 409 Conflict
-  ↓
+  ->
+Tab A: PATCH with version=1 -> Success (now version 2)
+  ->
+Tab B: PATCH with version=1 -> 409 Conflict
+  ->
 useUpdateCanvasItem detects conflict error
-  ↓
+  ->
 Automatically invalidates query cache
-  ↓
+  ->
 Refetches latest items (now has version 2)
-  ↓
+  ->
 User's local changes preserved in local state
-  ↓
+  ->
 User can retry update with version 2
 ```
 
 ### 4. Delete Note Flow
 ```
 User clicks delete button
-  ↓
-Confirmation dialog → "Are you sure?"
-  ↓
+  ->
+Confirmation dialog -> "Are you sure?"
+  ->
 User confirms
-  ↓
-useDeleteCanvasItem() → DELETE /api/v1/.../items/:id
-  ↓
+  ->
+useDeleteCanvasItem() -> DELETE /api/v1/.../items/:id
+  ->
 API verifies ownership
-  ↓
+  ->
 Prisma updates item: { deletedAt: now, deletedById: userId }
-  ↓
+  ->
 Returns 204 No Content
-  ↓
+  ->
 TanStack Query invalidates cache
-  ↓
+  ->
 Canvas refetches (excludes deleted items)
-  ↓
+  ->
 NoteItem removed from canvas
 ```
 
@@ -228,30 +148,30 @@ NoteItem removed from canvas
 ### Client-Side
 ```
 API Error
-  ↓
+  ->
 TanStack Query catches error
-  ↓
-If 409 (conflict) → Auto-refetch
-  ↓
-If 4xx/5xx → Display error to user
-  ↓
+  ->
+If 409 (conflict)  Auto-refetch
+  ->
+If 4xx/5xx  Display error to user
+  ->
 User can retry operation
 ```
 
 ### Server-Side
 ```
 Request
-  ↓
+  ->
 Try {
-  Validate → Authorize → Execute
+  Validate  Authorize  Execute
 }
-  ↓
+  ->
 Catch (error) {
-  if (ZodError) → 400 with validation details
-  if (ApiError) → Use error.status
-  else → 500 Internal Server Error
+  if (ZodError)  400 with validation details
+  if (ApiError)  Use error.status
+  else  500 Internal Server Error
 }
-  ↓
+  ->
 Return RFC 7807 JSON response
 ```
 
@@ -317,7 +237,7 @@ Return RFC 7807 JSON response
 
 ### E2E Tests (Playwright)
 - **Target**: User flows in browser
-- **Example**: Create → Move → Resize → Delete
+- **Example**: Create  Move  Resize  Delete
 - **Location**: `/tests/e2e/note-crud.spec.ts`
 
 ## Deployment Considerations
@@ -327,6 +247,17 @@ Return RFC 7807 JSON response
 DATABASE_URL=postgresql://...     # PostgreSQL connection
 NEXTAUTH_URL=https://...          # Auth callback URL
 NEXTAUTH_SECRET=...               # Session encryption
+CRON_SECRET=...                   # Cron endpoint auth
+REDIS_URL=redis://...             # Cache, rate limiting, collaboration pub/sub (optional)
+UPLOAD_STORAGE=local|s3           # Upload backend selection
+UPLOADS_PUBLIC_URL=https://...    # Public base URL for uploads (optional)
+S3_BUCKET=...                     # S3 bucket name (when UPLOAD_STORAGE=s3)
+S3_REGION=...                     # S3 region
+S3_ENDPOINT=...                   # S3-compatible endpoint (optional)
+S3_ACCESS_KEY_ID=...              # S3 access key (optional if using IAM)
+S3_SECRET_ACCESS_KEY=...          # S3 secret key (optional if using IAM)
+UPLOAD_SCAN_URL=https://...       # Malware scan service endpoint (optional)
+UPLOAD_SCAN_REQUIRED=false        # Fail upload on scan failure
 DEMO_USER_ID=...                  # Temporary (dev only)
 ```
 
@@ -349,19 +280,18 @@ DEMO_USER_ID=...                  # Temporary (dev only)
 ## Scalability Considerations
 
 ### Current Limits
-- ✅ Handles 100s of items per canvas
-- ✅ Multiple users (separate canvases)
-- ⚠️ Not optimized for 1000s of items
-- ⚠️ No real-time collaboration
+- Real-time collaboration via WebSocket + Yjs (single instance or Redis pub/sub fanout)
+- Items API supports viewport pagination; UI still loads full canvases by default
+- Handles 100s of items per canvas; larger boards benefit from viewport loading and culling
+- Optional Redis caching improves hot reads but is not required
 
 ### Future Optimizations (Phase 2+)
-- Viewport-based loading (only visible items)
-- Virtual scrolling
-- WebSocket for real-time updates
-- Redis caching layer
-- CDN for static assets
+- Binary WS frames for Yjs updates to reduce payload size
+- Redis-backed awareness/presence store to reduce in-memory coupling
+- Full-text indexes for search (trigram/tsvector)
+- CDN/object storage for thumbnails and static assets
 
 ---
 
 **Architecture Status**: Production-ready for MVP
-**Last Updated**: 2025-11-10
+**Last Updated**: 2026-01-05

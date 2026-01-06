@@ -1,6 +1,6 @@
 import React from 'react';
 import { Group, Text } from 'react-konva';
-import { CanvasItem, TextContent } from '@/types/canvas';
+import { type CanvasItem, type TextContent } from '@/types/canvas';
 
 interface TextItemProps {
     item: CanvasItem;

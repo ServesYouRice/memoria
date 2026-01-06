@@ -13,6 +13,13 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./tests/setup.ts'],
+    exclude: [
+      '**/node_modules/**',
+      '**/.pnpm/**',
+      'e2e/**',
+      'tests/e2e/**',
+      'tests/e2e/visual/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

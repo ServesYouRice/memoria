@@ -1,66 +1,92 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { GET } from '../../src/app/api/v1/search/route';
 
-// Mock next/server
 vi.mock('next/server', () => ({
-    NextRequest: class MockNextRequest {
-        url: string;
-        constructor(url: string) { this.url = url; }
-        nextUrl = { searchParams: new URLSearchParams(this.url.split('?')[1]) };
-    },
-    NextResponse: {
-        json: (body: any, init?: any) => ({
-            json: async () => body,
-            status: init?.status || 200
-        }),
-    },
+  NextResponse: {
+    json: (body: unknown, init?: ResponseInit) =>
+      new Response(JSON.stringify(body), {
+        status: init?.status ?? 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+  },
 }));
 
-import { NextRequest } from 'next/server';
-
-// Mock DB
-const mockPrisma = {
-    canvasItem: {
-        findMany: vi.fn(),
-    },
-    canvas: {
-        findMany: vi.fn(),
-    },
-};
-
-vi.mock('../../src/lib/db', () => ({
-    prisma: mockPrisma,
+vi.mock('@/lib/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
 }));
 
-// Mock requireAuth
-vi.mock('../../src/lib/auth', () => ({
-    requireAuth: vi.fn().mockResolvedValue({ userId: 'user-1' }),
+vi.mock('@/lib/auth', () => ({
+  auth: vi.fn(),
+}));
+
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    $queryRaw: vi.fn(),
+  },
 }));
 
 describe('Search API', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it('should return 400 when query is too short', async () => {
+    const { auth } = await import('@/lib/auth');
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com' },
     });
 
-    it('should return empty results if query is short', async () => {
-        const req = new NextRequest('http://localhost/api/search?q=a');
-        const response = await GET(req);
-        const data = await response.json();
+    const { GET } = await import('@/app/api/v1/search/route');
 
-        expect(response.status).toBe(400); // Or 200 with empty? The logic handles validation.
-        // Actually, check implementation. Usually z validation throws or returns 400.
+    const response = await GET(new Request('http://localhost/api/v1/search?q=a'));
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+    expect(body.title).toBe('Bad Request');
+  });
+
+  it('should query and return results for valid search', async () => {
+    const { auth } = await import('@/lib/auth');
+    const { prisma } = await import('@/lib/db');
+
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: 'user-1', email: 'user@example.com' },
     });
 
-    it('should search database when query is valid', async () => {
-        const req = new NextRequest('http://localhost/api/search?q=test');
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ exists: false }])
+      .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([
+        {
+          id: 'item-1',
+          canvasId: 'canvas-1',
+          type: 'NOTE',
+          content: { text: 'Hello world' },
+          tags: ['tag'],
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          updatedAt: new Date('2024-01-02T00:00:00Z'),
+          canvasName: 'Canvas 1',
+        },
+      ]);
 
-        mockPrisma.canvasItem.findMany.mockResolvedValue([]);
-        mockPrisma.canvas.findMany.mockResolvedValue([]);
+    const { GET } = await import('@/app/api/v1/search/route');
 
-        const response = await GET(req);
-        expect(response.status).toBe(200);
-        expect(mockPrisma.canvasItem.findMany).toHaveBeenCalled();
-        expect(mockPrisma.canvas.findMany).toHaveBeenCalled();
-    });
+    const response = await GET(new Request('http://localhost/api/v1/search?q=hello'));
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.totalResults).toBe(1);
+    expect(body.results).toHaveLength(1);
+    expect(body.results[0].snippet).toContain('Hello world');
+  });
 });

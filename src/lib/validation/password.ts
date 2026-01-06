@@ -43,7 +43,6 @@ export async function validatePasswordStrength(
     };
   }
 
-  // @ts-ignore
   const { default: zxcvbn } = await import('zxcvbn');
   const result = zxcvbn(password, userInputs);
 

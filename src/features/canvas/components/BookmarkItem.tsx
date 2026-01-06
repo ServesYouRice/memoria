@@ -18,8 +18,8 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Group, Rect, Text, Circle, Image as KonvaImage } from 'react-konva';
-import Konva from 'konva';
-import { CanvasItem, isBookmarkContent } from '@/types/canvas';
+import type Konva from 'konva';
+import { type CanvasItem, isBookmarkContent } from '@/types/canvas';
 import { useAutosave } from '@/lib/hooks/use-autosave';
 import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
 

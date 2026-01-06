@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useEffect, useRef, RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 /**
  * Handle clicks outside a ref element

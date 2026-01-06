@@ -45,7 +45,10 @@ global.IntersectionObserver = vi.fn(() => ({
 
 beforeAll(async () => {
   // Setup test database if needed
-  process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/canvascollect_test';
+  const dbPassword = process.env.DATABASE_PASSWORD || 'devpassword';
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ||
+    `postgresql://canvascollect:${dbPassword}@localhost:5432/canvascollect`;
   process.env.DEMO_USER_ID = 'test-user-id';
   process.env.NODE_ENV = 'test';
 });

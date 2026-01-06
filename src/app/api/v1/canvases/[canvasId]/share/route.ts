@@ -4,7 +4,7 @@
  * GET /api/v1/canvases/[canvasId]/share - List all shares
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/api/auth';
 import { errorResponse, ForbiddenError } from '@/lib/errors';

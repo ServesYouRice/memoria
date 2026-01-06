@@ -20,7 +20,7 @@ import {
     Paper
 } from '@mui/material';
 import { AutoAwesome, Summarize, NoteAdd, Chat as ChatIcon, Send as SendIcon } from '@mui/icons-material';
-import { PERSONAS, PersonaKey } from '@/lib/ai/personas';
+import { PERSONAS, type PersonaKey } from '@/lib/ai/personas';
 
 interface AIDialogProps {
     open: boolean;
@@ -61,7 +61,7 @@ export function AIDialog({ open, onClose, canvasId, onAddNote, getContext }: AID
             if (!response.ok) throw new Error('Generation failed');
             const data = await response.json();
             setResult(data.result);
-        } catch (err) {
+        } catch {
             setError('Failed to generate text. Please try again.');
         } finally {
             setLoading(false);
@@ -81,7 +81,7 @@ export function AIDialog({ open, onClose, canvasId, onAddNote, getContext }: AID
             if (!response.ok) throw new Error('Summarization failed');
             const data = await response.json();
             setResult(data.summary);
-        } catch (err) {
+        } catch {
             setError('Failed to summarize canvas. Please try again.');
         } finally {
             setLoading(false);
@@ -113,7 +113,7 @@ export function AIDialog({ open, onClose, canvasId, onAddNote, getContext }: AID
             if (!response.ok) throw new Error('Chat failed');
             const data = await response.json();
             setChatMessages(prev => [...prev, { role: 'assistant', content: data.result }]);
-        } catch (err) {
+        } catch {
             setChatMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I encountered an error." }]);
         } finally {
             setChatLoading(false);

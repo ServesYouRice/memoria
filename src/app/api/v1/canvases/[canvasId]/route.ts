@@ -11,6 +11,7 @@ const updateCanvasSchema = z.object({
   zoomLevel: z.number().min(0.1).max(5).optional(),
   panX: z.number().optional(),
   panY: z.number().optional(),
+  workspaceId: z.string().cuid().nullable().optional(),
 });
 
 export const GET = withApiHandler(async (

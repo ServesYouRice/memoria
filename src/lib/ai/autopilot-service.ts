@@ -1,6 +1,4 @@
 
-import { CanvasItem } from '@prisma/client';
-
 export interface AutopilotAction {
     itemId: string;
     newPosition: { x: number, y: number };

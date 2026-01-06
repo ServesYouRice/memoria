@@ -6,6 +6,8 @@
  */
 
 import { URL } from 'url';
+import { promises as dns } from 'dns';
+import net from 'net';
 
 // Private IP ranges to block
 const PRIVATE_IP_PATTERNS = [
@@ -35,6 +37,10 @@ function isPrivateOrLocalHost(hostname: string): boolean {
     return true;
   }
 
+  if (net.isIP(hostname)) {
+    return isPrivateIp(hostname);
+  }
+
   // Check for private IP patterns
   for (const pattern of PRIVATE_IP_PATTERNS) {
     if (pattern.test(hostname)) {
@@ -58,6 +64,73 @@ function isPrivateOrLocalHost(hostname: string): boolean {
   }
 
   return false;
+}
+
+function isPrivateIp(address: string): boolean {
+  if (net.isIP(address) === 4) {
+    const parts = address.split('.').map((part) => parseInt(part, 10));
+    if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+      return true;
+    }
+
+    const [a, b] = parts;
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 0) return true;
+    if (a >= 224) return true;
+    return false;
+  }
+
+  if (net.isIP(address) === 6) {
+    const normalized = address.toLowerCase();
+    if (normalized === '::1') return true;
+    if (normalized.startsWith('fe80:')) return true; // link-local
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // unique local
+    if (normalized.startsWith('::ffff:')) {
+      const ipv4 = normalized.replace('::ffff:', '');
+      return isPrivateIp(ipv4);
+    }
+    return false;
+  }
+
+  return true;
+}
+
+async function validateUrlForSsrfWithDns(urlString: string): Promise<{ valid: boolean; error?: string }> {
+  const base = validateUrlForSsrf(urlString);
+  if (!base.valid) {
+    return base;
+  }
+
+  const url = new URL(urlString);
+  const hostname = url.hostname.toLowerCase();
+
+  if (net.isIP(hostname)) {
+    if (isPrivateIp(hostname)) {
+      return { valid: false, error: 'Cannot fetch URLs from private or local addresses' };
+    }
+    return { valid: true };
+  }
+
+  try {
+    const records = await dns.lookup(hostname, { all: true, verbatim: true });
+    if (records.length === 0) {
+      return { valid: false, error: 'Hostname did not resolve' };
+    }
+
+    for (const record of records) {
+      if (isPrivateIp(record.address)) {
+        return { valid: false, error: 'Resolved to a private address' };
+      }
+    }
+  } catch {
+    return { valid: false, error: 'Hostname resolution failed' };
+  }
+
+  return { valid: true };
 }
 
 /**
@@ -87,7 +160,7 @@ export function validateUrlForSsrf(urlString: string): { valid: boolean; error?:
     }
 
     return { valid: true };
-  } catch (error) {
+  } catch {
     return { valid: false, error: 'Invalid URL format' };
   }
 }
@@ -111,7 +184,7 @@ export async function safeFetch(
 
   while (redirectCount <= maxRedirects) {
     // Validate current URL
-    const validation = validateUrlForSsrf(currentUrl);
+    const validation = await validateUrlForSsrfWithDns(currentUrl);
     if (!validation.valid) {
       return { ok: false, status: 400, error: validation.error };
     }

@@ -7,7 +7,7 @@
 'use client';
 
 import React from 'react';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { CanvasErrorBoundary } from '@/features/canvas/components/CanvasErrorBoundary';
 import dynamic from 'next/dynamic';
 import { CanvasSkeleton } from '@/features/canvas/components/CanvasSkeleton';
 
@@ -30,8 +30,8 @@ export default function CanvasPage({ params }: CanvasPageProps) {
   const { canvasId } = React.use(params);
 
   return (
-    <ErrorBoundary>
+    <CanvasErrorBoundary>
       <CanvasBoard canvasId={canvasId} />
-    </ErrorBoundary>
+    </CanvasErrorBoundary>
   );
 }

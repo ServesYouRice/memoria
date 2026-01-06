@@ -41,11 +41,11 @@
 
 import { useMutation, useQuery, useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { ItemType, CanvasItem } from '@/types/canvas';
+import { type ItemType, type CanvasItem } from '@/types/canvas';
 import {
-  CreateCanvasItemInput,
-  UpdateCanvasItemInput,
-  DeleteCanvasItemInput,
+  type CreateCanvasItemInput,
+  type UpdateCanvasItemInput,
+  type DeleteCanvasItemInput,
 } from '@/lib/validation/canvas-item';
 import {
   POLLING_INTERVAL_ACTIVE_MS,
@@ -70,28 +70,59 @@ export interface ViewportParams {
  */
 const api = {
   async listItems(canvasId: string, type?: ItemType, viewport?: ViewportParams) {
-    const params = new URLSearchParams({ canvasId });
-    if (type) params.set('type', type);
+    const buildParams = (offset?: number, limit?: number) => {
+      const params = new URLSearchParams({ canvasId });
+      if (type) params.set('type', type);
 
-    // Add viewport parameters if provided
-    if (viewport) {
-      params.set('minX', viewport.minX.toString());
-      params.set('maxX', viewport.maxX.toString());
-      params.set('minY', viewport.minY.toString());
-      params.set('maxY', viewport.maxY.toString());
-      if (viewport.limit !== undefined) params.set('limit', viewport.limit.toString());
-      if (viewport.offset !== undefined) params.set('offset', viewport.offset.toString());
+      if (viewport) {
+        params.set('minX', viewport.minX.toString());
+        params.set('maxX', viewport.maxX.toString());
+        params.set('minY', viewport.minY.toString());
+        params.set('maxY', viewport.maxY.toString());
+      }
+
+      if (limit !== undefined) params.set('limit', limit.toString());
+      if (offset !== undefined) params.set('offset', offset.toString());
+
+      return params;
+    };
+
+    const fetchPage = async (offset?: number, limit?: number) => {
+      const response = await fetch(`/api/v1/canvas-items?${buildParams(offset, limit)}`);
+      if (!response.ok) throw new Error('Failed to fetch items');
+      return response.json();
+    };
+
+    const firstPage = await fetchPage(viewport?.offset, viewport?.limit);
+    const items: CanvasItem[] = Array.isArray(firstPage.items) ? firstPage.items : [];
+    let total = firstPage.total ?? items.length;
+    let offset = firstPage.offset ?? 0;
+    let limit = firstPage.limit ?? items.length;
+    let hasMore = firstPage.hasMore ?? offset + items.length < total;
+
+    if (!viewport && hasMore) {
+      let currentOffset = offset + items.length;
+      const pageLimit = limit || items.length;
+
+      while (hasMore) {
+        const nextPage = await fetchPage(currentOffset, pageLimit);
+        const nextItems = Array.isArray(nextPage.items) ? nextPage.items : [];
+        items.push(...nextItems);
+        total = nextPage.total ?? total;
+        const nextOffset = nextPage.offset ?? currentOffset;
+        currentOffset = nextOffset + nextItems.length;
+        hasMore = nextPage.hasMore ?? currentOffset < total;
+      }
+
+      offset = 0;
+      limit = items.length;
     }
 
-    const response = await fetch(`/api/v1/canvas-items?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch items');
-
-    const data = await response.json();
     return {
-      items: data.items as CanvasItem[],
-      total: data.total,
-      offset: data.offset,
-      limit: data.limit,
+      items,
+      total,
+      offset,
+      limit,
     };
   },
 

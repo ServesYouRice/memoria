@@ -5,7 +5,7 @@
  * Verifies user email using a valid verification token
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { errorResponse, BadRequestError, NotFoundError } from '@/lib/errors';
 import { z } from 'zod';

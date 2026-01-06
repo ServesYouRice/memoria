@@ -100,7 +100,7 @@ export function generateConnectionPath(
     const cy = dy * curvature;
 
     // Cubic bezier curve
-    return `M ${from.x} ${from.y} C ${from.x + cx} ${from.y}, ${to.x - cx} ${to.y}, ${to.x} ${to.y}`;
+    return `M ${from.x} ${from.y} C ${from.x + cx} ${from.y + cy}, ${to.x - cx} ${to.y - cy}, ${to.x} ${to.y}`;
 }
 
 /**
@@ -117,7 +117,7 @@ export function generateOrthogonalPath(
     from: ConnectionPoint,
     to: ConnectionPoint,
     fromAnchor: AnchorPosition,
-    toAnchor: AnchorPosition
+    _toAnchor: AnchorPosition
 ): string {
     const midX = (from.x + to.x) / 2;
     const midY = (from.y + to.y) / 2;

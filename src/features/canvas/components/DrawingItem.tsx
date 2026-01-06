@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Group, Line, Rect } from 'react-konva';
-import { CanvasItem, isDrawingContent } from '@/types/canvas';
+import { type CanvasItem, isDrawingContent } from '@/types/canvas';
 
 interface DrawingItemProps {
     item: CanvasItem;

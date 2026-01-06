@@ -133,7 +133,37 @@ export function useCreateCanvas() {
 
   return useMutation({
     mutationFn: api.createCanvas,
-    onSuccess: () => {
+    onMutate: async (newCanvas) => {
+      await queryClient.cancelQueries({ queryKey: canvasKeys.list() });
+      const previousCanvases = queryClient.getQueryData<CanvasesListResponse>(canvasKeys.list());
+
+      if (previousCanvases) {
+        queryClient.setQueryData<CanvasesListResponse>(canvasKeys.list(), {
+          ...previousCanvases,
+          canvases: [
+            {
+              id: 'temp-id-' + Date.now(),
+              name: newCanvas.name || 'Untitled Canvas',
+              userId: 'current-user',
+              zoomLevel: 1,
+              panX: 0,
+              panY: 0,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            ...previousCanvases.canvases
+          ]
+        });
+      }
+
+      return { previousCanvases };
+    },
+    onError: (err, newCanvas, context) => {
+      if (context?.previousCanvases) {
+        queryClient.setQueryData(canvasKeys.list(), context.previousCanvases);
+      }
+    },
+    onSettled: () => {
       // Invalidate and refetch canvases list
       queryClient.invalidateQueries({
         queryKey: canvasKeys.list(),
@@ -150,7 +180,37 @@ export function useDuplicateCanvas() {
 
   return useMutation({
     mutationFn: api.duplicateCanvas,
-    onSuccess: () => {
+    onMutate: async (canvasId) => {
+      await queryClient.cancelQueries({ queryKey: canvasKeys.list() });
+      const previousCanvases = queryClient.getQueryData<CanvasesListResponse>(canvasKeys.list());
+
+      if (previousCanvases) {
+        const originalCanvas = previousCanvases.canvases.find(c => c.id === canvasId);
+        if (originalCanvas) {
+          queryClient.setQueryData<CanvasesListResponse>(canvasKeys.list(), {
+            ...previousCanvases,
+            canvases: [
+              {
+                ...originalCanvas,
+                id: 'temp-dup-' + Date.now(),
+                name: `${originalCanvas.name} (Copy)`,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+              ...previousCanvases.canvases
+            ]
+          });
+        }
+      }
+
+      return { previousCanvases };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousCanvases) {
+        queryClient.setQueryData(canvasKeys.list(), context.previousCanvases);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({
         queryKey: canvasKeys.list(),
       });

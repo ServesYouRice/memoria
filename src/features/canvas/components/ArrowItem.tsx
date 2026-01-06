@@ -1,6 +1,6 @@
 import React from 'react';
 import { Group, Arrow } from 'react-konva';
-import { CanvasItem, ArrowContent } from '@/types/canvas';
+import { type CanvasItem, type ArrowContent } from '@/types/canvas';
 
 interface ArrowItemProps {
     item: CanvasItem;

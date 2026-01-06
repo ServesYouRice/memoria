@@ -9,6 +9,7 @@ import { createLogger } from '@/lib/logger';
 const logger = createLogger('redis-client');
 
 let redis: Redis | null = null;
+let redisWarningLogged = false;
 
 /**
  * Get Redis client instance
@@ -18,7 +19,10 @@ export function getRedisClient(): Redis | null {
   // Check if Redis is enabled
   const redisUrl = process.env['REDIS_URL'];
   if (!redisUrl) {
-    logger.warn('Redis URL not configured, caching disabled');
+    if (!redisWarningLogged) {
+      logger.warn('Redis URL not configured, caching disabled');
+      redisWarningLogged = true;
+    }
     return null;
   }
 

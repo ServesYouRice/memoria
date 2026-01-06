@@ -1,8 +1,8 @@
 
 import { useState, useRef, useCallback } from 'react';
-import Konva from 'konva';
+import type Konva from 'konva';
 import { useCanvasStore } from '@/stores/canvasStore';
-import { ItemType, DrawingPath } from '@/types/canvas';
+import { ItemType, type DrawingPath } from '@/types/canvas';
 import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
 
 interface UseDrawingInteractionProps {

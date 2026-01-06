@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Group, Rect, Text } from 'react-konva';
-import { CanvasItem, isPollContent } from '@/types/canvas';
+import { type CanvasItem, isPollContent } from '@/types/canvas';
 import { useSession } from 'next-auth/react';
 import { useUpdateCanvasItem } from '@/lib/hooks/use-canvas-items';
 

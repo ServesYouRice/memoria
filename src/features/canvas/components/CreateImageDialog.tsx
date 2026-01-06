@@ -7,6 +7,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import Image from 'next/image';
 import {
   Dialog,
   DialogTitle,
@@ -214,10 +215,13 @@ export function CreateImageDialog({
                   textAlign: 'center',
                 }}
               >
-                <img
+                <Image
                   src={uploadedImage.url}
-                  alt="Preview"
-                  style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '4px' }}
+                  alt={uploadedImage.filename || 'Uploaded image preview'}
+                  width={uploadedImage.width ?? 400}
+                  height={uploadedImage.height ?? 300}
+                  style={{ maxWidth: '100%', maxHeight: '300px', height: 'auto', borderRadius: '4px' }}
+                  unoptimized
                 />
                 <Typography variant="caption" display="block" sx={{ mt: 1 }} color="text.secondary">
                   {uploadedImage.filename}

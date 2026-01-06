@@ -3,7 +3,7 @@
  * Manage canvas version history
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
@@ -59,6 +59,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       panX: canvas.panX,
       panY: canvas.panY,
       items: canvas.items.map((item) => ({
+        id: item.id,
         type: item.type,
         positionX: item.positionX,
         positionY: item.positionY,
@@ -67,6 +68,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         zIndex: item.zIndex,
         content: item.content,
         tags: item.tags,
+        version: item.version,
+        createdById: item.createdById,
+        updatedById: item.updatedById,
       })),
     };
 

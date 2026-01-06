@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Box, Button, Typography, Paper } from '@mui/material';
 import { Refresh as RefreshIcon, ErrorOutline as ErrorIcon } from '@mui/icons-material';
 

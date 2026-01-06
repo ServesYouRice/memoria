@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { type NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/api/auth';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/lib/constants';
-import { withApiHandler } from '@/lib/api/route-handler';
+import { runIdempotent, withApiHandler } from '@/lib/api/route-handler';
 
 /**
  * GET /api/v1/canvases
@@ -12,11 +12,7 @@ import { withApiHandler } from '@/lib/api/route-handler';
  * Per ADR-0001: API Versioning & Error Contract (RFC 7807)
  */
 export const GET = withApiHandler(async (request: NextRequest) => {
-  // Authentication check
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized: You must be logged in to access this resource');
-  }
+  const { userId } = await requireAuth();
 
   // Pagination parameters
   const { searchParams } = new URL(request.url);
@@ -26,7 +22,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   );
   const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-  const where = { userId: session.user.id };
+  const where = { userId };
 
   // Get total count
   const total = await prisma.canvas.count({ where });
@@ -63,24 +59,22 @@ const createCanvasSchema = z.object({
  * Per ADR-0001: API Versioning & Error Contract (RFC 7807)
  */
 export const POST = withApiHandler(async (request: NextRequest) => {
-  // Authentication check
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized: You must be logged in to access this resource');
-  }
+  const { userId } = await requireAuth();
 
-  // Parse and validate request body
-  // ZodError will be caught automatically by withApiHandler
-  const body = await request.json();
-  const validatedData = createCanvasSchema.parse(body);
+  return runIdempotent(request, userId, async () => {
+    // Parse and validate request body
+    // ZodError will be caught automatically by withApiHandler
+    const body = await request.json();
+    const validatedData = createCanvasSchema.parse(body);
 
-  // Create canvas
-  const canvas = await prisma.canvas.create({
-    data: {
-      name: validatedData.name,
-      userId: session.user.id,
-    },
+    // Create canvas
+    const canvas = await prisma.canvas.create({
+      data: {
+        name: validatedData.name,
+        userId,
+      },
+    });
+
+    return NextResponse.json(canvas, { status: 201 });
   });
-
-  return NextResponse.json(canvas, { status: 201 });
 });

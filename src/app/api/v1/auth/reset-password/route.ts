@@ -5,7 +5,7 @@
  * Resets user password using a valid reset token
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { errorResponse, BadRequestError, NotFoundError } from '@/lib/errors';
 import { hash } from 'argon2';

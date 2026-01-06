@@ -5,6 +5,7 @@ import { getCachedUnfurl, setCachedUnfurl } from '@/lib/cache/unfurl-cache';
 import { logger } from '@/lib/logger';
 import { withAuthValidation } from '@/lib/api/route-handler';
 import { unfurlSchema } from '@/lib/validation/unfurl';
+import { ApiError } from '@/lib/errors';
 
 export const POST = withAuthValidation(unfurlSchema, async ({ url }) => {
   // Check cache first (ADR-0011)
@@ -22,14 +23,21 @@ export const POST = withAuthValidation(unfurlSchema, async ({ url }) => {
   });
 
   if (!fetchResult.ok) {
-    return NextResponse.json(
-      { error: fetchResult.error || 'Failed to fetch URL' },
-      { status: fetchResult.status }
+    throw new ApiError(
+      fetchResult.status || 500,
+      'https://canvascollect.com/errors/unfurl',
+      'Unfurl Failed',
+      fetchResult.error || 'Failed to fetch URL'
     );
   }
 
   if (!fetchResult.data) {
-    return NextResponse.json({ error: 'No data received' }, { status: 500 });
+    throw new ApiError(
+      500,
+      'https://canvascollect.com/errors/unfurl',
+      'Unfurl Failed',
+      'No data received'
+    );
   }
 
   // Extract metadata from HTML
