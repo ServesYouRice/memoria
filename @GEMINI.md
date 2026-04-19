@@ -1,271 +1,83 @@
-# GEMINI.md - Comprehensive Codebase Review
+# Production Readiness Audit Report
 
-**Date**: December 11, 2025
-**Reviewer**: Antigravity (Google DeepMind)
-**Scope**: Full Codebase Scan & Deep Dive Verification
+This document outlines all critical bugs, race conditions, security gaps, and misconfigurations found during the comprehensive debugging audit of the codebase.
 
----
+## 1. Configuration & Startup Issues
+**Misconfiguration: Over-strict Environment Validation (`server.ts` & `dotenv-safe`)**
+- **Issue**: The application entry point (`server.ts`) uses `dotenv-safe/config`. This library enforces that *every* key present in `.env.example` must also be defined in the local `.env` file. However, `.env.example` contains numerous optional services (e.g., `SENTRY_DSN`, `SMTP_HOST`, `OPENAI_API_KEY`). If these are omitted in a production environment, the app will crash on startup, even though the Zod schema in `src/lib/env.ts` correctly marks them as optional.
+- **Fix Strategy**: Remove `dotenv-safe/config` from `server.ts` and rely entirely on Next.js's built-in environment loading combined with the existing robust Zod validation in `src/lib/env.ts`.
 
-## 1. System Overview
+## 2. Runtime Errors & Next.js 15 Breaking Changes
+**Runtime Exception: Synchronous `params` Access (`src/app/api/v1/canvases/[canvasId]/route.ts`)**
+- **Issue**: In Next.js 15, route segment `params` are asynchronous and must be awaited. While most routes correctly `await params`, the GET, PATCH, and DELETE handlers in `canvases/[canvasId]/route.ts` synchronously destructure `params.canvasId`. This will immediately throw a runtime error in Next.js 15: *"Route '[path]' used `params.canvasId`. `params` should be awaited before using its properties."*
+- **Fix Strategy**: Update the route handler signatures to type `params` as a Promise (e.g., `Promise<{ canvasId: string }>`) and `await params` before extracting `canvasId`.
 
-**Mental Model**:
-The application is a **Collaborative Infinite Canvas** (Memoria/CanvasCollect) built on a hybrid architecture.
--   **Frontend**: A heavy client-side React application (`CanvasBoard`) using `react-konva` for rendering and `zustand` for transient UI state.
--   **Backend**: 
-    -   **API**: Next.js 15 App Router (`/api/v1/*`) handling RESTful resources (canvases, items).
-    -   **Real-time Server**: A custom Node.js server (`server.ts`) extending Next.js to run a `ws` WebSocket server alongside it, handling YJS synchronization for collaboration.
--   **Data**: PostgreSQL (managed via Prisma) for persistence, with Redis for caching and idempotency.
+## 3. Real-Time Collaboration & WebSockets
+**Logic Flaw: Public Canvas WebSocket Rejection (`src/lib/collaboration/websocket-server.ts`)**
+- **Issue**: Public canvases (`isPublic = true`) are completely broken for real-time syncing. The WebSocket server strictly requires an explicit database share record (`canvas.shares.length > 0`) or ownership to grant access. Viewers joining a public canvas via a share link will encounter HTTP 401/403 errors when connecting to the WebSocket, preventing them from receiving Y.js updates or seeing cursors.
+- **Fix Strategy**: Modify the WebSocket authentication logic to check the `canvas.isPublic` flag and grant a base `VIEW` access level to authenticated users joining public canvases, even without an explicit share record.
 
-**Tech Stack Evaluation**:
--   **Next.js 15 + React 19**: ⚠️ **Aggressive/Bleeding Edge**. Next.js 15 and React 19 are very new. This enables meaningful features (Server Actions, RSC) but brings stability risks only recently stabilized.
--   **Konva**: ✅ **Excellent choice** for canvas performance compared to DOM-based approaches.
--   **TanStack Query**: ✅ **Critical** for managing server state in this client-heavy app.
--   **NextAuth Beta (v5)**: ⚠️ **Risk**. As noted in your instrumentation logs, reliance on beta auth software in production is risky.
+**Resource Leak: Unmanaged Y.js Documents (`src/lib/collaboration/yjs-provider.ts`)**
+- **Issue**: When a document exceeds the `DOCUMENT_TIMEOUT` (5 minutes of inactivity), it is removed from memory using `documents.delete(canvasId)`. However, `doc.destroy()` is never called. This leaves event listeners active and leaks memory for every loaded canvas until the server restarts.
+- **Fix Strategy**: Explicitly call `store.doc.destroy()` in the `schedulePersistence` timeout block and the `closeDocument` function before deleting the store from the Map.
 
----
+## 4. Race Conditions & Data Consistency
+**Race Condition: Registration TOCTOU (`src/app/api/v1/auth/register/route.ts`)**
+- **Issue**: The registration flow checks for an existing user (`findUnique`), performs an expensive password hash (Argon2id), and then creates the user. Two simultaneous requests with the same email will pass the initial check, resulting in the second request failing with a raw Prisma unique constraint violation (`P2002`). This bubbles up as a generic 500 Internal Server Error instead of a 409 Conflict.
+- **Fix Strategy**: Wrap the `prisma.user.create` call in a try-catch block specifically checking for `error.code === 'P2002'` to gracefully return a `ConflictError`. (Apply this same fix to connection creation in `connections/route.ts`).
 
-## 2. Architectural Review
+**Data Type Mismatch: Idempotency Wrapper (`src/lib/api/route-handler.ts`)**
+- **Issue**: `runIdempotent` saves the API response body as a database `Json` type and re-emits it via `NextResponse.json()`. If an endpoint returns an empty string or a 204 No Content response, attempting to replay it via `NextResponse.json(existing.responseBody)` will result in malformed JSON or crash the handler.
+- **Fix Strategy**: Include response headers and the original HTTP status code to accurately differentiate between a 204 (empty body) and JSON responses before replaying the cached output.
 
-### 🏗️ Strengths
--   **Feature-Based Folder Structure**: organizing by `src/features/` (e.g., `features/canvas`, `features/auth`) is a robust pattern that scales well.
--   **Custom Real-Time Server**: Decoupling the WebSocket server logic (`websocket-server.ts`) from standard API routes is the correct architectural decision for Next.js, allowing persistent connections that serverless functions cannot handle.
--   **Virtualization**: Usage of `useVirtualItems` in the canvas is a sophisticated and necessary optimization for performance at scale.
-
-### 🚨 Architectural Issues
-
-#### A. The God Component: `CanvasBoard.tsx`
--   **Location**: `src/features/canvas/components/CanvasBoard.tsx`
--   **Logic**: This single file (1,434 lines) is doing too much:
-    -   State management (Zustand + local useState)
-    -   Network synchronization (TanStack Query + WebSockets)
-    -   Event handling (Keyboard, Gestures, Mouse)
-    -   UI Rendering (Toolbar, SpeedDial, Dialogs, ContextMenu)
-    -   Business Logic (Copy/Paste, Deletion, AI generation)
--   **Risk**: High coupling makes it fragile. A change to "selection logic" could break "drawing logic". Testing this component is nearly impossible.
-
-#### B. Mixed Signal on Real-Time
--   **Inconsistency**: Documentation (`ARCHITECTURE.md`) claims "No real-time collaboration" / "Polling default", but the code (`server.ts`, `use-collaboration.ts`) clearly implements and uses WebSockets.
--   **Impact**: Confusion for new developers. The code is ahead of the docs.
-
-#### C. Orphaned/Dead Models (Verified)
--   **`Workspace` Model**: Defined in `schema.prisma` but NO API endpoints exist (checked `/api/v1/workspaces`).
--   **`SavedView` Model**: Defined in `schema.prisma` but NO API endpoints and NO usage in frontend code.
--   **`IdempotencyKey` Model**: Defined in `schema.prisma` but `idempotency.ts` uses Redis directly, ignoring this Postgres model.
+## 5. Security & Validation Inconsistencies
+**Security Bypass: Weak Passwords on Reset/Change (`src/app/api/v1/auth/reset-password/route.ts` & `change-password/route.ts`)**
+- **Issue**: The main registration flow implements robust password strength checking using `zxcvbn` (`validatePasswordStrength`) and mandates a minimum length of 10 characters. However, both the `reset-password` and `change-password` routes bypass `zxcvbn` entirely and only enforce a generic minimum length of 8 characters. This allows users to circumvent security policies and set weak passwords.
+- **Fix Strategy**: Centralize password validation into a shared utility or Zod schema. Enforce the exact same `validatePasswordStrength` checks and character limits across all password modification flows.
 
 ---
 
-## 3. Code Quality & Smells
+## 6. LLM Integration Strategy (Agentic Organization)
 
-### ⚠️ Type Safety & "any"
--   **Issue**: Loose typing in critical complex logic.
--   **Locations**:
-    -   `CanvasBoard.tsx`: `handleContextMenu` uses casting `(e: React.MouseEvent | any)`.
-    -   `CanvasBoard.tsx`: `handleStageMouseDown` implicitly trusts `e.target` shape.
--   **Why it matters**: In a complex canvas app, event type mismatches are the #1 cause of runtime crashes.
+Based on your vision of turning this into a mesh-network-style canvas with LLM-driven organization, here is a strategic proposal to integrate external personal assistant agents (like OpenClaw or other BYOK bots) so they can autonomously organize notes, files, and calendar events for the user.
 
-### 🐛 Error Handling Inconsistencies
--   **Console usage**: `console.error` is used frequently in `catch` blocks instead of the structured `logger`.
--   **Swallowed Errors**: In `fetchCanvas` (CanvasBoard.tsx:310), errors are swallowed silently: `} catch (err) { // Silent fail }`.
+### Core Architecture: The "Agent-First" API
+Since the external bots (e.g., accessed via WhatsApp) will be interacting with your app, your app needs to act as a powerful, headless API backend for these agents.
 
-### 🧹 Code Smells
--   **Magic Numbers**: `CanvasBoard.tsx` has hardcoded values scattered in handlers.
--   **Prop Drilling**: `CanvasHeader` takes ~20 props.
--   **State in Render**: Verified that `useCanvasStore.getState()` is called inside the `CanvasBoard` render loop (Line 986), breaking React reactivity rules.
+1. **Authentication (App API Keys)**
+   - Utilize your existing `ApiKey` database model to allow users to generate scoped "Agent Tokens".
+   - The user will take this token from your app and provide it to their external bot (OpenClaw).
+   - This allows the external bot to securely call your app's API on the user's behalf.
 
----
+2. **LLM-Optimized Endpoints (Tool Calling API)**
+   - Create a dedicated set of API endpoints (`/api/v1/agent/...`) specifically designed to be easily consumed as "Tools" or "Functions" by external LLMs.
+   - **Endpoints needed:**
+     - `POST /agent/items`: Create notes, tasks, or links.
+     - `GET /agent/search`: Semantic search through the user's canvas.
+     - `POST /agent/connections`: Link two nodes together (building the mesh network).
+     - `PUT /agent/organize`: Allow the LLM to update the `positionX`, `positionY`, and `tags` of multiple items at once to visually group them.
 
-## 4. Logic & UX/Flow Issues
+### Dual-View System: Manual vs. Agentic Organization
+You mentioned wanting a user manual configuration and a different tab for LLM-organized views.
 
-### 🎨 Missing UI Pages (Verified)
-1.  **Workspaces UI**: Missing. No pages in `src/app/workspaces` or similar.
-2.  **Profile Page**: Missing. `src/app/profile` does not exist.
-3.  **API Keys UI**: Missing. No interface for users to manage keys.
-4.  **Notifications**: Missing. No notification center or feed.
-5.  **Global Error Boundary**: Missing specific error boundary for the Canvas component.
+1. **The Manual Canvas (Default View)**
+   - Users place items, draw connections, and visually organize their space manually. The `positionX` and `positionY` coordinates reflect their exact layout.
 
-### ⚡ Performance & Optimization
-1.  **Render Loops**: `CanvasBoard` defines many handlers inline.
-2.  **Optimistic Updates**: Verified `useCanvasItems` implements good optimistic updates, but `useCanvases` and `useComments` DO NOT. This creates inconsistent UX (some actions are instant, others lag).
+2. **The LLM / Semantic View (Agentic Tab)**
+   - Instead of the LLM moving the user's manual layout around (which can be frustrating), introduce a **"Smart Layout" or "Semantic View"**.
+   - When the user switches to this tab, the frontend ignores the manual `positionX/Y` and dynamically groups items using a force-directed graph or clustering algorithm based on metadata and tags generated by the LLM.
+   - **How it works**: When OpenClaw adds a note from WhatsApp, it also assigns tags (e.g., `#meeting`, `#urgent`) and links it to related existing items. In the Semantic View, the UI automatically groups `#meeting` nodes together based on these LLM-generated relationships.
 
----
+### Implementation Roadmap
 
-## 5. Dependencies & Stack Analysis
+**Phase 1: Agent Ingestion (One-Way Sync)**
+- Allow the external bot to just *dump* information into the canvas.
+- Build an API endpoint where OpenClaw can send a payload: `"User said: remind me to buy milk"`. Your app creates a CanvasItem (type: `NOTE`) and places it in an "Inbox" area of the canvas.
 
-**Dependency Bloat**:
--   **`zxcvbn`**: Verified present.
--   **`jspdf`**: Verified present.
+**Phase 2: Semantic Mesh (Two-Way Sync)**
+- Allow the LLM to query existing notes. If the user says via WhatsApp, "What did I write about Project X?", OpenClaw hits your `/agent/search` endpoint, reads the canvas, and replies.
+- The LLM can create `ItemConnection` records (which already exist in your Prisma schema) to link related ideas together autonomously.
 
-**Beta Risks**:
--   **`next-auth@beta`**: Critical risk confirmed (package.json v5.0.0-beta.25).
-
----
-
-## 6. Testing & Best Practices
-
-**Status**: 
--   **Unit Tests**: Sparse (~8 files).
--   **Integration Tests**: Logic for "Collaboration" (`websocket-server.ts`) is complex and entirely untested.
--   **Visual Regression**: Missing.
-
----
-
-## 7. Priority Action Plan
-
-### 🔴 High Impact / High Urgency
-
-1.  **Split `CanvasBoard.tsx` (Refactor)**
-    -   Extract `useCanvasInteraction`, `useCanvasHotkeys`, `useCanvasData`.
-2.  **Fix Swallowed Errors**
-    -   Add `setError` state to `CanvasBoard`.
-3.  **Clean Dead Code**
-    -   Remove `Workspace`, `SavedView`, and `IdempotencyKey` models from `schema.prisma`.
-4.  **Fix State in Render**
-    -   Replace `useCanvasStore.getState()` with `useCanvasStore((state) => state.x)` in `CanvasBoard`.
-
-### 🟡 High Impact / Lower Urgency
-
-5.  **Implement Canvas Error Boundary**
-    -   Wrap `<Stage>` in a `<CanvasErrorBoundary>`.
-6.  **Strict Type Check on Canvas Events**
-    -   Remove `any` casts.
-7.  **Add Optimistic Updates**
-    -   Add to `useComments` and `useCanvases` to match `useCanvasItems` quality.
-
-### 🟢 Nice to Have / Future Improvements
-
-8.  **Implement Missing UI**
-    -   Profile, API Keys, Notifications.
-9.  **Audit Dependencies**
-    -   Remove unused deps.
-
-## Codex Commentary on GEMINI Findings
-
-- Correct highlights: The god-component callout for `CanvasBoard.tsx`, the render-time `useCanvasStore.getState()` bug, missing UI for profile/API keys/notifications/workspaces, and lack of integration tests for collaboration are accurate and worth addressing.
-- Overlooked risks: The review misses high-impact issues—CSP nonce/style mismatch that can break MUI/Emotion rendering, missing cache invalidation after canvas item/version mutations (stale cached canvases), and cuid-vs-uuid schema mismatches that break extension/AI endpoints.
-- Overstated/incorrect: Labeling `IdempotencyKey` as dead code is wrong; it is used in `route-handler.ts` but is under-scoped (key not tied to path/method/user, no expiry). Fix the design rather than remove the model.
-- Real-time nuance: The report says mixed signals on real-time; the WebSocket/Yjs server exists and is used—the gaps are reconnect/error handling and cross-instance persistence, not absence of WebSockets.
-- Testing focus: Visual regression is less urgent than missing tests for collaboration, upload, AI, and API-key flows; those should be prioritized.
-- Stack hygiene gags: Missing notes on duplicated Next configs (`next.config.js` vs `.mjs`), build ignoring TS/ESLint errors, unused `env.ts` validation, and insecure upload handling (no directory ensure/quota/scan).
-
----
-
-## Antigravity Meta-Review: GEMINI.md + Codex Commentary
-
-**Date**: December 11, 2025  
-**Reviewer**: Antigravity (Google DeepMind)
-
-### ✅ What Both Reports Get Right
-
-1. **`CanvasBoard.tsx` God Component** — Unanimous agreement. At 1,400+ lines with state, networking, events, rendering, and business logic all intertwined, this is the #1 maintainability risk. The suggested hook extractions (`useCanvasInteraction`, `useCanvasHotkeys`, `useCanvasData`) are practical and not overengineered.
-
-2. **`useCanvasStore.getState()` in Render** — Codex is right to validate this. Calling `.getState()` bypasses Zustand's subscription mechanism, creating a silent reactivity hole. This is a genuine bug, not stylistic.
-
-3. **Missing UI Pages** — Both agree Profile, Workspaces, API Keys, and Notifications are absent. This is verifiable and accurate.
-
-4. **NextAuth Beta Risk** — Valid concern. Beta auth in production is a calculated risk; acknowledging it is correct.
-
-### ⚠️ Where GEMINI.md Overreaches
-
-1. **"Remove `IdempotencyKey` from schema"** — This is **wrong advice**. Codex correctly notes it's _used_ in `route-handler.ts`. GEMINI.md jumped to "dead code" without tracing the import graph. The real issue (no path/method scoping, no expiry) requires a **redesign**, not deletion. Deleting the model would break future idempotency enforcement.
-
-2. **"Workspace and SavedView are dead"** — Partially true, but premature to delete. These may be intentional placeholders for roadmap features. A safer recommendation: mark them as `@deprecated` in schema comments and add a tracking issue—don't yank them from the schema outright.
-
-3. **Visual Regression Testing Priority** — Listed in the action plan, but for a Canvas-heavy app, functional tests for collaboration, uploads, and AI routes matter more. Visual regression is a nice-to-have when the core logic is solid.
-
-### ⚠️ Where Codex's Additions Are Valuable (But Could Go Further)
-
-1. **CSP/Nonce Issue** — Correctly identified as missed by GEMINI.md. This is a **production-breaking issue** if CSP is enforced. Emotion and MUI _will_ inject inline styles without nonces, causing unstyled pages. This should be **🔴 High Urgency**, not a footnote.
-
-2. **Cache Invalidation Gap** — Codex correctly notes stale cache after mutations. This is subtle but real—users editing canvases may see old data until the cache expires. Should be called out more prominently.
-
-3. **cuid-vs-uuid Mismatch** — Sharp catch. If schemas validate UUIDs but the DB uses cuids, every extension/AI endpoint breaks on valid IDs. This is a **silent failure mode** that's hard to debug in production.
-
-### 🤔 What's Missing From Both Reviews
-
-1. **No Mention of Rate Limiting Bypass** — If Redis is down or not configured, does rate limiting silently disable or throw? Neither report addresses fallback behavior.
-
-2. **WebSocket Authentication** — GEMINI.md notes the WS server exists, Codex notes secret misalignment—but neither audits whether the WS handshake actually validates tokens or if anyone can connect.
-
-3. **Upload Path Traversal** — Codex mentions directory creation and quotas, but neither explicitly flags potential path traversal attacks (`../../../etc/passwd` in filenames). This is Security 101 for file uploads.
-
-4. **No Database Migration Safety** — With orphaned models and schema changes being recommended, neither report mentions migration strategies or rollback plans.
-
-### 📊 Agreement Matrix
-
-| Finding | GEMINI | Codex | Correct? |
-|---------|--------|-------|----------|
-| CanvasBoard is a god component | ✅ | ✅ | ✅ Yes |
-| getState() in render is a bug | ✅ | ✅ | ✅ Yes |
-| IdempotencyKey is dead code | ✅ | ❌ | ❌ GEMINI wrong |
-| Missing UI pages | ✅ | ✅ | ✅ Yes |
-| CSP/Nonce breaks styles | ❌ | ✅ | ✅ Codex correct |
-| cuid/uuid mismatch | ❌ | ✅ | ✅ Codex correct |
-| Duplicate Next configs | ❌ | ✅ | ✅ Codex correct |
-| NextAuth beta is risky | ✅ | ✅ | ✅ Yes |
-
-### 🎯 Final Verdict
-
-- **GEMINI.md**: Solid initial audit, but rushed conclusions on "dead code" (IdempotencyKey) and missed critical security/CSP issues. The action plan is mostly sensible but should not be followed blindly—especially the deletion recommendations.
-- **Codex Commentary**: More nuanced and catches important gaps. The IdempotencyKey correction is accurate. However, still misses some security concerns (path traversal, WS auth, rate limit fallback).
-- **Both**: Agree on the 80% of issues that matter most. The disagreement on IdempotencyKey is the clearest case of GEMINI.md being objectively wrong.
-
----
-
-## 8. Detailed Implementation Plan - Codebase Stability & Security
-
-> **Status**: Verified & Ready for Execution
-> **Date**: December 11, 2025
-
-This plan overrides previous versions with strictly verified tasks based on direct code inspection.
-
-### 🔴 Critical Availability & Correctness (Execution Phase 1)
-
-#### 1. Fix Critical Reactivity Bug
-**Component**: `CanvasBoard.tsx`
-- **Verified**: `Line 986` in `CanvasBoard.tsx` calls `useCanvasStore.getState()` inside render.
-- **Issue**: This bypasses React's subscription model. UI updates for tool changes will be inconsistent or require unrelated re-renders to reflect state.
-- **Fix**: Replace with proper selectors: `const activeTool = useCanvasStore(state => state.activeTool)`.
-
-#### 2. Fix Extension API Validation
-**Component**: `src/lib/validation/extension.ts`
-- **Verified**: Validation schema demands `.uuid()`, but the Prisma schema and database use `.cuid()`.
-- **Issue**: **100% of valid requests from the extension are failing** validation because CUIDs are not UUIDs.
-- **Fix**: Relax validation to `.cuid()` or `.string()`. 
-> [!IMPORTANT]
-> **Breaking Change**: This changes the API contract. Any external clients specifically sending UUIDs might need attention, though internal apps use CUIDs.
-
-#### 3. Fix CSP Styling Block
-**Component**: `app/layout.tsx` / `middleware.ts`
-- **Verified**: `middleware.ts` generates and sets `x-nonce`, but `layout.tsx` fails to extract or pass it to the Emotion cache.
-- **Issue**: Production builds will prevent inline styles from MUI/Emotion from loading, resulting in unstyled pages ("Flash of Unstyled Content" or permanent broken UI).
-- **Fix**: Inject nonce into a Client Component `Providers` wrapper to configure Emotion's `CacheProvider`.
-
-#### 4. Canvas Error Boundary
-**Component**: `CanvasErrorBoundary.tsx`
-- **Verified**: No error boundary exists for the complex Canvas component.
-- **Issue**: A single error in Konva rendering crashes the entire React tree (white screen).
-- **Fix**: Create `components/CanvasErrorBoundary.tsx` and wrap `CanvasBoard`.
-
-### 🟡 High Value Refactoring (Execution Phase 2)
-
-#### 5. Decompose `CanvasBoard.tsx`
-**Component**: `CanvasBoard.tsx`
-- **Verified**: ~1,400 lines of mixed concerns (UI, State, Network, Events).
-- **Fix**: Extract logic into custom hooks to improve testability and maintainability:
-    - `useCanvasInteraction.ts` (Stage events, drag/drop)
-    - `useCanvasHotkeys.ts` (Keyboard shortcuts)
-    - `useCanvasData.ts` (Query/Mutation wrappers)
-
-### ⚪ Clarified "False Positives" & Strategy
-
-*   **IdempotencyKey**: Do **NOT** delete. It is referenced in `route-handler.ts`. The implementation needs refinement (scoping, expiry), not removal.
-*   **Orphan Models**: Do **NOT** delete `Workspace`/`SavedView` yet. Mark as `@deprecated` in Prisma schema. Deleting them now complicates potential rollbacks or future feature activation.
-
-### ✅ Verification Strategy
-
-| Task | Test Method |
-|------|-------------|
-| Reactivity | Manual: Open Canvas, switch tools, verify UI feedback without lag. |
-| Validation | cURL/Postman: POST to `/api/v1/extension/clip` with valid CUID. Expect 200 OK. |
-| CSP | Production Build: `npm run build && npm start`. Check console for "Refused to apply inline style". |
-
+**Phase 3: Automated Organization (The "Agentic Tab")**
+- Implement a background CRON job or webhook where your app actively asks an LLM (using the user's BYOK LLM key stored in your DB, if your app is orchestrating it) to review the canvas and suggest groupings.
+- The frontend implements a toggle: **[ Manual Layout | AI Organized Layout ]**. The AI layout visually clusters items based on the connections and tags the agent created.

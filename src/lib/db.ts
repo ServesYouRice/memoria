@@ -41,10 +41,10 @@
  * @see {@link https://www.prisma.io/docs Prisma Documentation}
  */
 
-import { PrismaClient } from '@prisma/client';
-import { createLogger } from './logger';
+import { PrismaClient } from "@prisma/client";
+import { createLogger } from "./logger";
 
-const logger = createLogger('database');
+const logger = createLogger("database");
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -57,30 +57,33 @@ const getConnectionPoolConfig = () => {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     return {
       recommended: 5,
-      environment: 'serverless',
+      environment: "serverless",
     };
   }
 
   // In traditional servers, allow larger pool
   return {
     recommended: 20,
-    environment: 'server',
+    environment: "server",
   };
 };
 
 const poolConfig = getConnectionPoolConfig();
+const skipEagerConnect =
+  process.env.MEMORIA_SKIP_DB_EAGER_CONNECT === "true" ||
+  process.env.NEXT_PHASE === "phase-production-build";
 
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log:
-      process.env.NODE_ENV === 'development'
+      process.env.NODE_ENV === "development"
         ? [
-            { emit: 'event', level: 'query' },
-            { emit: 'stdout', level: 'error' },
-            { emit: 'stdout', level: 'warn' },
+            { emit: "event", level: "query" },
+            { emit: "stdout", level: "error" },
+            { emit: "stdout", level: "warn" },
           ]
-        : [{ emit: 'stdout', level: 'error' }],
+        : [{ emit: "stdout", level: "error" }],
 
     // Connection pool configuration (Issues #13, #22)
     // Helps manage connections in serverless environments
@@ -93,62 +96,70 @@ export const prisma =
     },
   });
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
 // Log query events in development for debugging
-if (process.env.NODE_ENV === 'development') {
-  prisma.$on('query' as never, ((e: { query: string; duration: number }) => {
-    if (e.duration > 1000) {
-      logger.warn({ query: e.query, duration: e.duration }, 'Slow query detected');
-    }
-  }) as never);
+if (process.env.NODE_ENV === "development") {
+  prisma.$on(
+    "query" as never,
+    ((e: { query: string; duration: number }) => {
+      if (e.duration > 1000) {
+        logger.warn(
+          { query: e.query, duration: e.duration },
+          "Slow query detected",
+        );
+      }
+    }) as never,
+  );
 }
 
 // Graceful shutdown handling (Issue #22)
-if (process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV === "production") {
   // Log connection pool configuration
   logger.info(
     {
       environment: poolConfig.environment,
       recommended_pool_size: poolConfig.recommended,
     },
-    'Database connection pool initialized'
+    "Database connection pool initialized",
   );
 
   // Connect eagerly in production to fail fast
-  if (!globalForPrisma.prismaConnected) {
+  if (!skipEagerConnect && !globalForPrisma.prismaConnected) {
     prisma
       .$connect()
       .then(() => {
         globalForPrisma.prismaConnected = true;
-        logger.info('Database connected successfully');
+        logger.info("Database connected successfully");
       })
       .catch((error: Error) => {
-        logger.fatal({ error }, 'Failed to connect to database');
+        logger.fatal({ error }, "Failed to connect to database");
         process.exit(1);
       });
+  } else if (skipEagerConnect) {
+    logger.info("Skipping eager database connect during build-time execution");
   }
 
   // Handle graceful shutdown
   const shutdown = async (signal: string) => {
-    logger.info({ signal }, 'Shutting down database connection');
+    logger.info({ signal }, "Shutting down database connection");
     await prisma.$disconnect();
     globalForPrisma.prismaConnected = false;
   };
 
-  process.on('beforeExit', async () => {
-    await shutdown('beforeExit');
+  process.on("beforeExit", async () => {
+    await shutdown("beforeExit");
   });
 
-  process.on('SIGINT', async () => {
-    await shutdown('SIGINT');
+  process.on("SIGINT", async () => {
+    await shutdown("SIGINT");
     process.exit(0);
   });
 
-  process.on('SIGTERM', async () => {
-    await shutdown('SIGTERM');
+  process.on("SIGTERM", async () => {
+    await shutdown("SIGTERM");
     process.exit(0);
   });
 }
@@ -166,7 +177,7 @@ if (process.env.NODE_ENV === 'production') {
  */
 export async function withTimeout<T>(
   promise: Promise<T>,
-  timeoutMs: number = 5000
+  timeoutMs: number = 5000,
 ): Promise<T> {
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => {
@@ -206,7 +217,7 @@ export async function withTimeout<T>(
 export async function withRetry<T>(
   operation: () => Promise<T>,
   maxRetries: number = 3,
-  initialDelayMs: number = 1000
+  initialDelayMs: number = 1000,
 ): Promise<T> {
   let lastError: Error | unknown;
 
@@ -225,7 +236,7 @@ export async function withRetry<T>(
       if (!isRetryableError(error)) {
         logger.warn(
           { error, attempt },
-          'Database operation failed with non-retryable error'
+          "Database operation failed with non-retryable error",
         );
         throw error;
       }
@@ -242,7 +253,7 @@ export async function withRetry<T>(
           maxRetries,
           delayMs: Math.round(totalDelay),
         },
-        'Database operation failed, retrying...'
+        "Database operation failed, retrying...",
       );
 
       // Wait before retrying
@@ -253,7 +264,7 @@ export async function withRetry<T>(
   // All retries exhausted
   logger.error(
     { error: lastError, maxRetries },
-    'Database operation failed after all retries'
+    "Database operation failed after all retries",
   );
   throw lastError;
 }
@@ -275,22 +286,22 @@ export async function withRetry<T>(
  * - Foreign key constraint violations (P2003)
  */
 function isRetryableError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) {
+  if (typeof error !== "object" || error === null) {
     return false;
   }
 
   // Check for Prisma error codes
-  if ('code' in error && typeof error.code === 'string') {
+  if ("code" in error && typeof error.code === "string") {
     const code = error.code;
 
     // Retryable Prisma error codes
     const retryableCodes = [
-      'P1001', // Can't reach database server
-      'P1002', // Database server timeout
-      'P1008', // Operations timed out
-      'P1017', // Server closed connection
-      'P2024', // Timed out fetching connection from pool
-      'P2034', // Transaction failed due to write conflict or deadlock
+      "P1001", // Can't reach database server
+      "P1002", // Database server timeout
+      "P1008", // Operations timed out
+      "P1017", // Server closed connection
+      "P2024", // Timed out fetching connection from pool
+      "P2034", // Transaction failed due to write conflict or deadlock
     ];
 
     if (retryableCodes.includes(code)) {
@@ -299,11 +310,11 @@ function isRetryableError(error: unknown): boolean {
 
     // Don't retry validation, constraint, or not found errors
     const nonRetryableCodes = [
-      'P2000', // Value too long
-      'P2001', // Record not found
-      'P2002', // Unique constraint failed
-      'P2003', // Foreign key constraint failed
-      'P2025', // Record to update/delete not found
+      "P2000", // Value too long
+      "P2001", // Record not found
+      "P2002", // Unique constraint failed
+      "P2003", // Foreign key constraint failed
+      "P2025", // Record to update/delete not found
     ];
 
     if (nonRetryableCodes.includes(code)) {
@@ -312,18 +323,18 @@ function isRetryableError(error: unknown): boolean {
   }
 
   // Check error message for common transient issues
-  if ('message' in error && typeof error.message === 'string') {
+  if ("message" in error && typeof error.message === "string") {
     const message = error.message.toLowerCase();
     const transientMessages = [
-      'connection',
-      'timeout',
-      'timed out',
-      'econnrefused',
-      'econnreset',
-      'epipe',
-      'etimedout',
-      'pool',
-      'deadlock',
+      "connection",
+      "timeout",
+      "timed out",
+      "econnrefused",
+      "econnreset",
+      "epipe",
+      "etimedout",
+      "pool",
+      "deadlock",
     ];
 
     return transientMessages.some((msg) => message.includes(msg));
@@ -350,11 +361,11 @@ export async function withRetryAndTimeout<T>(
   operation: () => Promise<T>,
   timeoutMs: number = 5000,
   maxRetries: number = 3,
-  initialDelayMs: number = 1000
+  initialDelayMs: number = 1000,
 ): Promise<T> {
   return withRetry(
     () => withTimeout(operation(), timeoutMs),
     maxRetries,
-    initialDelayMs
+    initialDelayMs,
   );
 }

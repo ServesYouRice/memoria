@@ -3,12 +3,12 @@
  * Create a new canvas from a template
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/db';
-import { NotFoundError, UnauthorizedError, errorResponse } from '@/lib/errors';
-import { type Prisma } from '@prisma/client';
-import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { NotFoundError, UnauthorizedError, errorResponse } from "@/lib/errors";
+import { type Prisma } from "@prisma/client";
+import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 
 interface RouteContext {
   params: Promise<{ templateId: string }>;
@@ -22,7 +22,7 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      throw new UnauthorizedError('You must be logged in to use templates');
+      throw new UnauthorizedError("You must be logged in to use templates");
     }
 
     const { templateId } = await params;
@@ -38,7 +38,13 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
     });
 
     if (!template || !template.isTemplate) {
-      throw new NotFoundError('Template not found');
+      throw new NotFoundError("Template not found");
+    }
+
+    if (!template.isPublic && template.userId !== session.user.id) {
+      throw new UnauthorizedError(
+        "You do not have permission to use this template",
+      );
     }
 
     // Create new canvas from template

@@ -6,45 +6,45 @@
  * ENHANCED: CSP nonce integration for MUI/Emotion
  */
 
-import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
-import { Analytics } from '@vercel/analytics/react';
-import { Providers } from './providers';
-import { PWARegister } from '@/components/PWARegister';
-import { getNonce } from '@/lib/nonce';
-import './tiptap.css';
-
-// Load Inter font with all weights for premium typography
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
-  weight: ['400', '500', '600', '700', '800'],
-});
+import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/react";
+import { Providers } from "./providers";
+import { PWARegister } from "@/components/PWARegister";
+import { getNonce } from "@/lib/nonce";
+import "./tiptap.css";
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
 };
 
 export const metadata: Metadata = {
-  title: 'Memoria',
-  description: 'A collaborative canvas for notes and bookmarks',
-  manifest: '/manifest.json',
+  title: "Memoria",
+  description: "A collaborative canvas for notes and bookmarks",
+  manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
-    title: 'Memoria',
+    statusBarStyle: "default",
+    title: "Memoria",
   },
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const nonce = await getNonce();
 
   return (
-    <html lang="en" className={inter.variable}>
-      <body className={inter.className}>
+    <html lang="en">
+      <body
+        style={{
+          fontFamily:
+            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        }}
+      >
         <PWARegister />
         <Providers nonce={nonce}>{children}</Providers>
         <Analytics />
@@ -52,4 +52,3 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     </html>
   );
 }
-

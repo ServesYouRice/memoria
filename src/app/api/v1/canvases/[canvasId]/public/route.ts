@@ -4,12 +4,12 @@
  * DELETE /api/v1/canvases/[canvasId]/public - Make canvas private
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/api/auth';
-import { errorResponse, ForbiddenError } from '@/lib/errors';
-import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
-import { nanoid } from 'nanoid';
+import { type NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { requireAuth } from "@/lib/api/auth";
+import { errorResponse, ForbiddenError } from "@/lib/errors";
+import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { nanoid } from "nanoid";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
@@ -29,7 +29,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas || canvas.userId !== userId) {
-      throw new ForbiddenError('You do not have permission to make this canvas public');
+      throw new ForbiddenError(
+        "You do not have permission to make this canvas public",
+      );
     }
 
     // Generate share token if not exists
@@ -47,7 +49,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     await invalidateCanvasCache(canvasId);
 
     // Generate share URL
-    const shareUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/share/${shareToken}`;
+    const shareBaseUrl =
+      process.env.AUTH_URL ||
+      process.env.NEXTAUTH_URL ||
+      request.nextUrl.origin;
+    const shareUrl = `${shareBaseUrl}/share/${shareToken}`;
 
     return NextResponse.json({
       shareToken: updatedCanvas.shareToken,
@@ -73,7 +79,9 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas || canvas.userId !== userId) {
-      throw new ForbiddenError('You do not have permission to make this canvas private');
+      throw new ForbiddenError(
+        "You do not have permission to make this canvas private",
+      );
     }
 
     // Update canvas to be private (keep shareToken for potential re-enable)
@@ -88,7 +96,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
     return NextResponse.json({
       isPublic: updatedCanvas.isPublic,
-      message: 'Canvas is now private',
+      message: "Canvas is now private",
     });
   } catch (error) {
     return errorResponse(error, request.url);

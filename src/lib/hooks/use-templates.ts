@@ -3,8 +3,33 @@
  * React Query hooks for managing canvas templates
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type CanvasItem } from '@/types/canvas';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type CanvasItem } from "@/types/canvas";
+
+function getErrorMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object") {
+    const details = payload as Record<string, unknown>;
+    if (typeof details.detail === "string") {
+      return details.detail;
+    }
+    if (typeof details.error === "string") {
+      return details.error;
+    }
+    if (typeof details.message === "string") {
+      return details.message;
+    }
+  }
+
+  return fallback;
+}
+
+async function parseJson<T>(response: Response, fallback: string) {
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(getErrorMessage(payload, fallback));
+  }
+  return payload as T;
+}
 
 export interface Template {
   id: string;
@@ -22,12 +47,21 @@ export interface Template {
   user: {
     id: string;
     name: string | null;
-    email: string;
   };
 }
 
 interface TemplatesResponse {
   templates: Template[];
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+interface CreatedCanvas {
+  id: string;
 }
 
 /**
@@ -35,20 +69,20 @@ interface TemplatesResponse {
  */
 export function useTemplates(category?: string, userId?: string) {
   const params = new URLSearchParams();
-  if (category) params.append('category', category);
-  if (userId) params.append('userId', userId);
+  if (category) params.append("category", category);
+  if (userId) params.append("userId", userId);
 
   const queryString = params.toString();
-  const url = `/api/v1/templates${queryString ? `?${queryString}` : ''}`;
+  const url = `/api/v1/templates${queryString ? `?${queryString}` : ""}`;
 
   return useQuery<TemplatesResponse>({
-    queryKey: ['templates', category, userId],
+    queryKey: ["templates", category, userId],
     queryFn: async () => {
       const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Failed to fetch templates');
-      }
-      return response.json();
+      return parseJson<TemplatesResponse>(
+        response,
+        "Failed to fetch templates",
+      );
     },
   });
 }
@@ -58,13 +92,10 @@ export function useTemplates(category?: string, userId?: string) {
  */
 export function useTemplate(templateId: string) {
   return useQuery<Template>({
-    queryKey: ['template', templateId],
+    queryKey: ["template", templateId],
     queryFn: async () => {
       const response = await fetch(`/api/v1/templates/${templateId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch template');
-      }
-      return response.json();
+      return parseJson<Template>(response, "Failed to fetch template");
     },
     enabled: !!templateId,
   });
@@ -79,29 +110,34 @@ export function useSaveAsTemplate() {
   return useMutation({
     mutationFn: async ({
       canvasId,
+      name,
       description,
       category,
+      isPublic,
     }: {
       canvasId: string;
+      name?: string;
       description?: string;
       category?: string;
+      isPublic?: boolean;
     }) => {
-      const response = await fetch('/api/v1/templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ canvasId, description, category }),
+      const response = await fetch("/api/v1/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          canvasId,
+          name,
+          description,
+          category,
+          isPublic,
+        }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to save template');
-      }
-
-      return response.json();
+      return parseJson<Template>(response, "Failed to save template");
     },
     onSuccess: () => {
       // Invalidate templates list
-      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
     },
   });
 }
@@ -109,28 +145,25 @@ export function useSaveAsTemplate() {
 /**
  * Use a template to create a new canvas
  */
-export function useTemplate_CreateFromTemplate() {
+export function useCreateCanvasFromTemplate() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ templateId }: { templateId: string }) => {
       const response = await fetch(`/api/v1/templates/${templateId}/use`, {
-        method: 'POST',
+        method: "POST",
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to use template');
-      }
-
-      return response.json();
+      return parseJson<CreatedCanvas>(response, "Failed to use template");
     },
     onSuccess: () => {
       // Invalidate canvases list to show new canvas
-      queryClient.invalidateQueries({ queryKey: ['canvases'] });
+      queryClient.invalidateQueries({ queryKey: ["canvases"] });
     },
   });
 }
+
+export const useTemplate_CreateFromTemplate = useCreateCanvasFromTemplate;
 
 /**
  * Remove template status from a canvas
@@ -141,18 +174,16 @@ export function useRemoveTemplate() {
   return useMutation({
     mutationFn: async ({ templateId }: { templateId: string }) => {
       const response = await fetch(`/api/v1/templates/${templateId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to remove template');
-      }
-
-      return response.json();
+      return parseJson<Record<string, unknown>>(
+        response,
+        "Failed to remove template",
+      );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
     },
   });
 }

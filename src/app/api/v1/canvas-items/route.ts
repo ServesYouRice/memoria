@@ -9,20 +9,21 @@
  * Following ADR-0009: Autosave & Concurrency Control
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
-import { requireAuth, requireCanvasAccess } from '@/lib/api/auth';
-import { errorResponse } from '@/lib/errors';
-import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
-import { runIdempotent } from '@/lib/api/route-handler';
+import { type NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
+import { errorResponse } from "@/lib/errors";
+import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { runIdempotent } from "@/lib/api/route-handler";
 import {
   createCanvasItemSchema,
   listCanvasItemsSchema,
+  parseCanvasItemContent,
   viewportPaginationSchema,
   type ViewportPaginationInput,
-} from '@/lib/validation/canvas-item';
-import type { CanvasItem } from '@prisma/client';
+} from "@/lib/validation/canvas-item";
+import type { CanvasItem } from "@prisma/client";
 
 /**
  * POST /api/v1/canvas-items
@@ -37,9 +38,10 @@ export async function POST(request: NextRequest) {
 
       // Validate input
       const data = createCanvasItemSchema.parse(body);
+      const validatedContent = parseCanvasItemContent(data.type, data.content);
 
       // Verify user has EDIT permission (via ownership or share)
-      await requireCanvasAccess(data.canvasId, userId, email, 'EDIT');
+      await requireCanvasAccess(data.canvasId, userId, email, "EDIT");
 
       // Create item
       const item = await prisma.canvasItem.create({
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
           width: data.width,
           height: data.height,
           zIndex: data.zIndex,
-          content: data.content ?? Prisma.JsonNull,
+          content: validatedContent ?? Prisma.JsonNull,
           tags: data.tags || [],
           version: 1,
           createdById: userId,
@@ -95,34 +97,50 @@ export async function GET(request: NextRequest) {
 
     // Check if viewport parameters are provided
     const hasViewportParams =
-      searchParams.has('minX') ||
-      searchParams.has('maxX') ||
-      searchParams.has('minY') ||
-      searchParams.has('maxY');
+      searchParams.has("minX") ||
+      searchParams.has("maxX") ||
+      searchParams.has("minY") ||
+      searchParams.has("maxY");
 
     // Parse query params with viewport support
     const query = hasViewportParams
       ? viewportPaginationSchema.parse({
-        canvasId: searchParams.get('canvasId'),
-        type: searchParams.get('type') || undefined,
-        includeDeleted: searchParams.get('includeDeleted') === 'true',
-        minX: searchParams.has('minX') ? parseFloat(searchParams.get('minX')!) : undefined,
-        maxX: searchParams.has('maxX') ? parseFloat(searchParams.get('maxX')!) : undefined,
-        minY: searchParams.has('minY') ? parseFloat(searchParams.get('minY')!) : undefined,
-        maxY: searchParams.has('maxY') ? parseFloat(searchParams.get('maxY')!) : undefined,
-        limit: searchParams.has('limit') ? parseInt(searchParams.get('limit')!, 10) : 100,
-        offset: searchParams.has('offset') ? parseInt(searchParams.get('offset')!, 10) : 0,
-      })
+          canvasId: searchParams.get("canvasId"),
+          type: searchParams.get("type") || undefined,
+          includeDeleted: searchParams.get("includeDeleted") === "true",
+          minX: searchParams.has("minX")
+            ? parseFloat(searchParams.get("minX")!)
+            : undefined,
+          maxX: searchParams.has("maxX")
+            ? parseFloat(searchParams.get("maxX")!)
+            : undefined,
+          minY: searchParams.has("minY")
+            ? parseFloat(searchParams.get("minY")!)
+            : undefined,
+          maxY: searchParams.has("maxY")
+            ? parseFloat(searchParams.get("maxY")!)
+            : undefined,
+          limit: searchParams.has("limit")
+            ? parseInt(searchParams.get("limit")!, 10)
+            : 100,
+          offset: searchParams.has("offset")
+            ? parseInt(searchParams.get("offset")!, 10)
+            : 0,
+        })
       : listCanvasItemsSchema.parse({
-        canvasId: searchParams.get('canvasId'),
-        type: searchParams.get('type') || undefined,
-        includeDeleted: searchParams.get('includeDeleted') === 'true',
-        limit: searchParams.has('limit') ? parseInt(searchParams.get('limit')!, 10) : undefined,
-        offset: searchParams.has('offset') ? parseInt(searchParams.get('offset')!, 10) : undefined,
-      });
+          canvasId: searchParams.get("canvasId"),
+          type: searchParams.get("type") || undefined,
+          includeDeleted: searchParams.get("includeDeleted") === "true",
+          limit: searchParams.has("limit")
+            ? parseInt(searchParams.get("limit")!, 10)
+            : undefined,
+          offset: searchParams.has("offset")
+            ? parseInt(searchParams.get("offset")!, 10)
+            : undefined,
+        });
 
     // Verify user has VIEW permission (via ownership or share)
-    await requireCanvasAccess(query.canvasId, userId, email, 'VIEW');
+    await requireCanvasAccess(query.canvasId, userId, email, "VIEW");
 
     // Base where clause (always applied)
     const baseWhere = {
@@ -134,7 +152,8 @@ export async function GET(request: NextRequest) {
     // Apply viewport filtering if viewport parameters are provided
     if (hasViewportParams) {
       // FIXED: Use proper type instead of 'as any'
-      const { minX, maxX, minY, maxY, limit, offset } = query as ViewportPaginationInput;
+      const { minX, maxX, minY, maxY, limit, offset } =
+        query as ViewportPaginationInput;
 
       // OPTIMIZATION: Use database-level filtering instead of in-memory filtering
       // This significantly improves performance for large canvases (1000+ items)
@@ -196,7 +215,7 @@ export async function GET(request: NextRequest) {
 
     const items = await prisma.canvasItem.findMany({
       where: baseWhere,
-      orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }],
       take: limit,
       skip: offset,
     });

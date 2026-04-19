@@ -30,6 +30,15 @@ model User {
 
   activities    Activity[]
   apiKeys       ApiKey[]
+  agentProfiles AgentProfile[]
+  modelCredentials ModelCredential[]
+  agentActions  AgentAction[]
+  changeSets    ChangeSet[]
+  suggestions   Suggestion[]
+  knowledgeEntities KnowledgeEntity[]
+  workspaceCheckpoints WorkspaceCheckpoint[]
+  canvasViews   CanvasView[]
+  agentJobs     AgentJob[]
 }
 
 model Activity {
@@ -90,6 +99,7 @@ model Canvas {
   workspaceId String?
   workspace   Workspace?  @relation(fields: [workspaceId], references: [id])
   savedViews  SavedView[]
+  canvasViews CanvasView[]
   connections ItemConnection[]
 
   createdAt   DateTime    @default(now())
@@ -154,6 +164,8 @@ model CanvasItem {
   comments      Comment[]
   connectionsFrom ItemConnection[] @relation("ConnectionFrom")
   connectionsTo   ItemConnection[] @relation("ConnectionTo")
+  entityLinks   ItemEntityLink[]
+  embeddings    ItemEmbedding[]
 }
 
 model Comment {
@@ -358,4 +370,369 @@ model ApiKey {
   
   @@index([userId])
   @@index([key])
+}
+
+enum AgentProfileStatus {
+  ACTIVE
+  PAUSED
+  DISABLED
+}
+
+enum ModelProvider {
+  OPENAI
+  ANTHROPIC
+  GEMINI
+  OPENROUTER
+  OPENAI_COMPAT
+}
+
+enum CredentialStatus {
+  ACTIVE
+  UNVERIFIED
+  DISABLED
+  ERROR
+}
+
+enum IntegrationProviderType {
+  OPENCLAW
+  WHATSAPP
+  WEBHOOK
+  CUSTOM
+}
+
+enum IntegrationAuthMode {
+  TOKEN
+  HMAC
+  OAUTH_PROXY
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  PAUSED
+  DISABLED
+}
+
+enum AgentActionKind {
+  READ
+  INGEST
+  COMMENT
+  PROPOSE
+  WRITE
+  EXECUTE_EXTERNAL
+  ROLLBACK
+}
+
+enum AgentActionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REVERTED
+  APPROVAL_REQUIRED
+}
+
+enum ChangeSetStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  REVERTED
+}
+
+enum SuggestionKind {
+  INTERNAL_ORGANIZATION
+  EXTERNAL_ACTION
+}
+
+enum SuggestionStatus {
+  OPEN
+  APPROVED
+  REJECTED
+  EXPIRED
+  EXECUTED
+}
+
+enum KnowledgeEntityStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ItemEntityLinkType {
+  SOURCE
+  TAGGED
+  MENTIONED
+  SUMMARIZED
+  CLUSTERED
+}
+
+enum WorkspaceCheckpointActorType {
+  USER
+  AGENT
+  SYSTEM
+}
+
+enum CanvasViewType {
+  MANUAL
+  ORGANIZER
+}
+
+enum AgentJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model AgentProfile {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  status    AgentProfileStatus @default(ACTIVE)
+  maxCapabilityRung Int        @default(3)
+  enabledRungs Int[]           @default([0, 1, 2, 3])
+  allowedCanvasIds String[]    @default([])
+  defaultModelCredentialId String?
+  defaultModelCredential ModelCredential? @relation("DefaultModelCredential", fields: [defaultModelCredentialId], references: [id], onDelete: SetNull)
+  integrationAccounts IntegrationAccount[]
+  agentActions AgentAction[]
+  changeSets  ChangeSet[]
+  suggestions Suggestion[]
+  jobs        AgentJob[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([defaultModelCredentialId])
+}
+
+model ModelCredential {
+  id        String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   ModelProvider
+  label      String
+  baseUrl    String?
+  defaultModel String
+  encryptedSecret String
+  secretFingerprint String
+  capabilities Json?
+  dailySpendCap Float?
+  monthlySpendCap Float?
+  status      CredentialStatus @default(UNVERIFIED)
+  lastVerifiedAt DateTime?
+  defaultForProfiles AgentProfile[] @relation("DefaultModelCredential")
+  agentActions AgentAction[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, secretFingerprint])
+  @@index([userId, provider, status])
+}
+
+model IntegrationAccount {
+  id        String                 @id @default(cuid())
+  agentProfileId String
+  agentProfile AgentProfile        @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  providerType IntegrationProviderType
+  externalAccountId String
+  authMode   IntegrationAuthMode
+  encryptedSecretOrHash String
+  secretPrefix String?
+  secretSuffix String?
+  replayCursor Json?
+  status     IntegrationStatus     @default(ACTIVE)
+  lastSeenAt DateTime?
+  agentActions AgentAction[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerType, externalAccountId])
+  @@index([agentProfileId, status])
+  @@index([secretPrefix, secretSuffix])
+}
+
+model AgentAction {
+  id        String            @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentProfileId String
+  agentProfile AgentProfile   @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  integrationAccountId String?
+  integrationAccount IntegrationAccount? @relation(fields: [integrationAccountId], references: [id], onDelete: SetNull)
+  modelCredentialId String?
+  modelCredential ModelCredential? @relation(fields: [modelCredentialId], references: [id], onDelete: SetNull)
+  kind      AgentActionKind
+  rung      Int
+  status    AgentActionStatus
+  summary   String
+  requestFingerprint String
+  metadata  Json?
+  changeSets ChangeSet[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([agentProfileId, createdAt])
+  @@index([requestFingerprint])
+}
+
+model ChangeSet {
+  id        String         @id @default(cuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentProfileId String
+  agentProfile AgentProfile @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  agentActionId String?
+  agentAction AgentAction? @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
+  scopeType  String
+  scopeId    String
+  status     ChangeSetStatus
+  summary    String
+  startedAt  DateTime @default(now())
+  completedAt DateTime?
+  revertedAt DateTime?
+  changeRecords ChangeRecord[]
+
+  @@index([userId, startedAt])
+  @@index([agentActionId])
+  @@index([scopeType, scopeId])
+}
+
+model ChangeRecord {
+  id        String   @id @default(cuid())
+  changeSetId String
+  changeSet ChangeSet @relation(fields: [changeSetId], references: [id], onDelete: Cascade)
+  targetType String
+  targetId   String
+  operation  String
+  before     Json?
+  after      Json?
+  reversible Boolean @default(true)
+  revertedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([changeSetId])
+  @@index([targetType, targetId])
+}
+
+model Suggestion {
+  id        String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentProfileId String?
+  agentProfile AgentProfile?  @relation(fields: [agentProfileId], references: [id], onDelete: SetNull)
+  kind      SuggestionKind
+  status    SuggestionStatus  @default(OPEN)
+  summary   String
+  payload   Json
+  expiresAt DateTime
+  actedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status, expiresAt])
+  @@index([agentProfileId, createdAt])
+}
+
+model KnowledgeEntity {
+  id        String                @id @default(cuid())
+  userId     String
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType String
+  title      String
+  summary    String?
+  status     KnowledgeEntityStatus @default(ACTIVE)
+  attributes Json?
+  sourceConfidence Float?
+  itemLinks  ItemEntityLink[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, entityType])
+  @@index([userId, title])
+}
+
+model ItemEntityLink {
+  id        String             @id @default(cuid())
+  itemId     String
+  item       CanvasItem         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  knowledgeEntityId String
+  knowledgeEntity KnowledgeEntity @relation(fields: [knowledgeEntityId], references: [id], onDelete: Cascade)
+  linkType   ItemEntityLinkType @default(SOURCE)
+  confidence Float?
+  createdAt  DateTime @default(now())
+
+  @@unique([itemId, knowledgeEntityId, linkType])
+  @@index([knowledgeEntityId])
+}
+
+model ItemEmbedding {
+  id        String   @id @default(cuid())
+  itemId     String
+  item       CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  provider   String
+  model      String
+  contentHash String
+  vector     Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([itemId, provider, model])
+  @@index([provider, model])
+}
+
+model WorkspaceCheckpoint {
+  id        String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scopeType  String
+  scopeId    String
+  snapshot   Json
+  reason     String
+  createdByActorType WorkspaceCheckpointActorType
+  createdByActorId String
+  createdAt  DateTime @default(now())
+
+  @@index([userId, scopeType, scopeId, createdAt])
+}
+
+model CanvasView {
+  id        String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId   String
+  canvas     Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  viewType   CanvasViewType
+  name       String?
+  filters    Json?
+  layout     Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, canvasId, viewType])
+  @@index([canvasId])
+}
+
+model AgentJob {
+  id        String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentProfileId String?
+  agentProfile AgentProfile? @relation(fields: [agentProfileId], references: [id], onDelete: SetNull)
+  jobType    String
+  status     AgentJobStatus @default(QUEUED)
+  payload    Json
+  result     Json?
+  error      Json?
+  scheduledAt DateTime @default(now())
+  startedAt  DateTime?
+  completedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([agentProfileId, createdAt])
 }

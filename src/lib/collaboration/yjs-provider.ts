@@ -4,19 +4,20 @@
  * Following ADR-0010: Real-Time Collaboration Strategy
  */
 
+import * as Y from "yjs";
+import { Prisma, ItemType } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { createLogger } from "@/lib/logger";
+import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 
-import * as Y from 'yjs';
-import { Prisma, ItemType } from '@prisma/client';
-import { prisma } from '@/lib/db';
-import { createLogger } from '@/lib/logger';
-import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
-
-const logger = createLogger('yjs-provider');
+const logger = createLogger("yjs-provider");
 
 interface DocumentStore {
   doc: Y.Doc;
   lastAccessed: number;
   persistenceTimeout?: NodeJS.Timeout;
+  persistenceInFlight?: Promise<void>;
+  pendingPersistence: boolean;
   loadedFromDb: boolean;
   dirtyItemIds: Set<string>;
   deletedItemIds: Set<string>;
@@ -54,9 +55,9 @@ export async function getDocument(canvasId: string): Promise<Y.Doc> {
     const dirtyItemIds = new Set<string>();
     const deletedItemIds = new Set<string>();
 
-    const yItems = doc.getMap('items');
+    const yItems = doc.getMap("items");
     yItems.observeDeep((events, transaction) => {
-      if (transaction.origin === 'persist') {
+      if (transaction.origin === "persist") {
         return;
       }
 
@@ -64,7 +65,7 @@ export async function getDocument(canvasId: string): Promise<Y.Doc> {
         if (event.target === yItems) {
           event.changes.keys.forEach((change, key) => {
             const itemId = String(key);
-            if (change.action === 'delete') {
+            if (change.action === "delete") {
               deletedItemIds.add(itemId);
               dirtyItemIds.delete(itemId);
             } else {
@@ -76,7 +77,7 @@ export async function getDocument(canvasId: string): Promise<Y.Doc> {
         }
 
         const itemId = event.path[0];
-        if (typeof itemId === 'string') {
+        if (typeof itemId === "string") {
           deletedItemIds.delete(itemId);
           dirtyItemIds.add(itemId);
         }
@@ -86,6 +87,7 @@ export async function getDocument(canvasId: string): Promise<Y.Doc> {
     store = {
       doc,
       lastAccessed: Date.now(),
+      pendingPersistence: false,
       loadedFromDb,
       dirtyItemIds,
       deletedItemIds,
@@ -106,7 +108,10 @@ export async function getDocument(canvasId: string): Promise<Y.Doc> {
 /**
  * Load document state from database
  */
-async function loadDocumentState(canvasId: string, doc: Y.Doc): Promise<boolean> {
+async function loadDocumentState(
+  canvasId: string,
+  doc: Y.Doc,
+): Promise<boolean> {
   try {
     // Fetch all canvas items from database
     const items = await prisma.canvasItem.findMany({
@@ -114,33 +119,33 @@ async function loadDocumentState(canvasId: string, doc: Y.Doc): Promise<boolean>
         canvasId,
         deletedAt: null,
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
     });
 
     // Initialize Y.js shared type with canvas items
-    const yItems = doc.getMap('items');
+    const yItems = doc.getMap("items");
 
     items.forEach((item) => {
       const yItem = new Y.Map();
-      yItem.set('id', item.id);
-      yItem.set('type', item.type);
-      yItem.set('positionX', item.positionX);
-      yItem.set('positionY', item.positionY);
-      yItem.set('width', item.width);
-      yItem.set('height', item.height);
-      yItem.set('zIndex', item.zIndex);
-      yItem.set('content', item.content);
-      yItem.set('tags', item.tags);
-      yItem.set('version', item.version);
-      yItem.set('createdById', item.createdById);
-      yItem.set('updatedById', item.updatedById);
+      yItem.set("id", item.id);
+      yItem.set("type", item.type);
+      yItem.set("positionX", item.positionX);
+      yItem.set("positionY", item.positionY);
+      yItem.set("width", item.width);
+      yItem.set("height", item.height);
+      yItem.set("zIndex", item.zIndex);
+      yItem.set("content", item.content);
+      yItem.set("tags", item.tags);
+      yItem.set("version", item.version);
+      yItem.set("createdById", item.createdById);
+      yItem.set("updatedById", item.updatedById);
 
       yItems.set(item.id, yItem);
     });
 
     return true;
   } catch (error) {
-    logger.error({ error, canvasId }, 'Failed to load document state');
+    logger.error({ error, canvasId }, "Failed to load document state");
     return false;
   }
 }
@@ -166,7 +171,8 @@ function schedulePersistence(canvasId: string): void {
     if (timeSinceLastAccess > DOCUMENT_TIMEOUT) {
       // Remove from memory
       documents.delete(canvasId);
-      logger.info({ canvasId }, 'Removed canvas from memory (inactive)');
+      store.doc.destroy();
+      logger.info({ canvasId }, "Removed canvas from memory (inactive)");
     } else {
       // Schedule next persistence
       schedulePersistence(canvasId);
@@ -181,8 +187,14 @@ async function persistDocument(canvasId: string): Promise<void> {
   const store = documents.get(canvasId);
   if (!store) return;
 
-  try {
-    const yItems = store.doc.getMap('items');
+  if (store.persistenceInFlight) {
+    store.pendingPersistence = true;
+    await store.persistenceInFlight;
+    return;
+  }
+
+  const persistenceTask = (async () => {
+    const yItems = store.doc.getMap("items");
 
     const dirtyIds = Array.from(store.dirtyItemIds);
     const deletedIds = Array.from(store.deletedItemIds);
@@ -210,29 +222,31 @@ async function persistDocument(canvasId: string): Promise<void> {
       const yItem = yItems.get(itemId);
       if (!(yItem instanceof Y.Map)) return;
 
-      const typeValue = yItem.get('type');
+      const typeValue = yItem.get("type");
       if (!Object.values(ItemType).includes(typeValue)) return;
 
-      const content = yItem.get('content');
+      const content = yItem.get("content");
       const normalizedContent =
-        content instanceof Y.Map || content instanceof Y.Array ? content.toJSON() : content ?? Prisma.JsonNull;
+        content instanceof Y.Map || content instanceof Y.Array
+          ? content.toJSON()
+          : (content ?? Prisma.JsonNull);
 
-      const tagsValue = yItem.get('tags');
+      const tagsValue = yItem.get("tags");
       const normalizedTags = Array.isArray(tagsValue) ? tagsValue : [];
 
       items.push({
         id: String(itemId),
         type: typeValue,
-        positionX: Number(yItem.get('positionX') ?? 0),
-        positionY: Number(yItem.get('positionY') ?? 0),
-        width: Number(yItem.get('width') ?? 0),
-        height: Number(yItem.get('height') ?? 0),
-        zIndex: Number(yItem.get('zIndex') ?? 0),
+        positionX: Number(yItem.get("positionX") ?? 0),
+        positionY: Number(yItem.get("positionY") ?? 0),
+        width: Number(yItem.get("width") ?? 0),
+        height: Number(yItem.get("height") ?? 0),
+        zIndex: Number(yItem.get("zIndex") ?? 0),
         content: normalizedContent as Prisma.InputJsonValue,
         tags: normalizedTags,
-        version: Number(yItem.get('version') ?? 1),
-        createdById: (yItem.get('createdById') as string) || null,
-        updatedById: (yItem.get('updatedById') as string) || null,
+        version: Number(yItem.get("version") ?? 1),
+        createdById: (yItem.get("createdById") as string) || null,
+        updatedById: (yItem.get("updatedById") as string) || null,
       });
     });
 
@@ -244,12 +258,16 @@ async function persistDocument(canvasId: string): Promise<void> {
         })
       : [];
 
-    const existingById = new Map(existingItems.map((item) => [item.id, item.deletedAt]));
+    const existingById = new Map(
+      existingItems.map((item) => [item.id, item.deletedAt]),
+    );
 
     const toCreate = items.filter((item) => !existingById.has(item.id));
     const toUpdate = items.filter((item) => existingById.has(item.id));
 
-    const toDeleteIds = deletedIds.filter((id) => existingById.has(id) && !existingById.get(id));
+    const toDeleteIds = deletedIds.filter(
+      (id) => existingById.has(id) && !existingById.get(id),
+    );
 
     let defaultUserId: string | null = null;
     if (toCreate.length > 0) {
@@ -319,8 +337,12 @@ async function persistDocument(canvasId: string): Promise<void> {
       txOps.push(
         prisma.canvasItem.updateMany({
           where: { id: { in: toDeleteIds } },
-          data: { deletedAt: new Date(), deletedById: null, version: { increment: 1 } },
-        })
+          data: {
+            deletedAt: new Date(),
+            deletedById: null,
+            version: { increment: 1 },
+          },
+        }),
       );
     }
 
@@ -331,7 +353,14 @@ async function persistDocument(canvasId: string): Promise<void> {
 
     if (toCreate.length > 0 || toUpdate.length > 0) {
       const refreshed = await prisma.canvasItem.findMany({
-        where: { id: { in: [...toCreate.map((item) => item.id), ...toUpdate.map((item) => item.id)] } },
+        where: {
+          id: {
+            in: [
+              ...toCreate.map((item) => item.id),
+              ...toUpdate.map((item) => item.id),
+            ],
+          },
+        },
         select: { id: true, version: true },
       });
 
@@ -339,10 +368,10 @@ async function persistDocument(canvasId: string): Promise<void> {
         refreshed.forEach((item) => {
           const yItem = yItems.get(item.id);
           if (yItem instanceof Y.Map) {
-            yItem.set('version', item.version);
+            yItem.set("version", item.version);
           }
         });
-      }, 'persist');
+      }, "persist");
     }
 
     dirtyIds.forEach((id) => store.dirtyItemIds.delete(id));
@@ -356,10 +385,22 @@ async function persistDocument(canvasId: string): Promise<void> {
         created: createData.length,
         deleted: toDeleteIds.length,
       },
-      'Persisted items for canvas'
+      "Persisted items for canvas",
     );
-  } catch (error) {
-    logger.error({ error, canvasId }, 'Failed to persist document for canvas');
+  })().catch((error) => {
+    logger.error({ error, canvasId }, "Failed to persist document for canvas");
+  });
+
+  store.persistenceInFlight = persistenceTask;
+
+  try {
+    await persistenceTask;
+  } finally {
+    store.persistenceInFlight = undefined;
+    if (store.pendingPersistence) {
+      store.pendingPersistence = false;
+      await persistDocument(canvasId);
+    }
   }
 }
 
@@ -379,6 +420,7 @@ export async function closeDocument(canvasId: string): Promise<void> {
   if (store?.persistenceTimeout) {
     clearTimeout(store.persistenceTimeout);
   }
+  store?.doc.destroy();
   documents.delete(canvasId);
 }
 

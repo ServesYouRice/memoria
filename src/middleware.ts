@@ -1,26 +1,26 @@
-import { type NextRequest, NextResponse } from 'next/server';
-import { nanoid } from 'nanoid';
-import { applyCSP, generateNonce } from './middleware/csp';
-import { applySecurityHeaders } from './middleware/security-headers';
+import { type NextRequest, NextResponse } from "next/server";
+import { nanoid } from "nanoid";
+import { applyCSP, generateNonce } from "./middleware/csp";
+import { applySecurityHeaders } from "./middleware/security-headers";
 import {
   apiRateLimit,
   authRateLimit,
   uploadRateLimit,
   canvasesRateLimit,
   itemsRateLimit,
-} from './middleware/rate-limit';
-import { applyCors, handleCorsPreflight } from './middleware/cors';
-import { getVersionHeaders, validateApiVersion } from './lib/api/versioning';
-import { createRequestLogger } from './lib/logger';
+} from "./middleware/rate-limit";
+import { applyCors, handleCorsPreflight } from "./middleware/cors";
+import { getVersionHeaders, validateApiVersion } from "./lib/api/versioning";
+import { createRequestLogger } from "./lib/logger";
 
 export async function middleware(request: NextRequest) {
   // Generate or extract request ID for tracing (Issue #24)
-  const requestId = request.headers.get('x-request-id') || nanoid(16);
+  const requestId = request.headers.get("x-request-id") || nanoid(16);
 
   const logger = createRequestLogger();
 
   // Handle CORS preflight requests (Issue #15)
-  if (request.method === 'OPTIONS') {
+  if (request.method === "OPTIONS") {
     const preflightResponse = handleCorsPreflight(request);
     if (preflightResponse) {
       return preflightResponse;
@@ -33,26 +33,27 @@ export async function middleware(request: NextRequest) {
       requestId,
       method: request.method,
       url: request.url,
-      userAgent: request.headers.get('user-agent'),
+      userAgent: request.headers.get("user-agent"),
     },
-    'Incoming request'
+    "Incoming request",
   );
 
   // Validate API version (Issue #23)
   const pathname = request.nextUrl.pathname;
-  if (pathname.startsWith('/api/v')) {
+  let specificRateLimitApplied = false;
+  if (pathname.startsWith("/api/v")) {
     const versionError = validateApiVersion(pathname);
     if (versionError) {
       const errorResponse = NextResponse.json(
         {
-          type: 'https://canvascollect.com/errors/unsupported-version',
-          title: 'Unsupported API Version',
+          type: "https://canvascollect.com/errors/unsupported-version",
+          title: "Unsupported API Version",
           status: 400,
           detail: versionError,
         },
-        { status: 400 }
+        { status: 400 },
       );
-      errorResponse.headers.set('x-request-id', requestId);
+      errorResponse.headers.set("x-request-id", requestId);
       return errorResponse;
     }
   }
@@ -60,54 +61,61 @@ export async function middleware(request: NextRequest) {
   // Apply rate limiting for authentication routes (Issue #19)
   // Stricter rate limits to prevent brute force attacks
   if (
-    request.nextUrl.pathname.startsWith('/api/v1/auth') ||
-    request.nextUrl.pathname.startsWith('/api/auth')
+    request.nextUrl.pathname.startsWith("/api/v1/auth") ||
+    request.nextUrl.pathname.startsWith("/api/auth")
   ) {
+    specificRateLimitApplied = true;
     const rateLimitResponse = await authRateLimit(request);
     if (rateLimitResponse) {
       logger.warn(
         {
           pathname: request.nextUrl.pathname,
-          ip: request.headers.get('x-forwarded-for'),
+          ip: request.headers.get("x-forwarded-for"),
         },
-        'Auth rate limit exceeded'
+        "Auth rate limit exceeded",
       );
       return rateLimitResponse;
     }
   }
 
   // Apply rate limiting for file uploads (stricter)
-  if (request.nextUrl.pathname.startsWith('/api/v1/upload')) {
+  if (request.nextUrl.pathname.startsWith("/api/v1/upload")) {
+    specificRateLimitApplied = true;
     const rateLimitResponse = await uploadRateLimit(request);
     if (rateLimitResponse) {
       logger.warn(
         {
           pathname: request.nextUrl.pathname,
-          ip: request.headers.get('x-forwarded-for'),
+          ip: request.headers.get("x-forwarded-for"),
         },
-        'Upload rate limit exceeded'
+        "Upload rate limit exceeded",
       );
       return rateLimitResponse;
     }
   }
 
   // Apply rate limiting for canvas operations
-  if (request.nextUrl.pathname.startsWith('/api/v1/canvases')) {
+  if (request.nextUrl.pathname.startsWith("/api/v1/canvases")) {
+    specificRateLimitApplied = true;
     const rateLimitResponse = await canvasesRateLimit(request);
     if (rateLimitResponse) return rateLimitResponse;
   }
 
   // Apply rate limiting for item operations
   if (
-    request.nextUrl.pathname.startsWith('/api/v1/canvas-items') ||
-    request.nextUrl.pathname.startsWith('/api/v1/items')
+    request.nextUrl.pathname.startsWith("/api/v1/canvas-items") ||
+    request.nextUrl.pathname.startsWith("/api/v1/items")
   ) {
+    specificRateLimitApplied = true;
     const rateLimitResponse = await itemsRateLimit(request);
     if (rateLimitResponse) return rateLimitResponse;
   }
 
   // Apply rate limiting for general API routes
-  if (request.nextUrl.pathname.startsWith('/api/v1')) {
+  if (
+    request.nextUrl.pathname.startsWith("/api/v1") &&
+    !specificRateLimitApplied
+  ) {
     const rateLimitResponse = await apiRateLimit(request);
     if (rateLimitResponse) {
       return rateLimitResponse;
@@ -116,7 +124,7 @@ export async function middleware(request: NextRequest) {
 
   const nonce = generateNonce();
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set("x-nonce", nonce);
 
   // Continue with request
   const response = NextResponse.next({
@@ -126,7 +134,7 @@ export async function middleware(request: NextRequest) {
   });
 
   // Add request ID to response headers (Issue #24)
-  response.headers.set('x-request-id', requestId);
+  response.headers.set("x-request-id", requestId);
 
   // Apply CORS headers (Issue #15)
   applyCors(request, response);
@@ -138,7 +146,7 @@ export async function middleware(request: NextRequest) {
   applyCSP(response, nonce);
 
   // Add API version headers for API routes (Issue #23)
-  if (pathname.startsWith('/api/v')) {
+  if (pathname.startsWith("/api/v")) {
     const versionHeaders = getVersionHeaders(pathname);
     Object.entries(versionHeaders).forEach(([key, value]) => {
       response.headers.set(key, value);
@@ -157,6 +165,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

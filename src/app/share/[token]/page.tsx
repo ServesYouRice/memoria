@@ -3,17 +3,26 @@
  * View a publicly shared canvas without authentication
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect, useRef, use } from 'react';
-import { Box, CircularProgress, Alert, Typography, Button, AppBar, Toolbar, ButtonGroup, Tooltip } from '@mui/material';
-import { ZoomIn, ZoomOut, FitScreen } from '@mui/icons-material';
-import { Stage, Layer } from 'react-konva';
-import Link from 'next/link';
-import { NoteItem } from '@/features/canvas/components/NoteItem';
-import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
-import { ItemType, type CanvasItem } from '@/types/canvas';
-import type Konva from 'konva';
+import React, { useState, useEffect, useRef, use } from "react";
+import {
+  Box,
+  CircularProgress,
+  Alert,
+  Typography,
+  Button,
+  AppBar,
+  Toolbar,
+  ButtonGroup,
+  Tooltip,
+} from "@mui/material";
+import { ZoomIn, ZoomOut, FitScreen } from "@mui/icons-material";
+import { Stage } from "react-konva";
+import Link from "next/link";
+import { type CanvasItem } from "@/types/canvas";
+import type Konva from "konva";
+import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
 
 interface SharePageProps {
   params: Promise<{
@@ -47,11 +56,11 @@ export default function SharePage({ params }: SharePageProps) {
 
         if (!response.ok) {
           if (response.status === 404) {
-            setError('Canvas not found or link has expired');
+            setError("Canvas not found or link has expired");
           } else if (response.status === 403) {
-            setError('This canvas is no longer publicly shared');
+            setError("This canvas is no longer publicly shared");
           } else {
-            setError('Failed to load canvas');
+            setError("Failed to load canvas");
           }
           setLoading(false);
           return;
@@ -63,7 +72,7 @@ export default function SharePage({ params }: SharePageProps) {
         setZoom(data.zoomLevel || 1);
         setPosition({ x: data.panX || 0, y: data.panY || 0 });
       } catch {
-        setError('Failed to load canvas');
+        setError("Failed to load canvas");
       } finally {
         setLoading(false);
       }
@@ -84,8 +93,8 @@ export default function SharePage({ params }: SharePageProps) {
     };
 
     updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
   }, []);
 
   const handleZoomIn = () => {
@@ -102,7 +111,10 @@ export default function SharePage({ params }: SharePageProps) {
     if (items.length === 0 || !stageRef.current) return;
 
     // Calculate bounding box of all items
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     items.forEach((item) => {
       minX = Math.min(minX, item.positionX);
       minY = Math.min(minY, item.positionY);
@@ -120,8 +132,10 @@ export default function SharePage({ params }: SharePageProps) {
     const newZoom = Math.min(scaleX, scaleY, MAX_ZOOM);
 
     // Center content
-    const newX = (stageSize.width - contentWidth * newZoom) / 2 - minX * newZoom;
-    const newY = (stageSize.height - contentHeight * newZoom) / 2 - minY * newZoom;
+    const newX =
+      (stageSize.width - contentWidth * newZoom) / 2 - minX * newZoom;
+    const newY =
+      (stageSize.height - contentHeight * newZoom) / 2 - minY * newZoom;
 
     setZoom(Math.round(newZoom * 100) / 100);
     setPosition({ x: newX, y: newY });
@@ -141,9 +155,10 @@ export default function SharePage({ params }: SharePageProps) {
       y: (pointer.y - position.y) / oldScale,
     };
 
-    const newScale = e.evt.deltaY > 0
-      ? Math.max(oldScale - ZOOM_STEP, MIN_ZOOM)
-      : Math.min(oldScale + ZOOM_STEP, MAX_ZOOM);
+    const newScale =
+      e.evt.deltaY > 0
+        ? Math.max(oldScale - ZOOM_STEP, MIN_ZOOM)
+        : Math.min(oldScale + ZOOM_STEP, MAX_ZOOM);
 
     setZoom(Math.round(newScale * 100) / 100);
     setPosition({
@@ -154,7 +169,14 @@ export default function SharePage({ params }: SharePageProps) {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "100vh",
+        }}
+      >
         <CircularProgress />
       </Box>
     );
@@ -162,7 +184,16 @@ export default function SharePage({ params }: SharePageProps) {
 
   if (error) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', p: 4 }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "100vh",
+          p: 4,
+        }}
+      >
         <Alert severity="error" sx={{ mb: 2, maxWidth: 500 }}>
           {error}
         </Alert>
@@ -174,15 +205,30 @@ export default function SharePage({ params }: SharePageProps) {
   }
 
   return (
-    <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <Box
+      sx={{
+        width: "100%",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
       <AppBar position="static" color="default" elevation={1}>
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            {canvas?.name || 'Shared Canvas'} <Typography component="span" variant="caption" color="text.secondary">(Read Only)</Typography>
+            {canvas?.name || "Shared Canvas"}{" "}
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+            >
+              (Read Only)
+            </Typography>
           </Typography>
 
           {/* Zoom Controls */}
-          <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center", mr: 2 }}>
             <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
               <Tooltip title="Zoom Out">
                 <Button onClick={handleZoomOut} disabled={zoom <= MIN_ZOOM}>
@@ -200,12 +246,20 @@ export default function SharePage({ params }: SharePageProps) {
                 </Button>
               </Tooltip>
             </ButtonGroup>
-            <Typography variant="body2" sx={{ minWidth: 50, textAlign: 'center' }}>
+            <Typography
+              variant="body2"
+              sx={{ minWidth: 50, textAlign: "center" }}
+            >
               {Math.round(zoom * 100)}%
             </Typography>
           </Box>
 
-          <Button component={Link} href="/auth/login" variant="outlined" sx={{ mr: 1 }}>
+          <Button
+            component={Link}
+            href="/auth/login"
+            variant="outlined"
+            sx={{ mr: 1 }}
+          >
             Sign In
           </Button>
           <Button component={Link} href="/auth/register" variant="contained">
@@ -215,9 +269,16 @@ export default function SharePage({ params }: SharePageProps) {
       </AppBar>
 
       {/* Canvas */}
-      <Box ref={containerRef} sx={{ flex: 1, overflow: 'hidden' }}>
+      <Box ref={containerRef} sx={{ flex: 1, overflow: "hidden" }}>
         {items.length === 0 ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              height: "100%",
+            }}
+          >
             <Typography variant="h6" color="text.secondary">
               This canvas is empty
             </Typography>
@@ -234,28 +295,7 @@ export default function SharePage({ params }: SharePageProps) {
             draggable={true}
             onWheel={handleWheel}
           >
-            <Layer>
-              {items.map((item) => {
-                if (item.type === ItemType.NOTE) {
-                  return (
-                    <NoteItem
-                      key={item.id}
-                      item={item}
-                      isSelected={false}
-                    />
-                  );
-                } else if (item.type === ItemType.BOOKMARK) {
-                  return (
-                    <BookmarkItem
-                      key={item.id}
-                      item={item}
-                      isSelected={false}
-                    />
-                  );
-                }
-                return null;
-              })}
-            </Layer>
+            <ReadonlyCanvasItemLayer items={items} />
           </Stage>
         )}
       </Box>

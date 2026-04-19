@@ -37,6 +37,11 @@ const nextConfig = {
 
   // Webpack optimizations for Konva (Issue #17)
   webpack: (config, { isServer }) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      canvas: false,
+    };
+
     if (!isServer) {
       // Browser-only optimizations
 
@@ -44,13 +49,6 @@ const nextConfig = {
       config.externals = {
         ...(typeof config.externals === 'object' ? config.externals : {}),
         canvas: 'canvas',
-      };
-
-      // Tree-shake unused Konva features for smaller bundle
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        // Use the main Konva bundle with tree-shaking support
-        'konva': require.resolve('konva/lib/index.js'),
       };
 
       // Enable webpack's built-in optimizations

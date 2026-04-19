@@ -3,9 +3,9 @@
  * Display and manage comments for a canvas item
  */
 
-'use client';
+"use client";
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Drawer,
   Box,
@@ -21,36 +21,56 @@ import {
   Menu,
   MenuItem,
   Divider,
-} from '@mui/material';
-import { Close, MoreVert, Send } from '@mui/icons-material';
-import { useComments, useCreateComment, useDeleteComment, useUpdateComment } from '@/lib/hooks/use-comments';
-import { useSession } from 'next-auth/react';
-import { formatDistanceToNow } from 'date-fns';
+} from "@mui/material";
+import { Close, MoreVert, Send } from "@mui/icons-material";
+import {
+  useComments,
+  useCreateComment,
+  useDeleteComment,
+  useUpdateComment,
+} from "@/lib/hooks/use-comments";
+import { useSession } from "next-auth/react";
+import { formatDistanceToNow } from "date-fns";
 
 export interface CommentsPanelProps {
   open: boolean;
   onClose: () => void;
   itemId: string;
   itemType: string;
-  collaborators?: { userId: string; name?: string; email: string; color: string }[];
+  collaborators?: {
+    userId: string;
+    name?: string;
+    email: string;
+    color: string;
+  }[];
 }
 
-export function CommentsPanel({ open, onClose, itemId, itemType, collaborators = [] }: CommentsPanelProps) {
+export function CommentsPanel({
+  open,
+  onClose,
+  itemId,
+  itemType,
+  collaborators = [],
+}: CommentsPanelProps) {
   const { data: session } = useSession();
-  const [newComment, setNewComment] = useState('');
+  const [newComment, setNewComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [editContent, setEditContent] = useState('');
+  const [editContent, setEditContent] = useState("");
   const [anchorEl, setAnchorEl] = useState<{
     element: HTMLElement;
     commentId: string;
   } | null>(null);
 
   // Mention state
-  const [mentionAnchorEl, setMentionAnchorEl] = useState<HTMLElement | null>(null);
-  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionAnchorEl, setMentionAnchorEl] = useState<HTMLElement | null>(
+    null,
+  );
+  const [mentionQuery, setMentionQuery] = useState("");
   const [cursorPosition, setCursorPosition] = useState(0);
 
-  const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleCommentChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
     const val = e.target.value;
     setNewComment(val);
 
@@ -60,12 +80,15 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
 
     // Look back from cursor to find @
     const textBeforeCursor = val.slice(0, cursor);
-    const lastAt = textBeforeCursor.lastIndexOf('@');
+    const lastAt = textBeforeCursor.lastIndexOf("@");
 
-    if (lastAt !== -1 && (lastAt === 0 || textBeforeCursor[lastAt - 1] === ' ')) {
+    if (
+      lastAt !== -1 &&
+      (lastAt === 0 || textBeforeCursor[lastAt - 1] === " ")
+    ) {
       const query = textBeforeCursor.slice(lastAt + 1);
       // Only show if no spaces in query yet (simple username search)
-      if (!query.includes(' ')) {
+      if (!query.includes(" ")) {
         setMentionQuery(query);
         // Use a ref or simple anchor if possible, but for TextArea it is hard to get position.
         // We'll just anchor to the input itself for now as a fallback
@@ -79,22 +102,24 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
   const handleMentionSelect = (user: { name?: string; email: string }) => {
     if (!mentionAnchorEl) return;
     const textBeforeCursor = newComment.slice(0, cursorPosition);
-    const lastAt = textBeforeCursor.lastIndexOf('@');
+    const lastAt = textBeforeCursor.lastIndexOf("@");
     const textAfterCursor = newComment.slice(cursorPosition);
 
-    const userName = user.name || user.email.split('@')[0];
-    const newText = textBeforeCursor.slice(0, lastAt) + `@${userName} ` + textAfterCursor;
+    const userName = user.name || "You";
+    const newText =
+      textBeforeCursor.slice(0, lastAt) + `@${userName} ` + textAfterCursor;
 
     setNewComment(newText);
     setMentionAnchorEl(null);
     // Focus back would be ideal but skipped for brevity
   };
 
-
   const { data, isLoading, error } = useComments(itemId);
-  const { mutateAsync: createComment, isPending: isCreating } = useCreateComment();
+  const { mutateAsync: createComment, isPending: isCreating } =
+    useCreateComment();
   const { mutateAsync: deleteComment } = useDeleteComment();
-  const { mutateAsync: updateComment, isPending: isUpdating } = useUpdateComment();
+  const { mutateAsync: updateComment, isPending: isUpdating } =
+    useUpdateComment();
 
   const comments = data?.comments || [];
 
@@ -103,9 +128,9 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
 
     try {
       await createComment({ itemId, content: newComment.trim() });
-      setNewComment('');
+      setNewComment("");
     } catch (err) {
-      console.error('Failed to create comment:', err);
+      console.error("Failed to create comment:", err);
     }
   };
 
@@ -125,9 +150,9 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
         content: editContent.trim(),
       });
       setEditingCommentId(null);
-      setEditContent('');
+      setEditContent("");
     } catch (err) {
-      console.error('Failed to update comment:', err);
+      console.error("Failed to update comment:", err);
     }
   };
 
@@ -136,11 +161,14 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
       await deleteComment({ itemId, commentId });
       setAnchorEl(null);
     } catch (err) {
-      console.error('Failed to delete comment:', err);
+      console.error("Failed to delete comment:", err);
     }
   };
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, commentId: string) => {
+  const handleMenuOpen = (
+    event: React.MouseEvent<HTMLElement>,
+    commentId: string,
+  ) => {
     setAnchorEl({ element: event.currentTarget, commentId });
   };
 
@@ -154,25 +182,25 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
       open={open}
       onClose={onClose}
       PaperProps={{
-        sx: { width: { xs: '100%', sm: 400 } },
+        sx: { width: { xs: "100%", sm: 400 } },
       }}
     >
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
         {/* Header */}
         <Box
           sx={{
             p: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
             borderBottom: 1,
-            borderColor: 'divider',
+            borderColor: "divider",
           }}
         >
           <Box>
             <Typography variant="h6">Comments</Typography>
             <Typography variant="caption" color="text.secondary">
-              {itemType === 'NOTE' ? 'Note' : 'Bookmark'}
+              {itemType === "NOTE" ? "Note" : "Bookmark"}
             </Typography>
           </Box>
           <IconButton onClick={onClose}>
@@ -181,15 +209,15 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
         </Box>
 
         {/* Comments List */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+        <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
           {isLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
               <CircularProgress />
             </Box>
           ) : error ? (
             <Alert severity="error">Failed to load comments</Alert>
           ) : comments.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Box sx={{ textAlign: "center", py: 4 }}>
               <Typography variant="body2" color="text.secondary">
                 No comments yet. Be the first to comment!
               </Typography>
@@ -202,15 +230,20 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
                   <ListItem alignItems="flex-start" sx={{ px: 0 }}>
                     <Avatar
                       src={comment.user.image || undefined}
-                      alt={comment.user.name || comment.user.email}
+                      alt={comment.user.name || "User"}
                       sx={{ mr: 2, mt: 0.5 }}
                     >
-                      {((comment.user.name || comment.user.email)?.[0] || '?').toUpperCase()}
+                      {((comment.user.name || "U")?.[0] || "?").toUpperCase()}
                     </Avatar>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                          {comment.user.name || comment.user.email}
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", mb: 0.5 }}
+                      >
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 600 }}
+                        >
+                          {comment.user.name || "Anonymous"}
                         </Typography>
                         <Typography
                           variant="caption"
@@ -224,7 +257,7 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
                         {session?.user?.id === comment.userId && (
                           <IconButton
                             size="small"
-                            sx={{ ml: 'auto' }}
+                            sx={{ ml: "auto" }}
                             onClick={(e) => handleMenuOpen(e, comment.id)}
                           >
                             <MoreVert fontSize="small" />
@@ -243,7 +276,7 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
                             size="small"
                             autoFocus
                           />
-                          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                          <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
                             <Button
                               size="small"
                               variant="contained"
@@ -256,7 +289,7 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
                               size="small"
                               onClick={() => {
                                 setEditingCommentId(null);
-                                setEditContent('');
+                                setEditContent("");
                               }}
                             >
                               Cancel
@@ -267,8 +300,8 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
                         <Typography
                           variant="body2"
                           sx={{
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
                           }}
                         >
                           {comment.content}
@@ -288,7 +321,7 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
             sx={{
               p: 2,
               borderTop: 1,
-              borderColor: 'divider',
+              borderColor: "divider",
             }}
           >
             <TextField
@@ -300,29 +333,40 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
               fullWidth
               variant="outlined"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   handleSubmitComment();
                 }
               }}
             />
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+            <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
               <Button
                 variant="contained"
                 startIcon={<Send />}
                 onClick={handleSubmitComment}
                 disabled={isCreating || !newComment.trim()}
               >
-                {isCreating ? <CircularProgress size={20} /> : 'Comment'}
+                {isCreating ? <CircularProgress size={20} /> : "Comment"}
               </Button>
             </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 0.5, display: "block" }}
+            >
               Cmd/Ctrl + Enter to submit
             </Typography>
           </Box>
         )}
 
         {!session && (
-          <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
+          <Box
+            sx={{
+              p: 2,
+              borderTop: 1,
+              borderColor: "divider",
+              textAlign: "center",
+            }}
+          >
             <Typography variant="body2" color="text.secondary">
               Sign in to add comments
             </Typography>
@@ -365,22 +409,24 @@ export function CommentsPanel({ open, onClose, itemId, itemType, collaborators =
         PaperProps={{ sx: { maxHeight: 200 } }}
       >
         {collaborators
-          .filter(c =>
-          (c.name?.toLowerCase().includes(mentionQuery.toLowerCase()) ||
-            c.email.toLowerCase().includes(mentionQuery.toLowerCase()))
+          .filter(
+            (c) =>
+              c.name?.toLowerCase().includes(mentionQuery.toLowerCase()) ||
+              c.email.toLowerCase().includes(mentionQuery.toLowerCase()),
           )
-          .map(c => (
+          .map((c) => (
             <MenuItem key={c.userId} onClick={() => handleMentionSelect(c)}>
               <Avatar sx={{ width: 24, height: 24, mr: 1, bgcolor: c.color }}>
-                {((c.name || c.email)?.[0] || '?').toUpperCase()}
+                {((c.name || c.email)?.[0] || "?").toUpperCase()}
               </Avatar>
               <Box>
                 <Typography variant="body2">{c.name || c.email}</Typography>
               </Box>
             </MenuItem>
-          ))
-        }
-        {collaborators.length === 0 && <MenuItem disabled>No collaborators found</MenuItem>}
+          ))}
+        {collaborators.length === 0 && (
+          <MenuItem disabled>No collaborators found</MenuItem>
+        )}
       </Menu>
     </Drawer>
   );

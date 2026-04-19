@@ -3,9 +3,9 @@
  * Allows users to share canvas publicly or with specific people
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -25,12 +25,11 @@ import {
   Select,
   MenuItem,
   FormControl,
-
   Switch,
   FormControlLabel,
   InputAdornment,
-} from '@mui/material';
-import { Close, ContentCopy, Delete } from '@mui/icons-material';
+} from "@mui/material";
+import { Close, ContentCopy, Delete } from "@mui/icons-material";
 
 export interface ShareDialogProps {
   open: boolean;
@@ -42,12 +41,33 @@ export interface ShareDialogProps {
 interface Share {
   id: string;
   email: string;
-  role: 'VIEW' | 'COMMENT' | 'EDIT';
+  role: "VIEW" | "COMMENT" | "EDIT";
   createdAt: string;
 }
 
-export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialogProps) {
+function getErrorMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object") {
+    const details = payload as Record<string, unknown>;
+    if (typeof details.detail === "string") {
+      return details.detail;
+    }
+    if (typeof details.error === "string") {
+      return details.error;
+    }
+    if (typeof details.message === "string") {
+      return details.message;
+    }
+  }
 
+  return fallback;
+}
+
+export function ShareDialog({
+  open,
+  onClose,
+  canvasId,
+  canvasName,
+}: ShareDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -57,8 +77,8 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
   const [generatingLink, setGeneratingLink] = useState(false);
 
   // Individual sharing
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'VIEW' | 'COMMENT' | 'EDIT'>('VIEW');
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
   const [shares, setShares] = useState<Share[]>([]);
   const [sharingWithUser, setSharingWithUser] = useState(false);
 
@@ -71,7 +91,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
         setShares(data.shares || []);
       }
     } catch (err) {
-      console.error('Failed to load shares:', err);
+      console.error("Failed to load shares:", err);
     }
   }, [canvasId]);
 
@@ -87,7 +107,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
         }
       }
     } catch (err) {
-      console.error('Failed to check public status:', err);
+      console.error("Failed to check public status:", err);
     }
   }, [canvasId]);
 
@@ -106,28 +126,43 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
       if (isPublic) {
         // Make private
         const response = await fetch(`/api/v1/canvases/${canvasId}/public`, {
-          method: 'DELETE',
+          method: "DELETE",
         });
 
-        if (!response.ok) throw new Error('Failed to make canvas private');
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(
+            getErrorMessage(data, "Failed to make canvas private"),
+          );
+        }
 
         setIsPublic(false);
-        setSuccess('Canvas is now private');
+        setShareUrl(null);
+        setSuccess("Canvas is now private");
       } else {
         // Make public
         const response = await fetch(`/api/v1/canvases/${canvasId}/public`, {
-          method: 'POST',
+          method: "POST",
         });
 
-        if (!response.ok) throw new Error('Failed to generate share link');
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(
+            getErrorMessage(data, "Failed to generate share link"),
+          );
+        }
 
         const data = await response.json();
         setIsPublic(true);
         setShareUrl(data.shareUrl);
-        setSuccess('Public link generated!');
+        setSuccess("Public link generated!");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update sharing settings');
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to update sharing settings",
+      );
     } finally {
       setGeneratingLink(false);
     }
@@ -136,13 +171,13 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
   const handleCopyLink = () => {
     if (shareUrl) {
       navigator.clipboard.writeText(shareUrl);
-      setSuccess('Link copied to clipboard!');
+      setSuccess("Link copied to clipboard!");
     }
   };
 
   const handleShareWithUser = async () => {
     if (!email.trim()) {
-      setError('Please enter an email address');
+      setError("Please enter an email address");
       return;
     }
 
@@ -151,21 +186,21 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
 
     try {
       const response = await fetch(`/api/v1/canvases/${canvasId}/share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), role }),
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to share canvas');
+        const data = await response.json().catch(() => null);
+        throw new Error(getErrorMessage(data, "Failed to share canvas"));
       }
 
       setSuccess(`Canvas shared with ${email}`);
-      setEmail('');
+      setEmail("");
       loadShares();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to share canvas');
+      setError(err instanceof Error ? err.message : "Failed to share canvas");
     } finally {
       setSharingWithUser(false);
     }
@@ -173,16 +208,22 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
 
   const handleRevokeShare = async (shareId: string, shareEmail: string) => {
     try {
-      const response = await fetch(`/api/v1/canvases/${canvasId}/share/${shareId}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        `/api/v1/canvases/${canvasId}/share/${shareId}`,
+        {
+          method: "DELETE",
+        },
+      );
 
-      if (!response.ok) throw new Error('Failed to revoke share');
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(getErrorMessage(data, "Failed to revoke share"));
+      }
 
       setSuccess(`Access revoked for ${shareEmail}`);
       loadShares();
-    } catch {
-      setError('Failed to revoke share');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to revoke share");
     }
   };
 
@@ -192,14 +233,14 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
         Share &quot;{canvasName}&quot;
         <IconButton
           onClick={onClose}
-          sx={{ position: 'absolute', right: 8, top: 8 }}
+          sx={{ position: "absolute", right: 8, top: 8 }}
         >
           <Close />
         </IconButton>
       </DialogTitle>
 
       <DialogContent>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {/* Success/Error Messages */}
           {success && (
             <Alert severity="success" onClose={() => setSuccess(null)}>
@@ -224,7 +265,12 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
               }
               label="Anyone with the link can view"
             />
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              display="block"
+              sx={{ ml: 4 }}
+            >
               Public links are view-only
             </Typography>
 
@@ -253,7 +299,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
             <Typography variant="subtitle2" gutterBottom>
               Share with specific people
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
               <TextField
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -265,7 +311,9 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as 'VIEW' | 'COMMENT' | 'EDIT')}
+                  onChange={(e) =>
+                    setRole(e.target.value as "VIEW" | "COMMENT" | "EDIT")
+                  }
                   disabled={sharingWithUser}
                 >
                   <MenuItem value="VIEW">View</MenuItem>
@@ -279,7 +327,7 @@ export function ShareDialog({ open, onClose, canvasId, canvasName }: ShareDialog
                 disabled={sharingWithUser}
                 sx={{ minWidth: 80 }}
               >
-                {sharingWithUser ? <CircularProgress size={20} /> : 'Share'}
+                {sharingWithUser ? <CircularProgress size={20} /> : "Share"}
               </Button>
             </Box>
 

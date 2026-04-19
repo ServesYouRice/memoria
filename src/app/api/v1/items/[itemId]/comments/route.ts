@@ -3,14 +3,18 @@
  * Handles creating and listing comments on canvas items
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/db';
-import { z } from 'zod';
-import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors';
-import { sanitizeComment } from '@/lib/sanitization';
-import { errorResponse } from '@/lib/errors';
-import type { CanvasShare } from '@prisma/client';
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { z } from "zod";
+import {
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from "@/lib/errors";
+import { sanitizeComment } from "@/lib/sanitization";
+import { errorResponse } from "@/lib/errors";
+import type { CanvasShare } from "@prisma/client";
 
 interface RouteContext {
   params: Promise<{ itemId: string }>;
@@ -19,10 +23,33 @@ interface RouteContext {
 const createCommentSchema = z.object({
   content: z
     .string()
-    .min(1, 'Comment cannot be empty')
-    .max(5000, 'Comment too long')
+    .min(1, "Comment cannot be empty")
+    .max(5000, "Comment too long")
     .transform((val) => sanitizeComment(val)),
 });
+
+const commentUserSelect = {
+  id: true,
+  name: true,
+  image: true,
+} as const;
+
+function parsePaginationParam(
+  value: string | null,
+  fallback: number,
+  max: number,
+) {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, 0), max);
+}
 
 /**
  * POST /api/v1/items/[itemId]/comments
@@ -32,7 +59,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      throw new UnauthorizedError('You must be logged in to comment');
+      throw new UnauthorizedError("You must be logged in to comment");
     }
 
     const { itemId } = await params;
@@ -41,7 +68,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const body = await request.json();
     const validation = createCommentSchema.safeParse(body);
     if (!validation.success) {
-      throw new ValidationError(validation.error.errors[0]?.message || 'Validation error');
+      throw new ValidationError(
+        validation.error.errors[0]?.message || "Validation error",
+      );
     }
 
     const { content } = validation.data;
@@ -60,25 +89,33 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!item || item.deletedAt) {
-      throw new NotFoundError('Canvas item not found');
+      throw new NotFoundError("Canvas item not found");
     }
 
     // Check if user has access to the canvas
     const isOwner = item.canvas.userId === session.user.id;
     const hasShare = item.canvas.shares.some(
-      (share: CanvasShare) => share.email === session.user.email && ['COMMENT', 'EDIT'].includes(share.role)
+      (share: CanvasShare) =>
+        share.email === session.user.email?.toLowerCase() &&
+        ["COMMENT", "EDIT"].includes(share.role),
     );
-    const isPublic = item.canvas.isPublic;
 
-    if (!isOwner && !hasShare && !isPublic) {
-      throw new UnauthorizedError('You do not have permission to comment on this item');
+    if (!isOwner && !hasShare) {
+      throw new UnauthorizedError(
+        "You do not have permission to comment on this item",
+      );
     }
 
     // For shared users, check they have COMMENT or EDIT role
     if (!isOwner && hasShare) {
-      const userShare = item.canvas.shares.find((share: CanvasShare) => share.email === session.user.email);
-      if (userShare && userShare.role === 'VIEW') {
-        throw new UnauthorizedError('You only have view permission on this canvas');
+      const userShare = item.canvas.shares.find(
+        (share: CanvasShare) =>
+          share.email === session.user.email?.toLowerCase(),
+      );
+      if (userShare && userShare.role === "VIEW") {
+        throw new UnauthorizedError(
+          "You only have view permission on this canvas",
+        );
       }
     }
 
@@ -91,12 +128,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       },
       include: {
         user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
+          select: commentUserSelect,
         },
       },
     });
@@ -119,13 +151,11 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     // Parse pagination params
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(
-      parseInt(searchParams.get('limit') || '50', 10),
-      100
-    );
-    const offset = Math.max(
-      parseInt(searchParams.get('offset') || '0', 10),
-      0
+    const limit = parsePaginationParam(searchParams.get("limit"), 50, 100);
+    const offset = parsePaginationParam(
+      searchParams.get("offset"),
+      0,
+      Number.MAX_SAFE_INTEGER,
     );
 
     // Check if item exists
@@ -142,18 +172,23 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!item || item.deletedAt) {
-      throw new NotFoundError('Canvas item not found');
+      throw new NotFoundError("Canvas item not found");
     }
 
     // Check if user has access (owner, shared, or public)
     const isOwner = session?.user?.id && item.canvas.userId === session.user.id;
-    const hasShare = session?.user?.email && item.canvas.shares.some(
-      (share: CanvasShare) => share.email === session.user.email
-    );
+    const hasShare =
+      session?.user?.email &&
+      item.canvas.shares.some(
+        (share: CanvasShare) =>
+          share.email === session.user.email?.toLowerCase(),
+      );
     const isPublic = item.canvas.isPublic;
 
     if (!isOwner && !hasShare && !isPublic) {
-      throw new UnauthorizedError('You do not have permission to view this item');
+      throw new UnauthorizedError(
+        "You do not have permission to view this item",
+      );
     }
 
     // Fetch comments with pagination
@@ -165,16 +200,11 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         },
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              image: true,
-            },
+            select: commentUserSelect,
           },
         },
         orderBy: {
-          createdAt: 'asc',
+          createdAt: "asc",
         },
         take: limit,
         skip: offset,

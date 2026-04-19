@@ -36,16 +36,16 @@
  * @see {@link sendPasswordResetEmail} for email template details
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { logger } from '@/lib/logger';
-import { sendPasswordResetEmail } from '@/lib/email';
-import { errorResponse } from '@/lib/errors';
-import { z } from 'zod';
-import { nanoid } from 'nanoid';
+import { type NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { sendPasswordResetEmail } from "@/lib/email";
+import { errorResponse } from "@/lib/errors";
+import { z } from "zod";
+import { nanoid } from "nanoid";
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().email("Invalid email address"),
 });
 
 const TOKEN_EXPIRY_HOURS = 1; // Token expires in 1 hour
@@ -78,28 +78,39 @@ export async function POST(request: NextRequest) {
       });
 
       // Send password reset email
-      const resetUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/auth/reset-password?token=${token}`;
+      const baseUrl =
+        process.env.AUTH_URL ||
+        process.env.NEXTAUTH_URL ||
+        request.nextUrl.origin;
+      const resetUrl = `${baseUrl}/auth/reset-password?token=${token}`;
 
       try {
         await sendPasswordResetEmail(
           { email: email.toLowerCase(), name: user.name || undefined },
           {
-            userName: user.name || 'User',
+            userName: user.name || "User",
             resetUrl,
-            expiresIn: `${TOKEN_EXPIRY_HOURS} hour${TOKEN_EXPIRY_HOURS > 1 ? 's' : ''}`,
-          }
+            expiresIn: `${TOKEN_EXPIRY_HOURS} hour${TOKEN_EXPIRY_HOURS > 1 ? "s" : ""}`,
+          },
         );
 
-        logger.info({ email: email.toLowerCase() }, 'Password reset email sent');
+        logger.info(
+          { email: email.toLowerCase() },
+          "Password reset email sent",
+        );
       } catch (emailError) {
         // Log error but don't fail the request (security: don't reveal if email failed)
-        logger.error({ error: emailError, email: email.toLowerCase() }, 'Failed to send password reset email');
+        logger.error(
+          { error: emailError, email: email.toLowerCase() },
+          "Failed to send password reset email",
+        );
       }
     }
 
     // Always return success (security best practice)
     return NextResponse.json({
-      message: 'If an account exists with this email, you will receive password reset instructions.',
+      message:
+        "If an account exists with this email, you will receive password reset instructions.",
     });
   } catch (error) {
     return errorResponse(error, request.url);

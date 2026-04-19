@@ -50,10 +50,18 @@
  * @see {@link RateLimitResult} for check result format
  */
 
-import { logger } from '@/lib/logger';
-import type { RateLimiter, RateLimitConfig, RateLimitResult, RateLimitStore } from './types';
-import { MemoryRateLimitStore } from './stores/memory';
-import { RedisRateLimitStore } from './stores/redis';
+import { logger } from "@/lib/logger";
+import type {
+  RateLimiter,
+  RateLimitConfig,
+  RateLimitResult,
+  RateLimitStore,
+} from "./types";
+import { MemoryRateLimitStore } from "./stores/memory";
+import { RedisRateLimitStore } from "./stores/redis";
+
+let sharedStore: RateLimitStore | null = null;
+const limiterCache = new Map<string, RateLimiter>();
 
 /**
  * Sliding Window Rate Limiter
@@ -72,7 +80,10 @@ export class SlidingWindowRateLimiter implements RateLimiter {
     const now = Date.now();
 
     try {
-      const { count, ttl } = await this.store.increment(key, this.config.windowSeconds);
+      const { count, ttl } = await this.store.increment(
+        key,
+        this.config.windowSeconds,
+      );
 
       const resetAt = Math.floor(now / 1000) + ttl;
       const remaining = Math.max(0, this.config.maxRequests - count);
@@ -88,12 +99,15 @@ export class SlidingWindowRateLimiter implements RateLimiter {
       };
 
       if (!allowed) {
-        logger.warn({ identifier, count, limit: this.config.maxRequests }, 'Rate limit exceeded');
+        logger.warn(
+          { identifier, count, limit: this.config.maxRequests },
+          "Rate limit exceeded",
+        );
       }
 
       return result;
     } catch (error) {
-      logger.error({ error, identifier }, 'Rate limit check failed');
+      logger.error({ error, identifier }, "Rate limit check failed");
 
       // Fail open - allow request on error
       return {
@@ -110,7 +124,7 @@ export class SlidingWindowRateLimiter implements RateLimiter {
   async reset(identifier: string): Promise<void> {
     const key = this.getKey(identifier);
     await this.store.delete(key);
-    logger.info({ identifier }, 'Rate limit reset');
+    logger.info({ identifier }, "Rate limit reset");
   }
 
   async status(identifier: string): Promise<RateLimitResult> {
@@ -130,7 +144,7 @@ export class SlidingWindowRateLimiter implements RateLimiter {
         resetIn: this.config.windowSeconds,
       };
     } catch (error) {
-      logger.error({ error, identifier }, 'Rate limit status check failed');
+      logger.error({ error, identifier }, "Rate limit status check failed");
 
       return {
         allowed: true,
@@ -144,7 +158,7 @@ export class SlidingWindowRateLimiter implements RateLimiter {
   }
 
   private getKey(identifier: string): string {
-    const prefix = this.config.keyPrefix || 'ratelimit';
+    const prefix = this.config.keyPrefix || "ratelimit";
     return `${prefix}:${identifier}`;
   }
 }
@@ -153,33 +167,51 @@ export class SlidingWindowRateLimiter implements RateLimiter {
  * Create rate limiter based on environment configuration
  */
 export function createRateLimiter(config: RateLimitConfig): RateLimiter {
+  const cacheKey = JSON.stringify({
+    maxRequests: config.maxRequests,
+    windowSeconds: config.windowSeconds,
+    keyPrefix: config.keyPrefix || "",
+  });
+
+  const existingLimiter = limiterCache.get(cacheKey);
+  if (existingLimiter) {
+    return existingLimiter;
+  }
+
   const useRedis = process.env.REDIS_URL || process.env.REDIS_HOST;
 
-  let store: RateLimitStore;
+  let store = sharedStore;
 
-  if (useRedis) {
-    logger.info('Using Redis for rate limiting');
+  if (!store && useRedis) {
+    logger.info("Using Redis for rate limiting");
 
     const redisConfig = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      host: process.env.REDIS_HOST || "localhost",
+      port: parseInt(process.env.REDIS_PORT || "6379", 10),
       password: process.env.REDIS_PASSWORD,
-      db: parseInt(process.env.REDIS_DB || '0', 10),
-      keyPrefix: 'ratelimit:',
+      db: parseInt(process.env.REDIS_DB || "0", 10),
+      keyPrefix: "ratelimit:",
     };
 
     try {
       store = new RedisRateLimitStore(redisConfig);
     } catch (error) {
-      logger.warn({ error }, 'Failed to create Redis store, falling back to memory');
+      logger.warn(
+        { error },
+        "Failed to create Redis store, falling back to memory",
+      );
       store = new MemoryRateLimitStore();
     }
-  } else {
-    logger.info('Using in-memory rate limiting (development mode)');
+  } else if (!store) {
+    logger.info("Using in-memory rate limiting (development mode)");
     store = new MemoryRateLimitStore();
   }
 
-  return new SlidingWindowRateLimiter(store, config);
+  sharedStore = store;
+
+  const limiter = new SlidingWindowRateLimiter(store, config);
+  limiterCache.set(cacheKey, limiter);
+  return limiter;
 }
 
 /**
@@ -188,20 +220,20 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
  */
 export function getClientIdentifier(request: Request): string {
   // Check for forwarded IP (from proxy/load balancer)
-  const forwardedFor = request.headers.get('x-forwarded-for');
+  const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
     // Take first IP if multiple
-    return forwardedFor.split(',')[0].trim();
+    return forwardedFor.split(",")[0].trim();
   }
 
   // Check for real IP header
-  const realIp = request.headers.get('x-real-ip');
+  const realIp = request.headers.get("x-real-ip");
   if (realIp) {
     return realIp;
   }
 
   // Fallback - this may not work in all environments
-  return 'unknown';
+  return "unknown";
 }
 
 /**

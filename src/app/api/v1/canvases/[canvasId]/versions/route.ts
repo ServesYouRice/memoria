@@ -3,11 +3,16 @@
  * Manage canvas version history
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/api/auth';
-import { prisma } from '@/lib/db';
-import { z } from 'zod';
-import { NotFoundError, ForbiddenError, errorResponse, fromZodError } from '@/lib/errors';
+import { type NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api/auth";
+import { prisma } from "@/lib/db";
+import { z } from "zod";
+import {
+  NotFoundError,
+  ForbiddenError,
+  errorResponse,
+  fromZodError,
+} from "@/lib/errors";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
@@ -45,11 +50,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas) {
-      throw new NotFoundError('Canvas not found');
+      throw new NotFoundError("Canvas not found");
     }
 
     if (canvas.userId !== userId) {
-      throw new ForbiddenError('You can only create versions of your own canvases');
+      throw new ForbiddenError(
+        "You can only create versions of your own canvases",
+      );
     }
 
     // Create snapshot
@@ -98,6 +105,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId } = await requireAuth();
     const { canvasId } = await params;
+    const includeSnapshot =
+      new URL(request.url).searchParams.get("includeSnapshot") === "true";
 
     // Verify canvas ownership
     const canvas = await prisma.canvas.findUnique({
@@ -105,20 +114,23 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas) {
-      throw new NotFoundError('Canvas not found');
+      throw new NotFoundError("Canvas not found");
     }
 
     if (canvas.userId !== userId) {
-      throw new ForbiddenError('You can only view versions of your own canvases');
+      throw new ForbiddenError(
+        "You can only view versions of your own canvases",
+      );
     }
 
     const versions = await prisma.canvasVersion.findMany({
       where: { canvasId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         name: true,
         createdAt: true,
+        ...(includeSnapshot ? { snapshot: true } : {}),
       },
     });
 

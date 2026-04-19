@@ -1,8 +1,7 @@
+"use client";
 
-'use client';
-
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AppBar,
   Box,
@@ -16,12 +15,12 @@ import {
   Menu,
   MenuItem,
   Badge,
-
   ToggleButton,
+  ToggleButtonGroup,
   Avatar,
   AvatarGroup,
   Chip,
-} from '@mui/material';
+} from "@mui/material";
 import {
   ArrowBack,
   ZoomIn,
@@ -44,12 +43,12 @@ import {
   AutoFixHigh as AutopilotIcon,
   MicNone as WhisperIcon,
   ViewInAr as ARIcon,
-} from '@mui/icons-material';
-import { ShareDialog } from './ShareDialog';
+} from "@mui/icons-material";
+import { ShareDialog } from "./ShareDialog";
 
-import { ThemeToggle } from '@/components/ThemeToggle';
-import { MeetingTimer } from './MeetingTimer';
-import { PresentToAll } from '@mui/icons-material';
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { MeetingTimer } from "./MeetingTimer";
+import { PresentToAll } from "@mui/icons-material";
 
 export interface CollaboratorInfo {
   userId: string;
@@ -82,9 +81,17 @@ export interface CanvasHeaderProps {
   activeTagCount?: number;
   collaborators?: CollaboratorInfo[];
   collaborationConnected?: boolean;
-  collaborationStatus?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
+  collaborationStatus?:
+    | "idle"
+    | "connecting"
+    | "connected"
+    | "reconnecting"
+    | "disconnected"
+    | "error";
   onFollowUser?: (userId: string) => void;
   followingUserId?: string | null;
+  viewMode?: "manual" | "organizer";
+  onViewModeChange?: (mode: "manual" | "organizer") => void;
 
   onAI?: () => void;
   onTimeMachine?: () => void;
@@ -117,7 +124,7 @@ export function CanvasHeader({
   onGridToggle,
   snapEnabled = false,
   onSnapToggle,
-  searchQuery = '',
+  searchQuery = "",
   onSearchChange,
   canUndo = false,
   canRedo = false,
@@ -126,9 +133,11 @@ export function CanvasHeader({
   activeTagCount = 0,
   collaborators = [],
   collaborationConnected = false,
-  collaborationStatus = 'idle',
+  collaborationStatus = "idle",
   onFollowUser,
   followingUserId,
+  viewMode = "manual",
+  onViewModeChange,
 
   onAI,
   onTimeMachine,
@@ -149,7 +158,7 @@ export function CanvasHeader({
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   const handleBackClick = () => {
-    router.push('/dashboard');
+    router.push("/dashboard");
   };
 
   const handleNameClick = () => {
@@ -167,9 +176,9 @@ export function CanvasHeader({
   };
 
   const handleNameKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       handleNameSave();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       setEditedName(canvasName);
       setIsEditingName(false);
     }
@@ -194,16 +203,46 @@ export function CanvasHeader({
   };
 
   const statusConfig = {
-    connected: { label: 'Live', color: 'success', tooltip: 'Real-time collaboration active', iconColor: '#4caf50' },
-    connecting: { label: 'Connecting', color: 'info', tooltip: 'Connecting to collaboration server', iconColor: '#29b6f6' },
-    reconnecting: { label: 'Reconnecting', color: 'warning', tooltip: 'Reconnecting to collaboration server', iconColor: '#ffb74d' },
-    disconnected: { label: 'Offline', color: 'default', tooltip: 'Collaboration offline', iconColor: '#9e9e9e' },
-    error: { label: 'Offline', color: 'error', tooltip: 'Collaboration error', iconColor: '#f44336' },
-    idle: { label: 'Offline', color: 'default', tooltip: 'Collaboration idle', iconColor: '#9e9e9e' },
+    connected: {
+      label: "Live",
+      color: "success",
+      tooltip: "Real-time collaboration active",
+      iconColor: "#4caf50",
+    },
+    connecting: {
+      label: "Connecting",
+      color: "info",
+      tooltip: "Connecting to collaboration server",
+      iconColor: "#29b6f6",
+    },
+    reconnecting: {
+      label: "Reconnecting",
+      color: "warning",
+      tooltip: "Reconnecting to collaboration server",
+      iconColor: "#ffb74d",
+    },
+    disconnected: {
+      label: "Offline",
+      color: "default",
+      tooltip: "Collaboration offline",
+      iconColor: "#9e9e9e",
+    },
+    error: {
+      label: "Offline",
+      color: "error",
+      tooltip: "Collaboration error",
+      iconColor: "#f44336",
+    },
+    idle: {
+      label: "Offline",
+      color: "default",
+      tooltip: "Collaboration idle",
+      iconColor: "#9e9e9e",
+    },
   } as const;
 
   const statusDisplay = statusConfig[collaborationStatus];
-  const showStatus = collaborationStatus !== 'idle' || collaborationConnected;
+  const showStatus = collaborationStatus !== "idle" || collaborationConnected;
 
   return (
     <AppBar position="static" color="default" elevation={1}>
@@ -216,7 +255,15 @@ export function CanvasHeader({
         </Tooltip>
 
         {/* Canvas Name */}
-        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box
+          sx={{
+            flexGrow: 1,
+            minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+          }}
+        >
           {showSearch && onSearchChange ? (
             <TextField
               value={searchQuery}
@@ -226,12 +273,14 @@ export function CanvasHeader({
               autoFocus
               sx={{ minWidth: 300, maxWidth: 500 }}
               InputProps={{
-                startAdornment: <SearchIcon sx={{ mr: 1, color: 'action.active' }} />,
+                startAdornment: (
+                  <SearchIcon sx={{ mr: 1, color: "action.active" }} />
+                ),
                 endAdornment: searchQuery ? (
                   <IconButton
                     size="small"
                     onClick={() => {
-                      onSearchChange('');
+                      onSearchChange("");
                       setShowSearch(false);
                     }}
                   >
@@ -252,20 +301,44 @@ export function CanvasHeader({
               sx={{ minWidth: 200, maxWidth: 400 }}
             />
           ) : (
-            <Typography
-              variant="h6"
-              component="div"
-              noWrap
-              onClick={handleNameClick}
+            <Box
               sx={{
-                cursor: 'pointer',
-                '&:hover': {
-                  textDecoration: 'underline',
-                },
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+                flexWrap: "wrap",
               }}
             >
-              {canvasName}
-            </Typography>
+              <Typography
+                variant="h6"
+                component="div"
+                noWrap
+                onClick={handleNameClick}
+                sx={{
+                  cursor: "pointer",
+                  "&:hover": {
+                    textDecoration: "underline",
+                  },
+                }}
+              >
+                {canvasName}
+              </Typography>
+              {onViewModeChange && (
+                <ToggleButtonGroup
+                  exclusive
+                  size="small"
+                  value={viewMode}
+                  onChange={(_event, nextMode) => {
+                    if (nextMode) {
+                      onViewModeChange(nextMode);
+                    }
+                  }}
+                >
+                  <ToggleButton value="manual">Manual</ToggleButton>
+                  <ToggleButton value="organizer">Organizer</ToggleButton>
+                </ToggleButtonGroup>
+              )}
+            </Box>
           )}
         </Box>
 
@@ -298,13 +371,18 @@ export function CanvasHeader({
 
         {/* Collaboration Indicator */}
         {(collaborators.length > 0 || showStatus) && (
-          <Box sx={{ display: 'flex', alignItems: 'center', mr: 2, gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", mr: 2, gap: 1 }}>
             {collaborators.length > 0 && (
-              <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 32, height: 32, fontSize: 14 } }}>
+              <AvatarGroup
+                max={5}
+                sx={{
+                  "& .MuiAvatar-root": { width: 32, height: 32, fontSize: 14 },
+                }}
+              >
                 {collaborators.map((collaborator) => (
                   <Tooltip
                     key={collaborator.userId}
-                    title={`${collaborator.name || collaborator.email} ${onFollowUser ? '(Click to follow)' : '(viewing)'}`}
+                    title={`${collaborator.name || collaborator.email} ${onFollowUser ? "(Click to follow)" : "(viewing)"}`}
                   >
                     <Avatar
                       sx={{
@@ -312,14 +390,21 @@ export function CanvasHeader({
                         width: 32,
                         height: 32,
                         fontSize: 14,
-                        fontWeight: 'bold',
-                        cursor: onFollowUser ? 'pointer' : 'default',
-                        border: followingUserId === collaborator.userId ? '2px solid #29b6f6' : '1px solid #fff',
-                        boxSizing: 'border-box',
+                        fontWeight: "bold",
+                        cursor: onFollowUser ? "pointer" : "default",
+                        border:
+                          followingUserId === collaborator.userId
+                            ? "2px solid #29b6f6"
+                            : "1px solid #fff",
+                        boxSizing: "border-box",
                       }}
-                      onClick={() => onFollowUser && onFollowUser(collaborator.userId)}
+                      onClick={() =>
+                        onFollowUser && onFollowUser(collaborator.userId)
+                      }
                     >
-                      {(collaborator.name || collaborator.email).charAt(0).toUpperCase()}
+                      {(collaborator.name || collaborator.email)
+                        .charAt(0)
+                        .toUpperCase()}
                     </Avatar>
                   </Tooltip>
                 ))}
@@ -328,16 +413,22 @@ export function CanvasHeader({
             {showStatus && (
               <Tooltip title={statusDisplay.tooltip}>
                 <Chip
-                  icon={<OnlineIcon sx={{ fontSize: 12, color: statusDisplay.iconColor }} />}
+                  icon={
+                    <OnlineIcon
+                      sx={{ fontSize: 12, color: statusDisplay.iconColor }}
+                    />
+                  }
                   label={statusDisplay.label}
                   size="small"
                   color={statusDisplay.color}
-                  variant={collaborationStatus === 'connected' ? 'filled' : 'outlined'}
+                  variant={
+                    collaborationStatus === "connected" ? "filled" : "outlined"
+                  }
                   sx={{
                     height: 24,
                     fontSize: 11,
-                    color: 'text.primary',
-                    '& .MuiChip-icon': {
+                    color: "text.primary",
+                    "& .MuiChip-icon": {
                       marginLeft: 0.5,
                     },
                   }}
@@ -354,7 +445,11 @@ export function CanvasHeader({
 
         {/* Presentation Mode */}
         {onPresentationMode && (
-          <Tooltip title={isPresentationMode ? "Exit Presentation" : "Presentation Mode"}>
+          <Tooltip
+            title={
+              isPresentationMode ? "Exit Presentation" : "Presentation Mode"
+            }
+          >
             <IconButton
               onClick={onPresentationMode}
               color={isPresentationMode ? "secondary" : "default"}
@@ -382,7 +477,11 @@ export function CanvasHeader({
         {/* Serendipity */}
         {onSerendipity && (
           <Tooltip title="Serendipity / Surprise Me">
-            <IconButton onClick={onSerendipity} color="secondary" sx={{ mr: 1 }}>
+            <IconButton
+              onClick={onSerendipity}
+              color="secondary"
+              sx={{ mr: 1 }}
+            >
               <SerendipityIcon />
             </IconButton>
           </Tooltip>
@@ -418,7 +517,11 @@ export function CanvasHeader({
         {/* Time Machine */}
         {onTimeMachine && (
           <Tooltip title="Time Machine (Visual History)">
-            <IconButton onClick={onTimeMachine} color="secondary" sx={{ mr: 1 }}>
+            <IconButton
+              onClick={onTimeMachine}
+              color="secondary"
+              sx={{ mr: 1 }}
+            >
               <HistoryIcon />
             </IconButton>
           </Tooltip>
@@ -427,7 +530,7 @@ export function CanvasHeader({
         {/* AR Mode */}
         {onAR && (
           <Tooltip title="AR Canvas Layer (Experimental)">
-            <IconButton onClick={onAR} sx={{ mr: 1, color: 'warning.main' }}>
+            <IconButton onClick={onAR} sx={{ mr: 1, color: "warning.main" }}>
               <ARIcon />
             </IconButton>
           </Tooltip>
@@ -460,7 +563,7 @@ export function CanvasHeader({
               <ZoomOut fontSize="small" />
             </Button>
           </Tooltip>
-          <Button onClick={onFitToScreen} sx={{ minWidth: '60px' }}>
+          <Button onClick={onFitToScreen} sx={{ minWidth: "60px" }}>
             {Math.round(zoom * 100)}%
           </Button>
           <Tooltip title="Zoom In">
@@ -471,7 +574,7 @@ export function CanvasHeader({
         </ButtonGroup>
 
         {/* Grid and Snap Toggles */}
-        <Box sx={{ display: 'flex', mr: 2 }}>
+        <Box sx={{ display: "flex", mr: 2 }}>
           {onGridToggle && (
             <Tooltip title={gridVisible ? "Hide Grid" : "Show Grid"}>
               <ToggleButton
@@ -481,12 +584,20 @@ export function CanvasHeader({
                 size="small"
                 sx={{ mr: 0.5 }}
               >
-                {gridVisible ? <GridOnIcon fontSize="small" /> : <GridOffIcon fontSize="small" />}
+                {gridVisible ? (
+                  <GridOnIcon fontSize="small" />
+                ) : (
+                  <GridOffIcon fontSize="small" />
+                )}
               </ToggleButton>
             </Tooltip>
           )}
           {onSnapToggle && (
-            <Tooltip title={snapEnabled ? "Disable Snap to Grid" : "Enable Snap to Grid"}>
+            <Tooltip
+              title={
+                snapEnabled ? "Disable Snap to Grid" : "Enable Snap to Grid"
+              }
+            >
               <ToggleButton
                 value="snap"
                 selected={snapEnabled}
@@ -511,26 +622,32 @@ export function CanvasHeader({
           onClose={handleMenuClose}
         >
           {onExport && (
-            <MenuItem onClick={() => {
-              onExport();
-              handleMenuClose();
-            }}>
+            <MenuItem
+              onClick={() => {
+                onExport();
+                handleMenuClose();
+              }}
+            >
               Export Canvas
             </MenuItem>
           )}
           {onSaveAsTemplate && (
-            <MenuItem onClick={() => {
-              onSaveAsTemplate();
-              handleMenuClose();
-            }}>
+            <MenuItem
+              onClick={() => {
+                onSaveAsTemplate();
+                handleMenuClose();
+              }}
+            >
               Save as Template
             </MenuItem>
           )}
           {onVersionHistory && (
-            <MenuItem onClick={() => {
-              onVersionHistory();
-              handleMenuClose();
-            }}>
+            <MenuItem
+              onClick={() => {
+                onVersionHistory();
+                handleMenuClose();
+              }}
+            >
               Version History
             </MenuItem>
           )}
@@ -543,6 +660,6 @@ export function CanvasHeader({
         canvasId={canvasId}
         canvasName={canvasName}
       />
-    </AppBar >
+    </AppBar>
   );
 }

@@ -7,9 +7,9 @@
  * Phase 3: Includes shared canvas authorization
  */
 
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/db';
-import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
+import { prisma } from "@/lib/db";
+import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
+import { getCachedSession } from "@/lib/api/session-cache";
 
 /**
  * Get authenticated user from session
@@ -20,10 +20,12 @@ import { UnauthorizedError, ForbiddenError } from '@/lib/errors';
  * to avoid repeated database queries within the same request.
  */
 export async function requireAuth() {
-  const session = await auth();
+  const session = await getCachedSession();
 
   if (!session || !session.user?.email || !session.user?.id) {
-    throw new UnauthorizedError('You must be logged in to access this resource');
+    throw new UnauthorizedError(
+      "You must be logged in to access this resource",
+    );
   }
 
   return {
@@ -35,13 +37,17 @@ export async function requireAuth() {
 /**
  * Canvas access levels based on ownership and shares
  */
-export type CanvasAccessLevel = 'OWNER' | 'EDIT' | 'COMMENT' | 'VIEW' | 'NONE';
+export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW" | "NONE";
 
 /**
  * Get user's access level for a canvas
  * Returns access level based on ownership or share permission
  */
-export async function getCanvasAccess(canvasId: string, userId: string, userEmail: string): Promise<CanvasAccessLevel> {
+export async function getCanvasAccess(
+  canvasId: string,
+  userId: string,
+  userEmail: string,
+): Promise<CanvasAccessLevel> {
   const canvas = await prisma.canvas.findUnique({
     where: { id: canvasId },
     select: {
@@ -54,12 +60,12 @@ export async function getCanvasAccess(canvasId: string, userId: string, userEmai
   });
 
   if (!canvas) {
-    return 'NONE';
+    return "NONE";
   }
 
   // Owner has full access
   if (canvas.userId === userId) {
-    return 'OWNER';
+    return "OWNER";
   }
 
   // Check if user has shared access
@@ -68,7 +74,7 @@ export async function getCanvasAccess(canvasId: string, userId: string, userEmai
     return share.role as CanvasAccessLevel;
   }
 
-  return 'NONE';
+  return "NONE";
 }
 
 /**
@@ -79,7 +85,7 @@ export async function requireCanvasAccess(
   canvasId: string,
   userId: string,
   userEmail: string,
-  requiredLevel: 'VIEW' | 'COMMENT' | 'EDIT' | 'OWNER'
+  requiredLevel: "VIEW" | "COMMENT" | "EDIT" | "OWNER",
 ): Promise<CanvasAccessLevel> {
   const access = await getCanvasAccess(canvasId, userId, userEmail);
 
@@ -96,7 +102,9 @@ export async function requireCanvasAccess(
   const requiredAccessLevel = accessHierarchy[requiredLevel];
 
   if (userAccessLevel < requiredAccessLevel) {
-    throw new ForbiddenError('You do not have sufficient permissions to perform this action');
+    throw new ForbiddenError(
+      "You do not have sufficient permissions to perform this action",
+    );
   }
 
   return access;
@@ -114,11 +122,13 @@ export async function requireCanvasOwnership(canvasId: string, userId: string) {
   });
 
   if (!canvas) {
-    throw new ForbiddenError('Canvas not found or access denied');
+    throw new ForbiddenError("Canvas not found or access denied");
   }
 
   if (canvas.userId !== userId) {
-    throw new ForbiddenError('You do not have permission to access this canvas');
+    throw new ForbiddenError(
+      "You do not have permission to access this canvas",
+    );
   }
 
   return canvas;
@@ -140,11 +150,11 @@ export async function requireItemOwnership(itemId: string, userId: string) {
   });
 
   if (!item) {
-    throw new ForbiddenError('Item not found or access denied');
+    throw new ForbiddenError("Item not found or access denied");
   }
 
   if (item.canvas.userId !== userId) {
-    throw new ForbiddenError('You do not have permission to access this item');
+    throw new ForbiddenError("You do not have permission to access this item");
   }
 
   return item;
@@ -158,7 +168,7 @@ export async function requireItemAccess(
   itemId: string,
   userId: string,
   userEmail: string,
-  requiredLevel: 'VIEW' | 'COMMENT' | 'EDIT'
+  requiredLevel: "VIEW" | "COMMENT" | "EDIT",
 ): Promise<CanvasAccessLevel> {
   const item = await prisma.canvasItem.findUnique({
     where: { id: itemId },
@@ -168,8 +178,13 @@ export async function requireItemAccess(
   });
 
   if (!item) {
-    throw new ForbiddenError('Item not found or access denied');
+    throw new ForbiddenError("Item not found or access denied");
   }
 
-  return await requireCanvasAccess(item.canvasId, userId, userEmail, requiredLevel);
+  return await requireCanvasAccess(
+    item.canvasId,
+    userId,
+    userEmail,
+    requiredLevel,
+  );
 }

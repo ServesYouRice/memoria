@@ -6,32 +6,11 @@
  * @module lib/utils
  */
 
-// Array utilities
-export * from './array';
+// HTML utilities
+export * from "./html";
 
-// Color utilities
-export * from './color';
+// Metadata extraction
+export * from "./metadata-extractor";
 
-// Date utilities
-export * from './date';
-
-// Object utilities
-export * from './object';
-
-// String utilities
-export * from './string';
-
-// URL utilities
-export * from './url';
-
-// Storage utilities
-export * from './storage';
-
-// Clipboard utilities
-export * from './clipboard';
-
-// Performance utilities
-export * from './performance';
-
-// Accessibility utilities
-export * from './accessibility';
+// SSRF protection
+export * from "./ssrf-protection";

@@ -3,38 +3,46 @@
  * Following ADR-0010: Real-Time Collaboration Strategy
  */
 
-import 'dotenv-safe/config';
-import './src/lib/env';
-import { createServer } from 'http';
-import { parse } from 'url';
-import next from 'next';
-import { createCollaborationServer } from './src/lib/collaboration/websocket-server';
-import { logger } from './src/lib/logger';
+import "./src/lib/env";
+import { createServer } from "http";
+import { parse } from "url";
+import next from "next";
+import { createCollaborationServer } from "./src/lib/collaboration/websocket-server";
+import { logger } from "./src/lib/logger";
 
-const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
-const port = parseInt(process.env['PORT'] || '3000', 10);
+const dev = process.env.NODE_ENV !== "production";
+const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
+const port = parseInt(process.env["PORT"] || "3000", 10);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-app.prepare().then(() => {
-  const server = createServer(async (req, res) => {
-    try {
-      const parsedUrl = parse(req.url!, true);
-      await handle(req, res, parsedUrl);
-    } catch (err) {
-      logger.error({ error: err, url: req.url }, 'Error occurred handling request');
-      res.statusCode = 500;
-      res.end('internal server error');
-    }
-  });
+app
+  .prepare()
+  .then(() => {
+    const server = createServer(async (req, res) => {
+      try {
+        const parsedUrl = parse(req.url!, true);
+        await handle(req, res, parsedUrl);
+      } catch (err) {
+        logger.error(
+          { error: err, url: req.url },
+          "Error occurred handling request",
+        );
+        res.statusCode = 500;
+        res.end("internal server error");
+      }
+    });
 
-  // Initialize WebSocket server for collaboration
-  createCollaborationServer(server);
+    // Initialize WebSocket server for collaboration
+    createCollaborationServer(server);
 
-  server.listen(port, () => {
-    logger.info({ hostname, port }, 'Server ready');
-    logger.info('WebSocket server ready for collaboration');
+    server.listen(port, () => {
+      logger.info({ hostname, port }, "Server ready");
+      logger.info("WebSocket server ready for collaboration");
+    });
+  })
+  .catch((error) => {
+    logger.error({ error }, "Failed to prepare Next.js application");
+    process.exit(1);
   });
-});

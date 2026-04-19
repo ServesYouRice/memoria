@@ -3,10 +3,10 @@
  * GET /api/v1/shared-canvases - List canvases shared with the current user
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/api/auth';
-import { errorResponse } from '@/lib/errors';
+import { type NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { requireAuth } from "@/lib/api/auth";
+import { errorResponse } from "@/lib/errors";
 
 /**
  * GET - List canvases shared with the current user
@@ -26,7 +26,6 @@ export async function GET(request: NextRequest) {
             user: {
               select: {
                 name: true,
-                email: true,
               },
             },
             _count: {
@@ -42,7 +41,7 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
 

@@ -6,8 +6,16 @@
   "scripts": {
     "dev": "tsx server.ts",
     "dev:next": "next dev",
-    "build": "next build",
-    "start": "NODE_ENV=production tsx server.ts",
+    "build": "node scripts/build.mjs",
+    "build:server": "node scripts/build-server.mjs",
+    "start": "node scripts/start-server.mjs",
+    "setup:dev": "node scripts/setup.mjs dev",
+    "setup:selfhost": "node scripts/setup.mjs selfhost",
+    "doctor": "node scripts/doctor.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "stack:up": "node scripts/stack.mjs up",
+    "stack:down": "node scripts/stack.mjs down",
+    "stack:logs": "node scripts/stack.mjs logs",
     "lint": "next lint",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
@@ -25,6 +33,7 @@
     "audit": "pnpm audit --audit-level=moderate",
     "check-bundle": "node scripts/check-bundle-size.mjs",
     "ci": "pnpm run lint && pnpm run type-check && pnpm run test:coverage && pnpm run audit && pnpm run build && pnpm run test:e2e",
+    "lint-staged": "lint-staged",
     "prepare": "husky"
   },
   "dependencies": {

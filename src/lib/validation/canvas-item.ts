@@ -3,9 +3,9 @@
  * Following ADR-0001: API Versioning & Error Contract
  */
 
-import { z } from 'zod';
-import { ItemType } from '@/types/canvas';
-import { sanitizePlainText, sanitizeUrl } from '@/lib/sanitization';
+import { z } from "zod";
+import { ItemType } from "@/types/canvas";
+import { sanitizePlainText, sanitizeUrl } from "@/lib/sanitization";
 import {
   MAX_URL_LENGTH,
   MAX_NOTE_TEXT_LENGTH,
@@ -14,7 +14,7 @@ import {
   MAX_TAGS_PER_ITEM,
   MAX_VIEWPORT_ITEMS,
   DEFAULT_VIEWPORT_LIMIT,
-} from '@/lib/constants';
+} from "@/lib/constants";
 
 /**
  * URL validation schema for bookmarks
@@ -23,18 +23,18 @@ import {
  */
 const urlSchema = z
   .string()
-  .url({ message: 'Invalid URL format' })
+  .url({ message: "Invalid URL format" })
   .max(MAX_URL_LENGTH, `URL must be less than ${MAX_URL_LENGTH} characters`)
   .refine(
     (url) => {
       try {
         const parsed = new URL(url);
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
       } catch {
         return false;
       }
     },
-    { message: 'URL must use http:// or https:// protocol' }
+    { message: "URL must use http:// or https:// protocol" },
   );
 
 /**
@@ -44,8 +44,11 @@ const urlSchema = z
 export const noteContentSchema = z.object({
   text: z
     .string()
-    .min(1, 'Note text cannot be empty')
-    .max(MAX_NOTE_TEXT_LENGTH, `Note text too long (max ${MAX_NOTE_TEXT_LENGTH} characters)`)
+    .min(1, "Note text cannot be empty")
+    .max(
+      MAX_NOTE_TEXT_LENGTH,
+      `Note text too long (max ${MAX_NOTE_TEXT_LENGTH} characters)`,
+    )
     .transform((val) => sanitizePlainText(val)),
 });
 
@@ -60,9 +63,9 @@ export const bookmarkContentSchema = z.object({
     if (!sanitized) {
       throw new z.ZodError([
         {
-          code: 'custom',
-          message: 'URL contains potentially dangerous content',
-          path: ['url'],
+          code: "custom",
+          message: "URL contains potentially dangerous content",
+          path: ["url"],
         },
       ]);
     }
@@ -109,7 +112,14 @@ export const drawingContentSchema = z.object({
  * Shape content validation
  */
 export const shapeContentSchema = z.object({
-  shapeType: z.enum(['rectangle', 'circle', 'triangle', 'diamond', 'star', 'arrow_shape']),
+  shapeType: z.enum([
+    "rectangle",
+    "circle",
+    "triangle",
+    "diamond",
+    "star",
+    "arrow_shape",
+  ]),
   stroke: z.string().optional(),
   fill: z.string().optional(),
   strokeWidth: z.number().positive().optional(),
@@ -126,8 +136,8 @@ export const arrowContentSchema = z.object({
   endPoint: z.object({ x: z.number(), y: z.number() }).optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().positive().optional(),
-  arrowHeadStart: z.enum(['none', 'arrow', 'circle']).optional(),
-  arrowHeadEnd: z.enum(['none', 'arrow', 'circle']).optional(),
+  arrowHeadStart: z.enum(["none", "arrow", "circle"]).optional(),
+  arrowHeadEnd: z.enum(["none", "arrow", "circle"]).optional(),
   label: z.string().optional(),
 });
 
@@ -138,7 +148,7 @@ export const textContentSchema = z.object({
   text: z.string(),
   fontSize: z.number().positive().optional(),
   fontFamily: z.string().optional(),
-  align: z.enum(['left', 'center', 'right']).optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
   color: z.string().optional(),
 });
 
@@ -155,7 +165,7 @@ export const frameContentSchema = z.object({
  */
 export const embedContentSchema = z.object({
   url: z.string().url(),
-  embedType: z.enum(['youtube', 'figma', 'loom', 'generic']),
+  embedType: z.enum(["youtube", "figma", "loom", "generic"]),
 });
 
 /**
@@ -163,14 +173,43 @@ export const embedContentSchema = z.object({
  */
 export const pollContentSchema = z.object({
   question: z.string().min(1),
-  options: z.array(z.object({
-    id: z.string(),
-    text: z.string(),
-    votes: z.array(z.string())
-  })),
+  options: z.array(
+    z.object({
+      id: z.string(),
+      text: z.string(),
+      votes: z.array(z.string()),
+    }),
+  ),
   multipleChoice: z.boolean().optional(),
 });
 
+export const canvasItemContentSchemas = {
+  [ItemType.NOTE]: noteContentSchema,
+  [ItemType.BOOKMARK]: bookmarkContentSchema,
+  [ItemType.IMAGE]: imageContentSchema,
+  [ItemType.DRAWING]: drawingContentSchema,
+  [ItemType.SHAPE]: shapeContentSchema,
+  [ItemType.ARROW]: arrowContentSchema,
+  [ItemType.TEXT]: textContentSchema,
+  [ItemType.FRAME]: frameContentSchema,
+  [ItemType.EMBED]: embedContentSchema,
+  [ItemType.POLL]: pollContentSchema,
+} as const;
+
+export function parseCanvasItemContent(type: string, content: unknown) {
+  const schema = canvasItemContentSchemas[type as ItemType];
+  if (!schema) {
+    throw new z.ZodError([
+      {
+        code: "custom",
+        message: `Unsupported item type: ${type}`,
+        path: ["type"],
+      },
+    ]);
+  }
+
+  return schema.parse(content);
+}
 
 /**
  * Geometry validation
@@ -194,19 +233,11 @@ export const createCanvasItemSchema = z.object({
   width: z.number().positive().finite(),
   height: z.number().positive().finite(),
   zIndex: z.number().int().min(0).max(MAX_ZINDEX).default(0),
-  content: z.union([
-    noteContentSchema,
-    bookmarkContentSchema,
-    imageContentSchema,
-    drawingContentSchema,
-    shapeContentSchema,
-    arrowContentSchema,
-    textContentSchema,
-    frameContentSchema,
-    embedContentSchema,
-    pollContentSchema
-  ]),
-  tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_ITEM).default([]),
+  content: z.unknown(),
+  tags: z
+    .array(z.string().min(1).max(MAX_TAG_LENGTH))
+    .max(MAX_TAGS_PER_ITEM)
+    .default([]),
 });
 
 /**
@@ -220,19 +251,11 @@ export const updateCanvasItemSchema = z.object({
   width: z.number().positive().finite().optional(),
   height: z.number().positive().finite().optional(),
   zIndex: z.number().int().min(0).max(MAX_ZINDEX).optional(),
-  content: z.union([
-    noteContentSchema,
-    bookmarkContentSchema,
-    imageContentSchema,
-    drawingContentSchema,
-    shapeContentSchema,
-    arrowContentSchema,
-    textContentSchema,
-    frameContentSchema,
-    embedContentSchema,
-    pollContentSchema
-  ]).optional(),
-  tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_ITEM).optional(),
+  content: z.unknown().optional(),
+  tags: z
+    .array(z.string().min(1).max(MAX_TAG_LENGTH))
+    .max(MAX_TAGS_PER_ITEM)
+    .optional(),
 });
 
 /**
@@ -249,7 +272,12 @@ export const listCanvasItemsSchema = z.object({
   canvasId: z.string().cuid(),
   type: z.nativeEnum(ItemType).optional(),
   includeDeleted: z.boolean().default(false),
-  limit: z.number().int().positive().max(MAX_VIEWPORT_ITEMS).default(MAX_VIEWPORT_ITEMS),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_VIEWPORT_ITEMS)
+    .default(MAX_VIEWPORT_ITEMS),
   offset: z.number().int().nonnegative().default(0),
 });
 
@@ -278,7 +306,12 @@ export const viewportPaginationSchema = z.object({
   minY: z.number().finite().optional(),
   maxY: z.number().finite().optional(),
   // Pagination parameters
-  limit: z.number().int().positive().max(MAX_VIEWPORT_ITEMS).default(DEFAULT_VIEWPORT_LIMIT),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_VIEWPORT_ITEMS)
+    .default(DEFAULT_VIEWPORT_LIMIT),
   offset: z.number().int().nonnegative().default(0),
 });
 

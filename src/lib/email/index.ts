@@ -48,7 +48,7 @@
  * @see {@link SendEmailOptions} for email options
  */
 
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
 import type {
   EmailService,
   EmailServiceConfig,
@@ -57,16 +57,21 @@ import type {
   PasswordResetEmailData,
   EmailVerificationData,
   WelcomeEmailData,
-} from './types';
-import { ConsoleEmailProvider } from './providers/console';
-import { SMTPEmailProvider } from './providers/smtp';
-import { SendGridEmailProvider } from './providers/sendgrid';
-import { ResendEmailProvider } from './providers/resend';
+} from "./types";
+import { ConsoleEmailProvider } from "./providers/console";
+import { SendGridEmailProvider } from "./providers/sendgrid";
+import { ResendEmailProvider } from "./providers/resend";
 import {
   passwordResetTemplate,
   emailVerificationTemplate,
   welcomeEmailTemplate,
-} from './templates';
+} from "./templates";
+
+const SUPPORTED_EMAIL_PROVIDERS = new Set<EmailServiceConfig["provider"]>([
+  "console",
+  "sendgrid",
+  "resend",
+]);
 
 // ... (skipping getEmailConfig, it is fine) -> No, I need to put it back.
 
@@ -74,34 +79,35 @@ import {
  * Email service configuration from environment
  */
 function getEmailConfig(): EmailServiceConfig {
-  const provider = (process.env['EMAIL_PROVIDER'] || 'console') as EmailServiceConfig['provider'];
+  const provider = (process.env["EMAIL_PROVIDER"] ||
+    "console") as EmailServiceConfig["provider"];
 
   const config: EmailServiceConfig = {
     provider,
     from: {
-      email: process.env['EMAIL_FROM'] || 'noreply@memoria.com',
-      name: process.env['EMAIL_FROM_NAME'] || 'Memoria',
+      email: process.env["EMAIL_FROM"] || "noreply@memoria.com",
+      name: process.env["EMAIL_FROM_NAME"] || "Memoria",
     },
   };
 
   // Provider-specific configuration
-  if (provider === 'smtp') {
+  if (provider === "smtp") {
     config.smtp = {
-      host: process.env['SMTP_HOST'] || 'localhost',
-      port: parseInt(process.env['SMTP_PORT'] || '587', 10),
-      secure: process.env['SMTP_SECURE'] === 'true',
+      host: process.env["SMTP_HOST"] || "localhost",
+      port: parseInt(process.env["SMTP_PORT"] || "587", 10),
+      secure: process.env["SMTP_SECURE"] === "true",
       auth: {
-        user: process.env['SMTP_USER'] || '',
-        pass: process.env['SMTP_PASS'] || '',
+        user: process.env["SMTP_USER"] || "",
+        pass: process.env["SMTP_PASS"] || "",
       },
     };
-  } else if (provider === 'sendgrid') {
+  } else if (provider === "sendgrid") {
     config.sendgrid = {
-      apiKey: process.env['SENDGRID_API_KEY'] || '',
+      apiKey: process.env["SENDGRID_API_KEY"] || "",
     };
-  } else if (provider === 'resend') {
+  } else if (provider === "resend") {
     config.resend = {
-      apiKey: process.env['RESEND_API_KEY'] || '',
+      apiKey: process.env["RESEND_API_KEY"] || "",
     };
   }
 
@@ -113,35 +119,45 @@ function getEmailConfig(): EmailServiceConfig {
  */
 function createEmailProvider(config: EmailServiceConfig): EmailService {
   switch (config.provider) {
-    case 'console':
-      logger.info('Using console email provider (development mode)');
+    case "console":
+      logger.info("Using console email provider (development mode)");
       return new ConsoleEmailProvider();
 
-    case 'smtp':
+    case "smtp":
       if (!config.smtp) {
-        throw new Error('SMTP configuration is required for SMTP provider');
+        throw new Error("SMTP configuration is required for SMTP provider");
       }
-      logger.info({ host: config.smtp.host }, 'Using SMTP email provider');
-      return new SMTPEmailProvider(config.smtp);
+      throw new Error(
+        "SMTP provider is not supported in this build. Use console, sendgrid, or resend instead.",
+      );
 
-    case 'sendgrid':
+    case "sendgrid":
       if (!config.sendgrid) {
-        throw new Error('SendGrid configuration is required');
+        throw new Error("SendGrid configuration is required");
       }
-      logger.info('Using SendGrid email provider');
+      logger.info("Using SendGrid email provider");
       return new SendGridEmailProvider(config.sendgrid);
 
-    case 'resend':
+    case "resend":
       if (!config.resend) {
-        throw new Error('Resend configuration is required');
+        throw new Error("Resend configuration is required");
       }
-      logger.info('Using Resend email provider');
+      logger.info("Using Resend email provider");
       return new ResendEmailProvider(config.resend);
 
     default:
-      logger.warn({ provider: config.provider }, 'Unknown email provider, falling back to console');
+      logger.warn(
+        { provider: config.provider },
+        "Unknown email provider, falling back to console",
+      );
       return new ConsoleEmailProvider();
   }
+}
+
+export function isEmailProviderSupported(
+  provider: EmailServiceConfig["provider"],
+): boolean {
+  return SUPPORTED_EMAIL_PROVIDERS.has(provider);
 }
 
 // Singleton instance
@@ -177,7 +193,9 @@ export function getEmailService(): EmailService {
  * });
  * ```
  */
-export async function sendEmail(options: Omit<SendEmailOptions, 'from'>): Promise<void> {
+export async function sendEmail(
+  options: Omit<SendEmailOptions, "from">,
+): Promise<void> {
   const service = getEmailService();
   const config = getEmailConfig();
 
@@ -186,9 +204,15 @@ export async function sendEmail(options: Omit<SendEmailOptions, 'from'>): Promis
       ...options,
       from: config.from,
     });
-    logger.info({ to: options.to, subject: options.subject }, 'Email sent successfully');
+    logger.info(
+      { to: options.to, subject: options.subject },
+      "Email sent successfully",
+    );
   } catch (error) {
-    logger.error({ error, to: options.to, subject: options.subject }, 'Failed to send email');
+    logger.error(
+      { error, to: options.to, subject: options.subject },
+      "Failed to send email",
+    );
     throw error;
   }
 }
@@ -198,7 +222,7 @@ export async function sendEmail(options: Omit<SendEmailOptions, 'from'>): Promis
  */
 export async function sendPasswordResetEmail(
   to: EmailAddress,
-  data: PasswordResetEmailData
+  data: PasswordResetEmailData,
 ): Promise<void> {
   const template = passwordResetTemplate(data);
 
@@ -209,7 +233,7 @@ export async function sendPasswordResetEmail(
     html: template.html,
   });
 
-  logger.info({ email: to.email }, 'Password reset email sent');
+  logger.info({ email: to.email }, "Password reset email sent");
 }
 
 /**
@@ -217,7 +241,7 @@ export async function sendPasswordResetEmail(
  */
 export async function sendEmailVerification(
   to: EmailAddress,
-  data: EmailVerificationData
+  data: EmailVerificationData,
 ): Promise<void> {
   const template = emailVerificationTemplate(data);
 
@@ -228,13 +252,16 @@ export async function sendEmailVerification(
     html: template.html,
   });
 
-  logger.info({ email: to.email }, 'Email verification sent');
+  logger.info({ email: to.email }, "Email verification sent");
 }
 
 /**
  * Send welcome email
  */
-export async function sendWelcomeEmail(to: EmailAddress, data: WelcomeEmailData): Promise<void> {
+export async function sendWelcomeEmail(
+  to: EmailAddress,
+  data: WelcomeEmailData,
+): Promise<void> {
   const template = welcomeEmailTemplate(data);
 
   await sendEmail({
@@ -244,7 +271,7 @@ export async function sendWelcomeEmail(to: EmailAddress, data: WelcomeEmailData)
     html: template.html,
   });
 
-  logger.info({ email: to.email }, 'Welcome email sent');
+  logger.info({ email: to.email }, "Welcome email sent");
 }
 
 /**
@@ -256,14 +283,14 @@ export async function verifyEmailService(): Promise<boolean> {
     const isValid = await service.verify();
 
     if (isValid) {
-      logger.info('Email service verified successfully');
+      logger.info("Email service verified successfully");
     } else {
-      logger.warn('Email service verification failed');
+      logger.warn("Email service verification failed");
     }
 
     return isValid;
   } catch (error) {
-    logger.error({ error }, 'Email service verification error');
+    logger.error({ error }, "Email service verification error");
     return false;
   }
 }

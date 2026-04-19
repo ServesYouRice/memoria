@@ -2,13 +2,61 @@
  * Input Sanitization Utilities
  *
  * FIXED: Issue #38 - Added comprehensive JSDoc to complex functions
- * UPDATED: December 2024 - Now uses DOMPurify for production-grade XSS protection
+ * UPDATED: December 2024 - Uses conservative server-safe HTML stripping
  *
  * Provides XSS protection for user input.
  * See CODE_AUDIT_REPORT.md Issue #18
  */
 
-import DOMPurify from 'isomorphic-dompurify';
+import { load } from "cheerio";
+
+function sanitizeAllowedHtml(
+  input: string,
+  options: {
+    allowedTags: string[];
+    allowedAttrs?: string[];
+  },
+): string {
+  const $ = load(`<div id="sanitizer-root">${input}</div>`, null, false);
+  const root = $("#sanitizer-root");
+  const allowedTags = new Set(
+    options.allowedTags.map((tag) => tag.toLowerCase()),
+  );
+  const allowedAttrs = new Set(
+    (options.allowedAttrs || []).map((attr) => attr.toLowerCase()),
+  );
+
+  root.find("script,style").remove();
+
+  root.find("*").each((_, element) => {
+    const tagName = element.tagName?.toLowerCase();
+
+    if (!tagName || !allowedTags.has(tagName)) {
+      $(element).replaceWith($(element).text());
+      return;
+    }
+
+    const attribs = { ...element.attribs };
+    for (const [name, value] of Object.entries(attribs)) {
+      const lowerName = name.toLowerCase();
+      if (!allowedAttrs.has(lowerName)) {
+        $(element).removeAttr(name);
+        continue;
+      }
+
+      if (lowerName === "href") {
+        const sanitizedHref = sanitizeUrl(value);
+        if (sanitizedHref) {
+          $(element).attr("href", sanitizedHref);
+        } else {
+          $(element).removeAttr(name);
+        }
+      }
+    }
+  });
+
+  return root.html()?.trim() || "";
+}
 
 /**
  * Escapes HTML special characters to prevent XSS attacks
@@ -30,11 +78,11 @@ import DOMPurify from 'isomorphic-dompurify';
  */
 export function escapeHtml(unsafe: string): string {
   return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /**
@@ -54,7 +102,7 @@ export function escapeHtml(unsafe: string): string {
  */
 export function sanitizePlainText(input: string): string {
   // Remove all HTML tags and trim whitespace
-  return input.replace(/<[^>]*>/g, '').trim();
+  return input.replace(/<[^>]*>/g, "").trim();
 }
 
 /**
@@ -64,9 +112,12 @@ export function sanitizePlainText(input: string): string {
  * @returns Plain text with tags removed and whitespace trimmed
  */
 export function stripHtml(input: string): string {
-  const withoutScripts = input.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
-  const withoutStyles = withoutScripts.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-  return withoutStyles.replace(/<[^>]*>/g, '').trim();
+  const withoutScripts = input.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  const withoutStyles = withoutScripts.replace(
+    /<style[^>]*>[\s\S]*?<\/style>/gi,
+    "",
+  );
+  return withoutStyles.replace(/<[^>]*>/g, "").trim();
 }
 
 /**
@@ -101,11 +152,11 @@ export function sanitizeUrl(url: string): string | null {
 
   // Check for dangerous protocols
   const dangerousProtocols = [
-    'javascript:',
-    'data:',
-    'vbscript:',
-    'file:',
-    'about:',
+    "javascript:",
+    "data:",
+    "vbscript:",
+    "file:",
+    "about:",
   ];
 
   const lowerUrl = trimmed.toLowerCase();
@@ -116,13 +167,18 @@ export function sanitizeUrl(url: string): string | null {
     decodedUrl = lowerUrl;
   }
 
-  if (dangerousProtocols.some(protocol => lowerUrl.startsWith(protocol) || decodedUrl.startsWith(protocol))) {
+  if (
+    dangerousProtocols.some(
+      (protocol) =>
+        lowerUrl.startsWith(protocol) || decodedUrl.startsWith(protocol),
+    )
+  ) {
     return null;
   }
 
   // Only allow http, https, mailto, and relative URLs
   const allowedProtocolPattern = /^(https?:|mailto:|\/|\.\/|\.\.\/)/i;
-  if (!trimmed.match(allowedProtocolPattern) && trimmed.includes(':')) {
+  if (!trimmed.match(allowedProtocolPattern) && trimmed.includes(":")) {
     return null;
   }
 
@@ -134,14 +190,27 @@ export function sanitizeUrl(url: string): string | null {
  * Basic sanitization for markdown - removes script tags and dangerous attributes
  */
 export function sanitizeMarkdown(markdown: string): string {
-  return DOMPurify.sanitize(markdown, {
-    ALLOWED_TAGS: [
-      'p', 'br', 'strong', 'em', 'code', 'pre',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'ul', 'ol', 'li', 'a', 'blockquote',
+  return sanitizeAllowedHtml(markdown, {
+    allowedTags: [
+      "p",
+      "br",
+      "strong",
+      "em",
+      "code",
+      "pre",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "ul",
+      "ol",
+      "li",
+      "a",
+      "blockquote",
     ],
-    ALLOWED_ATTR: ['href', 'title'],
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    allowedAttrs: ["href", "title"],
   });
 }
 
@@ -150,9 +219,9 @@ export function sanitizeMarkdown(markdown: string): string {
  * Allows basic formatting but removes dangerous HTML
  */
 export function sanitizeComment(content: string): string {
-  return DOMPurify.sanitize(content, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li'],
-    ALLOWED_ATTR: [],
+  return sanitizeAllowedHtml(content, {
+    allowedTags: ["p", "br", "strong", "em", "code", "pre", "ul", "ol", "li"],
+    allowedAttrs: [],
   });
 }
 
@@ -160,11 +229,25 @@ export function sanitizeComment(content: string): string {
  * Sanitize note content (JSON)
  * Validates and sanitizes note content structure
  */
-export function sanitizeNoteContent(content: unknown): string | { text: string } | null {
-  if (typeof content === 'string') {
-    const sanitized = DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'a'],
-      ALLOWED_ATTR: ['href', 'title'],
+export function sanitizeNoteContent(
+  content: unknown,
+): string | { text: string } | null {
+  if (typeof content === "string") {
+    const sanitized = sanitizeAllowedHtml(content, {
+      allowedTags: [
+        "p",
+        "br",
+        "strong",
+        "em",
+        "code",
+        "pre",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "a",
+      ],
+      allowedAttrs: ["href", "title"],
     });
     if (!sanitized && content.trim()) {
       return stripHtml(content);
@@ -172,13 +255,13 @@ export function sanitizeNoteContent(content: unknown): string | { text: string }
     return sanitized;
   }
 
-  if (typeof content !== 'object' || content === null) {
+  if (typeof content !== "object" || content === null) {
     return null;
   }
 
   const note = content as Record<string, unknown>;
 
-  if (typeof note.text !== 'string') {
+  if (typeof note.text !== "string") {
     return null;
   }
 
@@ -192,15 +275,15 @@ export function sanitizeNoteContent(content: unknown): string | { text: string }
  * Validates and sanitizes bookmark content structure
  */
 export function sanitizeBookmarkContent(
-  content: unknown
+  content: unknown,
 ): { url: string; title: string; description?: string } | null {
-  if (typeof content !== 'object' || content === null) {
+  if (typeof content !== "object" || content === null) {
     return null;
   }
 
   const bookmark = content as Record<string, unknown>;
 
-  if (typeof bookmark.url !== 'string' || typeof bookmark.title !== 'string') {
+  if (typeof bookmark.url !== "string" || typeof bookmark.title !== "string") {
     return null;
   }
 
@@ -214,7 +297,7 @@ export function sanitizeBookmarkContent(
     title: sanitizePlainText(bookmark.title),
   };
 
-  if (typeof bookmark.description === 'string') {
+  if (typeof bookmark.description === "string") {
     result.description = sanitizePlainText(bookmark.description);
   }
 
@@ -232,9 +315,9 @@ export function sanitizeBookmarkMetadata(input: {
   const sanitizedUrl = input.url ? sanitizeUrl(input.url) : null;
 
   return {
-    url: sanitizedUrl || '',
-    title: sanitizePlainText(input.title || ''),
-    description: sanitizePlainText(input.description || ''),
+    url: sanitizedUrl || "",
+    title: sanitizePlainText(input.title || ""),
+    description: sanitizePlainText(input.description || ""),
   };
 }
 
@@ -242,7 +325,7 @@ export function sanitizeBookmarkMetadata(input: {
  * Recursively sanitize arbitrary content objects/arrays by stripping HTML strings.
  */
 export function sanitizeContent<T>(input: T): T {
-  if (typeof input === 'string') {
+  if (typeof input === "string") {
     return stripHtml(input) as T;
   }
 
@@ -250,11 +333,10 @@ export function sanitizeContent<T>(input: T): T {
     return input.map((item) => sanitizeContent(item)) as T;
   }
 
-  if (typeof input === 'object' && input !== null) {
-    const entries = Object.entries(input as Record<string, unknown>).map(([key, value]) => [
-      key,
-      sanitizeContent(value),
-    ]);
+  if (typeof input === "object" && input !== null) {
+    const entries = Object.entries(input as Record<string, unknown>).map(
+      ([key, value]) => [key, sanitizeContent(value)],
+    );
     return Object.fromEntries(entries) as T;
   }
 
@@ -286,12 +368,14 @@ export function sanitizeEmail(email: string): string | null {
  * Prevents SQL injection and other attacks in search queries
  */
 export function sanitizeSearchQuery(query: string): string {
-  return query
-    .trim()
-    // Remove SQL injection attempts
-    .replace(/[;'"\\]/g, '')
-    // Limit length
-    .slice(0, 100);
+  return (
+    query
+      .trim()
+      // Remove SQL injection attempts
+      .replace(/[;'"\\]/g, "")
+      // Limit length
+      .slice(0, 100)
+  );
 }
 
 /**
@@ -299,7 +383,7 @@ export function sanitizeSearchQuery(query: string): string {
  */
 export function sanitizeFilename(filename: string): string {
   return filename
-    .replace(/[^a-zA-Z0-9._-]/g, '_')
-    .replace(/\.{2,}/g, '.')
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/\.{2,}/g, ".")
     .slice(0, 255);
 }

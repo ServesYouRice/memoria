@@ -18,9 +18,9 @@
  * The first call fetches from database, subsequent calls return cached value.
  */
 
-import { AsyncLocalStorage } from 'async_hooks';
-import { auth } from '@/lib/auth';
-import type { Session } from 'next-auth';
+import { AsyncLocalStorage } from "async_hooks";
+import { auth } from "@/lib/auth";
+import type { Session } from "next-auth";
 
 // AsyncLocalStorage for request-scoped session caching
 const sessionStorage = new AsyncLocalStorage<Map<string, Session | null>>();
@@ -28,15 +28,12 @@ const sessionStorage = new AsyncLocalStorage<Map<string, Session | null>>();
 /**
  * Get or create the session cache for the current request
  */
-function getSessionCache(): Map<string, Session | null> {
-  let cache = sessionStorage.getStore();
+function getSessionCache(): Map<string, Session | null> | null {
+  return sessionStorage.getStore() ?? null;
+}
 
-  if (!cache) {
-    cache = new Map();
-    sessionStorage.enterWith(cache);
-  }
-
-  return cache;
+export async function runWithSessionCache<T>(fn: () => Promise<T>): Promise<T> {
+  return sessionStorage.run(new Map(), fn);
 }
 
 /**
@@ -57,10 +54,10 @@ function getSessionCache(): Map<string, Session | null> {
  */
 export async function getCachedSession(): Promise<Session | null> {
   const cache = getSessionCache();
-  const cacheKey = 'current-session';
+  const cacheKey = "current-session";
 
   // Return cached value if available
-  if (cache.has(cacheKey)) {
+  if (cache?.has(cacheKey)) {
     return cache.get(cacheKey)!;
   }
 
@@ -68,7 +65,7 @@ export async function getCachedSession(): Promise<Session | null> {
   const session = await auth();
 
   // Cache for subsequent calls
-  cache.set(cacheKey, session);
+  cache?.set(cacheKey, session);
 
   return session;
 }
@@ -80,7 +77,7 @@ export async function getCachedSession(): Promise<Session | null> {
  */
 export function clearSessionCache(): void {
   const cache = getSessionCache();
-  cache.clear();
+  cache?.clear();
 }
 
 /**
@@ -103,7 +100,7 @@ export async function requireCachedAuth(): Promise<Required<Session>> {
 
   if (!session?.user) {
     // This will be caught by error handler middleware
-    throw new Error('Unauthorized');
+    throw new Error("Unauthorized");
   }
 
   return session as Required<Session>;

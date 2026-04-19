@@ -3,9 +3,9 @@
  * View and restore canvas versions
  */
 
-'use client';
+"use client";
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -20,15 +20,17 @@ import {
   Alert,
   Box,
   Typography,
-} from '@mui/material';
-import { Close, Restore, Save } from '@mui/icons-material';
+} from "@mui/material";
+import { Close, Restore, Save } from "@mui/icons-material";
 import {
   useCanvasVersions,
   useCreateVersion,
   useRestoreVersion,
-} from '@/lib/hooks/use-canvas-versions';
-import { formatDistanceToNow } from 'date-fns';
-import { useQueryClient } from '@tanstack/react-query';
+} from "@/lib/hooks/use-canvas-versions";
+import { canvasKeys } from "@/lib/hooks/use-canvases";
+import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
+import { formatDistanceToNow } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
 
 export interface VersionHistoryDialogProps {
   open: boolean;
@@ -36,10 +38,15 @@ export interface VersionHistoryDialogProps {
   canvasId: string;
 }
 
-export function VersionHistoryDialog({ open, onClose, canvasId }: VersionHistoryDialogProps) {
+export function VersionHistoryDialog({
+  open,
+  onClose,
+  canvasId,
+}: VersionHistoryDialogProps) {
   const [restoring, setRestoring] = useState<string | null>(null);
   const { data, isLoading, error } = useCanvasVersions(canvasId);
-  const { mutateAsync: createVersion, isPending: isCreating } = useCreateVersion();
+  const { mutateAsync: createVersion, isPending: isCreating } =
+    useCreateVersion();
   const { mutateAsync: restoreVersion } = useRestoreVersion();
   const queryClient = useQueryClient();
 
@@ -49,22 +56,25 @@ export function VersionHistoryDialog({ open, onClose, canvasId }: VersionHistory
     try {
       await createVersion({ canvasId });
     } catch (err) {
-      console.error('Failed to create version:', err);
+      console.error("Failed to create version:", err);
     }
   };
 
   const handleRestore = async (versionId: string) => {
-    if (!confirm('Restore to this version? Current state will be lost.')) return;
+    if (!confirm("Restore to this version? Current state will be lost."))
+      return;
 
     setRestoring(versionId);
     try {
       await restoreVersion({ canvasId, versionId });
       onClose();
       // Invalidate queries to refresh canvas data instead of full page reload
-      await queryClient.invalidateQueries({ queryKey: ['canvas', canvasId] });
-      await queryClient.invalidateQueries({ queryKey: ['canvasItems', canvasId] });
+      await queryClient.invalidateQueries({
+        queryKey: canvasKeys.detail(canvasId),
+      });
+      await queryClient.invalidateQueries({ queryKey: canvasItemKeys.all });
     } catch (err) {
-      console.error('Failed to restore version:', err);
+      console.error("Failed to restore version:", err);
     } finally {
       setRestoring(null);
     }
@@ -74,20 +84,23 @@ export function VersionHistoryDialog({ open, onClose, canvasId }: VersionHistory
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         Version History
-        <IconButton onClick={onClose} sx={{ position: 'absolute', right: 8, top: 8 }}>
+        <IconButton
+          onClick={onClose}
+          sx={{ position: "absolute", right: 8, top: 8 }}
+        >
           <Close />
         </IconButton>
       </DialogTitle>
 
       <DialogContent>
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
             <CircularProgress />
           </Box>
         ) : error ? (
           <Alert severity="error">Failed to load versions</Alert>
         ) : versions.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Box sx={{ textAlign: "center", py: 4 }}>
             <Typography variant="body2" color="text.secondary">
               No versions saved yet
             </Typography>
@@ -131,7 +144,7 @@ export function VersionHistoryDialog({ open, onClose, canvasId }: VersionHistory
           onClick={handleCreateVersion}
           disabled={isCreating}
         >
-          {isCreating ? <CircularProgress size={20} /> : 'Save Current Version'}
+          {isCreating ? <CircularProgress size={20} /> : "Save Current Version"}
         </Button>
       </DialogActions>
     </Dialog>
