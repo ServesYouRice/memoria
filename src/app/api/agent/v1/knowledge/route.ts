@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { SuggestionKind } from "@prisma/client";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { resolveAgentRequestContext } from "@/lib/agents/auth";
@@ -7,23 +6,20 @@ import { assertAgentCapability, assertCanvasScope } from "@/lib/agents/policy";
 import { AGENT_CAPABILITY_RUNGS } from "@/lib/agents/constants";
 import {
   createKnowledgeEntityWrite,
+  createKnowledgeRelationWrite,
   createSuggestionRecord,
 } from "@/lib/agents/service-core";
 import {
   listScopedKnowledgeEntities,
+  requireScopedKnowledgeEntity,
   requireScopedItem,
 } from "@/lib/agents/query-core";
+import {
+  KNOWLEDGE_ENTITY_SUGGESTION_KIND,
+  KNOWLEDGE_RELATION_SUGGESTION_KIND,
+  parseKnowledgeMutation,
+} from "@/lib/agents/knowledge-schemas";
 import { ForbiddenError } from "@/lib/errors";
-
-const createKnowledgeSchema = z.object({
-  action: z.enum(["propose", "create"]).default("propose"),
-  itemId: z.string().cuid(),
-  entityType: z.string().min(1).max(120),
-  title: z.string().min(1).max(255),
-  summary: z.string().max(2000).optional(),
-  attributes: z.record(z.string(), z.unknown()).optional(),
-  sourceConfidence: z.number().min(0).max(1).optional(),
-});
 
 async function getItemCanvasScope(userId: string, itemId: string) {
   return requireScopedItem({ userId, agentProfile: null }, itemId);
@@ -71,7 +67,80 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   }
 
   const body = await request.json();
-  const data = createKnowledgeSchema.parse(body);
+  const data = parseKnowledgeMutation(body);
+  const actor = {
+    userId: context.userId,
+    agentProfileId: context.agentProfile.id,
+    integrationAccountId: context.integrationAccountId,
+    modelCredentialId: context.agentProfile.defaultModelCredentialId,
+  };
+
+  if (data.kind === "relation") {
+    const sourceEntity = await requireScopedKnowledgeEntity(
+      context,
+      data.sourceEntityId,
+    );
+    const targetEntity = await requireScopedKnowledgeEntity(
+      context,
+      data.targetEntityId,
+    );
+    const sharedCanvasId = sourceEntity.canvasIds.find((canvasId) =>
+      targetEntity.canvasIds.includes(canvasId),
+    );
+
+    if (!sharedCanvasId) {
+      throw new ForbiddenError(
+        "Knowledge relations must remain inside one scoped canvas.",
+      );
+    }
+
+    assertCanvasScope(context.agentProfile, sharedCanvasId);
+
+    if (data.action === "propose") {
+      assertAgentCapability(
+        context.agentProfile,
+        AGENT_CAPABILITY_RUNGS.PROPOSE,
+      );
+
+      const result = await createSuggestionRecord({
+        actor,
+        kind: SuggestionKind.INTERNAL_ORGANIZATION,
+        summary:
+          data.summary ||
+          `Propose knowledge relation: ${sourceEntity.title} -[${data.relationType}]-> ${targetEntity.title}`,
+        payload: {
+          kind: KNOWLEDGE_RELATION_SUGGESTION_KIND,
+          sourceEntityId: data.sourceEntityId,
+          targetEntityId: data.targetEntityId,
+          relationType: data.relationType,
+          summary: data.summary,
+          attributes: data.attributes,
+          confidence: data.confidence,
+        },
+        rung: AGENT_CAPABILITY_RUNGS.PROPOSE,
+      });
+
+      return NextResponse.json(result, { status: 201 });
+    }
+
+    assertAgentCapability(
+      context.agentProfile,
+      AGENT_CAPABILITY_RUNGS.WRITE_SINGLE,
+    );
+
+    const result = await createKnowledgeRelationWrite({
+      actor,
+      sourceEntityId: data.sourceEntityId,
+      targetEntityId: data.targetEntityId,
+      relationType: data.relationType,
+      summary: data.summary,
+      attributes: data.attributes,
+      confidence: data.confidence,
+    });
+
+    return NextResponse.json(result, { status: 201 });
+  }
+
   const item = await getItemCanvasScope(context.userId, data.itemId);
 
   assertCanvasScope(context.agentProfile, item.canvasId);
@@ -80,16 +149,11 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     assertAgentCapability(context.agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
     const result = await createSuggestionRecord({
-      actor: {
-        userId: context.userId,
-        agentProfileId: context.agentProfile.id,
-        integrationAccountId: context.integrationAccountId,
-        modelCredentialId: context.agentProfile.defaultModelCredentialId,
-      },
+      actor,
       kind: SuggestionKind.INTERNAL_ORGANIZATION,
       summary: `Propose knowledge entity: ${data.title}`,
       payload: {
-        kind: "knowledge-entity-create",
+        kind: KNOWLEDGE_ENTITY_SUGGESTION_KIND,
         itemId: data.itemId,
         entityType: data.entityType,
         title: data.title,
@@ -109,12 +173,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   );
 
   const result = await createKnowledgeEntityWrite({
-    actor: {
-      userId: context.userId,
-      agentProfileId: context.agentProfile.id,
-      integrationAccountId: context.integrationAccountId,
-      modelCredentialId: context.agentProfile.defaultModelCredentialId,
-    },
+    actor,
     itemId: data.itemId,
     entityType: data.entityType,
     title: data.title,

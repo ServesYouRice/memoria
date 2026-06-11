@@ -74,7 +74,7 @@ The first agent/control-plane slice is now in the repo. It includes:
 - MCP-first external transport at `/api/agent/v1/mcp`
 - audited agent comment writes, grouped item writes, bulk preview checkpoints, and approved suggestion execution
 - signed outbound webhook execution for approved external actions
-- audited `AgentAction`, `ChangeSet`, `ChangeRecord`, `Suggestion`, `KnowledgeEntity`, `ItemEntityLink`, `WorkspaceCheckpoint`, and `AgentJob` primitives
+- audited `AgentAction`, `ChangeSet`, `ChangeRecord`, `Suggestion`, `KnowledgeEntity`, `KnowledgeRelation`, `ItemEntityLink`, `WorkspaceCheckpoint`, and `AgentJob` primitives
 - a read-only organizer tab on each canvas backed by `CanvasView`
 - a settings-side agent control center for suggestion review, execution, and change-set rollback
 
@@ -84,14 +84,14 @@ Current limits:
 - inbound automation uses authenticated `integrations/*`; the old generic webhook trigger route is disabled
 - outbound webhooks are currently limited to approved external-action execution through `WEBHOOK` integration accounts
 - the organizer remains a derived read-only lens; it does not silently mutate the manual canvas
-- `KnowledgeRelation` is intentionally deferred until the edge taxonomy is proven
+- derived relations remain canvas-scoped and intentionally lightweight until broader cross-canvas semantics are proven
 
 ## Stack
 
 - Next.js 15
 - TypeScript
 - Prisma + PostgreSQL
-- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.25` pending an explicit stable migration
+- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.25`; upstream still exposes the Next.js package on the beta track
 - Redis + ioredis
 - TanStack Query
 - Konva / react-konva
@@ -140,13 +140,9 @@ Production rules enforced by the app:
 - `prisma`: schema, migrations, seed
 - `scripts`: setup, diagnostics, stack control
 
-## Current Focus
+## Project State
 
-The repo contains the implementation plan and tracker used for the current production push:
-
-- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
-- [IMPLEMENTATION_TRACKER.md](./IMPLEMENTATION_TRACKER.md)
-- [SENATE.md](./SENATE.md)
+The implementation-tracking markdown used during the production push has been retired. Use this README, [ARCHITECTURE.md](./ARCHITECTURE.md), and the docs under [`docs/`](./docs/) as the current reference set.
 
 ## Verification
 

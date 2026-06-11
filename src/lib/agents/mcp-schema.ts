@@ -148,6 +148,23 @@ export function listMcpTools(): McpToolDefinition[] {
       ),
     },
     {
+      name: "knowledge.create_relation",
+      description:
+        "Create one derived relation between two knowledge entities.",
+      inputSchema: objectSchema(
+        {
+          agentProfileId: { type: "string" },
+          sourceEntityId: { type: "string" },
+          targetEntityId: { type: "string" },
+          relationType: { type: "string" },
+          summary: { type: "string" },
+          attributes: { type: "object" },
+          confidence: { type: "number", minimum: 0, maximum: 1 },
+        },
+        ["sourceEntityId", "targetEntityId", "relationType"],
+      ),
+    },
+    {
       name: "knowledge.propose_create",
       description:
         "Create a proposal for one knowledge entity linked to a source item.",
@@ -162,6 +179,23 @@ export function listMcpTools(): McpToolDefinition[] {
           sourceConfidence: { type: "number", minimum: 0, maximum: 1 },
         },
         ["itemId", "entityType", "title"],
+      ),
+    },
+    {
+      name: "knowledge.propose_relation",
+      description:
+        "Create a proposal for one derived relation between two knowledge entities.",
+      inputSchema: objectSchema(
+        {
+          agentProfileId: { type: "string" },
+          sourceEntityId: { type: "string" },
+          targetEntityId: { type: "string" },
+          relationType: { type: "string" },
+          summary: { type: "string" },
+          attributes: { type: "object" },
+          confidence: { type: "number", minimum: 0, maximum: 1 },
+        },
+        ["sourceEntityId", "targetEntityId", "relationType"],
       ),
     },
     {

@@ -112,6 +112,29 @@ export interface KnowledgeEntityLink {
   createdAt: string;
 }
 
+export interface KnowledgeRelationEndpointEntity {
+  id: string;
+  entityType: string;
+  title: string;
+  status: string;
+}
+
+export interface KnowledgeRelationRecord {
+  id: string;
+  userId: string;
+  sourceEntityId: string;
+  targetEntityId: string;
+  relationType: string;
+  summary: string | null;
+  status: string;
+  attributes: Record<string, unknown> | null;
+  confidence: number | null;
+  createdAt: string;
+  updatedAt: string;
+  sourceEntity: KnowledgeRelationEndpointEntity;
+  targetEntity: KnowledgeRelationEndpointEntity;
+}
+
 export interface KnowledgeEntityRecord {
   id: string;
   userId: string;
@@ -124,6 +147,8 @@ export interface KnowledgeEntityRecord {
   createdAt: string;
   updatedAt: string;
   itemLinks: KnowledgeEntityLink[];
+  outgoingRelations: KnowledgeRelationRecord[];
+  incomingRelations: KnowledgeRelationRecord[];
 }
 
 export interface AgentTimelineResponse {

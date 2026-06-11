@@ -17,6 +17,7 @@ import {
   listScopedCanvases,
   listScopedKnowledgeEntities,
   requireScopedCanvas,
+  requireScopedKnowledgeEntity,
   requireScopedItem,
 } from "@/lib/agents/query-core";
 import {
@@ -26,6 +27,7 @@ import {
   createCanvasItemComment,
   createCanvasItemWrite,
   createKnowledgeEntityWrite,
+  createKnowledgeRelationWrite,
   createSuggestionRecord,
   createWorkspaceCheckpoint,
   executeExternalWebhook,
@@ -35,6 +37,12 @@ import {
   rejectSuggestion,
   revertChangeSet,
 } from "@/lib/agents/service-core";
+import {
+  KNOWLEDGE_ENTITY_SUGGESTION_KIND,
+  KNOWLEDGE_RELATION_SUGGESTION_KIND,
+  knowledgeEntitySuggestionPayloadSchema,
+  knowledgeRelationSuggestionPayloadSchema,
+} from "@/lib/agents/knowledge-schemas";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
 
 function createTextResult(payload: unknown): McpToolCallResult {
@@ -225,31 +233,58 @@ async function executeApprovedSuggestion(
     return { suggestionId, executed: result };
   }
 
-  if (payloadKind === "knowledge-entity-create") {
-    const itemId = String(payload.itemId || "");
-    const entityType = String(payload.entityType || "");
-    const title = String(payload.title || "");
+  if (payloadKind === KNOWLEDGE_ENTITY_SUGGESTION_KIND) {
+    const parsed = knowledgeEntitySuggestionPayloadSchema.parse(payload);
     const item = await requireScopedItem(
       { userId: context.userId, agentProfile },
-      itemId,
+      parsed.itemId,
     );
     assertCanvasScope(agentProfile, item.canvasId);
     assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
     const result = await createKnowledgeEntityWrite({
       actor,
-      itemId,
-      entityType,
-      title,
-      summary:
-        typeof payload.summary === "string" ? payload.summary : undefined,
-      attributes:
-        payload.attributes && typeof payload.attributes === "object"
-          ? (payload.attributes as Record<string, unknown>)
-          : undefined,
-      sourceConfidence:
-        typeof payload.sourceConfidence === "number"
-          ? payload.sourceConfidence
-          : undefined,
+      itemId: parsed.itemId,
+      entityType: parsed.entityType,
+      title: parsed.title,
+      summary: parsed.summary,
+      attributes: parsed.attributes,
+      sourceConfidence: parsed.sourceConfidence,
+    });
+    await markSuggestionExecuted({ userId: context.userId, suggestionId });
+    return { suggestionId, executed: result };
+  }
+
+  if (payloadKind === KNOWLEDGE_RELATION_SUGGESTION_KIND) {
+    const parsed = knowledgeRelationSuggestionPayloadSchema.parse(payload);
+    const sourceEntity = await requireScopedKnowledgeEntity(
+      { userId: context.userId, agentProfile },
+      parsed.sourceEntityId,
+    );
+    const targetEntity = await requireScopedKnowledgeEntity(
+      { userId: context.userId, agentProfile },
+      parsed.targetEntityId,
+    );
+    const sharedCanvasId = sourceEntity.canvasIds.find((canvasId) =>
+      targetEntity.canvasIds.includes(canvasId),
+    );
+
+    if (!sharedCanvasId) {
+      throw new BadRequestError(
+        "Knowledge relations must remain inside one shared canvas.",
+      );
+    }
+
+    assertCanvasScope(agentProfile, sharedCanvasId);
+    assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+
+    const result = await createKnowledgeRelationWrite({
+      actor,
+      sourceEntityId: parsed.sourceEntityId,
+      targetEntityId: parsed.targetEntityId,
+      relationType: parsed.relationType,
+      summary: parsed.summary,
+      attributes: parsed.attributes,
+      confidence: parsed.confidence,
     });
     await markSuggestionExecuted({ userId: context.userId, suggestionId });
     return { suggestionId, executed: result };
@@ -463,7 +498,10 @@ export async function executeMcpTool(
       );
     }
     case "knowledge.create": {
-      const itemId = String(args.itemId || "");
+      const parsed = knowledgeEntitySuggestionPayloadSchema.parse({
+        kind: KNOWLEDGE_ENTITY_SUGGESTION_KIND,
+        ...args,
+      });
       const { actor, agentProfile } = await resolveWriteActor(context, {
         agentProfileId:
           typeof args.agentProfileId === "string"
@@ -472,30 +510,70 @@ export async function executeMcpTool(
       });
       const item = await requireScopedItem(
         { userId: context.userId, agentProfile },
-        itemId,
+        parsed.itemId,
       );
       assertCanvasScope(agentProfile, item.canvasId);
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
       return createTextResult(
         await createKnowledgeEntityWrite({
           actor,
-          itemId,
-          entityType: String(args.entityType || ""),
-          title: String(args.title || ""),
-          summary: typeof args.summary === "string" ? args.summary : undefined,
-          attributes:
-            args.attributes && typeof args.attributes === "object"
-              ? (args.attributes as Record<string, unknown>)
-              : undefined,
-          sourceConfidence:
-            typeof args.sourceConfidence === "number"
-              ? args.sourceConfidence
-              : undefined,
+          itemId: parsed.itemId,
+          entityType: parsed.entityType,
+          title: parsed.title,
+          summary: parsed.summary,
+          attributes: parsed.attributes,
+          sourceConfidence: parsed.sourceConfidence,
+        }),
+      );
+    }
+    case "knowledge.create_relation": {
+      const parsed = knowledgeRelationSuggestionPayloadSchema.parse({
+        kind: KNOWLEDGE_RELATION_SUGGESTION_KIND,
+        ...args,
+      });
+      const { actor, agentProfile } = await resolveWriteActor(context, {
+        agentProfileId:
+          typeof args.agentProfileId === "string"
+            ? args.agentProfileId
+            : undefined,
+      });
+      const sourceEntity = await requireScopedKnowledgeEntity(
+        { userId: context.userId, agentProfile },
+        parsed.sourceEntityId,
+      );
+      const targetEntity = await requireScopedKnowledgeEntity(
+        { userId: context.userId, agentProfile },
+        parsed.targetEntityId,
+      );
+      const sharedCanvasId = sourceEntity.canvasIds.find((canvasId) =>
+        targetEntity.canvasIds.includes(canvasId),
+      );
+
+      if (!sharedCanvasId) {
+        throw new BadRequestError(
+          "Knowledge relations must remain inside one shared canvas.",
+        );
+      }
+
+      assertCanvasScope(agentProfile, sharedCanvasId);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+      return createTextResult(
+        await createKnowledgeRelationWrite({
+          actor,
+          sourceEntityId: parsed.sourceEntityId,
+          targetEntityId: parsed.targetEntityId,
+          relationType: parsed.relationType,
+          summary: parsed.summary,
+          attributes: parsed.attributes,
+          confidence: parsed.confidence,
         }),
       );
     }
     case "knowledge.propose_create": {
-      const itemId = String(args.itemId || "");
+      const parsed = knowledgeEntitySuggestionPayloadSchema.parse({
+        kind: KNOWLEDGE_ENTITY_SUGGESTION_KIND,
+        ...args,
+      });
       const { actor, agentProfile } = await resolveWriteActor(context, {
         agentProfileId:
           typeof args.agentProfileId === "string"
@@ -504,7 +582,7 @@ export async function executeMcpTool(
       });
       const item = await requireScopedItem(
         { userId: context.userId, agentProfile },
-        itemId,
+        parsed.itemId,
       );
       assertCanvasScope(agentProfile, item.canvasId);
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
@@ -515,22 +593,69 @@ export async function executeMcpTool(
           summary:
             typeof args.summary === "string"
               ? args.summary
-              : `Propose knowledge entity ${String(args.title || "")}`,
+              : `Propose knowledge entity ${parsed.title}`,
           payload: {
-            kind: "knowledge-entity-create",
-            itemId,
-            entityType: String(args.entityType || ""),
-            title: String(args.title || ""),
+            kind: KNOWLEDGE_ENTITY_SUGGESTION_KIND,
+            itemId: parsed.itemId,
+            entityType: parsed.entityType,
+            title: parsed.title,
             summary:
-              typeof args.summary === "string" ? args.summary : undefined,
-            attributes:
-              args.attributes && typeof args.attributes === "object"
-                ? args.attributes
-                : undefined,
-            sourceConfidence:
-              typeof args.sourceConfidence === "number"
-                ? args.sourceConfidence
-                : undefined,
+              typeof args.summary === "string" ? args.summary : parsed.summary,
+            attributes: parsed.attributes,
+            sourceConfidence: parsed.sourceConfidence,
+          },
+          rung: AGENT_CAPABILITY_RUNGS.PROPOSE,
+        }),
+      );
+    }
+    case "knowledge.propose_relation": {
+      const parsed = knowledgeRelationSuggestionPayloadSchema.parse({
+        kind: KNOWLEDGE_RELATION_SUGGESTION_KIND,
+        ...args,
+      });
+      const { actor, agentProfile } = await resolveWriteActor(context, {
+        agentProfileId:
+          typeof args.agentProfileId === "string"
+            ? args.agentProfileId
+            : undefined,
+      });
+      const sourceEntity = await requireScopedKnowledgeEntity(
+        { userId: context.userId, agentProfile },
+        parsed.sourceEntityId,
+      );
+      const targetEntity = await requireScopedKnowledgeEntity(
+        { userId: context.userId, agentProfile },
+        parsed.targetEntityId,
+      );
+      const sharedCanvasId = sourceEntity.canvasIds.find((canvasId) =>
+        targetEntity.canvasIds.includes(canvasId),
+      );
+
+      if (!sharedCanvasId) {
+        throw new BadRequestError(
+          "Knowledge relations must remain inside one shared canvas.",
+        );
+      }
+
+      assertCanvasScope(agentProfile, sharedCanvasId);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
+      return createTextResult(
+        await createSuggestionRecord({
+          actor,
+          kind: SuggestionKind.INTERNAL_ORGANIZATION,
+          summary:
+            typeof args.summary === "string"
+              ? args.summary
+              : `Propose knowledge relation ${parsed.relationType}`,
+          payload: {
+            kind: KNOWLEDGE_RELATION_SUGGESTION_KIND,
+            sourceEntityId: parsed.sourceEntityId,
+            targetEntityId: parsed.targetEntityId,
+            relationType: parsed.relationType,
+            summary:
+              typeof args.summary === "string" ? args.summary : parsed.summary,
+            attributes: parsed.attributes,
+            confidence: parsed.confidence,
           },
           rung: AGENT_CAPABILITY_RUNGS.PROPOSE,
         }),

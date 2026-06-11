@@ -14,6 +14,7 @@ import {
   createCanvasItemBatchWrite,
   createCanvasItemWrite,
   createKnowledgeEntityWrite,
+  createKnowledgeRelationWrite,
   createSuggestionRecord,
   createWorkspaceCheckpoint,
   executeExternalWebhook,
@@ -23,7 +24,16 @@ import {
   rejectSuggestion,
   revertChangeSet,
 } from "@/lib/agents/service-core";
-import { listScopedActionTimeline } from "@/lib/agents/query-core";
+import {
+  listScopedActionTimeline,
+  requireScopedKnowledgeEntity,
+} from "@/lib/agents/query-core";
+import {
+  KNOWLEDGE_ENTITY_SUGGESTION_KIND,
+  KNOWLEDGE_RELATION_SUGGESTION_KIND,
+  knowledgeEntitySuggestionPayloadSchema,
+  knowledgeRelationSuggestionPayloadSchema,
+} from "@/lib/agents/knowledge-schemas";
 import { ForbiddenError, NotFoundError, BadRequestError } from "@/lib/errors";
 
 const headerValueSchema = z.string().min(1).max(2000);
@@ -416,18 +426,8 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       );
     }
 
-    if (payloadKind === "knowledge-entity-create") {
-      const parsed = z
-        .object({
-          kind: z.literal("knowledge-entity-create"),
-          itemId: z.string().cuid(),
-          entityType: z.string().min(1).max(120),
-          title: z.string().min(1).max(255),
-          summary: z.string().max(2000).optional(),
-          attributes: z.record(z.string(), z.unknown()).optional(),
-          sourceConfidence: z.number().min(0).max(1).optional(),
-        })
-        .parse(payload);
+    if (payloadKind === KNOWLEDGE_ENTITY_SUGGESTION_KIND) {
+      const parsed = knowledgeEntitySuggestionPayloadSchema.parse(payload);
       const item = await getItemCanvasScope(context.userId, parsed.itemId);
 
       assertCanvasScope(agentProfile, item.canvasId);
@@ -441,6 +441,53 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         summary: parsed.summary,
         attributes: parsed.attributes,
         sourceConfidence: parsed.sourceConfidence,
+      });
+
+      await markSuggestionExecuted({
+        userId: context.userId,
+        suggestionId: suggestion.id,
+      });
+
+      return NextResponse.json(
+        {
+          suggestionId: suggestion.id,
+          executed: result,
+        },
+        { status: 200 },
+      );
+    }
+
+    if (payloadKind === KNOWLEDGE_RELATION_SUGGESTION_KIND) {
+      const parsed = knowledgeRelationSuggestionPayloadSchema.parse(payload);
+      const sourceEntity = await requireScopedKnowledgeEntity(
+        { userId: context.userId, agentProfile },
+        parsed.sourceEntityId,
+      );
+      const targetEntity = await requireScopedKnowledgeEntity(
+        { userId: context.userId, agentProfile },
+        parsed.targetEntityId,
+      );
+      const sharedCanvasId = sourceEntity.canvasIds.find((canvasId) =>
+        targetEntity.canvasIds.includes(canvasId),
+      );
+
+      if (!sharedCanvasId) {
+        throw new BadRequestError(
+          "Knowledge relations must remain inside one shared canvas.",
+        );
+      }
+
+      assertCanvasScope(agentProfile, sharedCanvasId);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+
+      const result = await createKnowledgeRelationWrite({
+        actor,
+        sourceEntityId: parsed.sourceEntityId,
+        targetEntityId: parsed.targetEntityId,
+        relationType: parsed.relationType,
+        summary: parsed.summary,
+        attributes: parsed.attributes,
+        confidence: parsed.confidence,
       });
 
       await markSuggestionExecuted({

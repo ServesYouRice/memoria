@@ -69,7 +69,7 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
 
-  // TypeScript: Build will fail on type errors (OPUS.md Issue #9 - re-enabled)
+  // TypeScript: Build will fail on type errors (re-enabled)
   // TypeScript compiles cleanly: npx tsc --noEmit passes with no errors
   typescript: {
     ignoreBuildErrors: false,

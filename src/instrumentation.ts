@@ -35,7 +35,7 @@ async function checkNextAuthVersion(logger: LoggerLike): Promise<void> {
     ) {
       const exactPinMessage =
         nextAuthVersion === APPROVED_NEXT_AUTH_VERSION
-          ? `Auth.js is intentionally exact-pinned to next-auth@${nextAuthVersion} pending an explicit stable migration.`
+          ? `Auth.js is intentionally exact-pinned to next-auth@${nextAuthVersion} because the Next.js package still ships on the beta track upstream.`
           : `Unexpected next-auth beta version detected: next-auth@${nextAuthVersion}. Expected ${APPROVED_NEXT_AUTH_VERSION}.`;
 
       logger.warn(exactPinMessage);

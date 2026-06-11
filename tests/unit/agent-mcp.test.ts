@@ -24,6 +24,8 @@ describe("Agent MCP surface", () => {
         "items.create",
         "knowledge.list",
         "knowledge.create",
+        "knowledge.create_relation",
+        "knowledge.propose_relation",
         "actions.list",
         "actions.approve_suggestion",
         "actions.revert_change_set",

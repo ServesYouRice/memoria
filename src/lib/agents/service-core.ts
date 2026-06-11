@@ -135,6 +135,70 @@ async function getCanvasItemScopeTx(
   return item;
 }
 
+async function getKnowledgeEntityScopeTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  entityId: string,
+) {
+  const entity = await tx.knowledgeEntity.findFirst({
+    where: {
+      id: entityId,
+      userId,
+    },
+    select: {
+      id: true,
+      title: true,
+      entityType: true,
+      itemLinks: {
+        select: {
+          item: {
+            select: {
+              canvasId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!entity) {
+    throw new NotFoundError("Knowledge entity not found.");
+  }
+
+  const canvasIds = Array.from(
+    new Set(entity.itemLinks.map((link) => link.item.canvasId)),
+  );
+
+  if (canvasIds.length === 0) {
+    throw new BadRequestError(
+      "Knowledge entity has no source item scope and cannot be mutated.",
+    );
+  }
+
+  return {
+    ...entity,
+    canvasIds,
+  };
+}
+
+function getSharedCanvasId(
+  sourceCanvasIds: string[],
+  targetCanvasIds: string[],
+): string {
+  const targetCanvasSet = new Set(targetCanvasIds);
+  const sharedCanvasId = sourceCanvasIds.find((canvasId) =>
+    targetCanvasSet.has(canvasId),
+  );
+
+  if (!sharedCanvasId) {
+    throw new BadRequestError(
+      "Knowledge relations must stay within one shared canvas scope.",
+    );
+  }
+
+  return sharedCanvasId;
+}
+
 async function createSuggestionRecordTx(
   tx: Prisma.TransactionClient,
   input: {
@@ -765,6 +829,123 @@ export async function createKnowledgeEntityWrite(input: {
   });
 }
 
+export async function createKnowledgeRelationWrite(input: {
+  actor: ActorContext;
+  sourceEntityId: string;
+  targetEntityId: string;
+  relationType: string;
+  summary?: string;
+  attributes?: unknown;
+  confidence?: number;
+}) {
+  if (input.sourceEntityId === input.targetEntityId) {
+    throw new BadRequestError(
+      "Knowledge relations cannot target the same entity on both ends.",
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const sourceEntity = await getKnowledgeEntityScopeTx(
+      tx,
+      input.actor.userId,
+      input.sourceEntityId,
+    );
+    const targetEntity = await getKnowledgeEntityScopeTx(
+      tx,
+      input.actor.userId,
+      input.targetEntityId,
+    );
+
+    const canvasId = getSharedCanvasId(
+      sourceEntity.canvasIds,
+      targetEntity.canvasIds,
+    );
+
+    const existingRelation = await tx.knowledgeRelation.findFirst({
+      where: {
+        sourceEntityId: input.sourceEntityId,
+        targetEntityId: input.targetEntityId,
+        relationType: input.relationType,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existingRelation) {
+      throw new BadRequestError("Knowledge relation already exists.");
+    }
+
+    const summary =
+      input.summary ||
+      `Create knowledge relation: ${sourceEntity.title} -[${input.relationType}]-> ${targetEntity.title}`;
+
+    const agentAction = await tx.agentAction.create({
+      data: {
+        userId: input.actor.userId,
+        agentProfileId: input.actor.agentProfileId,
+        integrationAccountId: input.actor.integrationAccountId ?? null,
+        modelCredentialId: input.actor.modelCredentialId ?? null,
+        kind: AgentActionKind.WRITE,
+        rung: AGENT_CAPABILITY_RUNGS.WRITE_SINGLE,
+        status: AgentActionStatus.RUNNING,
+        summary,
+        requestFingerprint: buildRequestFingerprint(input),
+      },
+    });
+
+    const changeSet = await tx.changeSet.create({
+      data: {
+        userId: input.actor.userId,
+        agentProfileId: input.actor.agentProfileId,
+        agentActionId: agentAction.id,
+        scopeType: "canvas",
+        scopeId: canvasId,
+        status: ChangeSetStatus.RUNNING,
+        summary,
+      },
+    });
+
+    const knowledgeRelation = await tx.knowledgeRelation.create({
+      data: {
+        userId: input.actor.userId,
+        sourceEntityId: input.sourceEntityId,
+        targetEntityId: input.targetEntityId,
+        relationType: input.relationType,
+        summary: input.summary,
+        attributes:
+          input.attributes === undefined
+            ? undefined
+            : toJsonValue(input.attributes),
+        confidence: input.confidence,
+      },
+    });
+
+    await tx.changeRecord.create({
+      data: {
+        changeSetId: changeSet.id,
+        targetType: "KnowledgeRelation",
+        targetId: knowledgeRelation.id,
+        operation: "CREATE",
+        before: Prisma.JsonNull,
+        after: toJsonValue(knowledgeRelation),
+        reversible: true,
+      },
+    });
+
+    await completeChangeSetTx(tx, {
+      agentActionId: agentAction.id,
+      changeSetId: changeSet.id,
+    });
+
+    return {
+      knowledgeRelation,
+      agentActionId: agentAction.id,
+      changeSetId: changeSet.id,
+    };
+  });
+}
+
 export async function approveSuggestion(input: {
   userId: string;
   suggestionId: string;
@@ -1130,6 +1311,32 @@ async function applyRevertOperation(
         data: {
           changeSetId: rollbackChangeSetId,
           targetType: "ItemEntityLink",
+          targetId: changeRecord.targetId,
+          operation: "ROLLBACK_CREATE",
+          before: toJsonValue(existing),
+          after: Prisma.JsonNull,
+          reversible: true,
+        },
+      });
+    }
+    return;
+  }
+
+  if (
+    changeRecord.targetType === "KnowledgeRelation" &&
+    changeRecord.operation === "CREATE"
+  ) {
+    const existing = await tx.knowledgeRelation.findUnique({
+      where: { id: changeRecord.targetId },
+    });
+    if (existing) {
+      await tx.knowledgeRelation.delete({
+        where: { id: changeRecord.targetId },
+      });
+      await tx.changeRecord.create({
+        data: {
+          changeSetId: rollbackChangeSetId,
+          targetType: "KnowledgeRelation",
           targetId: changeRecord.targetId,
           operation: "ROLLBACK_CREATE",
           before: toJsonValue(existing),

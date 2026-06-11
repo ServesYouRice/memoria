@@ -38,6 +38,7 @@ import {
   useAgentKnowledge,
   useAgentTimeline,
   type KnowledgeEntityRecord,
+  type KnowledgeRelationRecord,
   type SuggestionRecord,
   type ChangeSetRecord,
 } from "@/lib/hooks/use-agent-control";
@@ -132,6 +133,25 @@ function renderEntityCard(
   const sourceItems = entity.itemLinks
     .map((link) => itemsById.get(link.itemId))
     .filter((item): item is CanvasItem => Boolean(item));
+  const relationGroups: Array<{
+    label: string;
+    relations: KnowledgeRelationRecord[];
+    getCounterpart: (relation: KnowledgeRelationRecord) => {
+      title: string;
+      entityType: string;
+    };
+  }> = [
+    {
+      label: "Outgoing relations",
+      relations: entity.outgoingRelations,
+      getCounterpart: (relation) => relation.targetEntity,
+    },
+    {
+      label: "Incoming relations",
+      relations: entity.incomingRelations,
+      getCounterpart: (relation) => relation.sourceEntity,
+    },
+  ];
 
   return (
     <Card
@@ -218,6 +238,93 @@ function renderEntityCard(
               <Typography variant="body2" color="text.secondary">
                 This entity no longer has a readable source item on the canvas.
               </Typography>
+            )}
+          </Stack>
+        </Box>
+        <Divider />
+        <Box>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ textTransform: "uppercase" }}
+          >
+            Derived relations
+          </Typography>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            {relationGroups.every((group) => group.relations.length === 0) ? (
+              <Typography variant="body2" color="text.secondary">
+                No derived relations connect to this entity yet.
+              </Typography>
+            ) : (
+              relationGroups.map((group) =>
+                group.relations.length === 0 ? null : (
+                  <Box key={group.label}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 0.75 }}
+                    >
+                      {group.label}
+                    </Typography>
+                    <Stack spacing={1}>
+                      {group.relations.map((relation) => {
+                        const counterpart = group.getCounterpart(relation);
+                        return (
+                          <Paper
+                            key={relation.id}
+                            variant="outlined"
+                            sx={{
+                              p: 1.25,
+                              borderRadius: 2,
+                              bgcolor: "background.default",
+                            }}
+                          >
+                            <Stack spacing={0.75}>
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                                flexWrap="wrap"
+                              >
+                                <Chip
+                                  label={relation.relationType}
+                                  size="small"
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                                <Chip
+                                  label={counterpart.entityType}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                                {relation.confidence != null && (
+                                  <Chip
+                                    label={`${Math.round(relation.confidence * 100)}% confidence`}
+                                    size="small"
+                                    color="secondary"
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Stack>
+                              <Typography variant="body2" fontWeight={600}>
+                                {counterpart.title}
+                              </Typography>
+                              {relation.summary && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {relation.summary}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                ),
+              )
             )}
           </Stack>
         </Box>
@@ -325,6 +432,11 @@ export function CanvasOrganizerView({
     (changeSet) =>
       changeSet.scopeType === "canvas" && changeSet.scopeId === canvasId,
   );
+  const relationCount = new Set(
+    (knowledgeQuery.data?.entities || []).flatMap((entity) =>
+      entity.outgoingRelations.map((relation) => relation.id),
+    ),
+  ).size;
 
   const availableEntityTypes = Array.from(
     new Set(
@@ -425,6 +537,11 @@ export function CanvasOrganizerView({
             label: "Derived entities",
             value: knowledgeQuery.data?.entities.length || 0,
             icon: <AutoAwesomeIcon />,
+          },
+          {
+            label: "Derived relations",
+            value: relationCount,
+            icon: <HubIcon />,
           },
           {
             label: "Open suggestions",

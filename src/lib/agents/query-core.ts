@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { assertCanvasScope } from "@/lib/agents/policy";
 import type { AgentRequestContext } from "@/lib/agents/auth";
-import { NotFoundError } from "@/lib/errors";
+import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
 
 type ScopedActor = Pick<AgentRequestContext, "userId" | "agentProfile">;
 
@@ -50,6 +50,66 @@ export async function requireScopedItem(actor: ScopedActor, itemId: string) {
 
   assertCanvasScope(actor.agentProfile, item.canvasId);
   return item;
+}
+
+export async function requireScopedKnowledgeEntity(
+  actor: ScopedActor,
+  entityId: string,
+) {
+  const entity = await prisma.knowledgeEntity.findFirst({
+    where: {
+      id: entityId,
+      userId: actor.userId,
+    },
+    select: {
+      id: true,
+      title: true,
+      entityType: true,
+      itemLinks: {
+        select: {
+          item: {
+            select: {
+              canvasId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!entity) {
+    throw new NotFoundError("Knowledge entity not found.");
+  }
+
+  const canvasIds = Array.from(
+    new Set(entity.itemLinks.map((link) => link.item.canvasId)),
+  );
+
+  if (canvasIds.length === 0) {
+    throw new BadRequestError(
+      "Knowledge entity has no source item scope and cannot be mutated.",
+    );
+  }
+
+  const scopedCanvasIds = actor.agentProfile
+    ? canvasIds.filter((canvasId) =>
+        actor.agentProfile?.allowedCanvasIds.includes(canvasId),
+      )
+    : canvasIds;
+
+  if (scopedCanvasIds.length === 0) {
+    throw new ForbiddenError(
+      "This knowledge entity is outside the current agent scope.",
+    );
+  }
+
+  return {
+    id: entity.id,
+    title: entity.title,
+    entityType: entity.entityType,
+    canvasIds,
+    scopedCanvasId: scopedCanvasIds[0],
+  };
 }
 
 export async function listScopedCanvases(
@@ -125,6 +185,48 @@ export async function listScopedKnowledgeEntities(
       },
       include: {
         itemLinks: true,
+        outgoingRelations: {
+          include: {
+            sourceEntity: {
+              select: {
+                id: true,
+                entityType: true,
+                title: true,
+                status: true,
+              },
+            },
+            targetEntity: {
+              select: {
+                id: true,
+                entityType: true,
+                title: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
+        },
+        incomingRelations: {
+          include: {
+            sourceEntity: {
+              select: {
+                id: true,
+                entityType: true,
+                title: true,
+                status: true,
+              },
+            },
+            targetEntity: {
+              select: {
+                id: true,
+                entityType: true,
+                title: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
+        },
       },
       orderBy: { updatedAt: "desc" },
     });
@@ -151,6 +253,48 @@ export async function listScopedKnowledgeEntities(
         where: {
           itemId: item.id,
         },
+      },
+      outgoingRelations: {
+        include: {
+          sourceEntity: {
+            select: {
+              id: true,
+              entityType: true,
+              title: true,
+              status: true,
+            },
+          },
+          targetEntity: {
+            select: {
+              id: true,
+              entityType: true,
+              title: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
+      },
+      incomingRelations: {
+        include: {
+          sourceEntity: {
+            select: {
+              id: true,
+              entityType: true,
+              title: true,
+              status: true,
+            },
+          },
+          targetEntity: {
+            select: {
+              id: true,
+              entityType: true,
+              title: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
       },
     },
   });

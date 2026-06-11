@@ -36,6 +36,7 @@ model User {
   changeSets    ChangeSet[]
   suggestions   Suggestion[]
   knowledgeEntities KnowledgeEntity[]
+  knowledgeRelations KnowledgeRelation[]
   workspaceCheckpoints WorkspaceCheckpoint[]
   canvasViews   CanvasView[]
   agentJobs     AgentJob[]
@@ -458,6 +459,11 @@ enum KnowledgeEntityStatus {
   ARCHIVED
 }
 
+enum KnowledgeRelationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum ItemEntityLinkType {
   SOURCE
   TAGGED
@@ -648,11 +654,35 @@ model KnowledgeEntity {
   attributes Json?
   sourceConfidence Float?
   itemLinks  ItemEntityLink[]
+  outgoingRelations KnowledgeRelation[] @relation("KnowledgeRelationSource")
+  incomingRelations KnowledgeRelation[] @relation("KnowledgeRelationTarget")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([userId, entityType])
   @@index([userId, title])
+}
+
+model KnowledgeRelation {
+  id        String                  @id @default(cuid())
+  userId     String
+  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceEntityId String
+  sourceEntity KnowledgeEntity       @relation("KnowledgeRelationSource", fields: [sourceEntityId], references: [id], onDelete: Cascade)
+  targetEntityId String
+  targetEntity KnowledgeEntity       @relation("KnowledgeRelationTarget", fields: [targetEntityId], references: [id], onDelete: Cascade)
+  relationType String
+  summary    String?
+  status     KnowledgeRelationStatus @default(ACTIVE)
+  attributes Json?
+  confidence Float?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([sourceEntityId, targetEntityId, relationType])
+  @@index([userId, relationType])
+  @@index([sourceEntityId])
+  @@index([targetEntityId])
 }
 
 model ItemEntityLink {

@@ -183,7 +183,7 @@ pnpm db:studio
 
 ## Key Documentation
 
-- [SENATE.md](../SENATE.md) - Master specification
+- [README.md](../README.md) - Current project overview and setup
 - [Slice 6 Implementation](./SLICE_6_IMPLEMENTATION.md) - Implementation details
 - [Security Audit](./security/SECURITY_AUDIT_REPORT.md) - Security review
 - [Testing Guide](./TESTING_GUIDE.md) - Testing practices
