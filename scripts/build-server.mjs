@@ -1,12 +1,27 @@
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { projectRoot, run } from './lib/runtime.mjs';
 
 const distDir = join(projectRoot, 'dist');
+
+// Locate the native esbuild binary for the current platform inside pnpm's
+// store (works on any OS/arch without relying on postinstall bin shims).
+function platformEsbuildCandidates() {
+  const pkg = `${process.platform}-${process.arch}`;
+  const binName = process.platform === 'win32' ? 'esbuild.exe' : join('bin', 'esbuild');
+  const pnpmDir = join(projectRoot, 'node_modules', '.pnpm');
+  if (!existsSync(pnpmDir)) return [];
+  return readdirSync(pnpmDir)
+    .filter((entry) => entry.startsWith(`@esbuild+${pkg}@`))
+    .sort()
+    .reverse()
+    .map((entry) => join(pnpmDir, entry, 'node_modules', '@esbuild', pkg, binName));
+}
+
 const esbuildCandidates = [
-  join(projectRoot, 'node_modules', '.pnpm', '@esbuild+win32-x64@0.25.12', 'node_modules', '@esbuild', 'win32-x64', 'esbuild.exe'),
-  join(projectRoot, 'node_modules', '.pnpm', '@esbuild+win32-x64@0.21.5', 'node_modules', '@esbuild', 'win32-x64', 'esbuild.exe'),
-  join(projectRoot, 'node_modules', '.bin', 'esbuild.CMD'),
+  ...platformEsbuildCandidates(),
+  // Fallbacks: bin shims created by package managers
+  join(projectRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'esbuild.CMD' : 'esbuild'),
   join(projectRoot, 'node_modules', '.bin', 'esbuild.cmd'),
   join(projectRoot, 'node_modules', '.pnpm', 'node_modules', '.bin', 'esbuild.CMD'),
   join(projectRoot, 'node_modules', '.pnpm', 'node_modules', '.bin', 'esbuild.cmd'),
