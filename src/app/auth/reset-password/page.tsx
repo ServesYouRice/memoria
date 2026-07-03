@@ -93,7 +93,7 @@ function ResetPasswordForm() {
     return (
       <Container maxWidth="sm">
         <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
+          <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: '100%' }}>
             <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
               Invalid Reset Link
             </Typography>
@@ -112,7 +112,7 @@ function ResetPasswordForm() {
   return (
     <Container maxWidth="sm">
       <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
+        <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: '100%' }}>
           <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
             Reset Password
           </Typography>
