@@ -1,32 +1,33 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
     Box,
-    Container,
     Typography,
-    Paper,
     Button,
     Card,
+    CardActionArea,
     CardContent,
-    CardActions,
     IconButton,
     Dialog,
     DialogTitle,
     DialogContent,
     DialogActions,
     TextField,
-    CircularProgress,
+    Skeleton,
     Alert,
     Chip,
     Menu,
     MenuItem,
     ListItemIcon,
     ListItemText,
+    alpha,
 } from '@mui/material';
 import {
     Add as AddIcon,
-    Folder as FolderIcon,
+    FolderOutlined as FolderIcon,
     MoreVert as MoreIcon,
     Edit as EditIcon,
     Delete as DeleteIcon,
@@ -38,9 +39,11 @@ import {
     useDeleteWorkspace,
     type Workspace,
 } from '@/lib/hooks/use-workspaces';
-import Link from 'next/link';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/layout/EmptyState';
 
 export default function WorkspacesPageClient() {
+    const router = useRouter();
     const { data, isLoading, error } = useWorkspaces();
     const createWorkspace = useCreateWorkspace();
     const updateWorkspace = useUpdateWorkspace();
@@ -65,8 +68,9 @@ export default function WorkspacesPageClient() {
             await createWorkspace.mutateAsync({ name: workspaceName.trim() });
             setWorkspaceName('');
             setCreateOpen(false);
+            toast.success('Workspace created');
         } catch {
-            // Error handled by mutation
+            toast.error('Failed to create workspace');
         }
     };
 
@@ -80,8 +84,9 @@ export default function WorkspacesPageClient() {
             setWorkspaceName('');
             setEditOpen(false);
             setSelectedWorkspace(null);
+            toast.success('Workspace renamed');
         } catch {
-            // Error handled by mutation
+            toast.error('Failed to rename workspace');
         }
     };
 
@@ -91,8 +96,9 @@ export default function WorkspacesPageClient() {
             await deleteWorkspace.mutateAsync({ workspaceId: selectedWorkspace.id });
             setDeleteOpen(false);
             setSelectedWorkspace(null);
+            toast.success('Workspace deleted');
         } catch {
-            // Error handled by mutation
+            toast.error('Failed to delete workspace');
         }
     };
 
@@ -125,131 +131,114 @@ export default function WorkspacesPageClient() {
     };
 
     return (
-        <Container maxWidth="lg" sx={{ py: 4 }}>
-            {/* Header */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <FolderIcon color="primary" sx={{ fontSize: 32 }} />
-                    <Box>
-                        <Typography variant="h4" fontWeight={700}>
-                            Workspaces
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Organize your canvases into workspaces
-                        </Typography>
-                    </Box>
-                </Box>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => setCreateOpen(true)}
-                >
-                    New Workspace
-                </Button>
-            </Box>
+        <>
+            <PageHeader
+                title="Workspaces"
+                subtitle="Organize your canvases into workspaces"
+                actions={
+                    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+                        New workspace
+                    </Button>
+                }
+            />
 
-            {/* Error state */}
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }}>
                     Failed to load workspaces
                 </Alert>
             )}
 
-            {/* Loading state */}
             {isLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-                    <CircularProgress />
-                </Box>
-            ) : workspaces.length === 0 ? (
-                /* Empty state */
-                <Paper
-                    variant="outlined"
-                    sx={{
-                        p: 6,
-                        textAlign: 'center',
-                        borderStyle: 'dashed',
-                        borderRadius: 3,
-                    }}
-                >
-                    <FolderIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-                    <Typography variant="h6" gutterBottom>
-                        No workspaces yet
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ mb: 3 }}>
-                        Create a workspace to organize your canvases into groups.
-                    </Typography>
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={() => setCreateOpen(true)}
-                    >
-                        Create Your First Workspace
-                    </Button>
-                </Paper>
-            ) : (
-                /* Workspace grid */
                 <Box
                     sx={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                        gap: 3,
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                        gap: 2.5,
                     }}
                 >
-                    {workspaces.map((workspace) => (
+                    {[0, 1, 2].map((i) => (
+                        <Card key={i} variant="outlined">
+                            <CardContent>
+                                <Skeleton width="60%" height={30} />
+                                <Skeleton width="35%" height={22} sx={{ mt: 1.5 }} />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </Box>
+            ) : workspaces.length === 0 ? (
+                <EmptyState
+                    icon={FolderIcon}
+                    title="No workspaces yet"
+                    description="Create a workspace to organize your canvases into groups."
+                    action={
+                        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+                            Create your first workspace
+                        </Button>
+                    }
+                />
+            ) : (
+                <Box
+                    sx={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                        gap: 2.5,
+                    }}
+                >
+                    {workspaces.map((workspace, index) => (
                         <Card
                             key={workspace.id}
-                            variant="outlined"
                             sx={{
-                                transition: 'all 0.2s',
-                                '&:hover': {
-                                    boxShadow: 4,
-                                    borderColor: 'primary.main',
-                                },
+                                position: 'relative',
+                                animation: `fadeIn 0.4s ease-out ${Math.min(index * 0.04, 0.4)}s both`,
                             }}
                         >
-                            <CardContent>
-                                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                        <FolderIcon color="primary" />
-                                        <Typography variant="h6" fontWeight={600}>
+                            <IconButton
+                                size="small"
+                                aria-label={`Actions for ${workspace.name}`}
+                                onClick={(e) => handleMenuOpen(e, workspace)}
+                                sx={{ position: 'absolute', top: 10, right: 10, zIndex: 2 }}
+                            >
+                                <MoreIcon />
+                            </IconButton>
+                            <CardActionArea
+                                onClick={() => router.push(`/dashboard?workspace=${workspace.id}`)}
+                            >
+                                <CardContent>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pr: 4 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: 2,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            <FolderIcon color="primary" />
+                                        </Box>
+                                        <Typography variant="h6" fontWeight={600} noWrap>
                                             {workspace.name}
                                         </Typography>
                                     </Box>
-                                    <IconButton
-                                        size="small"
-                                        onClick={(e) => handleMenuOpen(e, workspace)}
-                                    >
-                                        <MoreIcon />
-                                    </IconButton>
-                                </Box>
-                                <Box sx={{ mt: 2 }}>
-                                    <Chip
-                                        size="small"
-                                        label={`${workspace.canvasCount} canvas${workspace.canvasCount !== 1 ? 'es' : ''}`}
-                                        variant="outlined"
-                                    />
-                                </Box>
-                            </CardContent>
-                            <CardActions sx={{ px: 2, pb: 2 }}>
-                                <Button
-                                    component={Link}
-                                    href={`/dashboard?workspace=${workspace.id}`}
-                                    size="small"
-                                >
-                                    View Canvases
-                                </Button>
-                            </CardActions>
+                                    <Box sx={{ mt: 2 }}>
+                                        <Chip
+                                            size="small"
+                                            label={`${workspace.canvasCount} canvas${workspace.canvasCount !== 1 ? 'es' : ''}`}
+                                            variant="outlined"
+                                        />
+                                    </Box>
+                                </CardContent>
+                            </CardActionArea>
                         </Card>
                     ))}
                 </Box>
             )}
 
             {/* Context menu */}
-            <Menu
-                anchorEl={menuAnchor}
-                open={Boolean(menuAnchor)}
-                onClose={handleMenuClose}
-            >
+            <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={handleMenuClose}>
                 <MenuItem onClick={openEditDialog}>
                     <ListItemIcon>
                         <EditIcon fontSize="small" />
@@ -266,7 +255,7 @@ export default function WorkspacesPageClient() {
 
             {/* Create Dialog */}
             <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
-                <DialogTitle>Create Workspace</DialogTitle>
+                <DialogTitle sx={{ fontWeight: 600 }}>Create workspace</DialogTitle>
                 <DialogContent>
                     <TextField
                         autoFocus
@@ -281,7 +270,7 @@ export default function WorkspacesPageClient() {
                         }}
                     />
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ p: 3, pt: 1 }}>
                     <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
                     <Button
                         variant="contained"
@@ -295,7 +284,7 @@ export default function WorkspacesPageClient() {
 
             {/* Edit Dialog */}
             <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm">
-                <DialogTitle>Rename Workspace</DialogTitle>
+                <DialogTitle sx={{ fontWeight: 600 }}>Rename workspace</DialogTitle>
                 <DialogContent>
                     <TextField
                         autoFocus
@@ -309,7 +298,7 @@ export default function WorkspacesPageClient() {
                         }}
                     />
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ p: 3, pt: 1 }}>
                     <Button onClick={() => setEditOpen(false)}>Cancel</Button>
                     <Button
                         variant="contained"
@@ -323,7 +312,7 @@ export default function WorkspacesPageClient() {
 
             {/* Delete Dialog */}
             <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} fullWidth maxWidth="sm">
-                <DialogTitle>Delete Workspace</DialogTitle>
+                <DialogTitle sx={{ fontWeight: 600 }}>Delete workspace</DialogTitle>
                 <DialogContent>
                     <Typography>
                         Are you sure you want to delete <strong>{selectedWorkspace?.name}</strong>?
@@ -332,7 +321,7 @@ export default function WorkspacesPageClient() {
                         Canvases in this workspace will not be deleted, they will simply be unassigned.
                     </Typography>
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ p: 3, pt: 1 }}>
                     <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
                     <Button
                         variant="contained"
@@ -344,6 +333,6 @@ export default function WorkspacesPageClient() {
                     </Button>
                 </DialogActions>
             </Dialog>
-        </Container>
+        </>
     );
 }

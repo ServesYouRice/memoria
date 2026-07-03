@@ -16,17 +16,11 @@ import {
   Alert,
   Avatar,
 } from '@mui/material';
-import {
-  Add,
-  Edit,
-  Delete,
-  Share,
-  Comment,
-  ContentCopy,
-} from '@mui/icons-material';
+import { Edit } from '@mui/icons-material';
 import { useActivities } from '@/lib/hooks/use-activities';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
+import { activityIcons, activityColors, getActivityMessage } from './activity-utils';
 
 interface ActivityFeedProps {
   canvasId?: string;
@@ -34,57 +28,10 @@ interface ActivityFeedProps {
   showTitle?: boolean;
 }
 
-const activityIcons: Record<string, React.ReactNode> = {
-  CANVAS_CREATED: <Add fontSize="small" />,
-  CANVAS_UPDATED: <Edit fontSize="small" />,
-  CANVAS_DELETED: <Delete fontSize="small" />,
-  CANVAS_SHARED: <Share fontSize="small" />,
-  ITEM_CREATED: <Add fontSize="small" />,
-  ITEM_UPDATED: <Edit fontSize="small" />,
-  ITEM_DELETED: <Delete fontSize="small" />,
-  COMMENT_ADDED: <Comment fontSize="small" />,
-  TEMPLATE_CREATED: <ContentCopy fontSize="small" />,
-  TEMPLATE_USED: <ContentCopy fontSize="small" />,
-};
-
-const activityColors: Record<string, string> = {
-  CANVAS_CREATED: 'success',
-  CANVAS_UPDATED: 'info',
-  CANVAS_DELETED: 'error',
-  CANVAS_SHARED: 'primary',
-  ITEM_CREATED: 'success',
-  ITEM_UPDATED: 'info',
-  ITEM_DELETED: 'error',
-  COMMENT_ADDED: 'primary',
-  TEMPLATE_CREATED: 'secondary',
-  TEMPLATE_USED: 'secondary',
-};
-
-function getActivityMessage(activity: any): string {
-  switch (activity.type) {
-    case 'CANVAS_CREATED':
-      return `Created canvas "${activity.canvasName}"`;
-    case 'CANVAS_UPDATED':
-      return `Updated canvas "${activity.canvasName}"`;
-    case 'CANVAS_DELETED':
-      return `Deleted canvas "${activity.canvasName}"`;
-    case 'CANVAS_SHARED':
-      return `Shared canvas "${activity.canvasName}"`;
-    case 'ITEM_CREATED':
-      return `Added item to "${activity.canvasName}"`;
-    case 'ITEM_UPDATED':
-      return `Updated item in "${activity.canvasName}"`;
-    case 'ITEM_DELETED':
-      return `Deleted item from "${activity.canvasName}"`;
-    case 'COMMENT_ADDED':
-      return `Commented on "${activity.canvasName}"`;
-    case 'TEMPLATE_CREATED':
-      return `Created template "${activity.canvasName}"`;
-    case 'TEMPLATE_USED':
-      return `Used template "${activity.canvasName}"`;
-    default:
-      return 'Unknown activity';
-  }
+/** Standalone sentence form of the shared activity message ("Created canvas …"). */
+function activitySentence(activity: Parameters<typeof getActivityMessage>[0]): string {
+  const message = getActivityMessage(activity);
+  return message.charAt(0).toUpperCase() + message.slice(1);
 }
 
 export function ActivityFeed({ canvasId, limit = 20, showTitle = true }: ActivityFeedProps) {
@@ -159,12 +106,12 @@ export function ActivityFeed({ canvasId, limit = 20, showTitle = true }: Activit
                             '&:hover': { textDecoration: 'underline' },
                           }}
                         >
-                          {getActivityMessage(activity)}
+                          {activitySentence(activity)}
                         </Typography>
                       </Link>
                     ) : (
                       <Typography variant="body2">
-                        {getActivityMessage(activity)}
+                        {activitySentence(activity)}
                       </Typography>
                     )}
                   </Box>

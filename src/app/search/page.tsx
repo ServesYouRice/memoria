@@ -2,14 +2,14 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { AppShell } from '@/components/layout/AppShell';
-import { DashboardContent } from '@/features/dashboard/components/DashboardContent';
+import { SearchContent } from './SearchContent';
 
 export const metadata = {
-  title: 'Dashboard',
-  description: 'Your Memoria dashboard',
+  title: 'Search',
+  description: 'Search across your canvases and items',
 };
 
-export default async function DashboardPage() {
+export default async function SearchPage() {
   const session = await auth();
 
   if (!session?.user) {
@@ -17,9 +17,9 @@ export default async function DashboardPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell maxWidth="md">
       <Suspense>
-        <DashboardContent userName={session.user.name} />
+        <SearchContent />
       </Suspense>
     </AppShell>
   );

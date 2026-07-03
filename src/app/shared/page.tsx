@@ -1,14 +1,14 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { AppShell } from '@/components/layout/AppShell';
-import WorkspacesPageClient from './WorkspacesPageClient';
+import { SharedCanvasesContent } from './SharedCanvasesContent';
 
 export const metadata = {
-  title: 'Workspaces',
-  description: 'Organize canvases into workspaces',
+  title: 'Shared with me',
+  description: 'Canvases other people shared with you',
 };
 
-export default async function WorkspacesPage() {
+export default async function SharedPage() {
   const session = await auth();
 
   if (!session?.user) {
@@ -17,7 +17,7 @@ export default async function WorkspacesPage() {
 
   return (
     <AppShell>
-      <WorkspacesPageClient />
+      <SharedCanvasesContent />
     </AppShell>
   );
 }

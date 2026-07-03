@@ -11,6 +11,7 @@ export interface Canvas {
   id: string;
   name: string;
   userId: string;
+  workspaceId?: string | null;
   zoomLevel: number;
   panX: number;
   panY: number;
