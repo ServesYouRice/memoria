@@ -113,10 +113,10 @@ export function AgentControlCenter() {
   return (
     <Paper
       id="agent-console"
+      variant="outlined"
       sx={{
-        p: 4,
+        p: { xs: 2.5, sm: 3.5 },
         borderRadius: 3,
-        animation: "fadeIn 0.5s ease-out 0.33s both",
       }}
     >
       {isLoading && <LinearProgress sx={{ mb: 2 }} />}
