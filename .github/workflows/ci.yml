@@ -93,6 +93,16 @@ jobs:
           AUTH_URL: 'http://localhost:3000'
           NEXTAUTH_SECRET: 'ci-build-secret-0123456789abcdef-placeholder'
           NEXTAUTH_URL: 'http://localhost:3000'
+          # next build runs under NODE_ENV=production, so route modules that
+          # import the env module trigger the production-only requirements.
+          REDIS_URL: 'redis://localhost:6379'
+          UPLOAD_STORAGE: 's3'
+          S3_BUCKET: 'ci-placeholder-bucket'
+          S3_REGION: 'us-east-1'
+          S3_ENDPOINT: 'http://localhost:9000'
+          S3_ACCESS_KEY_ID: 'ci-placeholder'
+          S3_SECRET_ACCESS_KEY: 'ci-placeholder-secret'
+          APP_BOOTSTRAP_TOKEN: 'ci-placeholder-bootstrap-token'
 
   e2e:
     name: E2E Tests
@@ -145,4 +155,12 @@ jobs:
           AUTH_URL: 'http://localhost:3000'
           NEXTAUTH_SECRET: 'e2e-test-secret-0123456789abcdef-placeholder'
           NEXTAUTH_URL: 'http://localhost:3000'
+          REDIS_URL: 'redis://localhost:6379'
+          UPLOAD_STORAGE: 's3'
+          S3_BUCKET: 'ci-placeholder-bucket'
+          S3_REGION: 'us-east-1'
+          S3_ENDPOINT: 'http://localhost:9000'
+          S3_ACCESS_KEY_ID: 'ci-placeholder'
+          S3_SECRET_ACCESS_KEY: 'ci-placeholder-secret'
+          APP_BOOTSTRAP_TOKEN: 'ci-placeholder-bootstrap-token'
 
