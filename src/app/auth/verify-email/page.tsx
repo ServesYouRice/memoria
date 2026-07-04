@@ -63,7 +63,7 @@ function VerifyEmailContent() {
     return (
       <Container maxWidth="sm">
         <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Paper elevation={3} sx={{ p: 4, width: '100%', textAlign: 'center' }}>
+          <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: '100%', textAlign: 'center' }}>
             <CircularProgress sx={{ mb: 2 }} />
             <Typography variant="h6">Verifying your email...</Typography>
           </Paper>
@@ -75,7 +75,7 @@ function VerifyEmailContent() {
   return (
     <Container maxWidth="sm">
       <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Paper elevation={3} sx={{ p: 4, width: '100%', textAlign: 'center' }}>
+        <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: '100%', textAlign: 'center' }}>
           {success ? (
             <>
               <CheckCircle sx={{ fontSize: 80, color: 'success.main', mb: 2 }} />

@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
+import { AppShell } from '@/components/layout/AppShell';
 import WorkspacesPageClient from './WorkspacesPageClient';
 
 export const metadata = {
-  title: 'Workspaces | CanvasCollect',
+  title: 'Workspaces',
   description: 'Organize canvases into workspaces',
 };
 
@@ -14,5 +15,9 @@ export default async function WorkspacesPage() {
     redirect('/auth/login');
   }
 
-  return <WorkspacesPageClient />;
+  return (
+    <AppShell>
+      <WorkspacesPageClient />
+    </AppShell>
+  );
 }

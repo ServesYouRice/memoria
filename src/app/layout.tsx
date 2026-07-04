@@ -1,26 +1,35 @@
 /**
  * Root Layout
  *
- * ENHANCED: Issue #40 - Analytics integration
- * ENHANCED: Modern UI with Inter font
- * ENHANCED: CSP nonce integration for MUI/Emotion
+ * - Loads Inter via next/font (self-hosted, no layout shift)
+ * - Analytics integration (Issue #40)
+ * - CSP nonce integration for MUI/Emotion
  */
 
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "./providers";
 import { PWARegister } from "@/components/PWARegister";
 import { getNonce } from "@/lib/nonce";
 import "./tiptap.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export const metadata: Metadata = {
-  title: "Memoria",
+  title: {
+    default: "Memoria",
+    template: "%s | Memoria",
+  },
   description: "A collaborative canvas for notes and bookmarks",
   manifest: "/manifest.json",
   appleWebApp: {
@@ -38,13 +47,8 @@ export default async function RootLayout({
   const nonce = await getNonce();
 
   return (
-    <html lang="en">
-      <body
-        style={{
-          fontFamily:
-            'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        }}
-      >
+    <html lang="en" className={inter.variable}>
+      <body className={inter.className}>
         <PWARegister />
         <Providers nonce={nonce}>{children}</Providers>
         <Analytics />

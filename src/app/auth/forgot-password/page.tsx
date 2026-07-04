@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
   return (
     <Container maxWidth="sm">
       <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
+        <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: '100%' }}>
           <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Button
               component={Link}

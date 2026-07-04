@@ -23,6 +23,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { Toaster } from 'sonner';
 import { createAppTheme } from '@/lib/theme';
 import { ThemeModeProvider, useThemeMode } from '@/lib/theme-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -62,6 +63,7 @@ function ThemedProviders({ children, nonce }: ThemedProvidersProps) {
         <CssBaseline />
         <GlobalShortcutsProvider>
           {children}
+          <Toaster richColors closeButton position="bottom-right" theme={mode} />
           {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
         </GlobalShortcutsProvider>
       </MuiThemeProvider>

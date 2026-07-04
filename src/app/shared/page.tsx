@@ -1,14 +1,14 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { AppShell } from '@/components/layout/AppShell';
-import { TemplatesContent } from './TemplatesContent';
+import { SharedCanvasesContent } from './SharedCanvasesContent';
 
 export const metadata = {
-  title: 'Templates',
-  description: 'Start with a pre-designed canvas',
+  title: 'Shared with me',
+  description: 'Canvases other people shared with you',
 };
 
-export default async function TemplatesPage() {
+export default async function SharedPage() {
   const session = await auth();
 
   if (!session?.user) {
@@ -17,7 +17,7 @@ export default async function TemplatesPage() {
 
   return (
     <AppShell>
-      <TemplatesContent />
+      <SharedCanvasesContent />
     </AppShell>
   );
 }
