@@ -505,9 +505,9 @@ psql -h localhost -U postgres -l | grep test_recovery
 
 ## References
 
-- [DATABASE_BACKUP_POLICY.md](/home/user/notes/docs/operations/DATABASE_BACKUP_POLICY.md)
-- [backup-database.sh](/home/user/notes/scripts/backup-database.sh)
-- [restore-database.sh](/home/user/notes/scripts/restore-database.sh)
+- [DATABASE_BACKUP_POLICY.md](./DATABASE_BACKUP_POLICY.md)
+- [backup-database.sh](../../scripts/backup-database.sh)
+- [restore-database.sh](../../scripts/restore-database.sh)
 - PostgreSQL Backup Documentation: https://www.postgresql.org/docs/15/backup.html
 
 ---

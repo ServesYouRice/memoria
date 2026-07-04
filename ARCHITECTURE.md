@@ -1,297 +1,164 @@
-# Slice 4: Architecture Overview
+# Architecture Overview
 
-## System Architecture
+Memoria is a stateful Next.js application for visual note organization. The
+production runtime is a custom Node server that hosts the Next.js App Router and
+the WebSocket collaboration server in the same process.
+
+## Runtime Model
 
 ```
-Browser (Client)
+Browser
   | HTTP/JSON
   v
-Next.js App Router + API (server.ts)
-  | Prisma ORM
+Custom Node server (server.ts)
+  | Next.js App Router
+  | API route handlers
+  | WebSocket upgrades at /api/collaboration/:canvasId
   v
-PostgreSQL
-
-WebSocket /api/collaboration/:canvasId
-  | Yjs updates
-  v
-Collaboration Server (ws)
-  | Redis pub/sub (optional)
-  v
-Other instances
+PostgreSQL + Redis + S3-compatible object storage
 ```
 
-Additional Components
-- Custom Node server (`server.ts`) hosts Next.js and the collaboration WebSocket server.
-- WebSocket collaboration uses Yjs docs with database persistence and optional Redis pub/sub fanout.
-- Redis is optional for caching (canvas snapshots, unfurl) and rate limiting.
-- Uploads support local disk storage or S3-compatible object storage via `UPLOAD_STORAGE`.
+Production is self-host/VPS/container oriented. Serverless-first deployment is
+not the primary target because collaboration depends on a stateful WebSocket
+server and shared infrastructure.
 
-## Data Flow
+## Core Services
 
-### 1. Create Note Flow
-```
-User clicks "Add Note"
-  ->
-Canvas component calls useCreateCanvasItem()
-  ->
-TanStack Query mutation -> POST /api/v1/canvases/:id/items
-  ->
-API validates with Zod schema
-  ->
-API verifies canvas ownership
-  ->
-Prisma creates CanvasItem (version=1, zIndex=auto)
-  ->
-Returns 201 Created with new item
-  ->
-TanStack Query invalidates cache
-  ->
-Canvas refetches items
-  ->
-NoteItem component renders on canvas
-```
+- **PostgreSQL** stores users, workspaces, canvases, canvas items, comments,
+  shares, templates, activities, API keys, agent audit records, and knowledge
+  graph primitives.
+- **Redis** is required in production for cache/shared-state support and
+  collaboration fanout across instances.
+- **S3-compatible object storage** is required in production for uploads. The
+  reference self-host stack uses MinIO.
+- **Auth.js / NextAuth** provides session handling with credentials auth,
+  argon2 password verification, email verification, reset tokens, and account
+  lockout logic.
 
-### 2. Move Note Flow (with Debounce)
-```
-User drags note to new position
-  ->
-NoteItem updates local state (instant visual feedback)
-  ->
-onDragEnd -> calls debouncedUpdatePosition(x, y)
-  ->
-Debounce waits 300ms (no more drag events)
-  ->
-useUpdateCanvasItem() mutation -> PATCH /api/v1/.../items/:id
-  ->
-Request includes: { positionX, positionY, version }
-  ->
-API validates version matches current item.version
-  ->
-If version mismatch -> 409 Conflict
-  ->
-If version OK -> update item, increment version
-  ->
-Returns updated item
-  ->
-TanStack Query updates cache
-```
+## Application Areas
 
-### 3. Version Conflict Flow
-```
-Tab A: User moves note (version 1)
-Tab B: User resizes same note (version 1)
-  ->
-Tab A: PATCH with version=1 -> Success (now version 2)
-  ->
-Tab B: PATCH with version=1 -> 409 Conflict
-  ->
-useUpdateCanvasItem detects conflict error
-  ->
-Automatically invalidates query cache
-  ->
-Refetches latest items (now has version 2)
-  ->
-User's local changes preserved in local state
-  ->
-User can retry update with version 2
-```
+- `src/app`: pages, layouts, setup flow, API routes, and health/metrics
+  endpoints.
+- `src/features`: feature-specific UI for auth, dashboard, canvas, and agents.
+- `src/lib`: shared server/client utilities, auth, validation, hooks, caching,
+  collaboration, agents, rate limiting, logging, and security helpers.
+- `prisma`: schema, seed, and migrations.
+- `scripts`: setup, build, diagnostics, stack control, smoke checks, backup, and
+  restore utilities.
 
-### 4. Delete Note Flow
-```
-User clicks delete button
-  ->
-Confirmation dialog -> "Are you sure?"
-  ->
-User confirms
-  ->
-useDeleteCanvasItem() -> DELETE /api/v1/.../items/:id
-  ->
-API verifies ownership
-  ->
-Prisma updates item: { deletedAt: now, deletedById: userId }
-  ->
-Returns 204 No Content
-  ->
-TanStack Query invalidates cache
-  ->
-Canvas refetches (excludes deleted items)
-  ->
-NoteItem removed from canvas
-```
+## Data Model
 
-## State Management Strategy
+The main domain objects are:
 
-### Server State (TanStack Query)
-- **What**: All data persisted in database
-- **Examples**: Canvas items, user data, canvas metadata
-- **Cache Keys**: `['canvasItems', 'list', canvasId]`
-- **Invalidation**: On mutations (create, update, delete)
+- `Workspace`: groups canvases for a user.
+- `Canvas`: board metadata, sharing, template metadata, versions, views, and
+  thumbnail state.
+- `CanvasItem`: normalized geometry and JSON content for notes, bookmarks,
+  images, drawings, shapes, arrows, text, frames, embeds, and polls.
+- `CanvasShare`: email-based canvas access with `VIEW`, `COMMENT`, or `EDIT`.
+- `CanvasVersion`: point-in-time canvas snapshots for restore.
+- `Activity`: dashboard and notification events.
+- Agent models: `AgentProfile`, `ModelCredential`, `IntegrationAccount`,
+  `AgentAction`, `ChangeSet`, `ChangeRecord`, `Suggestion`,
+  `KnowledgeEntity`, `KnowledgeRelation`, `ItemEntityLink`,
+  `WorkspaceCheckpoint`, `CanvasView`, and `AgentJob`.
 
-### Client State (Local React State)
-- **What**: Ephemeral UI state during interactions
-- **Examples**: 
-  - Current drag position (before save)
-  - Current resize dimensions (before save)
-  - Hover state
-- **Why**: Smooth UX without waiting for server
+Writes use Zod validation at API boundaries and Prisma for parameterized
+database access. Canvas item updates retain optimistic version fields for the
+HTTP/autosave path.
 
-### Future Client State (Zustand - not yet implemented)
-- **What**: Global UI state
-- **Examples**:
-  - Selected item ID
-  - Active tool (select, pan, text)
-  - Zoom level
-  - Modal open/closed state
+## API Shape
 
-## Error Handling Strategy
+Most user-facing API routes live under `/api/v1/*`. Agent-control routes live
+under `/api/agent/v1/*`. Operational endpoints include:
 
-### Client-Side
-```
-API Error
-  ->
-TanStack Query catches error
-  ->
-If 409 (conflict)  Auto-refetch
-  ->
-If 4xx/5xx  Display error to user
-  ->
-User can retry operation
-```
+- `GET /api/health`: database and process health.
+- `GET /api/metrics`: Prometheus-compatible process/application metrics.
+- `POST /api/csp-report`: CSP violation reports.
+- `GET /api/collaboration/:canvasId`: WebSocket upgrade path handled by
+  `server.ts`, not by a serverless route.
 
-### Server-Side
-```
-Request
-  ->
-Try {
-  Validate  Authorize  Execute
-}
-  ->
-Catch (error) {
-  if (ZodError)  400 with validation details
-  if (ApiError)  Use error.status
-  else  500 Internal Server Error
-}
-  ->
-Return RFC 7807 JSON response
-```
+Versioned API responses receive `X-API-Version`,
+`X-API-Version-Prefix`, and `X-API-Deprecated` headers from middleware.
+Errors use RFC 7807-style problem JSON via shared error helpers.
+
+## Collaboration
+
+Real-time collaboration uses Yjs documents over a custom `ws` WebSocket server.
+The server:
+
+- authenticates upgrades from Auth.js/NextAuth session cookies;
+- verifies canvas ownership or shared access;
+- broadcasts Yjs updates and presence to connected clients;
+- uses Redis pub/sub when available for multi-instance fanout;
+- persists document state back into `CanvasItem` rows on a debounced interval.
+
+HTTP polling remains available for non-collaboration views and fallback
+refreshes.
+
+## Caching
+
+Redis-backed cache helpers currently cover canvas snapshots and bookmark unfurl
+metadata. Mutating canvas-item routes invalidate the relevant canvas cache.
+Unfurl metadata is cached with a longer TTL because external page metadata
+changes less frequently.
+
+## Agent Foundation
+
+The first agent/control-plane slice is implemented. It supports owner-managed
+agent profiles, BYOK model credentials, integration-token ingress, MCP tool
+transport, audited canvas/item/knowledge/action routes, suggestion approval and
+execution, signed outbound webhook actions, rollback-capable change sets, and a
+read-only organizer view.
+
+Current agent limits remain intentionally conservative:
+
+- scope is canvas-level only;
+- generic inbound webhooks are disabled;
+- approved external-action execution is the outbound webhook path;
+- derived relations are canvas-scoped;
+- the organizer is a read-only derived lens.
 
 ## Security Layers
 
-### Layer 1: Input Validation
-- Zod schemas validate all inputs
-- Type checking (TypeScript)
-- Range validation (min/max)
+- Strict environment validation with production invariants for Redis, S3, and
+  bootstrap setup.
+- CSP nonce propagation through middleware, layout, and Emotion.
+- Security headers and CORS middleware.
+- SSRF-protected metadata fetching for unfurling.
+- API and auth rate limiting in middleware.
+- Structured logging with request IDs and redaction.
+- Soft deletes and audit fields for canvas items.
+- Idempotency-key handling for selected mutation routes.
 
-### Layer 2: Authorization
-- Canvas ownership verification
-- User ID from auth session
-- Database-level filtering
+## Operations
 
-### Layer 3: SQL Injection Prevention
-- Prisma ORM (parameterized queries)
-- No raw SQL for user input
+The supported operational path is:
 
-### Layer 4: Audit Trail
-- createdBy, updatedBy, deletedBy tracking
-- Timestamps on all operations
-- Soft deletes (data recovery)
-
-## Performance Optimizations
-
-### 1. Debounced Autosave
-- **Problem**: 100s of API calls during drag
-- **Solution**: 300ms debounce
-- **Result**: ~1 API call per interaction
-
-### 2. Optimistic UI Updates
-- **Problem**: Laggy feel waiting for server
-- **Solution**: Update local state immediately
-- **Result**: Instant visual feedback
-
-### 3. Query Caching
-- **Problem**: Refetching same data repeatedly
-- **Solution**: TanStack Query cache (60s stale time)
-- **Result**: Fewer API calls
-
-### 4. Database Indexes
-- **Problem**: Slow queries on large canvases
-- **Solution**: Indexes on (canvasId, deletedAt, zIndex)
-- **Result**: Fast item fetching
-
-### 5. Soft Deletes
-- **Problem**: Hard deletes prevent recovery
-- **Solution**: deletedAt timestamp
-- **Result**: Data recovery + faster "delete" operations
-
-## Testing Strategy
-
-### Unit Tests (Vitest)
-- **Target**: Utilities, schemas, validation
-- **Example**: Zod schema edge cases
-- **Location**: `/tests/api/items.test.ts`
-
-### Integration Tests (Future)
-- **Target**: API endpoints with test DB
-- **Example**: Full CRUD flow
-- **Tools**: Vitest + Supertest + Test DB
-
-### E2E Tests (Playwright)
-- **Target**: User flows in browser
-- **Example**: Create  Move  Resize  Delete
-- **Location**: `/tests/e2e/note-crud.spec.ts`
-
-## Deployment Considerations
-
-### Environment Variables
-```
-DATABASE_URL=postgresql://...     # PostgreSQL connection
-NEXTAUTH_URL=https://...          # Auth callback URL
-NEXTAUTH_SECRET=...               # Session encryption
-CRON_SECRET=...                   # Cron endpoint auth
-REDIS_URL=redis://...             # Cache, rate limiting, collaboration pub/sub (optional)
-UPLOAD_STORAGE=local|s3           # Upload backend selection
-UPLOADS_PUBLIC_URL=https://...    # Public base URL for uploads (optional)
-S3_BUCKET=...                     # S3 bucket name (when UPLOAD_STORAGE=s3)
-S3_REGION=...                     # S3 region
-S3_ENDPOINT=...                   # S3-compatible endpoint (optional)
-S3_ACCESS_KEY_ID=...              # S3 access key (optional if using IAM)
-S3_SECRET_ACCESS_KEY=...          # S3 secret key (optional if using IAM)
-UPLOAD_SCAN_URL=https://...       # Malware scan service endpoint (optional)
-UPLOAD_SCAN_REQUIRED=false        # Fail upload on scan failure
-DEMO_USER_ID=...                  # Temporary (dev only)
+```bash
+pnpm setup:dev
+pnpm doctor
+pnpm smoke
+pnpm build
+pnpm start
 ```
 
-### Build Process
-```
-1. pnpm install           # Install dependencies
-2. pnpm db:generate       # Generate Prisma client
-3. pnpm db:migrate        # Run migrations
-4. pnpm build             # Build Next.js app
-5. pnpm start             # Start production server
-```
+Self-host setup is driven by:
 
-### Database Migrations
-```
-1. prisma migrate dev     # Create migration (dev)
-2. prisma migrate deploy  # Apply migration (prod)
-3. prisma db seed         # Seed data (optional)
+```bash
+pnpm setup:selfhost
+pnpm stack:up
+pnpm stack:logs
+pnpm stack:down
 ```
 
-## Scalability Considerations
+Before shipping, run:
 
-### Current Limits
-- Real-time collaboration via WebSocket + Yjs (single instance or Redis pub/sub fanout)
-- Items API supports viewport pagination; UI still loads full canvases by default
-- Handles 100s of items per canvas; larger boards benefit from viewport loading and culling
-- Optional Redis caching improves hot reads but is not required
-
-### Future Optimizations (Phase 2+)
-- Binary WS frames for Yjs updates to reduce payload size
-- Redis-backed awareness/presence store to reduce in-memory coupling
-- Full-text indexes for search (trigram/tsvector)
-- CDN/object storage for thumbnails and static assets
-
----
-
-**Architecture Status**: Production-ready for MVP
-**Last Updated**: 2026-01-05
+```bash
+pnpm doctor
+pnpm lint
+pnpm type-check
+pnpm test
+pnpm build
+pnpm smoke
+```

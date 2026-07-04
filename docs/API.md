@@ -1,4 +1,4 @@
-# CanvasCollect API Documentation
+# Memoria API Documentation
 
 > **Version:** 1.0.0
 > **Base URL:** `/api/v1`
@@ -162,25 +162,22 @@ GET /api/health
 
 ```http
 GET /api/metrics
-Authorization: Required (admin only)
 ```
 
 **Response (200 OK):**
-```json
-{
-  "uptime": 3600,
-  "memory": {
-    "rss": 123456789,
-    "heapTotal": 98765432,
-    "heapUsed": 87654321,
-    "external": 5678
-  },
-  "database": {
-    "status": "connected",
-    "responseTime": 12
-  }
-}
+```text
+# HELP process_cpu_user_seconds_total Total user CPU time spent in seconds.
+# TYPE process_cpu_user_seconds_total counter
+process_cpu_user_seconds_total 1.23
+
+# HELP nodejs_heap_size_total_bytes Process V8 heap size total in bytes.
+# TYPE nodejs_heap_size_total_bytes gauge
+nodejs_heap_size_total_bytes 12345678
 ```
+
+**Content-Type:** `text/plain; version=0.0.4; charset=utf-8`
+
+**Cache:** No cache (always fresh)
 
 ---
 

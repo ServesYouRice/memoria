@@ -142,7 +142,10 @@ Production rules enforced by the app:
 
 ## Project State
 
-The implementation-tracking markdown used during the production push has been retired. Use this README, [ARCHITECTURE.md](./ARCHITECTURE.md), and the docs under [`docs/`](./docs/) as the current reference set.
+Use this README, [ARCHITECTURE.md](./ARCHITECTURE.md), and the current reference
+set in [`docs/README.md`](./docs/README.md). Historical slice checklists, MVP
+summaries, old UI plans, and point-in-time audits have been moved to
+[`docs/archive/`](./docs/archive/) and should be treated as background only.
 
 ## Verification
 

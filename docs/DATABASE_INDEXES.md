@@ -1,163 +1,88 @@
 # Database Indexes Guide
 
-**FIXED: Issue #12 - Missing Database Indexes**
+The source of truth for indexes is `prisma/schema.prisma`. This document
+summarizes the main index groups and how to verify them in a running database.
 
-This document explains the database indexes added to improve query performance.
+## Main Index Groups
 
-## Overview
+### Identity And Auth
 
-Database indexes are critical for performance as they allow the database to quickly locate rows without scanning the entire table. Without proper indexes, queries can be slow, especially as data grows.
+- `User.email` is unique.
+- `Session.sessionToken` is unique.
+- `Session` is indexed by `userId` and `expires`.
+- `Account` is unique by provider account and indexed by `userId`.
+- password reset and email verification tokens are indexed by email/token and
+  expiry.
 
-## Added Indexes
+### Canvases And Items
 
-### Session Model
+- `Canvas` is indexed by owner, update time, template fields, public/share
+  fields, and workspace.
+- `CanvasItem` is indexed by canvas/deletion state, type, z-index, update time,
+  spatial coordinates, and creator.
+- `Comment` is indexed by item/deletion state, item creation time, user, and
+  creation time.
+- `ItemConnection`, `CanvasShare`, `CanvasVersion`, and `CanvasView` all carry
+  relationship indexes for their common lookup paths.
 
-```prisma
-@@index([userId])
-@@index([expires])
-```
+### Product Features
 
-**Why:**
-- `userId`: Sessions are frequently queried by user ID when checking if a user is logged in
-- `expires`: Essential for cleanup queries that remove expired sessions
+- `Activity` is indexed by user/time and canvas/time.
+- `ApiKey` is unique by key and indexed for user/key lookups.
+- `IdempotencyKey` is unique by key/user/method/path and indexed for cleanup.
+- Agent, knowledge, suggestion, change-set, integration, checkpoint, and job
+  models are indexed around user, status, scope, agent profile, and target
+  identifiers.
 
-**Impact:** 10-100x faster session lookups and cleanup operations
+### Embeddings
 
-### Account Model
+`ItemEmbedding` is unique by item/provider/model and indexed by provider/model.
+The vector is currently stored as JSON, so similarity search is not backed by a
+database vector index yet.
 
-```prisma
-@@index([userId])
-```
-
-**Why:**
-- `userId`: OAuth accounts are queried by user ID during authentication
-
-**Impact:** Faster OAuth login flows
-
-### Canvas Model
-
-```prisma
-@@index([userId, updatedAt])
-@@index([isTemplate, usageCount, createdAt])
-```
-
-**Why:**
-- `userId, updatedAt`: Supports fetching user's canvases ordered by most recent update
-- `isTemplate, usageCount, createdAt`: Optimizes template listing queries that sort by popularity (usageCount) and recency
-
-**Impact:**
-- Faster canvas list views for users with many canvases
-- Template gallery loads instantly even with 1000+ templates
-
-### CanvasItem Model
-
-```prisma
-@@index([canvasId, positionX, positionY])
-```
-
-**Why:**
-- Supports viewport-based spatial queries for canvas rendering
-- When zooming/panning, only items visible in the viewport need to be fetched
-- The composite index helps PostgreSQL efficiently filter by position ranges
-
-**Impact:**
-- 5-20x faster viewport queries on canvases with 1000+ items
-- Smooth zooming and panning even on very large canvases
-
-## Applying the Migration
-
-### Option 1: Automatic Migration (Recommended)
-
-```bash
-# Generate migration SQL
-pnpm prisma migrate dev --name add-performance-indexes
-
-# Apply to production
-pnpm prisma migrate deploy
-```
-
-### Option 2: Manual SQL (For Production Control)
-
-If you prefer to review and apply indexes manually:
+## Verify Indexes
 
 ```sql
--- Session indexes
-CREATE INDEX "Session_userId_idx" ON "Session"("userId");
-CREATE INDEX "Session_expires_idx" ON "Session"("expires");
-
--- Account indexes
-CREATE INDEX "Account_userId_idx" ON "Account"("userId");
-
--- Canvas indexes
-CREATE INDEX "Canvas_userId_updatedAt_idx" ON "Canvas"("userId", "updatedAt");
-CREATE INDEX "Canvas_isTemplate_usageCount_createdAt_idx" ON "Canvas"("isTemplate", "usageCount", "createdAt");
-
--- CanvasItem spatial index
-CREATE INDEX "CanvasItem_canvasId_positionX_positionY_idx" ON "CanvasItem"("canvasId", "positionX", "positionY");
-```
-
-### Verifying Indexes
-
-```sql
--- Check all indexes on a table
-\d+ "Session"
-\d+ "Account"
-\d+ "Canvas"
-\d+ "CanvasItem"
-
--- Or query pg_indexes
-SELECT indexname, indexdef
+SELECT tablename, indexname, indexdef
 FROM pg_indexes
-WHERE tablename IN ('Session', 'Account', 'Canvas', 'CanvasItem')
+WHERE schemaname = 'public'
 ORDER BY tablename, indexname;
 ```
 
-## Performance Monitoring
-
-### Query Analysis
-
-Use `EXPLAIN ANALYZE` to verify indexes are being used:
+For a specific table:
 
 ```sql
--- Session lookup (should use userId index)
-EXPLAIN ANALYZE
-SELECT * FROM "Session" WHERE "userId" = 'clxxx...';
-
--- Template listing (should use composite index)
-EXPLAIN ANALYZE
-SELECT * FROM "Canvas"
-WHERE "isTemplate" = true
-ORDER BY "usageCount" DESC, "createdAt" DESC
-LIMIT 50;
-
--- Viewport query (should use spatial index)
-EXPLAIN ANALYZE
-SELECT * FROM "CanvasItem"
-WHERE "canvasId" = 'clxxx...'
-  AND "positionX" >= 0 AND "positionX" <= 1000
-  AND "positionY" >= 0 AND "positionY" <= 1000;
+\d+ "CanvasItem"
 ```
 
-### Expected Output
+## Query Plan Checks
 
-You should see `Index Scan` or `Bitmap Index Scan` in the query plan, not `Seq Scan` (sequential scan).
-
-**Good (uses index):**
-```
-Index Scan using Session_userId_idx on Session  (cost=0.29..8.31 rows=1 width=...)
-```
-
-**Bad (no index used):**
-```
-Seq Scan on Session  (cost=0.00..1234.00 rows=1 width=...)
-```
-
-## Index Maintenance
-
-### Monitoring Index Usage
+Use `EXPLAIN ANALYZE` when changing list, search, collaboration, or agent query
+paths:
 
 ```sql
--- Find unused indexes
+EXPLAIN ANALYZE
+SELECT *
+FROM "CanvasItem"
+WHERE "canvasId" = 'example'
+  AND "deletedAt" IS NULL
+ORDER BY "zIndex" ASC, "createdAt" ASC;
+```
+
+Prefer seeing `Index Scan` or `Bitmap Index Scan` on large tables. PostgreSQL
+may still choose sequential scans for small tables or low-selectivity filters.
+
+## Maintenance
+
+Refresh planner statistics:
+
+```sql
+ANALYZE;
+```
+
+Find unused indexes after a meaningful production window:
+
+```sql
 SELECT
   schemaname,
   tablename,
@@ -169,81 +94,16 @@ WHERE idx_scan = 0
 ORDER BY tablename, indexname;
 ```
 
-### Rebuilding Indexes
-
-If indexes become bloated over time:
+Rebuild only when needed:
 
 ```sql
-REINDEX TABLE "Session";
-REINDEX TABLE "Account";
-REINDEX TABLE "Canvas";
 REINDEX TABLE "CanvasItem";
 ```
 
-### Analyzing Tables
+## Current Follow-Up Candidates
 
-Update statistics for the query planner:
-
-```sql
-ANALYZE "Session";
-ANALYZE "Account";
-ANALYZE "Canvas";
-ANALYZE "CanvasItem";
-```
-
-## Performance Tips
-
-1. **Monitor Slow Queries**: Enable PostgreSQL's slow query log
-   ```sql
-   -- In postgresql.conf
-   log_min_duration_statement = 1000  # Log queries slower than 1s
-   ```
-
-2. **Index Size**: Indexes consume disk space and slow down writes slightly. Only add indexes for frequently used queries.
-
-3. **Composite Index Order**: The order of columns matters! `[canvasId, positionX, positionY]` can be used for:
-   - `WHERE canvasId = ?`
-   - `WHERE canvasId = ? AND positionX = ?`
-   - `WHERE canvasId = ? AND positionX = ? AND positionY = ?`
-
-   But NOT for:
-   - `WHERE positionX = ?` (doesn't start with canvasId)
-
-4. **B-tree vs GiST**: For true 2D spatial queries, consider PostgreSQL's GiST index type with PostGIS extension. Our B-tree composite index works well for simple range queries.
-
-## Troubleshooting
-
-### Migration Fails
-
-If migration fails due to data constraints:
-
-```bash
-# Check for constraint violations
-pnpm prisma validate
-
-# Force reset (CAUTION: deletes all data)
-pnpm prisma migrate reset
-```
-
-### Index Not Used
-
-If PostgreSQL doesn't use your index:
-
-1. Check query matches index columns
-2. Run `ANALYZE` to update statistics
-3. Check if index is selective enough (PostgreSQL prefers seq scan for >5% of table)
-4. Verify data types match
-
-### Performance Didn't Improve
-
-1. Verify index is being used with `EXPLAIN ANALYZE`
-2. Check if bottleneck is elsewhere (network, application code)
-3. Consider connection pooling (PgBouncer)
-4. Monitor database resource usage (CPU, RAM, I/O)
-
-## Further Reading
-
-- [PostgreSQL Indexes](https://www.postgresql.org/docs/current/indexes.html)
-- [Prisma Schema Indexes](https://www.prisma.io/docs/concepts/components/prisma-schema/indexes)
-- [PostgreSQL Performance Tips](https://wiki.postgresql.org/wiki/Performance_Optimization)
-- [Understanding EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html)
+- Remove duplicate indexes that overlap unique constraints after confirming
+  query plans.
+- Move large thumbnails out of hot canvas list payloads.
+- Plan a pgvector-backed embedding index if semantic search becomes a product
+  requirement.
