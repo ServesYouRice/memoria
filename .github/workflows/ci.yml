@@ -89,7 +89,9 @@ jobs:
         run: pnpm build
         env:
           DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
-          NEXTAUTH_SECRET: 'ci-build-secret'
+          AUTH_SECRET: 'ci-build-secret-0123456789abcdef-placeholder'
+          AUTH_URL: 'http://localhost:3000'
+          NEXTAUTH_SECRET: 'ci-build-secret-0123456789abcdef-placeholder'
           NEXTAUTH_URL: 'http://localhost:3000'
 
   e2e:
@@ -139,6 +141,8 @@ jobs:
         run: pnpm test:e2e
         env:
           DATABASE_URL: 'postgresql://postgres:test@localhost:5432/test'
-          NEXTAUTH_SECRET: 'e2e-test-secret'
+          AUTH_SECRET: 'e2e-test-secret-0123456789abcdef-placeholder'
+          AUTH_URL: 'http://localhost:3000'
+          NEXTAUTH_SECRET: 'e2e-test-secret-0123456789abcdef-placeholder'
           NEXTAUTH_URL: 'http://localhost:3000'
 
