@@ -1,239 +1,112 @@
 # Deployment Guide
 
-This guide covers local development and free cloud deployment for CanvasCollect (Memoria).
+Memoria is deployed as a stateful Node application. The production path is a
+container/VPS/self-host setup with PostgreSQL, Redis, and S3-compatible object
+storage. Serverless platforms can serve parts of a Next.js app, but they are not
+the supported v1 deployment target because the collaboration server depends on
+WebSocket upgrades handled by `server.ts`.
 
----
-
-## Quick Start (Local)
+## Local Development
 
 ```powershell
-# 1. Start databases
-docker-compose up -d
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with local settings (see below)
-
-# 3. Setup database
-pnpm install
-pnpm db:generate
-pnpm db:migrate:dev
-
-# 4. Run development server
+pnpm setup:dev
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+`pnpm setup:dev`:
 
----
+- prepares `.env` from `.env.example` without overwriting existing secrets;
+- generates missing local secrets and a bootstrap token;
+- starts PostgreSQL, Redis, and MinIO through Docker Compose;
+- creates the configured object-storage bucket;
+- runs Prisma generation and development migrations.
 
-## 1. Local Development (Docker)
+Open [http://localhost:3000](http://localhost:3000), then use `/setup` if the
+database has not been initialized.
 
-### Prerequisites
-
-- **Docker Desktop** - [Download](https://www.docker.com/products/docker-desktop/)
-- **Node.js 20+** - [Download](https://nodejs.org/)
-- **pnpm 8+** - `npm install -g pnpm`
-
-### Start Services
-
-```powershell
-cd c:\Users\V\notes
-docker-compose up -d
-```
-
-This starts:
-- **PostgreSQL 16** on port `5432`
-- **Redis 7** on port `6379`
-
-### Local `.env` Configuration
-
-```env
-# Database (Docker)
-DATABASE_URL="postgresql://canvascollect:devpassword@localhost:5432/canvascollect"
-
-# Redis (Docker)
-REDIS_URL="redis://localhost:6379"
-
-# Auth
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="<generate-with: openssl rand -base64 32>"
-
-# Environment
-NODE_ENV="development"
-```
-
-### Useful Commands
+## Self-Hosted Deployment
 
 ```powershell
-# View container logs
-docker-compose logs -f postgres
-docker-compose logs -f redis
-
-# Stop services
-docker-compose down
-
-# Reset database (delete all data)
-docker-compose down -v
-docker-compose up -d
-pnpm db:migrate:dev
+pnpm setup:selfhost
 ```
 
----
+`pnpm setup:selfhost`:
 
-## 2. Free Cloud Deployment (Vercel + Neon)
+- prepares `.env.selfhost`;
+- generates production-oriented secrets and a one-time bootstrap token;
+- builds and starts the Docker Compose stack;
+- runs Prisma migrations in the app container;
+- runs live smoke checks for HTTP and collaboration paths;
+- prints the bootstrap URL for first-run setup.
 
-### Overview
+The reference stack includes:
 
-| Service | Free Tier | Purpose |
-|---------|-----------|---------|
-| **Vercel** | Hobby plan | Next.js hosting |
-| **Neon** | 512MB, 0.25 vCPU | PostgreSQL database |
-| **Upstash** | 10K commands/day | Redis (optional, for rate limiting) |
+- app container running `node scripts/start-server.mjs`;
+- PostgreSQL;
+- Redis;
+- MinIO for S3-compatible uploads.
 
-### Step 1: Create Neon Database
+## Production Requirements
 
-1. Go to [neon.tech](https://neon.tech) and sign up
-2. Create a new project (e.g., "canvascollect")
-3. Copy the connection string:
-   ```
-   postgresql://USER:PASSWORD@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
-   ```
+Required environment:
 
-### Step 2: Deploy to Vercel
+- `DATABASE_URL`
+- `REDIS_URL`
+- `AUTH_URL`
+- `AUTH_SECRET`
+- `APP_BOOTSTRAP_TOKEN`
+- `UPLOAD_STORAGE=s3`
+- `S3_BUCKET`
+- `S3_REGION`
+- `S3_ENDPOINT`
+- `S3_ACCESS_KEY_ID`
+- `S3_SECRET_ACCESS_KEY`
 
-1. Push code to GitHub
-2. Go to [vercel.com](https://vercel.com) and sign up
-3. Click "New Project" → Import your GitHub repo
-4. Add environment variables:
+Required production rules enforced by env validation:
 
-| Variable | Value |
-|----------|-------|
-| `DATABASE_URL` | Your Neon connection string |
-| `NEXTAUTH_URL` | `https://your-app.vercel.app` |
-| `NEXTAUTH_SECRET` | Generate: `openssl rand -base64 32` |
-| `NODE_ENV` | `production` |
+- Redis must be configured.
+- Local upload storage is rejected.
+- S3-compatible storage must be complete.
+- A bootstrap token must exist for first-run owner setup.
 
-5. Click "Deploy"
-
-### Step 3: Run Database Migration
-
-After first deploy, run migrations via Vercel CLI:
+## Build And Start
 
 ```powershell
-# Install Vercel CLI
-npm i -g vercel
-
-# Link project
-vercel link
-
-# Run migration
-vercel env pull .env.local
-pnpm db:migrate
+pnpm build
+pnpm start
 ```
 
-Or use the Vercel dashboard → Functions → run migration command.
+`pnpm build` validates environment configuration, builds the Next.js app, and
+emits the compiled custom server bundle. `pnpm start` runs that custom server.
 
-### Step 4: (Optional) Add Upstash Redis
-
-For rate limiting in production:
-
-1. Go to [upstash.com](https://upstash.com) and sign up
-2. Create a Redis database
-3. Copy the connection URL
-4. Add to Vercel environment:
-   ```
-   REDIS_URL=rediss://default:xxx@xxx.upstash.io:6379
-   ```
-
----
-
-## 3. Environment Variables Reference
-
-### Required
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection | `postgresql://user:pass@host:5432/db` |
-| `NEXTAUTH_URL` | App URL | `http://localhost:3000` |
-| `NEXTAUTH_SECRET` | Session encryption key | (32+ char random string) |
-
-### Optional
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `REDIS_URL` | - | Redis connection (enables caching) |
-| `NODE_ENV` | `development` | `development` or `production` |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `OPENAI_API_KEY` | - | AI features |
-| `SENTRY_DSN` | - | Error tracking |
-
-### Cloud-Specific Formats
-
-```env
-# Neon PostgreSQL (includes SSL)
-DATABASE_URL="postgresql://user:pass@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
-
-# Upstash Redis (uses rediss:// for TLS)
-REDIS_URL="rediss://default:token@xxx.upstash.io:6379"
-
-# Production
-NEXTAUTH_URL="https://your-app.vercel.app"
-NODE_ENV="production"
-```
-
----
-
-## 4. Troubleshooting
-
-### Docker won't start
+## Operations Commands
 
 ```powershell
-# Check if Docker Desktop is running
-docker info
-
-# Check port conflicts
-netstat -an | findstr "5432"
-netstat -an | findstr "6379"
+pnpm doctor
+pnpm smoke
+pnpm stack:up
+pnpm stack:down
+pnpm stack:logs
 ```
 
-### Database connection fails
+`pnpm doctor` checks env configuration, database reachability, Redis
+reachability, object-storage reachability, Prisma migration status, pgvector
+availability, and, when the app is reachable, HTTP/WebSocket smoke paths.
 
-```powershell
-# Test PostgreSQL
-docker exec canvascollect-postgres pg_isready -U canvascollect
+`pnpm smoke` runs live app checks directly against the configured app URL.
 
-# Reset if corrupted
-docker-compose down -v
-docker-compose up -d
-```
+## Health And Metrics
 
-### Vercel build fails
+- `GET /api/health`: JSON health report for database and process memory.
+- `GET /api/metrics`: Prometheus-compatible text metrics.
 
-1. Check build logs in Vercel dashboard
-2. Common issues:
-   - Missing environment variables
-   - TypeScript errors (run `pnpm type-check` locally)
-   - Prisma client not generated (ensure `prisma generate` runs in build)
+Configure uptime checks against `/api/health`. Configure metrics scraping
+against `/api/metrics` from your private monitoring network or reverse proxy.
 
-### Neon connection timeout
+## Notes On Vercel
 
-- Neon free tier has cold starts (~1-2s first request)
-- Check connection string has `?sslmode=require`
-- Verify IP is not blocked (Neon allows all IPs by default)
-
----
-
-## 5. Production Recommendations
-
-Before launching to users:
-
-- [ ] Enable Sentry for error tracking
-- [ ] Set up database backups (Neon has point-in-time recovery)
-- [ ] Configure custom domain in Vercel
-- [ ] Add Upstash Redis for reliable rate limiting
-- [ ] Review security headers at [securityheaders.com](https://securityheaders.com)
-
----
-
-*Last updated: 2026-01-06*
+`vercel.json` may remain in the repository for compatibility experiments and
+cron documentation, but Vercel is not the primary deployment story. A Vercel
+deployment will not run the custom WebSocket server from `server.ts`, so
+real-time collaboration is not complete there without a separate collaboration
+service.

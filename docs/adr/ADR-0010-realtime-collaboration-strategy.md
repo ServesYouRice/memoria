@@ -5,7 +5,11 @@ Owners: CodexCLI
 
 ## Context
 
-Phase 3 of the CanvasCollect roadmap introduces multi-user real-time collaboration. The MVP (Phases 1-2) uses a debounced autosave model with optimistic concurrency control (version-based locking). This works for single-user scenarios but is insufficient for multiple users editing the same canvas simultaneously.
+Phase 3 of the Memoria roadmap introduces multi-user real-time collaboration.
+The MVP (Phases 1-2) uses a debounced autosave model with optimistic
+concurrency control (version-based locking). This works for single-user
+scenarios but is insufficient for multiple users editing the same canvas
+simultaneously.
 
 Key requirements for Phase 3:
 - Multiple users can edit canvas items concurrently without conflicts

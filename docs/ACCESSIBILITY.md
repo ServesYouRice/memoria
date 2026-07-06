@@ -2,7 +2,7 @@
 
 > **FIXED:** Issue #41 - Missing accessibility features
 
-This guide outlines accessibility (a11y) improvements for CanvasCollect to ensure the application is usable by everyone, including people with disabilities.
+This guide outlines accessibility (a11y) improvements for Memoria to ensure the application is usable by everyone, including people with disabilities.
 
 ## Table of Contents
 
@@ -619,7 +619,7 @@ Ctrl - Stop speaking
 ```tsx
 <Image
   src="/logo.png"
-  alt="CanvasCollect logo"
+  alt="Memoria logo"
   width={200}
   height={50}
 />
@@ -645,7 +645,7 @@ Ctrl - Stop speaking
 ```tsx
 // app/canvas/[id]/page.tsx
 export const metadata = {
-  title: 'Edit Canvas | CanvasCollect',
+  title: 'Edit Canvas | Memoria',
 };
 ```
 

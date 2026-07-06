@@ -1,11 +1,17 @@
 # Real-time Updates
 
-**Status**: Implemented (Issue #31)
-**Last Updated**: 2026-01-05
+**Status**: Implemented for the custom Node runtime
+**Last Updated**: 2026-07-04
 
 ## Overview
 
-CanvasCollect uses WebSocket + Yjs for real-time collaboration, with polling as an optional fallback when sockets are disabled or for non-collab views.
+Memoria uses WebSocket + Yjs for real-time collaboration, with polling as an
+optional fallback when sockets are disabled or for non-collaboration views.
+
+The WebSocket server is created from `server.ts`. Deployments that bypass the
+custom Node server, such as plain serverless Next.js hosting, will not provide
+the `/api/collaboration/:canvasId` upgrade path unless a separate collaboration
+service is added.
 
 ## Architecture Decision
 
@@ -301,19 +307,17 @@ test('polls every 5 seconds when tab is active', async () => {
 
 ## Related Documentation
 
-- [Architecture Decisions (ADR-0005)](../architecture/adr/0005-state-management-policy.md) - State management with TanStack Query
+- [Architecture Decisions (ADR-0005)](./adr/ADR-0005-state-management-policy.md) - State management with TanStack Query
 - [API Documentation](./API.md) - Canvas Items API endpoints
-- [Performance Guide](./PERFORMANCE.md) - Optimization strategies
 - [Monitoring Guide](./MONITORING.md) - Observability and debugging
 
 ## References
 
 - [TanStack Query: Polling/Refetching](https://tanstack.com/query/latest/docs/react/guides/window-focus-refetching)
 - [Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API)
-- [Vercel Serverless Functions](https://vercel.com/docs/functions/serverless-functions)
 
 ---
 
 **Issue**: #31 - WebSocket/Real-time Updates
 **Implementation**: WebSocket primary with adaptive polling fallback
-**Status**: Production Ready
+**Status**: Production ready for the custom Node/self-host runtime

@@ -159,7 +159,8 @@ In production, logs should be sent to a log aggregation service:
 - **Datadog**: Full-featured APM and logging
 - **Axiom**: Serverless-friendly, fast search
 - **Logtail**: Simple, affordable logging
-- **Vercel Log Drains**: Built-in for Vercel deployments
+- **Container log collectors**: Promtail, Vector, Fluent Bit, or your platform
+  collector for self-hosted deployments
 
 See [MONITORING.md](./MONITORING.md) for setup instructions.
 

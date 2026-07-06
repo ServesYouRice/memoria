@@ -1,8 +1,9 @@
-# Testing Guide - CanvasCollect
+# Testing Guide - Memoria
 
 ## Overview
 
-This guide covers all testing practices for the CanvasCollect application, including unit tests, integration tests, and end-to-end tests.
+This guide covers testing practices for the Memoria application, including unit
+tests, integration tests, and end-to-end tests.
 
 ---
 
@@ -92,17 +93,12 @@ test.describe('Feature Name', () => {
 
 ---
 
-## Coverage Requirements
+## Coverage Reporting
 
-**Minimum Coverage:** 80% for all metrics
+Coverage is available through Vitest and `@vitest/coverage-v8`.
 
-**Metrics:**
-- Lines: 80%
-- Statements: 80%
-- Functions: 80%
-- Branches: 80%
-
-**CI Enforcement:** Build fails if coverage is below 80%
+**Current enforcement:** coverage reports are generated, but hard thresholds are
+not configured in `vitest.config.ts`.
 
 **Coverage Reports:**
 - HTML: `coverage/index.html`
@@ -283,7 +279,7 @@ Tests run automatically in CI on:
 
 ### Performance Budgets
 
-Enforced via `/scripts/check-bundle-size.mjs`
+Checked by `/scripts/check-bundle-size.mjs`.
 
 **Budgets:**
 - Landing: 100KB gzipped
@@ -294,6 +290,9 @@ Enforced via `/scripts/check-bundle-size.mjs`
 ```bash
 pnpm run check-bundle
 ```
+
+The current GitHub Actions workflow does not run this check as a required CI
+gate.
 
 ---
 

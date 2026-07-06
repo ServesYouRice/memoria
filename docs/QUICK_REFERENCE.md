@@ -1,212 +1,114 @@
-# Quick Reference - CanvasCollect
+# Quick Reference - Memoria
 
 ## Essential Commands
 
-### Development
+### Setup And Runtime
+
 ```bash
-pnpm dev          # Start dev server (http://localhost:3000)
-pnpm build        # Build for production
-pnpm start        # Start production server
+pnpm setup:dev       # Prepare local env and start PostgreSQL/Redis/MinIO
+pnpm setup:selfhost  # Prepare and start the reference self-host stack
+pnpm dev             # Start the custom dev server
+pnpm build           # Validate env, build Next.js, and compile the server
+pnpm start           # Start the compiled custom server
 ```
 
-### Testing
+### Operations
+
 ```bash
-pnpm test              # Run unit tests
-pnpm test:coverage     # Run tests with coverage
-pnpm test:e2e          # Run E2E tests
-pnpm ci                # Run full CI pipeline
+pnpm doctor      # Validate env, services, migrations, and smoke paths
+pnpm smoke       # Run live HTTP/WebSocket checks
+pnpm stack:up    # Start the Docker Compose stack
+pnpm stack:down  # Stop the Docker Compose stack
+pnpm stack:logs  # Tail stack logs
+```
+
+### Testing And Quality
+
+```bash
+pnpm lint
+pnpm type-check
+pnpm test
+pnpm test:coverage
+pnpm test:e2e
+pnpm check-bundle
 ```
 
 ### Database
+
 ```bash
-pnpm db:migrate        # Run migrations
-pnpm db:studio         # Open Prisma Studio
-pnpm db:seed           # Seed test data
-```
-
-### Code Quality
-```bash
-pnpm lint              # Run linter
-pnpm format            # Format code
-pnpm type-check        # TypeScript check
-```
-
----
-
-## Project Structure
-
-```
-/home/user/notes/
-├── src/
-│   ├── app/api/           # API routes
-│   │   ├── health/        # Health check endpoint
-│   │   └── metrics/       # Prometheus metrics
-│   ├── lib/logger/        # Structured logging
-│   ├── middleware/        # Security middleware
-│   │   ├── csp.ts         # Content Security Policy
-│   │   ├── rate-limit.ts  # Rate limiting
-│   │   └── security-headers.ts
-│   └── __tests__/         # Unit tests
-├── e2e/                   # E2E tests (Playwright)
-├── docs/                  # Documentation
-│   ├── adr/               # Architectural decisions
-│   ├── security/          # Security audit report
-│   ├── SLICE_6_IMPLEMENTATION.md
-│   └── TESTING_GUIDE.md
-└── scripts/               # Build scripts
-    └── check-bundle-size.mjs
-```
-
----
-
-## Important URLs
-
-### Development
-- **App:** http://localhost:3000
-- **Health:** http://localhost:3000/api/health
-- **Metrics:** http://localhost:3000/api/metrics
-- **Database UI:** http://localhost:5555 (Prisma Studio)
-
----
-
-## Environment Variables
-
-Required in `.env`:
-
-```env
-DATABASE_URL="postgresql://..."
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="<32+ character random string>"
-NODE_ENV="development"
-```
-
-Generate secret:
-```bash
-openssl rand -base64 32
-```
-
----
-
-## Security Features
-
-### CSP
-- Nonce-based (unique per request)
-- No unsafe-inline/unsafe-eval in production
-- Location: `/src/middleware/csp.ts`
-
-### Rate Limiting
-- API: 100 req/15min
-- Auth: 5 req/15min
-- Location: `/src/middleware/rate-limit.ts`
-
-### Headers
-- X-Frame-Options: DENY
-- X-Content-Type-Options: nosniff
-- Referrer-Policy: strict-origin-when-cross-origin
-- Permissions-Policy: restrictive
-
----
-
-## Testing Coverage
-
-### E2E Tests (30+ tests)
-- ✅ Security headers
-- ✅ Authentication flows
-- ✅ Canvas operations
-- ✅ Health/metrics endpoints
-
-### Unit Tests
-- ✅ CSP middleware
-- ✅ Logger utilities
-- ✅ 80% coverage target
-
-### Performance
-- Landing: < 100KB gzipped
-- Auth: < 125KB gzipped
-- Canvas: < 150KB gzipped
-
----
-
-## CI/CD Pipeline
-
-Runs on every push/PR:
-
-1. Lint (ESLint + Prettier)
-2. Type Check (TypeScript)
-3. Unit Tests (with coverage)
-4. Security Audit (pnpm audit)
-5. Build (Next.js)
-6. Bundle Check (performance budgets)
-7. E2E Tests (Playwright)
-
-Pipeline file: `/.github/workflows/ci.yml`
-
----
-
-## Troubleshooting
-
-### Tests failing?
-```bash
-# Ensure database is running and migrated
+pnpm db:generate
+pnpm db:migrate:dev
 pnpm db:migrate
-
-# Clear cache
-rm -rf .next
-
-# Reinstall dependencies
-rm -rf node_modules
-pnpm install
-```
-
-### Build failing?
-```bash
-# Check types
-pnpm type-check
-
-# Check for errors
-pnpm lint
-
-# Check bundle size
-pnpm run check-bundle
-```
-
-### Database issues?
-```bash
-# Reset database (WARNING: deletes all data)
-pnpm db:push --force-reset
-
-# View database
+pnpm db:seed
 pnpm db:studio
 ```
 
----
+## Important URLs
 
-## Key Documentation
+- App: http://localhost:3000
+- Health: http://localhost:3000/api/health
+- Metrics: http://localhost:3000/api/metrics
+- Setup: http://localhost:3000/setup
+- Prisma Studio: http://localhost:5555
 
-- [README.md](../README.md) - Current project overview and setup
-- [Slice 6 Implementation](./SLICE_6_IMPLEMENTATION.md) - Implementation details
-- [Security Audit](./security/SECURITY_AUDIT_REPORT.md) - Security review
-- [Testing Guide](./TESTING_GUIDE.md) - Testing practices
-- [ADRs](./adr/) - Architecture decisions
+## Current Documentation
 
----
+- [Project overview](../README.md)
+- [Architecture](../ARCHITECTURE.md)
+- [Documentation index](./README.md)
+- [Deployment](./DEPLOYMENT.md)
+- [API](./API.md)
+- [Monitoring](./MONITORING.md)
+- [Testing guide](./TESTING_GUIDE.md)
+- [ADRs](./adr/)
+- [Archived historical docs](./archive/)
 
-## Production Checklist
+## Production Essentials
 
-Before deploying to production:
+Required production services:
 
-- [ ] Set secure NEXTAUTH_SECRET (32+ chars)
-- [ ] Configure DATABASE_URL with SSL
-- [ ] Set NODE_ENV=production
-- [ ] Enable HTTPS
-- [ ] Configure monitoring (Prometheus)
-- [ ] Set up log aggregation
-- [ ] Configure automated backups
-- [ ] Review security audit report
-- [ ] Run full test suite
-- [ ] Check bundle sizes
+- PostgreSQL
+- Redis
+- S3-compatible object storage
 
----
+Required checks before shipping:
 
-**Last Updated:** 2025-11-10  
-**Version:** 1.0.0
+```bash
+pnpm doctor
+pnpm lint
+pnpm type-check
+pnpm test
+pnpm build
+pnpm smoke
+```
+
+## Environment Highlights
+
+```env
+DATABASE_URL="postgresql://..."
+REDIS_URL="redis://..."
+AUTH_URL="https://your-domain.example"
+AUTH_SECRET="<32+ character random string>"
+APP_BOOTSTRAP_TOKEN="<one-time setup token>"
+UPLOAD_STORAGE="s3"
+S3_BUCKET="memoria"
+S3_REGION="us-east-1"
+S3_ENDPOINT="https://s3-compatible-endpoint.example"
+S3_ACCESS_KEY_ID="..."
+S3_SECRET_ACCESS_KEY="..."
+```
+
+## Security And Observability
+
+- CSP nonce middleware: `src/middleware/csp.ts`
+- Security headers: `src/middleware/security-headers.ts`
+- Rate limiting: `src/middleware/rate-limit.ts`
+- Structured logging: `src/lib/logger/index.ts`
+- Health endpoint: `src/app/api/health/route.ts`
+- Metrics endpoint: `src/app/api/metrics/route.ts`
+
+## Notes
+
+- Historical slice checklists and point-in-time audits are in `docs/archive/`.
+- `vercel.json` may exist for compatibility experiments, but the supported
+  production runtime is the custom Node server.
