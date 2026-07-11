@@ -3,6 +3,7 @@
  * React Query hooks for managing canvas templates
  */
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type CanvasItem } from "@/types/canvas";
 
@@ -78,7 +79,7 @@ export function useTemplates(category?: string, userId?: string) {
   return useQuery<TemplatesResponse>({
     queryKey: ["templates", category, userId],
     queryFn: async () => {
-      const response = await fetch(url);
+      const response = await apiFetch(url);
       return parseJson<TemplatesResponse>(
         response,
         "Failed to fetch templates",
@@ -94,7 +95,7 @@ export function useTemplate(templateId: string) {
   return useQuery<Template>({
     queryKey: ["template", templateId],
     queryFn: async () => {
-      const response = await fetch(`/api/v1/templates/${templateId}`);
+      const response = await apiFetch(`/api/v1/templates/${templateId}`);
       return parseJson<Template>(response, "Failed to fetch template");
     },
     enabled: !!templateId,
@@ -121,7 +122,7 @@ export function useSaveAsTemplate() {
       category?: string;
       isPublic?: boolean;
     }) => {
-      const response = await fetch("/api/v1/templates", {
+      const response = await apiFetch("/api/v1/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,7 +151,7 @@ export function useCreateCanvasFromTemplate() {
 
   return useMutation({
     mutationFn: async ({ templateId }: { templateId: string }) => {
-      const response = await fetch(`/api/v1/templates/${templateId}/use`, {
+      const response = await apiFetch(`/api/v1/templates/${templateId}/use`, {
         method: "POST",
       });
 
@@ -173,7 +174,7 @@ export function useRemoveTemplate() {
 
   return useMutation({
     mutationFn: async ({ templateId }: { templateId: string }) => {
-      const response = await fetch(`/api/v1/templates/${templateId}`, {
+      const response = await apiFetch(`/api/v1/templates/${templateId}`, {
         method: "DELETE",
       });
 

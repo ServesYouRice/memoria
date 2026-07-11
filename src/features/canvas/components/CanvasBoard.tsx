@@ -11,6 +11,7 @@ import {
   SpeedDialAction,
   SpeedDialIcon,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import {
   NoteAdd,
   Bookmark,
@@ -39,6 +40,7 @@ import { useCanvasKeyboard } from "@/features/canvas/hooks/use-canvas-keyboard";
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
+import { confirmDialog } from "@/stores/confirmStore";
 
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
@@ -64,11 +66,15 @@ interface CanvasBoardProps {
   canvasId: string;
 }
 
+/** Marker so paste only acts on our own copied canvas items, not arbitrary clipboard text */
+const CANVAS_CLIPBOARD_SOURCE = "memoria-canvas-item";
+
 export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   // Refs
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   // Data Hook (Single source of truth for display)
   const {
@@ -93,6 +99,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     setTimeMachineIndex,
     updateCanvasName,
     refreshMetadata,
+    dismissLoadError,
   } = useCanvasData({ canvasId });
 
   // Store state
@@ -287,15 +294,48 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       const selectedItem = allItems.find((item) => item.id === selectedItemId);
       if (selectedItem) {
         const copyData = {
+          source: CANVAS_CLIPBOARD_SOURCE,
           type: selectedItem.type,
           content: selectedItem.content,
           width: selectedItem.width,
           height: selectedItem.height,
+          tags: selectedItem.tags || [],
         };
         navigator.clipboard.writeText(JSON.stringify(copyData));
       }
     },
-    onPaste: () => {}, // Minimal paste
+    onPaste: async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) return;
+        let data: any;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          return; // Not a copied canvas item
+        }
+        if (!data || data.source !== CANVAS_CLIPBOARD_SOURCE || !data.type) {
+          return;
+        }
+        const width = typeof data.width === "number" ? data.width : 300;
+        const height = typeof data.height === "number" ? data.height : 200;
+        const centerX = (-position.x + stageSize.width / 2) / zoom;
+        const centerY = (-position.y + stageSize.height / 2) / zoom;
+        await createItem({
+          canvasId,
+          type: data.type,
+          positionX: centerX - width / 2 + 20,
+          positionY: centerY - height / 2 + 20,
+          width,
+          height,
+          zIndex: allItems.length + 1,
+          content: data.content,
+          tags: Array.isArray(data.tags) ? data.tags : [],
+        });
+      } catch (err) {
+        console.error("Failed to paste item:", err);
+      }
+    },
     onSelectAll: () => {
       const allIds = new Set(items.map((item) => item.id));
       setSelectedItemIds(allIds);
@@ -405,6 +445,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     onMessage: handleRemoteMessage,
   });
 
+  // Server-assigned presence color, so chat bubbles match the cursor color
+  const ownPresenceColor =
+    collaborators.find((user) => user.userId === session?.user?.id)?.color ||
+    "#f00";
+
   // Follow Mode
   useEffect(() => {
     if (followingUserId) {
@@ -419,9 +464,22 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
   // Space Key
   useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+    };
     const handleKey = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        setIsSpacePressed(e.type === "keydown");
+      if (e.code !== "Space") return;
+      // Never hijack Space while typing, but always clear on keyup so pan
+      // mode can't get stuck if focus moved into an input mid-press.
+      if (e.type === "keyup") {
+        setIsSpacePressed(false);
+      } else if (!isTypingTarget(e.target)) {
+        setIsSpacePressed(true);
       }
     };
     window.addEventListener("keydown", handleKey);
@@ -609,10 +667,12 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (!selectedItem) return;
     const copyData = {
+      source: CANVAS_CLIPBOARD_SOURCE,
       type: selectedItem.type,
       content: selectedItem.content,
       width: selectedItem.width,
       height: selectedItem.height,
+      tags: selectedItem.tags || [],
     };
     navigator.clipboard.writeText(JSON.stringify(copyData));
   };
@@ -775,8 +835,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     },
   );
 
-  const isPresentationMode = false; // Simplified for now, or state
-
   return (
     <Box
       ref={containerRef}
@@ -824,8 +882,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         followingUserId={followingUserId}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onPresentationMode={() => {}}
-        isPresentationMode={false}
         onTimeMachine={() => {
           setTimeMachineActive(!isTimeMachineActive);
           if (!isTimeMachineActive && versions.length > 0) {
@@ -838,9 +894,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           const actions = await calculateAutopilotLayout(allItems);
           if (
             actions.length > 0 &&
-            confirm(
-              `Autopilot will reorganize ${actions.length} items. Continue?`,
-            )
+            (await confirmDialog({
+              title: "Autopilot",
+              message: `Autopilot will reorganize ${actions.length} items. Continue?`,
+              confirmText: "Reorganize",
+            }))
           ) {
             for (const action of actions) {
               const item = allItems.find((i) => i.id === action.itemId);
@@ -874,17 +932,15 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                 Retry
               </Button>
             }
-            onClose={() => {}}
+            onClose={dismissLoadError}
           >
             {canvasLoadError}
           </Alert>
         </Box>
       )}
 
-      {viewMode === "manual" && !isPresentationMode && <MainToolbar />}
-      {viewMode === "manual" &&
-        !isPresentationMode &&
-        activeTool === "draw" && <DrawingToolbar />}
+      {viewMode === "manual" && <MainToolbar />}
+      {viewMode === "manual" && activeTool === "draw" && <DrawingToolbar />}
 
       {viewMode === "organizer" ? (
         <CanvasOrganizerView canvasId={canvasId} items={allItems} />
@@ -895,10 +951,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             position: "relative",
             overflow: "hidden",
             cursor: isDrawing ? "crosshair" : "default",
-            bgcolor: "#f0f2f5",
+            bgcolor: "background.default",
           }}
         >
-          {!isDrawing && !isPresentationMode && (
+          {!isDrawing && (
             <SpeedDial
               ariaLabel="Add Item"
               sx={{ position: "absolute", bottom: 16, right: 16 }}
@@ -949,6 +1005,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               gridSize={20}
               offset={{ x: -position.x / zoom, y: -position.y / zoom }}
               visible={gridVisible}
+              stroke={theme.palette.divider}
             />
             <CanvasItemLayer
               items={renderedItems}
@@ -982,7 +1039,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                       x: canvasX,
                       y: canvasY,
                       userName: session?.user?.name || "Anonymous",
-                      userColor: "#f00",
+                      userColor: ownPresenceColor,
                     });
                   }
                 }
@@ -1047,7 +1104,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             );
           })}
 
-          {selectedItemIds.size > 1 && !isPresentationMode && (
+          {selectedItemIds.size > 1 && (
             <Box
               sx={{
                 position: "absolute",
@@ -1068,7 +1125,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             </Box>
           )}
 
-          {isDrawing && !isPresentationMode && (
+          {isDrawing && (
             <Box
               sx={{
                 position: "absolute",
@@ -1156,7 +1213,14 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
           onRestore={async (version) => {
-            if (confirm("Restore to this version?")) {
+            const confirmed = await confirmDialog({
+              title: "Restore version",
+              message:
+                "Restore the canvas to this version? The current state will be replaced.",
+              confirmText: "Restore",
+              destructive: true,
+            });
+            if (confirmed) {
               await restoreVersion({ canvasId, versionId: version.id });
               setTimeMachineActive(false);
               queryClient.invalidateQueries({

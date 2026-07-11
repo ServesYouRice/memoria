@@ -5,15 +5,16 @@
  * (Full implementation would be part of Slice 4)
  */
 
-'use client';
+"use client";
 
-import React, { useRef, useState, useEffect } from 'react';
-import { Group, Rect, Text, Circle } from 'react-konva';
-import type Konva from 'konva';
-import { type CanvasItem, isNoteContent } from '@/types/canvas';
-import { useAutosave } from '@/lib/hooks/use-autosave';
-import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { stripHtmlTags } from '@/lib/utils/html';
+import React, { useRef, useState, useEffect } from "react";
+import { Group, Rect, Text, Circle } from "react-konva";
+import type Konva from "konva";
+import { type CanvasItem, isNoteContent } from "@/types/canvas";
+import { useAutosave } from "@/lib/hooks/use-autosave";
+import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { stripHtmlTags } from "@/lib/utils/html";
+import { confirmDialog } from "@/stores/confirmStore";
 
 interface NoteItemProps {
   item: CanvasItem;
@@ -30,7 +31,13 @@ const MIN_WIDTH = 150;
 const MIN_HEIGHT = 100;
 const DELETE_BUTTON_SIZE = 20;
 
-export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, onContextMenu }: NoteItemProps) {
+export function NoteItem({
+  item,
+  isSelected = false,
+  onSelect,
+  onDoubleClick,
+  onContextMenu,
+}: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -49,7 +56,9 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
 
   const deleteItem = useDeleteCanvasItem();
 
-  const content = isNoteContent(item.content) ? item.content : { text: 'Invalid note' };
+  const content = isNoteContent(item.content)
+    ? item.content
+    : { text: "Invalid note" };
 
   useEffect(() => {
     setLocalPosition({ x: item.positionX, y: item.positionY });
@@ -74,8 +83,8 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
   };
 
   const handleResize = (
-    corner: 'se' | 'sw' | 'ne' | 'nw',
-    e: Konva.KonvaEventObject<MouseEvent>
+    corner: "se" | "sw" | "ne" | "nw",
+    e: Konva.KonvaEventObject<MouseEvent>,
   ) => {
     const stage = e.target.getStage();
     if (!stage) return;
@@ -89,23 +98,35 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
     let newY = localPosition.y;
 
     switch (corner) {
-      case 'se': // Bottom-right
+      case "se": // Bottom-right
         newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
         newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
         break;
-      case 'sw': // Bottom-left
-        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
+      case "sw": // Bottom-left
+        newWidth = Math.max(
+          MIN_WIDTH,
+          localPosition.x + localSize.width - pointerPos.x,
+        );
         newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
         newX = localPosition.x + localSize.width - newWidth;
         break;
-      case 'ne': // Top-right
+      case "ne": // Top-right
         newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
-        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+        newHeight = Math.max(
+          MIN_HEIGHT,
+          localPosition.y + localSize.height - pointerPos.y,
+        );
         newY = localPosition.y + localSize.height - newHeight;
         break;
-      case 'nw': // Top-left
-        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
-        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+      case "nw": // Top-left
+        newWidth = Math.max(
+          MIN_WIDTH,
+          localPosition.x + localSize.width - pointerPos.x,
+        );
+        newHeight = Math.max(
+          MIN_HEIGHT,
+          localPosition.y + localSize.height - pointerPos.y,
+        );
         newX = localPosition.x + localSize.width - newWidth;
         newY = localPosition.y + localSize.height - newHeight;
         break;
@@ -124,8 +145,14 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
     });
   };
 
-  const handleDelete = () => {
-    if (confirm('Delete this note?')) {
+  const handleDelete = async () => {
+    const confirmed = await confirmDialog({
+      title: "Delete note",
+      message: "Delete this note? This action cannot be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (confirmed) {
       deleteItem.mutate({ itemId: item.id, version: item.version });
     }
   };
@@ -148,7 +175,7 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
         width={localSize.width}
         height={localSize.height}
         fill="#FFFACD"
-        stroke={isSelected ? '#2196F3' : '#FFD700'}
+        stroke={isSelected ? "#2196F3" : "#FFD700"}
         strokeWidth={isSelected ? 3 : 2}
         shadowColor="black"
         shadowBlur={5}
@@ -170,7 +197,13 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
       />
 
       {isSaving && (
-        <Text x={localSize.width - 80} y={localSize.height - 25} text="Saving..." fontSize={10} fill="#999" />
+        <Text
+          x={localSize.width - 80}
+          y={localSize.height - 25}
+          text="Saving..."
+          fontSize={10}
+          fill="#999"
+        />
       )}
 
       {isSelected && (
@@ -182,15 +215,15 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('se', e)}
+            onDragMove={(e) => handleResize("se", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nwse-resize';
+              if (stage) stage.container().style.cursor = "nwse-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -200,15 +233,15 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('sw', e)}
+            onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nesw-resize';
+              if (stage) stage.container().style.cursor = "nesw-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -218,15 +251,15 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('ne', e)}
+            onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nesw-resize';
+              if (stage) stage.container().style.cursor = "nesw-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -236,15 +269,15 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('nw', e)}
+            onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nwse-resize';
+              if (stage) stage.container().style.cursor = "nwse-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -258,11 +291,11 @@ export function NoteItem({ item, isSelected = false, onSelect, onDoubleClick, on
             onTap={handleDelete}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'pointer';
+              if (stage) stage.container().style.cursor = "pointer";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
           <Text

@@ -14,32 +14,35 @@
  * - GlobalShortcutsProvider for keyboard shortcuts
  */
 
-'use client';
+"use client";
 
-import React from 'react';
-import { SessionProvider } from 'next-auth/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
-import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import { Toaster } from 'sonner';
-import { createAppTheme } from '@/lib/theme';
-import { ThemeModeProvider, useThemeMode } from '@/lib/theme-context';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { GlobalShortcutsProvider } from '@/components/GlobalShortcutsProvider';
-
+import React from "react";
+import { SessionProvider } from "next-auth/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
+import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import { Toaster } from "sonner";
+import { createAppTheme } from "@/lib/theme";
+import { ThemeModeProvider, useThemeMode } from "@/lib/theme-context";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GlobalShortcutsProvider } from "@/components/GlobalShortcutsProvider";
+import { ConfirmDialogHost } from "@/components/ConfirmDialogHost";
+import { isClientError } from "@/lib/api/fetch-client";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000, // 5 minutes
       refetchOnWindowFocus: false,
-      retry: 3,
+      // 4xx responses (401 expired session, 403, 404, validation errors)
+      // won't succeed on retry — only retry transient failures.
+      retry: (failureCount, error) => !isClientError(error) && failureCount < 3,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
     mutations: {
-      retry: 1,
+      retry: (failureCount, error) => !isClientError(error) && failureCount < 1,
       retryDelay: 1000,
     },
   },
@@ -63,8 +66,14 @@ function ThemedProviders({ children, nonce }: ThemedProvidersProps) {
         <CssBaseline />
         <GlobalShortcutsProvider>
           {children}
-          <Toaster richColors closeButton position="bottom-right" theme={mode} />
-          {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
+          <ConfirmDialogHost />
+          <Toaster
+            richColors
+            closeButton
+            position="bottom-right"
+            theme={mode}
+          />
+          {process.env.NODE_ENV === "development" && <ReactQueryDevtools />}
         </GlobalShortcutsProvider>
       </MuiThemeProvider>
     </AppRouterCacheProvider>
@@ -92,4 +101,3 @@ export function Providers({ children, nonce }: ProvidersProps) {
     </ErrorBoundary>
   );
 }
-

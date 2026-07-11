@@ -5,6 +5,7 @@
  * Phase 3: Includes shared canvas support
  */
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface Canvas {
@@ -60,20 +61,20 @@ export interface CanvasesListResponse {
  */
 const api = {
   async listCanvases() {
-    const response = await fetch("/api/v1/canvases");
+    const response = await apiFetch("/api/v1/canvases");
     if (!response.ok) throw new Error("Failed to fetch canvases");
     return response.json() as Promise<CanvasesListResponse>;
   },
 
   async listSharedCanvases() {
-    const response = await fetch("/api/v1/shared-canvases");
+    const response = await apiFetch("/api/v1/shared-canvases");
     if (!response.ok) throw new Error("Failed to fetch shared canvases");
     const data = await response.json();
     return data.canvases as SharedCanvas[];
   },
 
   async createCanvas(input: CreateCanvasInput) {
-    const response = await fetch("/api/v1/canvases", {
+    const response = await apiFetch("/api/v1/canvases", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -88,7 +89,7 @@ const api = {
   },
 
   async duplicateCanvas(canvasId: string) {
-    const response = await fetch(`/api/v1/canvases/${canvasId}/duplicate`, {
+    const response = await apiFetch(`/api/v1/canvases/${canvasId}/duplicate`, {
       method: "POST",
     });
 
@@ -101,7 +102,7 @@ const api = {
   },
 
   async getCanvas(canvasId: string) {
-    const response = await fetch(`/api/v1/canvases/${canvasId}`);
+    const response = await apiFetch(`/api/v1/canvases/${canvasId}`);
     if (!response.ok) {
       const error = await response.json().catch(() => null);
       throw new Error(error?.detail || "Failed to fetch canvas");
@@ -110,7 +111,7 @@ const api = {
   },
 
   async updateCanvas(canvasId: string, input: UpdateCanvasInput) {
-    const response = await fetch(`/api/v1/canvases/${canvasId}`, {
+    const response = await apiFetch(`/api/v1/canvases/${canvasId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -301,11 +302,14 @@ export function useUpdateCanvasThumbnail() {
       canvasId: string;
       thumbnail: string;
     }) => {
-      const response = await fetch(`/api/v1/canvases/${canvasId}/thumbnail`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ thumbnail }),
-      });
+      const response = await apiFetch(
+        `/api/v1/canvases/${canvasId}/thumbnail`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ thumbnail }),
+        },
+      );
 
       if (!response.ok) {
         const error = await response.json();

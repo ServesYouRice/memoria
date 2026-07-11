@@ -31,6 +31,7 @@ import { canvasKeys } from "@/lib/hooks/use-canvases";
 import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
 import { formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
+import { confirmDialog } from "@/stores/confirmStore";
 
 export interface VersionHistoryDialogProps {
   open: boolean;
@@ -61,8 +62,13 @@ export function VersionHistoryDialog({
   };
 
   const handleRestore = async (versionId: string) => {
-    if (!confirm("Restore to this version? Current state will be lost."))
-      return;
+    const confirmed = await confirmDialog({
+      title: "Restore version",
+      message: "Restore to this version? Current state will be lost.",
+      confirmText: "Restore",
+      destructive: true,
+    });
+    if (!confirmed) return;
 
     setRestoring(versionId);
     try {

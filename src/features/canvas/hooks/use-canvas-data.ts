@@ -68,7 +68,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     error: canvasError,
     refetch: refetchCanvas,
   } = useCanvas(canvasId);
-  const { data } = useCanvasItems(canvasId);
+  const { data, refetch: refetchItems } = useCanvasItems(canvasId);
   const allItems = useMemo(() => data?.items ?? [], [data?.items]);
 
   const { data: versionsData } = useCanvasVersions(canvasId, {
@@ -210,8 +210,11 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
 
     // Actions
     updateCanvasName,
+    // Retry refetches both canvas metadata and items — either can be the
+    // source of the load error surfaced in the UI.
     refreshMetadata: useCallback(async () => {
-      await refetchCanvas();
-    }, [refetchCanvas]),
+      await Promise.all([refetchCanvas(), refetchItems()]);
+    }, [refetchCanvas, refetchItems]),
+    dismissLoadError: useCallback(() => setCanvasLoadError(null), []),
   };
 }

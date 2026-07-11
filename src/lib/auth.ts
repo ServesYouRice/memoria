@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
@@ -10,6 +10,18 @@ import {
   isAccountLocked,
   recordFailedAttempt,
 } from "@/lib/auth/account-lockout";
+
+/**
+ * Thrown when sign-in is blocked by account lockout. The `code` is surfaced
+ * to the client in the signIn() response so the form can show the real
+ * reason instead of "Invalid email or password".
+ */
+export class AccountLockedError extends CredentialsSignin {
+  constructor(remainingMinutes: number) {
+    super("Account locked due to too many failed attempts");
+    this.code = `account_locked:${remainingMinutes}`;
+  }
+}
 
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
@@ -41,9 +53,7 @@ export const authConfig: NextAuthConfig = {
             1,
             Math.ceil(remainingSeconds / 60),
           );
-          throw new Error(
-            `Account locked due to too many failed attempts. Try again in ${remainingMinutes} minute(s).`,
-          );
+          throw new AccountLockedError(remainingMinutes);
         }
 
         const user = await prisma.user.findUnique({

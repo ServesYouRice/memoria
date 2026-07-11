@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import React, { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   Box,
   Button,
@@ -13,26 +13,22 @@ import {
   Link,
   IconButton,
   InputAdornment,
-  Divider,
-  alpha,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Visibility,
   VisibilityOff,
-  Google as GoogleIcon,
-  GitHub as GitHubIcon,
   Person as PersonIcon,
   Email as EmailIcon,
   Lock as LockIcon,
-} from '@mui/icons-material';
-import { useRouter } from 'next/navigation';
-import { PasswordStrengthIndicator } from './PasswordStrengthIndicator';
-import { AuthLayout } from './AuthLayout';
+} from "@mui/icons-material";
+import { useRouter } from "next/navigation";
+import { PasswordStrengthIndicator } from "./PasswordStrengthIndicator";
+import { AuthLayout } from "./AuthLayout";
 
 const registerSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(10, 'Password must be at least 10 characters'),
+  name: z.string().min(1, "Name is required").max(100),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(10, "Password must be at least 10 characters"),
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -53,19 +49,19 @@ export function RegisterForm() {
     resolver: zodResolver(registerSchema),
   });
 
-  const password = watch('password', '');
-  const email = watch('email', '');
-  const name = watch('name', '');
+  const password = watch("password", "");
+  const email = watch("email", "");
+  const name = watch("name", "");
 
   const onSubmit = async (data: RegisterFormData) => {
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch('/api/v1/auth/register', {
-        method: 'POST',
+      const response = await fetch("/api/v1/auth/register", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
       });
@@ -77,24 +73,24 @@ export function RegisterForm() {
           if (result.errors && Array.isArray(result.errors)) {
             const errorMessages = result.errors
               .map((err: { message: string }) => err.message)
-              .join('. ');
+              .join(". ");
             setError(errorMessages);
           } else {
             setError(result.detail || result.title);
           }
         } else {
-          setError('Registration failed. Please try again.');
+          setError("Registration failed. Please try again.");
         }
         return;
       }
 
       setSuccess(true);
       setTimeout(() => {
-        router.push('/auth/login?registered=true');
+        router.push("/auth/login?registered=true");
       }, 1500);
     } catch (err) {
-      console.error('Registration error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      console.error("Registration error:", err);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -113,20 +109,26 @@ export function RegisterForm() {
       </Typography>
 
       {success && (
-        <Alert severity="success" sx={{ mb: 3, animation: 'fadeIn 0.4s ease-out' }}>
+        <Alert
+          severity="success"
+          sx={{ mb: 3, animation: "fadeIn 0.4s ease-out" }}
+        >
           Account created! Redirecting you to sign in…
         </Alert>
       )}
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3, animation: 'fadeIn 0.4s ease-out' }}>
+        <Alert
+          severity="error"
+          sx={{ mb: 3, animation: "fadeIn 0.4s ease-out" }}
+        >
           {error}
         </Alert>
       )}
 
       <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
         <TextField
-          {...register('name')}
+          {...register("name")}
           label="Full name"
           fullWidth
           margin="normal"
@@ -147,7 +149,7 @@ export function RegisterForm() {
         />
 
         <TextField
-          {...register('email')}
+          {...register("email")}
           label="Email address"
           type="email"
           fullWidth
@@ -169,9 +171,9 @@ export function RegisterForm() {
         />
 
         <TextField
-          {...register('password')}
+          {...register("password")}
           label="Password"
-          type={showPassword ? 'text' : 'password'}
+          type={showPassword ? "text" : "password"}
           fullWidth
           margin="normal"
           error={!!errors.password}
@@ -191,7 +193,9 @@ export function RegisterForm() {
                     onClick={() => setShowPassword(!showPassword)}
                     edge="end"
                     disabled={isLoading}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
                   >
                     {showPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
@@ -201,7 +205,10 @@ export function RegisterForm() {
           }}
         />
 
-        <PasswordStrengthIndicator password={password} userInputs={[email, name]} />
+        <PasswordStrengthIndicator
+          password={password}
+          userInputs={[email, name]}
+        />
 
         <Button
           type="submit"
@@ -211,50 +218,23 @@ export function RegisterForm() {
           disabled={isLoading || success}
           sx={{ mt: 3 }}
         >
-          {isLoading ? 'Creating account…' : 'Create account'}
+          {isLoading ? "Creating account…" : "Create account"}
         </Button>
 
-        <Divider sx={{ my: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            or sign up with
-          </Typography>
-        </Divider>
-
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          {[
-            { label: 'Google', icon: <GoogleIcon sx={{ mr: 1, fontSize: 20 }} /> },
-            { label: 'GitHub', icon: <GitHubIcon sx={{ mr: 1, fontSize: 20 }} /> },
-          ].map((provider) => (
-            <Button
-              key={provider.label}
-              variant="outlined"
-              fullWidth
-              disabled
-              sx={{
-                py: 1.25,
-                color: 'text.primary',
-                borderColor: 'divider',
-                '&:hover': {
-                  borderColor: 'primary.main',
-                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
-                },
-              }}
-            >
-              {provider.icon}
-              {provider.label}
-            </Button>
-          ))}
-        </Box>
-
-        <Typography variant="body2" align="center" color="text.secondary" sx={{ mt: 4 }}>
-          Already have an account?{' '}
+        <Typography
+          variant="body2"
+          align="center"
+          color="text.secondary"
+          sx={{ mt: 4 }}
+        >
+          Already have an account?{" "}
           <Link
             href="/auth/login"
             sx={{
-              color: 'primary.main',
-              textDecoration: 'none',
+              color: "primary.main",
+              textDecoration: "none",
               fontWeight: 600,
-              '&:hover': { textDecoration: 'underline' },
+              "&:hover": { textDecoration: "underline" },
             }}
           >
             Sign in
