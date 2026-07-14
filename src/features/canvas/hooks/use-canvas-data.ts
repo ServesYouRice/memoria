@@ -68,7 +68,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     error: canvasError,
     refetch: refetchCanvas,
   } = useCanvas(canvasId);
-  const { data } = useCanvasItems(canvasId);
+  const { data, refetch: refetchItems } = useCanvasItems(canvasId);
   const allItems = useMemo(() => data?.items ?? [], [data?.items]);
 
   const { data: versionsData } = useCanvasVersions(canvasId, {
@@ -196,6 +196,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     selectedTags,
     setSelectedTags,
     canvasLoadError,
+    clearCanvasLoadError: useCallback(() => setCanvasLoadError(null), []),
     isTimeMachineActive,
     setTimeMachineActive,
     timeMachineIndex,
@@ -211,7 +212,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     // Actions
     updateCanvasName,
     refreshMetadata: useCallback(async () => {
-      await refetchCanvas();
-    }, [refetchCanvas]),
+      await Promise.all([refetchCanvas(), refetchItems()]);
+    }, [refetchCanvas, refetchItems]),
   };
 }
