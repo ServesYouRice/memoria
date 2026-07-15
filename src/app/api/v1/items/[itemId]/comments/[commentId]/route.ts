@@ -111,14 +111,14 @@ export const PATCH = withApiHandler(
       );
     }
 
-    const { comment, isOwner, isAuthor } = await getCommentWithAccess(
+    const { comment, isAuthor } = await getCommentWithAccess(
       commentId,
       itemId,
       session.user.id,
       session.user.email,
     );
 
-    if (!isOwner && !isAuthor) {
+    if (!isAuthor) {
       throw forbiddenError();
     }
 

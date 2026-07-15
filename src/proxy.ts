@@ -13,7 +13,7 @@ import { applyCors, handleCorsPreflight } from "./middleware/cors";
 import { getVersionHeaders, validateApiVersion } from "./lib/api/versioning";
 import { createRequestLogger } from "./lib/logger";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Generate or extract request ID for tracing (Issue #24)
   const requestId = request.headers.get("x-request-id") || nanoid(16);
 
@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
     {
       requestId,
       method: request.method,
-      url: request.url,
+      pathname: request.nextUrl.pathname,
       userAgent: request.headers.get("user-agent"),
     },
     "Incoming request",

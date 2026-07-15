@@ -3,12 +3,7 @@ import { env } from "@/lib/env";
 import { isBootstrapAvailable } from "@/lib/bootstrap";
 import { SetupForm } from "./SetupForm";
 
-interface SetupPageProps {
-  searchParams: Promise<{ token?: string }>;
-}
-
-export default async function SetupPage({ searchParams }: SetupPageProps) {
-  const { token } = await searchParams;
+export default async function SetupPage() {
   const bootstrapAvailable = await isBootstrapAvailable();
 
   return (
@@ -34,10 +29,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
               Memoria Bootstrap
             </Typography>
           </Box>
-          <SetupForm
-            defaultToken={token}
-            needsToken={Boolean(env.APP_BOOTSTRAP_TOKEN)}
-          />
+          <SetupForm needsToken={Boolean(env.APP_BOOTSTRAP_TOKEN)} />
         </>
       )}
     </Box>

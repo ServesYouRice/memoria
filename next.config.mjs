@@ -26,7 +26,7 @@ const nextConfig = {
   // Logging
   logging: {
     fetches: {
-      fullUrl: true,
+      fullUrl: false,
     },
   },
 
@@ -63,11 +63,6 @@ const nextConfig = {
   },
 
   // Security headers are applied in middleware (src/middleware/security-headers.ts)
-
-  // ESLint: Enforced during Next.js build to keep CI gate intact
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
 
   // TypeScript: Build will fail on type errors (re-enabled)
   // TypeScript compiles cleanly: npx tsc --noEmit passes with no errors

@@ -39,8 +39,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Prisma
-prisma/migrations
-
 # Uploads
 public/uploads
+.data
+.pnpm-store

@@ -1027,13 +1027,37 @@ export async function markSuggestionExecuted(input: {
     where: {
       id: input.suggestionId,
       userId: input.userId,
-      status: SuggestionStatus.APPROVED,
+      status: SuggestionStatus.EXECUTING,
     },
     data: {
       status: SuggestionStatus.EXECUTED,
       actedAt: new Date(),
     },
   });
+}
+
+export async function claimSuggestionForExecution(input: {
+  userId: string;
+  suggestionId: string;
+}) {
+  const claimed = await prisma.suggestion.updateMany({
+    where: {
+      id: input.suggestionId,
+      userId: input.userId,
+      status: SuggestionStatus.APPROVED,
+      expiresAt: { gt: new Date() },
+    },
+    data: {
+      status: SuggestionStatus.EXECUTING,
+      actedAt: new Date(),
+    },
+  });
+
+  if (claimed.count !== 1) {
+    throw new BadRequestError(
+      "Suggestion is expired, already executing, or already executed.",
+    );
+  }
 }
 
 export async function executeExternalWebhook(input: {
@@ -1069,6 +1093,15 @@ export async function executeExternalWebhook(input: {
   if (integrationAccount.status !== "ACTIVE") {
     throw new ForbiddenError(
       "The selected webhook integration account is not active.",
+    );
+  }
+
+  if (
+    requestData.path &&
+    (!requestData.path.startsWith("/") || requestData.path.startsWith("//"))
+  ) {
+    throw new BadRequestError(
+      "Webhook paths must be same-origin absolute paths beginning with one slash.",
     );
   }
 

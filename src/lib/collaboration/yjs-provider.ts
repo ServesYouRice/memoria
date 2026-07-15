@@ -253,7 +253,7 @@ async function persistDocument(canvasId: string): Promise<void> {
     const idsToCheck = Array.from(new Set([...dirtyIds, ...deletedIds]));
     const existingItems = idsToCheck.length
       ? await prisma.canvasItem.findMany({
-          where: { id: { in: idsToCheck } },
+          where: { id: { in: idsToCheck }, canvasId },
           select: { id: true, deletedAt: true, version: true },
         })
       : [];
@@ -319,8 +319,8 @@ async function persistDocument(canvasId: string): Promise<void> {
         ...(wasDeleted ? { deletedAt: null, deletedById: null } : {}),
       };
 
-      return prisma.canvasItem.update({
-        where: { id: item.id },
+      return prisma.canvasItem.updateMany({
+        where: { id: item.id, canvasId },
         data: updateData,
       });
     });
@@ -336,7 +336,7 @@ async function persistDocument(canvasId: string): Promise<void> {
     if (toDeleteIds.length > 0) {
       txOps.push(
         prisma.canvasItem.updateMany({
-          where: { id: { in: toDeleteIds } },
+          where: { id: { in: toDeleteIds }, canvasId },
           data: {
             deletedAt: new Date(),
             deletedById: null,
@@ -354,6 +354,7 @@ async function persistDocument(canvasId: string): Promise<void> {
     if (toCreate.length > 0 || toUpdate.length > 0) {
       const refreshed = await prisma.canvasItem.findMany({
         where: {
+          canvasId,
           id: {
             in: [
               ...toCreate.map((item) => item.id),
@@ -429,4 +430,10 @@ export async function closeDocument(canvasId: string): Promise<void> {
  */
 export function getActiveDocumentCount(): number {
   return documents.size;
+}
+
+export async function flushAllDocuments(): Promise<void> {
+  await Promise.all(
+    Array.from(documents.keys()).map((canvasId) => persistDocument(canvasId)),
+  );
 }

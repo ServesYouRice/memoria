@@ -4,10 +4,10 @@
  * MUI dialog for uploading and adding images to the canvas
  */
 
-'use client';
+"use client";
 
-import React, { useState, useRef } from 'react';
-import Image from 'next/image';
+import React, { useState, useRef } from "react";
+import Image from "next/image";
 import {
   Dialog,
   DialogTitle,
@@ -20,14 +20,14 @@ import {
   Box,
   Typography,
   LinearProgress,
-} from '@mui/material';
-import { CloudUpload as UploadIcon } from '@mui/icons-material';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { ItemType } from '@/types/canvas';
-import { TagInput } from './TagInput';
+} from "@mui/material";
+import { CloudUpload as UploadIcon } from "@mui/icons-material";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { ItemType } from "@/types/canvas";
+import { TagInput } from "./TagInput";
 
 interface CreateImageDialogProps {
   open: boolean;
@@ -68,7 +68,7 @@ export function CreateImageDialog({
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      alt: '',
+      alt: "",
       tags: [],
     },
   });
@@ -80,7 +80,9 @@ export function CreateImageDialog({
     onClose();
   };
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -90,17 +92,18 @@ export function CreateImageDialog({
 
       // Create form data
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
+      formData.append("canvasId", canvasId);
 
       // Upload to server
-      const response = await fetch('/api/v1/upload', {
-        method: 'POST',
+      const response = await fetch("/api/v1/upload", {
+        method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload image');
+        throw new Error(errorData.error || "Failed to upload image");
       }
 
       const data = await response.json();
@@ -123,7 +126,7 @@ export function CreateImageDialog({
       };
       img.src = data.url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload image');
+      setError(err instanceof Error ? err.message : "Failed to upload image");
     } finally {
       setUploading(false);
     }
@@ -131,7 +134,7 @@ export function CreateImageDialog({
 
   const onSubmit = async (data: FormData) => {
     if (!uploadedImage) {
-      setError('Please select an image to upload');
+      setError("Please select an image to upload");
       return;
     }
 
@@ -160,7 +163,7 @@ export function CreateImageDialog({
         content: {
           url: uploadedImage.url,
           filename: uploadedImage.filename,
-          alt: data.alt || '',
+          alt: data.alt || "",
           width: uploadedImage.width,
           height: uploadedImage.height,
         },
@@ -169,7 +172,9 @@ export function CreateImageDialog({
 
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create image item');
+      setError(
+        err instanceof Error ? err.message : "Failed to create image item",
+      );
     }
   };
 
@@ -178,7 +183,7 @@ export function CreateImageDialog({
       <DialogTitle>Add Image</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Typography variant="body2" color="text.secondary">
               Upload an image to add it to your canvas.
             </Typography>
@@ -189,7 +194,7 @@ export function CreateImageDialog({
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                style={{ display: 'none' }}
+                style={{ display: "none" }}
                 onChange={handleFileSelect}
               />
               <Button
@@ -199,7 +204,11 @@ export function CreateImageDialog({
                 disabled={uploading || isSubmitting}
                 fullWidth
               >
-                {uploading ? 'Uploading...' : uploadedImage ? 'Change Image' : 'Select Image'}
+                {uploading
+                  ? "Uploading..."
+                  : uploadedImage
+                    ? "Change Image"
+                    : "Select Image"}
               </Button>
               {uploading && <LinearProgress sx={{ mt: 1 }} />}
             </Box>
@@ -209,23 +218,34 @@ export function CreateImageDialog({
               <Box
                 sx={{
                   border: 1,
-                  borderColor: 'divider',
+                  borderColor: "divider",
                   borderRadius: 1,
                   p: 2,
-                  textAlign: 'center',
+                  textAlign: "center",
                 }}
               >
                 <Image
                   src={uploadedImage.url}
-                  alt={uploadedImage.filename || 'Uploaded image preview'}
+                  alt={uploadedImage.filename || "Uploaded image preview"}
                   width={uploadedImage.width ?? 400}
                   height={uploadedImage.height ?? 300}
-                  style={{ maxWidth: '100%', maxHeight: '300px', height: 'auto', borderRadius: '4px' }}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "300px",
+                    height: "auto",
+                    borderRadius: "4px",
+                  }}
                   unoptimized
                 />
-                <Typography variant="caption" display="block" sx={{ mt: 1 }} color="text.secondary">
+                <Typography
+                  variant="caption"
+                  display="block"
+                  sx={{ mt: 1 }}
+                  color="text.secondary"
+                >
                   {uploadedImage.filename}
-                  {uploadedImage.width && uploadedImage.height &&
+                  {uploadedImage.width &&
+                    uploadedImage.height &&
                     ` (${uploadedImage.width} × ${uploadedImage.height})`}
                 </Typography>
               </Box>
@@ -279,7 +299,7 @@ export function CreateImageDialog({
             disabled={isSubmitting || uploading || !uploadedImage}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? 'Adding...' : 'Add to Canvas'}
+            {isSubmitting ? "Adding..." : "Add to Canvas"}
           </Button>
         </DialogActions>
       </form>

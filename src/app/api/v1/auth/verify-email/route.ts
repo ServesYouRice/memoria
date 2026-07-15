@@ -5,37 +5,39 @@
  * Verifies user email using a valid verification token
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { errorResponse, BadRequestError, NotFoundError } from '@/lib/errors';
-import { z } from 'zod';
+import { type NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { errorResponse, BadRequestError, NotFoundError } from "@/lib/errors";
+import { z } from "zod";
+import { createHash } from "crypto";
 
 const verifyEmailSchema = z.object({
-  token: z.string().min(1, 'Token is required'),
+  token: z.string().min(1, "Token is required"),
 });
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { token } = verifyEmailSchema.parse(body);
+    const tokenHash = createHash("sha256").update(token).digest("hex");
 
     // Find valid token
     const verificationToken = await prisma.emailVerificationToken.findUnique({
-      where: { token },
+      where: { token: tokenHash },
     });
 
     if (!verificationToken) {
-      throw new NotFoundError('Invalid or expired verification token');
+      throw new NotFoundError("Invalid or expired verification token");
     }
 
     // Check if token is expired
     if (new Date() > verificationToken.expiresAt) {
-      throw new BadRequestError('Verification token has expired');
+      throw new BadRequestError("Verification token has expired");
     }
 
     // Check if token has already been used
     if (verificationToken.usedAt) {
-      throw new BadRequestError('Verification token has already been used');
+      throw new BadRequestError("Verification token has already been used");
     }
 
     // Find user by email
@@ -44,13 +46,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      throw new NotFoundError('User not found');
+      throw new NotFoundError("User not found");
     }
 
     // Check if already verified
     if (user.emailVerified) {
       return NextResponse.json({
-        message: 'Email already verified',
+        message: "Email already verified",
       });
     }
 
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     return NextResponse.json({
-      message: 'Email verified successfully!',
+      message: "Email verified successfully!",
     });
   } catch (error) {
     return errorResponse(error, request.url);

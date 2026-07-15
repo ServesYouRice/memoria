@@ -11,6 +11,7 @@ import { errorResponse, BadRequestError, NotFoundError } from "@/lib/errors";
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/password";
 import { validatePasswordStrength } from "@/lib/validation/password";
+import { createHash } from "crypto";
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -21,10 +22,11 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { token, password } = resetPasswordSchema.parse(body);
+    const tokenHash = createHash("sha256").update(token).digest("hex");
 
     // Find valid token
     const resetToken = await prisma.passwordResetToken.findUnique({
-      where: { token },
+      where: { token: tokenHash },
     });
 
     if (!resetToken) {
@@ -68,16 +70,23 @@ export async function POST(request: NextRequest) {
     const passwordHash = await hashPassword(password);
 
     // Update password and mark token as used
-    await prisma.$transaction([
-      prisma.user.update({
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: {
+          id: resetToken.id,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { usedAt: new Date() },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestError("Reset token has already been used");
+      }
+      await tx.user.update({
         where: { id: user.id },
         data: { passwordHash },
-      }),
-      prisma.passwordResetToken.update({
-        where: { id: resetToken.id },
-        data: { usedAt: new Date() },
-      }),
-    ]);
+      });
+    });
 
     return NextResponse.json({
       message:

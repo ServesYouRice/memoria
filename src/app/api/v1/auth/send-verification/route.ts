@@ -12,6 +12,7 @@ import { sendEmailVerification } from "@/lib/email";
 import { requireAuth } from "@/lib/api/auth";
 import { errorResponse, BadRequestError } from "@/lib/errors";
 import { nanoid } from "nanoid";
+import { createHash } from "crypto";
 
 const TOKEN_EXPIRY_HOURS = 24; // Token expires in 24 hours
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     // Save token to database
     await prisma.emailVerificationToken.create({
       data: {
-        token,
+        token: createHash("sha256").update(token).digest("hex"),
         email: user.email,
         expiresAt,
       },

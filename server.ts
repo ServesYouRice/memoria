@@ -9,6 +9,7 @@ import { parse } from "url";
 import next from "next";
 import { createCollaborationServer } from "./src/lib/collaboration/websocket-server";
 import { logger } from "./src/lib/logger";
+import { flushAllDocuments } from "./src/lib/collaboration/yjs-provider";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
@@ -25,8 +26,9 @@ app
         const parsedUrl = parse(req.url!, true);
         await handle(req, res, parsedUrl);
       } catch (err) {
+        const pathname = parse(req.url || "").pathname;
         logger.error(
-          { error: err, url: req.url },
+          { error: err, pathname },
           "Error occurred handling request",
         );
         res.statusCode = 500;
@@ -35,7 +37,35 @@ app
     });
 
     // Initialize WebSocket server for collaboration
-    createCollaborationServer(server);
+    const collaborationServer = createCollaborationServer(server);
+
+    let shuttingDown = false;
+    const shutdown = async (signal: NodeJS.Signals) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      logger.info({ signal }, "Graceful shutdown started");
+
+      const deadline = setTimeout(() => {
+        logger.error("Graceful shutdown deadline exceeded");
+        process.exit(1);
+      }, 20_000);
+      deadline.unref();
+
+      collaborationServer.clients.forEach((client) =>
+        client.close(1001, "Server shutting down"),
+      );
+      collaborationServer.close();
+      await flushAllDocuments();
+      await new Promise<void>((resolvePromise) =>
+        server.close(() => resolvePromise()),
+      );
+      clearTimeout(deadline);
+      logger.info("Graceful shutdown complete");
+      process.exit(0);
+    };
+
+    process.once("SIGTERM", () => void shutdown("SIGTERM"));
+    process.once("SIGINT", () => void shutdown("SIGINT"));
 
     server.listen(port, () => {
       logger.info({ hostname, port }, "Server ready");

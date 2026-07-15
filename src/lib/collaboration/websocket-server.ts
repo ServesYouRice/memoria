@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { nanoid } from "nanoid";
 import { getRedisClient } from "@/lib/cache/redis-client";
+import { z } from "zod";
 
 export interface CollaborationUser {
   userId: string;
@@ -36,8 +37,11 @@ interface ClientConnection {
 // Heartbeat interval for detecting zombie connections (30 seconds)
 const HEARTBEAT_INTERVAL = 30000;
 // Rate limit: 6000 messages per minute (supports frequent cursor + Yjs updates)
-const RATE_LIMIT_MAX = 6000;
+const RATE_LIMIT_MAX = 600;
 const RATE_LIMIT_WINDOW = 60000;
+const MAX_WEBSOCKET_PAYLOAD = 64 * 1024;
+const MAX_COLLABORATORS_PER_CANVAS = 100;
+const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
 const REDIS_CHANNEL_PREFIX = "collaboration:canvas:";
 const SESSION_COOKIE_NAMES = [
   "__Secure-authjs.session-token",
@@ -59,6 +63,18 @@ interface CollaborationBusMessage {
   payload: any;
   timestamp: number;
 }
+
+const collaborationMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("cursor"),
+    position: z.object({
+      x: z.number().finite().min(-10_000_000).max(10_000_000),
+      y: z.number().finite().min(-10_000_000).max(10_000_000),
+    }),
+  }),
+  z.object({ type: z.literal("awareness") }),
+  z.object({ type: z.literal("message"), payload: z.record(z.unknown()) }),
+]);
 
 // Active connections per canvas
 const connections = new Map<string, Set<ClientConnection>>();
@@ -140,10 +156,6 @@ function decodeUpdatePayload(payload: unknown): Uint8Array | null {
   return null;
 }
 
-function encodeUpdatePayload(update: Uint8Array): string {
-  return Buffer.from(update).toString("base64");
-}
-
 function getChannel(canvasId: string): string {
   return `${REDIS_CHANNEL_PREFIX}${canvasId}`;
 }
@@ -194,7 +206,6 @@ function publishPresence(canvasId: string): void {
 
   const users = Array.from(clients).map((client) => ({
     userId: client.user.userId,
-    email: client.user.email,
     name: client.user.name,
     color: client.user.color,
     accessLevel: client.user.accessLevel,
@@ -330,7 +341,10 @@ async function handleRedisMessage(
  * Initialize WebSocket server
  */
 export function createCollaborationServer(server: any): WebSocketServer {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: MAX_WEBSOCKET_PAYLOAD,
+  });
 
   // Handle WebSocket upgrade
   server.on(
@@ -473,6 +487,9 @@ export function createCollaborationServer(server: any): WebSocketServer {
           socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
           socket.destroy();
         }
+      } else {
+        socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+        socket.destroy();
       }
     },
   );
@@ -546,6 +563,10 @@ async function handleConnection(
   if (!connections.has(canvasId)) {
     connections.set(canvasId, new Set());
   }
+  if (connections.get(canvasId)!.size >= MAX_COLLABORATORS_PER_CANVAS) {
+    ws.close(1013, "Canvas connection limit reached");
+    return;
+  }
   connections.get(canvasId)!.add(connection);
   await subscribeToCanvas(canvasId);
 
@@ -571,10 +592,11 @@ async function handleConnection(
         return;
       }
 
-      const message =
+      const rawMessage =
         typeof data === "string"
           ? JSON.parse(data)
           : JSON.parse(data.toString());
+      const message = collaborationMessageSchema.parse(rawMessage);
       await handleMessage(connection, message, doc);
     } catch (error) {
       logger.error({ error, canvasId }, "Error handling message");
@@ -609,28 +631,14 @@ async function handleConnection(
  */
 async function handleMessage(
   connection: ClientConnection,
-  message: any,
-  doc: Y.Doc,
+  message: z.infer<typeof collaborationMessageSchema>,
+  _doc: Y.Doc,
 ): Promise<void> {
   if (!applyRateLimit(connection)) {
     return;
   }
 
   switch (message.type) {
-    case "update":
-      {
-        const update = decodeUpdatePayload(message.update);
-        if (!update) {
-          logger.warn(
-            { userId: connection.user.userId },
-            "Invalid update payload",
-          );
-          return;
-        }
-        await handleClientUpdate(connection, update, doc);
-      }
-      break;
-
     case "cursor":
       connection.cursorPosition = message.position;
       broadcastCursors(connection.canvasId);
@@ -643,6 +651,13 @@ async function handleMessage(
       break;
 
     case "message":
+      if (
+        Buffer.byteLength(JSON.stringify(message.payload), "utf8") >
+        MAX_MESSAGE_PAYLOAD_BYTES
+      ) {
+        connection.ws.close(1009, "Message payload too large");
+        return;
+      }
       broadcastMessagePayload(connection.canvasId, message.payload, connection);
       break;
   }
@@ -650,35 +665,20 @@ async function handleMessage(
 
 async function handleBinaryUpdate(
   connection: ClientConnection,
-  update: Uint8Array,
-  doc: Y.Doc,
+  _update: Uint8Array,
+  _doc: Y.Doc,
 ): Promise<void> {
   if (!applyRateLimit(connection)) {
     return;
   }
 
-  await handleClientUpdate(connection, update, doc);
-}
-
-async function handleClientUpdate(
-  connection: ClientConnection,
-  update: Uint8Array,
-  doc: Y.Doc,
-): Promise<void> {
-  if (connection.accessLevel !== "OWNER" && connection.accessLevel !== "EDIT") {
-    connection.ws.close(1008, "Insufficient permissions");
-    return;
-  }
-
-  Y.applyUpdate(doc, update, "ws");
-  broadcastUpdate(connection.canvasId, update, connection);
-  publishMessage({
-    type: "update",
-    canvasId: connection.canvasId,
-    instanceId,
-    payload: { update: encodeUpdatePayload(update) },
-    timestamp: Date.now(),
-  });
+  // Item mutation through untrusted Yjs documents is intentionally disabled.
+  // REST remains the single versioned write authority until actor-attributed,
+  // schema-validated collaboration patches are implemented end to end.
+  logger.warn(
+    { userId: connection.user.userId, canvasId: connection.canvasId },
+    "Ignored unsupported client Yjs update",
+  );
 }
 
 function applyRateLimit(connection: ClientConnection): boolean {
@@ -752,7 +752,6 @@ function broadcastPresence(canvasId: string): void {
 
   const localUsers = Array.from(clients).map((client) => ({
     userId: client.user.userId,
-    email: client.user.email,
     name: client.user.name,
     color: client.user.color,
     accessLevel: client.user.accessLevel,

@@ -22,6 +22,7 @@ import {
 } from "@/lib/agents/query-core";
 import {
   approveSuggestion,
+  claimSuggestionForExecution,
   createBulkCanvasItemSuggestion,
   createCanvasItemBatchWrite,
   createCanvasItemComment,
@@ -174,6 +175,11 @@ async function executeApprovedSuggestion(
   if (suggestion.expiresAt <= new Date()) {
     throw new BadRequestError("The selected suggestion has expired.");
   }
+
+  await claimSuggestionForExecution({
+    userId: context.userId,
+    suggestionId,
+  });
 
   const { actor, agentProfile } = await resolveWriteActor(context, {
     agentProfileId:

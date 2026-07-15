@@ -1,24 +1,16 @@
 import { existsSync } from "fs";
 import path from "path";
-import { config as loadDotenvSafe } from "dotenv-safe";
+import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 
 const envFilePath = process.env.MEMORIA_ENV_FILE || ".env";
-const exampleFilePath = ".env.example";
 const resolvedEnvPath = path.resolve(process.cwd(), envFilePath);
-const resolvedExamplePath = path.resolve(process.cwd(), exampleFilePath);
 
 if (!process.env.MEMORIA_SKIP_ENV_FILE_LOAD) {
   const hasEnvFile = existsSync(resolvedEnvPath);
-  const hasExampleFile = existsSync(resolvedExamplePath);
 
-  if (hasExampleFile && (hasEnvFile || process.env.NODE_ENV === "test")) {
-    loadDotenvSafe({
-      allowEmptyValues: true,
-      path: envFilePath,
-      example: exampleFilePath,
-      silent: true,
-    });
+  if (hasEnvFile) {
+    loadDotenv({ path: resolvedEnvPath, quiet: true });
   }
 }
 
@@ -113,6 +105,40 @@ const envSchema = z
         path: ["APP_BOOTSTRAP_TOKEN"],
         message:
           "APP_BOOTSTRAP_TOKEN is required in production for first-run bootstrap.",
+      });
+    }
+
+    if (
+      data.NODE_ENV === "production" &&
+      (!data.MODEL_CREDENTIAL_ENCRYPTION_KEY ||
+        data.MODEL_CREDENTIAL_ENCRYPTION_KEY.length < 32)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["MODEL_CREDENTIAL_ENCRYPTION_KEY"],
+        message:
+          "MODEL_CREDENTIAL_ENCRYPTION_KEY of at least 32 characters is required in production.",
+      });
+    }
+
+    if (data.MODEL_CREDENTIAL_ENCRYPTION_KEY === data.AUTH_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["MODEL_CREDENTIAL_ENCRYPTION_KEY"],
+        message:
+          "MODEL_CREDENTIAL_ENCRYPTION_KEY must be distinct from AUTH_SECRET.",
+      });
+    }
+
+    if (
+      data.NODE_ENV === "production" &&
+      data.EMAIL_PROVIDER !== "sendgrid" &&
+      data.EMAIL_PROVIDER !== "resend"
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_PROVIDER"],
+        message: "EMAIL_PROVIDER must be sendgrid or resend in production.",
       });
     }
 
