@@ -1,20 +1,20 @@
 /**
  * Global Search API
  * Search across all user's canvases and items
- * 
+ *
  * Uses PostgreSQL Full-Text Search for fast, ranked results.
  * Falls back to ILIKE if searchVector column is not available.
  */
 
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { Prisma } from '@prisma/client';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
-import { stripHtmlTags } from '@/lib/utils/html';
-import { logger } from '@/lib/logger';
-import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/lib/constants';
-import { BadRequestError } from '@/lib/errors';
-import { withAuth } from '@/lib/api/route-handler';
+import { stripHtmlTags } from "@/lib/utils/html";
+import { logger } from "@/lib/logger";
+import { parsePagination } from "@/lib/api/pagination";
+import { BadRequestError } from "@/lib/errors";
+import { withAuth } from "@/lib/api/route-handler";
 
 interface SearchResult {
   itemId: string;
@@ -46,7 +46,10 @@ async function hasSearchVectorColumn(): Promise<boolean> {
 
     ftsAvailable = Boolean(result[0]?.exists);
   } catch (error) {
-    logger.warn({ error }, 'Failed to detect searchVector column, falling back to ILIKE search');
+    logger.warn(
+      { error },
+      "Failed to detect searchVector column, falling back to ILIKE search",
+    );
     ftsAvailable = false;
   }
 
@@ -59,30 +62,34 @@ async function hasSearchVectorColumn(): Promise<boolean> {
  */
 export const GET = withAuth(async (request, session) => {
   const { searchParams } = new URL(request.url);
-  const rawQuery = searchParams.get('q');
-  const tagsParam = searchParams.get('tags');
-  const canvasIdFilter = searchParams.get('canvasId');
-  const limit = Math.min(
-    parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10),
-    MAX_PAGE_LIMIT
-  );
-  const offset = parseInt(searchParams.get('offset') || '0', 10);
+  const rawQuery = searchParams.get("q");
+  const tagsParam = searchParams.get("tags");
+  const canvasIdFilter = searchParams.get("canvasId");
+  const { limit, offset } = parsePagination(searchParams);
 
   if (!rawQuery || rawQuery.trim().length < 2) {
-    throw new BadRequestError('Search query must be at least 2 characters');
+    throw new BadRequestError("Search query must be at least 2 characters");
   }
 
   const query = rawQuery.trim();
-  const tags = tagsParam ? tagsParam.split(',').map((t) => t.trim()).filter(Boolean) : [];
+  const tags = tagsParam
+    ? tagsParam
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
   const userId = session.user.id;
-  const email = session.user.email?.toLowerCase() || '';
+  const email = session.user.email?.toLowerCase() || "";
 
-  logger.info({ userId, query, tags }, 'Executing search');
+  logger.info(
+    { userId, queryLength: query.length, tagCount: tags.length },
+    "Executing search",
+  );
 
   /**
    * Full-Text Search using PostgreSQL tsvector
    * Falls back to ILIKE if searchVector column is not available
-   * 
+   *
    * The searchVector column is a generated column created by:
    * prisma/fts-migration.sql
    */
@@ -97,8 +104,13 @@ export const GET = withAuth(async (request, session) => {
       )
     )
   `;
-  const canvasFilter = canvasIdFilter ? Prisma.sql`AND i."canvasId" = ${canvasIdFilter}` : Prisma.empty;
-  const tagsFilter = tags.length > 0 ? Prisma.sql`AND i."tags" @> ${tags}::text[]` : Prisma.empty;
+  const canvasFilter = canvasIdFilter
+    ? Prisma.sql`AND i."canvasId" = ${canvasIdFilter}`
+    : Prisma.empty;
+  const tagsFilter =
+    tags.length > 0
+      ? Prisma.sql`AND i."tags" @> ${tags}::text[]`
+      : Prisma.empty;
 
   const useFts = await hasSearchVectorColumn();
 
@@ -179,22 +191,26 @@ export const GET = withAuth(async (request, session) => {
   const queryLower = query.toLowerCase();
   const results: SearchResult[] = items.map((item) => {
     const content = item.content as Record<string, unknown>;
-    let snippet = '';
+    let snippet = "";
 
-    if (item.type === 'NOTE') {
-      const plainText = stripHtmlTags((content.text as string) || '');
+    if (item.type === "NOTE") {
+      const plainText = stripHtmlTags((content.text as string) || "");
       const index = plainText.toLowerCase().indexOf(queryLower);
       if (index !== -1) {
         const start = Math.max(0, index - 50);
         const end = Math.min(plainText.length, index + queryLower.length + 50);
-        snippet = (start > 0 ? '...' : '') + plainText.substring(start, end) + (end < plainText.length ? '...' : '');
+        snippet =
+          (start > 0 ? "..." : "") +
+          plainText.substring(start, end) +
+          (end < plainText.length ? "..." : "");
       } else {
-        snippet = plainText.substring(0, 100) + '...';
+        snippet = plainText.substring(0, 100) + "...";
       }
-    } else if (item.type === 'BOOKMARK') {
-      snippet = (content.title as string) || (content.url as string) || '';
-    } else if (item.type === 'IMAGE') {
-      snippet = (content.alt as string) || (content.filename as string) || 'Image';
+    } else if (item.type === "BOOKMARK") {
+      snippet = (content.title as string) || (content.url as string) || "";
+    } else if (item.type === "IMAGE") {
+      snippet =
+        (content.alt as string) || (content.filename as string) || "Image";
     }
 
     return {

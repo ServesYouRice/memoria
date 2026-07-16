@@ -9,6 +9,7 @@ import {
   AUTH_RATE_LIMIT_WINDOW_MS,
   AUTH_RATE_LIMIT_MAX_REQUESTS,
 } from "@/lib/constants";
+import { createRateLimiter } from "@/lib/rate-limit";
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -20,30 +21,10 @@ function toSeconds(windowMs: number): number {
   return Math.ceil(windowMs / 1000);
 }
 
-type EdgeRateLimitEntry = {
-  timestamps: number[];
-};
-
-const edgeRateLimitStore =
-  (
-    globalThis as typeof globalThis & {
-      __memoriaEdgeRateLimitStore?: Map<string, EdgeRateLimitEntry>;
-    }
-  ).__memoriaEdgeRateLimitStore || new Map<string, EdgeRateLimitEntry>();
-
-(
-  globalThis as typeof globalThis & {
-    __memoriaEdgeRateLimitStore?: Map<string, EdgeRateLimitEntry>;
-  }
-).__memoriaEdgeRateLimitStore = edgeRateLimitStore;
-
 function getClientIdentifier(request: NextRequest): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() || "unknown";
-  }
-
-  return request.headers.get("x-real-ip") || "unknown";
+  // server.ts overwrites this header from req.socket.remoteAddress. Do not
+  // fall back to caller-controlled forwarding headers.
+  return request.headers.get("x-memoria-client-ip") || "unknown";
 }
 
 function rateLimitExceeded(resetAt: number, remaining: number = 0) {
@@ -72,54 +53,22 @@ function rateLimitExceeded(resetAt: number, remaining: number = 0) {
   );
 }
 
-async function checkRateLimit(
-  request: NextRequest,
-  config: { maxRequests: number; windowSeconds: number; keyPrefix?: string },
-) {
-  const identifier = getClientIdentifier(request);
-  const key = `${config.keyPrefix || "ratelimit"}:${identifier}`;
-  const now = Date.now();
-  const windowStart = now - config.windowSeconds * 1000;
-  const entry = edgeRateLimitStore.get(key) || { timestamps: [] };
-  const validTimestamps = entry.timestamps.filter(
-    (timestamp) => timestamp > windowStart,
-  );
-
-  if (validTimestamps.length >= config.maxRequests) {
-    const oldestTimestamp = validTimestamps[0] || now;
-    return {
-      allowed: false,
-      remaining: 0,
-      resetAt: Math.ceil(
-        (oldestTimestamp + config.windowSeconds * 1000) / 1000,
-      ),
-    };
-  }
-
-  validTimestamps.push(now);
-  edgeRateLimitStore.set(key, { timestamps: validTimestamps });
-
-  return {
-    allowed: true,
-    remaining: Math.max(0, config.maxRequests - validTimestamps.length),
-    resetAt: Math.ceil((now + config.windowSeconds * 1000) / 1000),
-  };
-}
-
 /**
- * Rate limiting middleware backed by shared rate limiter
+ * Rate limiting middleware backed by the shared Redis store in production
+ * and the bounded, expiring memory store in development/test.
  */
 export function rateLimit(config: RateLimitConfig) {
   const { maxRequests, windowMs, keyPrefix } = config;
+  const limiter = createRateLimiter({
+    maxRequests,
+    windowSeconds: toSeconds(windowMs),
+    keyPrefix,
+  });
 
   return async function checkRateLimitMiddleware(
     request: NextRequest,
   ): Promise<NextResponseType | null> {
-    const result = await checkRateLimit(request, {
-      maxRequests,
-      windowSeconds: toSeconds(windowMs),
-      ...(keyPrefix ? { keyPrefix } : {}),
-    });
+    const result = await limiter.check(getClientIdentifier(request));
 
     if (!result.allowed) {
       return rateLimitExceeded(result.resetAt, result.remaining);
@@ -160,4 +109,16 @@ export const itemsRateLimit = rateLimit({
   maxRequests: 200,
   windowMs: 60 * 1000,
   keyPrefix: "items",
+});
+
+export const agentRateLimit = rateLimit({
+  maxRequests: 60,
+  windowMs: 60 * 1000,
+  keyPrefix: "agent",
+});
+
+export const sensitiveEndpointRateLimit = rateLimit({
+  maxRequests: 20,
+  windowMs: 60 * 1000,
+  keyPrefix: "sensitive",
 });

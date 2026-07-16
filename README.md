@@ -91,7 +91,7 @@ Current limits:
 - Next.js 15
 - TypeScript
 - Prisma + PostgreSQL
-- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.25`; upstream still exposes the Next.js package on the beta track
+- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.31`; upstream still exposes the Next.js package on the beta track
 - Redis + ioredis
 - TanStack Query
 - Konva / react-konva

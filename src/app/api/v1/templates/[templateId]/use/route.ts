@@ -48,38 +48,35 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
     }
 
     // Create new canvas from template
-    const newCanvas = await prisma.canvas.create({
-      data: {
-        name: `${template.name} (Copy)`,
-        userId: session.user.id,
-        zoomLevel: template.zoomLevel,
-        panX: template.panX,
-        panY: template.panY,
-        items: {
-          create: template.items.map((item) => ({
-            type: item.type,
-            positionX: item.positionX,
-            positionY: item.positionY,
-            width: item.width,
-            height: item.height,
-            zIndex: item.zIndex,
-            content: item.content as Prisma.InputJsonValue,
-            tags: item.tags,
-            createdBy: { connect: { id: session.user.id } },
-          })),
+    const newCanvas = await prisma.$transaction(async (tx) => {
+      const created = await tx.canvas.create({
+        data: {
+          name: `${template.name} (Copy)`,
+          userId: session.user.id,
+          zoomLevel: template.zoomLevel,
+          panX: template.panX,
+          panY: template.panY,
+          items: {
+            create: template.items.map((item) => ({
+              type: item.type,
+              positionX: item.positionX,
+              positionY: item.positionY,
+              width: item.width,
+              height: item.height,
+              zIndex: item.zIndex,
+              content: item.content as Prisma.InputJsonValue,
+              tags: item.tags,
+              createdBy: { connect: { id: session.user.id } },
+            })),
+          },
         },
-      },
-      include: {
-        items: true,
-      },
-    });
-
-    // Increment usage count on template
-    await prisma.canvas.update({
-      where: { id: templateId },
-      data: {
-        usageCount: { increment: 1 },
-      },
+        include: { items: true },
+      });
+      await tx.canvas.update({
+        where: { id: templateId },
+        data: { usageCount: { increment: 1 } },
+      });
+      return created;
     });
 
     await invalidateCanvasCache(templateId);

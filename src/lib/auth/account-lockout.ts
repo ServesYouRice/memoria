@@ -87,28 +87,51 @@ export async function recordFailedAttempt(
 
   if (client) {
     try {
-      const lockData = await client.get(key);
-      if (lockData) {
-        const data = JSON.parse(lockData);
-        attempts = (data.attempts || 0) + 1;
-      }
+      const [nextAttempts, lockedUntil] = (await client.eval(
+        `
+          local attempts = 0
+          local existingLockedUntil = 0
+          local raw = redis.call("GET", KEYS[1])
+          if raw then
+            local ok, data = pcall(cjson.decode, raw)
+            if ok and data then
+              attempts = tonumber(data.attempts) or 0
+              existingLockedUntil = tonumber(data.lockedUntil) or 0
+            end
+          end
 
-      const newData: { attempts: number; lockedUntil?: number } = { attempts };
+          local now = tonumber(ARGV[1])
+          if existingLockedUntil > now then
+            return {attempts, existingLockedUntil}
+          end
 
-      if (attempts >= LOCKOUT_THRESHOLD) {
-        newData.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
-        locked = true;
+          attempts = attempts + 1
+          local lockedUntil = 0
+          if attempts >= tonumber(ARGV[2]) then
+            lockedUntil = now + tonumber(ARGV[3])
+          end
+
+          local data = {attempts = attempts}
+          if lockedUntil > 0 then data.lockedUntil = lockedUntil end
+          redis.call("SETEX", KEYS[1], ARGV[4], cjson.encode(data))
+          return {attempts, lockedUntil}
+        `,
+        1,
+        key,
+        Date.now(),
+        LOCKOUT_THRESHOLD,
+        LOCKOUT_DURATION_MS,
+        Math.ceil(ATTEMPT_WINDOW_MS / 1000),
+      )) as [number, number];
+
+      attempts = nextAttempts;
+      locked = lockedUntil > Date.now();
+      if (locked) {
         logger.warn(
           { email, attempts },
           "Account locked due to failed attempts",
         );
       }
-
-      await client.setex(
-        key,
-        Math.ceil(ATTEMPT_WINDOW_MS / 1000),
-        JSON.stringify(newData),
-      );
     } catch (error) {
       logger.warn({ error, email }, "Failed to record attempt in Redis");
     }

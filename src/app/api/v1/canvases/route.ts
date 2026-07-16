@@ -1,9 +1,10 @@
-import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/api/auth';
-import { prisma } from '@/lib/db';
-import { z } from 'zod';
-import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/lib/constants';
-import { runIdempotent, withApiHandler } from '@/lib/api/route-handler';
+import { type NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api/auth";
+import { prisma } from "@/lib/db";
+import { z } from "zod";
+import { runIdempotent, withApiHandler } from "@/lib/api/route-handler";
+import { parsePagination } from "@/lib/api/pagination";
+import { ValidationError } from "@/lib/errors";
 
 /**
  * GET /api/v1/canvases
@@ -16,11 +17,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
 
   // Pagination parameters
   const { searchParams } = new URL(request.url);
-  const limit = Math.min(
-    parseInt(searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10),
-    MAX_PAGE_LIMIT
-  );
-  const offset = parseInt(searchParams.get('offset') || '0', 10);
+  const { limit, offset } = parsePagination(searchParams);
 
   const where = { userId };
 
@@ -31,7 +28,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   const canvases = await prisma.canvas.findMany({
     where,
     orderBy: {
-      updatedAt: 'desc',
+      updatedAt: "desc",
     },
     take: limit,
     skip: offset,
@@ -49,7 +46,8 @@ export const GET = withApiHandler(async (request: NextRequest) => {
 });
 
 const createCanvasSchema = z.object({
-  name: z.string().min(1).max(255).optional().default('Untitled Canvas'),
+  name: z.string().min(1).max(255).optional().default("Untitled Canvas"),
+  workspaceId: z.string().cuid().optional(),
 });
 
 /**
@@ -67,11 +65,22 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     const body = await request.json();
     const validatedData = createCanvasSchema.parse(body);
 
+    if (validatedData.workspaceId) {
+      const workspace = await prisma.workspace.findFirst({
+        where: { id: validatedData.workspaceId, userId },
+        select: { id: true },
+      });
+      if (!workspace) {
+        throw new ValidationError("The selected workspace does not exist.");
+      }
+    }
+
     // Create canvas
     const canvas = await prisma.canvas.create({
       data: {
         name: validatedData.name,
         userId,
+        workspaceId: validatedData.workspaceId,
       },
     });
 

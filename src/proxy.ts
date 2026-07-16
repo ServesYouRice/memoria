@@ -8,8 +8,11 @@ import {
   uploadRateLimit,
   canvasesRateLimit,
   itemsRateLimit,
+  agentRateLimit,
+  sensitiveEndpointRateLimit,
 } from "./middleware/rate-limit";
 import { applyCors, handleCorsPreflight } from "./middleware/cors";
+import { shouldApplyStrictAuthRateLimit } from "./middleware/auth-rate-limit";
 import { getVersionHeaders, validateApiVersion } from "./lib/api/versioning";
 import { createRequestLogger } from "./lib/logger";
 
@@ -60,22 +63,31 @@ export async function proxy(request: NextRequest) {
 
   // Apply rate limiting for authentication routes (Issue #19)
   // Stricter rate limits to prevent brute force attacks
-  if (
-    request.nextUrl.pathname.startsWith("/api/v1/auth") ||
-    request.nextUrl.pathname.startsWith("/api/auth")
-  ) {
+  if (shouldApplyStrictAuthRateLimit(pathname, request.method)) {
     specificRateLimitApplied = true;
     const rateLimitResponse = await authRateLimit(request);
     if (rateLimitResponse) {
       logger.warn(
         {
           pathname: request.nextUrl.pathname,
-          ip: request.headers.get("x-forwarded-for"),
+          ip: request.headers.get("x-memoria-client-ip"),
         },
         "Auth rate limit exceeded",
       );
       return rateLimitResponse;
     }
+  }
+
+  if (pathname.startsWith("/api/agent")) {
+    specificRateLimitApplied = true;
+    const rateLimitResponse = await agentRateLimit(request);
+    if (rateLimitResponse) return rateLimitResponse;
+  }
+
+  if (pathname === "/api/csp-report" || pathname.startsWith("/api/setup")) {
+    specificRateLimitApplied = true;
+    const rateLimitResponse = await sensitiveEndpointRateLimit(request);
+    if (rateLimitResponse) return rateLimitResponse;
   }
 
   // Apply rate limiting for file uploads (stricter)
@@ -86,7 +98,7 @@ export async function proxy(request: NextRequest) {
       logger.warn(
         {
           pathname: request.nextUrl.pathname,
-          ip: request.headers.get("x-forwarded-for"),
+          ip: request.headers.get("x-memoria-client-ip"),
         },
         "Upload rate limit exceeded",
       );

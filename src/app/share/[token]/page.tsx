@@ -293,6 +293,12 @@ export default function SharePage({ params }: SharePageProps) {
             x={position.x}
             y={position.y}
             draggable={true}
+            onDragMove={(event) =>
+              setPosition({ x: event.target.x(), y: event.target.y() })
+            }
+            onDragEnd={(event) =>
+              setPosition({ x: event.target.x(), y: event.target.y() })
+            }
             onWheel={handleWheel}
           >
             <ReadonlyCanvasItemLayer items={items} />

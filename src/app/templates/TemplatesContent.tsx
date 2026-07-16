@@ -3,12 +3,12 @@
  * Browse, use, and manage canvas templates.
  */
 
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
-import { toast } from 'sonner';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { toast } from "sonner";
 import {
   Box,
   Typography,
@@ -32,42 +32,47 @@ import {
   DialogContent,
   DialogTitle,
   alpha,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Visibility,
   ExploreOutlined as TemplatesIcon,
   DeleteOutline as DeleteIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 import {
   useTemplates,
   useCreateCanvasFromTemplate,
   useRemoveTemplate,
   type Template,
-} from '@/lib/hooks/use-templates';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { EmptyState } from '@/components/layout/EmptyState';
+} from "@/lib/hooks/use-templates";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
 
 const TEMPLATE_CATEGORIES = [
-  'all',
-  'General',
-  'Project Planning',
-  'Note Taking',
-  'Research',
-  'Brainstorming',
-  'Education',
-  'Personal',
-  'Business',
-  'Creative',
-  'Other',
+  "all",
+  "General",
+  "Project Planning",
+  "Note Taking",
+  "Research",
+  "Brainstorming",
+  "Education",
+  "Personal",
+  "Business",
+  "Creative",
+  "Other",
 ];
 
 function TemplateCardSkeleton({ index }: { index: number }) {
   return (
-    <Card sx={{ height: '100%', animation: `fadeIn 0.4s ease-out ${index * 0.06}s both` }}>
+    <Card
+      sx={{
+        height: "100%",
+        animation: `fadeIn 0.4s ease-out ${index * 0.06}s both`,
+      }}
+    >
       <CardContent>
         <Skeleton width="80%" height={30} sx={{ mb: 1.5 }} />
         <Skeleton width="100%" height={54} sx={{ mb: 1.5 }} />
-        <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+        <Box sx={{ display: "flex", gap: 1, mb: 1.5 }}>
           <Skeleton width={80} height={24} sx={{ borderRadius: 1 }} />
           <Skeleton width={60} height={24} sx={{ borderRadius: 1 }} />
         </Box>
@@ -83,13 +88,20 @@ function TemplateCardSkeleton({ index }: { index: number }) {
 export function TemplatesContent() {
   const router = useRouter();
   const { data: session } = useSession();
-  const [category, setCategory] = useState('all');
-  const [filter, setFilter] = useState<'all' | 'my'>('all');
-  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
+  const [category, setCategory] = useState("all");
+  const [filter, setFilter] = useState<"all" | "my">("all");
+  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(
+    null,
+  );
 
-  const userId = filter === 'my' && session?.user?.id ? session.user.id : undefined;
-  const { data, isLoading, error } = useTemplates(category === 'all' ? undefined : category, userId);
-  const { mutateAsync: createFromTemplate, isPending: isCreating } = useCreateCanvasFromTemplate();
+  const userId =
+    filter === "my" && session?.user?.id ? session.user.id : undefined;
+  const { data, isLoading, error } = useTemplates(
+    category === "all" ? undefined : category,
+    userId,
+  );
+  const { mutateAsync: createFromTemplate, isPending: isCreating } =
+    useCreateCanvasFromTemplate();
   const removeTemplate = useRemoveTemplate();
 
   const templates = data?.templates || [];
@@ -99,7 +111,7 @@ export function TemplatesContent() {
       const newCanvas = await createFromTemplate({ templateId });
       router.push(`/canvas/${newCanvas.id}`);
     } catch {
-      toast.error('Failed to create canvas from template');
+      toast.error("Failed to create canvas from template");
     }
   };
 
@@ -107,10 +119,10 @@ export function TemplatesContent() {
     if (!templateToDelete) return;
     try {
       await removeTemplate.mutateAsync({ templateId: templateToDelete.id });
-      toast.success('Template removed');
+      toast.success("Template removed");
       setTemplateToDelete(null);
     } catch {
-      toast.error('Failed to remove template');
+      toast.error("Failed to remove template");
     }
   };
 
@@ -122,13 +134,25 @@ export function TemplatesContent() {
       />
 
       {/* Filters */}
-      <Box sx={{ mb: 4, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box
+        sx={{
+          mb: 4,
+          display: "flex",
+          gap: 2,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Category</InputLabel>
-          <Select value={category} onChange={(e) => setCategory(e.target.value)} label="Category">
+          <Select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            label="Category"
+          >
             {TEMPLATE_CATEGORIES.map((cat) => (
               <MenuItem key={cat} value={cat}>
-                {cat === 'all' ? 'All categories' : cat}
+                {cat === "all" ? "All categories" : cat}
               </MenuItem>
             ))}
           </Select>
@@ -155,8 +179,12 @@ export function TemplatesContent() {
       {isLoading && (
         <Box
           sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+            },
             gap: 2.5,
           }}
         >
@@ -177,9 +205,9 @@ export function TemplatesContent() {
           icon={TemplatesIcon}
           title="No templates found"
           description={
-            filter === 'my'
+            filter === "my"
               ? "You haven't created any templates yet. Save a canvas as a template from the canvas menu."
-              : 'Be the first to create a template! Save any canvas as a template from its menu.'
+              : "Be the first to create a template! Save any canvas as a template from its menu."
           }
         />
       )}
@@ -187,12 +215,16 @@ export function TemplatesContent() {
       {!isLoading && !error && templates.length > 0 && (
         <>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {templates.length} template{templates.length !== 1 ? 's' : ''} found
+            {templates.length} template{templates.length !== 1 ? "s" : ""} found
           </Typography>
           <Box
             sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, 1fr)",
+                md: "repeat(3, 1fr)",
+              },
               gap: 2.5,
             }}
           >
@@ -202,10 +234,10 @@ export function TemplatesContent() {
                 <Card
                   key={template.id}
                   sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    position: 'relative',
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    position: "relative",
                     animation: `fadeIn 0.4s ease-out ${Math.min(index * 0.04, 0.4)}s both`,
                   }}
                 >
@@ -215,14 +247,25 @@ export function TemplatesContent() {
                         size="small"
                         aria-label={`Remove template ${template.name}`}
                         onClick={() => setTemplateToDelete(template)}
-                        sx={{ position: 'absolute', top: 10, right: 10, zIndex: 2 }}
+                        sx={{
+                          position: "absolute",
+                          top: 10,
+                          right: 10,
+                          zIndex: 2,
+                        }}
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                   )}
                   <CardContent sx={{ flexGrow: 1 }}>
-                    <Typography variant="h6" gutterBottom noWrap fontWeight={600} sx={{ pr: isOwner ? 4 : 0 }}>
+                    <Typography
+                      variant="h6"
+                      gutterBottom
+                      noWrap
+                      fontWeight={600}
+                      sx={{ pr: isOwner ? 4 : 0 }}
+                    >
                       {template.name}
                     </Typography>
                     <Typography
@@ -230,38 +273,43 @@ export function TemplatesContent() {
                       color="text.secondary"
                       sx={{
                         mb: 2,
-                        display: '-webkit-box',
+                        display: "-webkit-box",
                         WebkitLineClamp: 3,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        minHeight: '3.6em',
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                        minHeight: "3.6em",
                         lineHeight: 1.5,
                       }}
                     >
-                      {template.templateDescription || 'No description provided'}
+                      {template.templateDescription ||
+                        "No description provided"}
                     </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                    <Box
+                      sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 2 }}
+                    >
                       {template.templateCategory && (
                         <Chip
                           label={template.templateCategory}
                           size="small"
                           sx={{
-                            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
-                            color: 'primary.main',
+                            bgcolor: (theme) =>
+                              alpha(theme.palette.primary.main, 0.1),
+                            color: "primary.main",
                             fontWeight: 500,
                           }}
                         />
                       )}
                       <Chip
                         icon={<Visibility sx={{ fontSize: 14 }} />}
-                        label={`${template.usageCount} use${template.usageCount !== 1 ? 's' : ''}`}
+                        label={`${template.usageCount} use${template.usageCount !== 1 ? "s" : ""}`}
                         size="small"
                         variant="outlined"
                       />
                     </Box>
                     <Typography variant="caption" color="text.secondary">
-                      {template.items.length} item{template.items.length !== 1 ? 's' : ''} • By{' '}
-                      {isOwner ? 'you' : template.user.name || 'Anonymous'}
+                      {template.itemCount} item
+                      {template.itemCount !== 1 ? "s" : ""} • By{" "}
+                      {isOwner ? "you" : template.user.name || "Anonymous"}
                     </Typography>
                   </CardContent>
                   <CardActions sx={{ p: 2, pt: 0 }}>
@@ -282,12 +330,17 @@ export function TemplatesContent() {
       )}
 
       {/* Delete confirmation */}
-      <Dialog open={!!templateToDelete} onClose={() => setTemplateToDelete(null)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={!!templateToDelete}
+        onClose={() => setTemplateToDelete(null)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle sx={{ fontWeight: 600 }}>Remove template?</DialogTitle>
         <DialogContent>
           <Typography>
-            <strong>{templateToDelete?.name}</strong> will no longer be available as a template. The
-            underlying canvas is not deleted.
+            <strong>{templateToDelete?.name}</strong> will no longer be
+            available as a template. The underlying canvas is not deleted.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
@@ -298,7 +351,7 @@ export function TemplatesContent() {
             onClick={handleDelete}
             disabled={removeTemplate.isPending}
           >
-            {removeTemplate.isPending ? 'Removing…' : 'Remove'}
+            {removeTemplate.isPending ? "Removing…" : "Remove"}
           </Button>
         </DialogActions>
       </Dialog>

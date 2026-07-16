@@ -9,7 +9,6 @@ import { parse } from "url";
 import next from "next";
 import { createCollaborationServer } from "./src/lib/collaboration/websocket-server";
 import { logger } from "./src/lib/logger";
-import { flushAllDocuments } from "./src/lib/collaboration/yjs-provider";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
@@ -23,6 +22,11 @@ app
   .then(() => {
     const server = createServer(async (req, res) => {
       try {
+        // Never trust a caller-supplied forwarding header for security
+        // decisions. The custom server is the only component allowed to set
+        // this value, so middleware can key abuse controls to the actual peer.
+        req.headers["x-memoria-client-ip"] =
+          req.socket.remoteAddress || "unknown";
         const parsedUrl = parse(req.url!, true);
         await handle(req, res, parsedUrl);
       } catch (err) {
@@ -55,7 +59,6 @@ app
         client.close(1001, "Server shutting down"),
       );
       collaborationServer.close();
-      await flushAllDocuments();
       await new Promise<void>((resolvePromise) =>
         server.close(() => resolvePromise()),
       );

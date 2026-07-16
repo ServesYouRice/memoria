@@ -21,6 +21,12 @@ export interface Comment {
 
 interface CommentsResponse {
   comments: Comment[];
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 /**
@@ -30,11 +36,32 @@ export function useComments(itemId: string) {
   return useQuery<CommentsResponse>({
     queryKey: ["comments", itemId],
     queryFn: async () => {
-      const response = await fetch(`/api/v1/items/${itemId}/comments`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch comments");
+      const comments: Comment[] = [];
+      let offset = 0;
+      let total = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await fetch(
+          `/api/v1/items/${itemId}/comments?limit=100&offset=${offset}`,
+        );
+        if (!response.ok) throw new Error("Failed to fetch comments");
+        const page = (await response.json()) as CommentsResponse;
+        comments.push(...page.comments);
+        total = page.pagination?.total ?? comments.length;
+        offset += page.comments.length;
+        hasMore = Boolean(page.pagination?.hasMore && page.comments.length > 0);
       }
-      return response.json();
+
+      return {
+        comments,
+        pagination: {
+          total,
+          limit: comments.length,
+          offset: 0,
+          hasMore: false,
+        },
+      };
     },
     enabled: !!itemId,
   });

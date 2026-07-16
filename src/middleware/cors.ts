@@ -80,7 +80,7 @@ function getCorsConfig(): CorsConfig {
 /**
  * Check if an origin is allowed
  */
-function isOriginAllowed(
+export function isOriginAllowed(
   origin: string | null,
   allowedOrigins: string[],
 ): boolean {
@@ -98,8 +98,13 @@ function isOriginAllowed(
   // Check for wildcard subdomain patterns (e.g., "*.example.com")
   return allowedOrigins.some((allowedOrigin) => {
     if (allowedOrigin.startsWith("*.")) {
-      const domain = allowedOrigin.slice(2); // Remove "*."
-      return origin.endsWith(domain);
+      const domain = allowedOrigin.slice(2).toLowerCase();
+      try {
+        const { hostname } = new URL(origin);
+        return hostname.toLowerCase().endsWith(`.${domain}`);
+      } catch {
+        return false;
+      }
     }
     return false;
   });
@@ -215,12 +220,13 @@ export function validateCorsConfig(): void {
       );
     }
 
-    // Warn if allowing credentials with wildcard
+    // Credentials and a global wildcard are an invalid and unsafe deployment
+    // contract. Refuse to start instead of merely logging it.
     if (
       config.allowCredentials &&
       config.allowedOrigins.some((origin) => origin === "*")
     ) {
-      logger.error(
+      throw new Error(
         "CORS cannot allow credentials with wildcard origin (*). " +
           "This configuration will not work. Set specific origins in CORS_ALLOWED_ORIGINS.",
       );

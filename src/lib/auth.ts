@@ -11,6 +11,10 @@ import {
   recordFailedAttempt,
 } from "@/lib/auth/account-lockout";
 
+const dummyPasswordHash = argon2.hash("memoria-invalid-user-password", {
+  type: argon2.argon2id,
+});
+
 export const authConfig: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
   session: {
@@ -51,9 +55,18 @@ export const authConfig: NextAuthConfig = {
         });
 
         if (!user || !user.passwordHash) {
-          // Record failed attempt to prevent enumeration (attribute to email)
+          // Spend the same expensive verification work for unknown users so
+          // account existence is not exposed through response timing.
+          await argon2.verify(
+            await dummyPasswordHash,
+            credentials.password as string,
+          );
           await recordFailedAttempt(email);
           return null;
+        }
+
+        if (process.env.NODE_ENV === "production" && !user.emailVerified) {
+          throw new Error("Verify your email before signing in.");
         }
 
         const isValidPassword = await argon2.verify(
@@ -74,30 +87,30 @@ export const authConfig: NextAuthConfig = {
           email: user.email,
           name: user.name,
           image: user.image,
+          sessionVersion: user.sessionVersion,
         };
       },
     }),
   ],
   callbacks: {
-    async jwt({ token, user, trigger: _trigger }) {
+    async jwt({ token, user }) {
       if (user) {
         token["id"] = user.id as string;
-        token["issuedAt"] = Date.now();
       }
 
-      // Token Rotation Check (15 minutes)
-      // If token is older than 15 minutes, we could force a DB check or rotation
-      // For now, we just ensure the session is valid
-      if (token["issuedAt"] && typeof token["issuedAt"] === "number") {
-        const tokenAge = Date.now() - token["issuedAt"];
-        if (tokenAge > 15 * 60 * 1000) {
-          // Optimization: Here we could fetch user from DB to ensure they aren't banned/deleted
-          // But since 'jwt' runs on every request in middleware (sometimes), be careful with DB calls
-          // We'll leave this as a placeholder for explicit rotation logic if needed.
+      const userId = token["id"];
+      if (typeof userId !== "string") return null;
 
-          // Rotate the token timestamp to extend the session
-          token["issuedAt"] = Date.now();
-        }
+      const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { sessionVersion: true },
+      });
+      if (!currentUser) return null;
+
+      if (user) {
+        token["sessionVersion"] = currentUser.sessionVersion;
+      } else if (token["sessionVersion"] !== currentUser.sessionVersion) {
+        return null;
       }
 
       return token;

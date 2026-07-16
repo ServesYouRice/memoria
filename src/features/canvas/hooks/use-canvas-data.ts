@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useCanvasItems } from "@/lib/hooks/use-canvas-items";
 import {
   useCanvasVersions,
+  useCanvasVersion,
   type CanvasVersionSnapshot,
 } from "@/lib/hooks/use-canvas-versions";
 import { useCanvas, useUpdateCanvas } from "@/lib/hooks/use-canvases";
@@ -50,6 +51,7 @@ function hydrateSnapshotItems(
 }
 
 export function useCanvasData({ canvasId }: UseCanvasDataProps) {
+  const viewportInitializedRef = useRef(false);
   // Local UI State
   const [canvasName, setCanvasName] = useState("Untitled Canvas");
   const [zoom, setZoom] = useState(1);
@@ -68,15 +70,23 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     error: canvasError,
     refetch: refetchCanvas,
   } = useCanvas(canvasId);
-  const { data } = useCanvasItems(canvasId);
+  const {
+    data,
+    error: itemsError,
+    refetch: refetchItems,
+  } = useCanvasItems(canvasId);
   const allItems = useMemo(() => data?.items ?? [], [data?.items]);
 
-  const { data: versionsData } = useCanvasVersions(canvasId, {
-    includeSnapshot: true,
-  });
+  const { data: versionsData } = useCanvasVersions(canvasId);
   const versions = useMemo(
     () => versionsData?.versions ?? [],
     [versionsData?.versions],
+  );
+  const selectedVersionId = versions[timeMachineIndex]?.id;
+  const { data: selectedVersion } = useCanvasVersion(
+    canvasId,
+    selectedVersionId,
+    isTimeMachineActive,
   );
   const updateCanvasMutation = useUpdateCanvas();
 
@@ -87,9 +97,42 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
 
     setCanvasLoadError(null);
     setCanvasName(canvas.name);
-    setZoom(canvas.zoomLevel || 1);
-    setPosition({ x: canvas.panX || 0, y: canvas.panY || 0 });
-  }, [canvas]);
+    if (!viewportInitializedRef.current) {
+      const stored = window.localStorage.getItem(`canvas:${canvasId}:viewport`);
+      if (stored) {
+        try {
+          const viewport = JSON.parse(stored) as {
+            zoom?: number;
+            x?: number;
+            y?: number;
+          };
+          setZoom(
+            typeof viewport.zoom === "number"
+              ? viewport.zoom
+              : canvas.zoomLevel || 1,
+          );
+          setPosition({
+            x: typeof viewport.x === "number" ? viewport.x : canvas.panX || 0,
+            y: typeof viewport.y === "number" ? viewport.y : canvas.panY || 0,
+          });
+        } catch {
+          window.localStorage.removeItem(`canvas:${canvasId}:viewport`);
+        }
+      } else {
+        setZoom(canvas.zoomLevel || 1);
+        setPosition({ x: canvas.panX || 0, y: canvas.panY || 0 });
+      }
+      viewportInitializedRef.current = true;
+    }
+  }, [canvas, canvasId]);
+
+  useEffect(() => {
+    if (!viewportInitializedRef.current) return;
+    window.localStorage.setItem(
+      `canvas:${canvasId}:viewport`,
+      JSON.stringify({ zoom, x: position.x, y: position.y }),
+    );
+  }, [canvasId, position.x, position.y, zoom]);
 
   useEffect(() => {
     if (!canvasError) {
@@ -102,6 +145,15 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
         : "Failed to load canvas",
     );
   }, [canvasError]);
+
+  useEffect(() => {
+    if (!itemsError) return;
+    setCanvasLoadError(
+      itemsError instanceof Error
+        ? itemsError.message
+        : "Failed to load canvas items",
+    );
+  }, [itemsError]);
 
   // Update canvas name
   const updateCanvasName = async (name: string) => {
@@ -122,12 +174,12 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
 
   // Calculate displayed items (Time Machine logic)
   const displayedItems = useMemo(() => {
-    const snapshot = versions[timeMachineIndex]?.snapshot;
+    const snapshot = selectedVersion?.snapshot;
     if (isTimeMachineActive && snapshot) {
       return hydrateSnapshotItems(canvasId, snapshot, allItems);
     }
     return allItems;
-  }, [allItems, canvasId, isTimeMachineActive, timeMachineIndex, versions]);
+  }, [allItems, canvasId, isTimeMachineActive, selectedVersion?.snapshot]);
 
   // Extract tags
   const { allTags, tagCounts } = useMemo(() => {
@@ -207,11 +259,12 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     versions,
     allTags,
     tagCounts,
+    accessLevel: canvas?.accessLevel || "VIEW",
 
     // Actions
     updateCanvasName,
     refreshMetadata: useCallback(async () => {
-      await refetchCanvas();
-    }, [refetchCanvas]),
+      await Promise.all([refetchCanvas(), refetchItems()]);
+    }, [refetchCanvas, refetchItems]),
   };
 }

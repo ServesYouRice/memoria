@@ -14,14 +14,14 @@
  * Following ADR-0009: Autosave with debouncing
  */
 
-'use client';
+"use client";
 
-import React, { useRef, useState, useEffect } from 'react';
-import { Group, Rect, Text, Circle, Image as KonvaImage } from 'react-konva';
-import type Konva from 'konva';
-import { type CanvasItem, isBookmarkContent } from '@/types/canvas';
-import { useAutosave } from '@/lib/hooks/use-autosave';
-import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
+import React, { useRef, useState, useEffect } from "react";
+import { Group, Rect, Text, Circle, Image as KonvaImage } from "react-konva";
+import type Konva from "konva";
+import { type CanvasItem, isBookmarkContent } from "@/types/canvas";
+import { useAutosave } from "@/lib/hooks/use-autosave";
+import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
 
 interface BookmarkItemProps {
   item: CanvasItem;
@@ -31,6 +31,7 @@ interface BookmarkItemProps {
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
   onDragEnd?: (e: any) => void;
+  readOnly?: boolean;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -46,6 +47,7 @@ function BookmarkItemComponent({
   onDoubleClick,
   onContextMenu,
   onDragEnd,
+  readOnly = false,
 }: BookmarkItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -67,7 +69,9 @@ function BookmarkItemComponent({
   const deleteItem = useDeleteCanvasItem();
 
   // Extract bookmark content
-  const content = isBookmarkContent(item.content) ? item.content : { url: 'Invalid bookmark' };
+  const content = isBookmarkContent(item.content)
+    ? item.content
+    : { url: "Invalid bookmark" };
 
   // Check if we have metadata
   const hasMetadata = content.title || content.description;
@@ -82,12 +86,12 @@ function BookmarkItemComponent({
   useEffect(() => {
     if (content.favicon) {
       const img = new window.Image();
-      img.crossOrigin = 'anonymous';
+      img.crossOrigin = "anonymous";
       img.onload = () => {
         setFavicon(img);
       };
       img.onerror = () => {
-        console.error('Failed to load favicon:', content.favicon);
+        console.error("Failed to load favicon:", content.favicon);
       };
       img.src = content.favicon;
     } else {
@@ -119,8 +123,8 @@ function BookmarkItemComponent({
 
   // Handle resize
   const handleResize = (
-    corner: 'se' | 'sw' | 'ne' | 'nw',
-    e: Konva.KonvaEventObject<MouseEvent>
+    corner: "se" | "sw" | "ne" | "nw",
+    e: Konva.KonvaEventObject<MouseEvent>,
   ) => {
     const stage = e.target.getStage();
     if (!stage) return;
@@ -134,23 +138,35 @@ function BookmarkItemComponent({
     let newY = localPosition.y;
 
     switch (corner) {
-      case 'se': // Bottom-right
+      case "se": // Bottom-right
         newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
         newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
         break;
-      case 'sw': // Bottom-left
-        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
+      case "sw": // Bottom-left
+        newWidth = Math.max(
+          MIN_WIDTH,
+          localPosition.x + localSize.width - pointerPos.x,
+        );
         newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
         newX = localPosition.x + localSize.width - newWidth;
         break;
-      case 'ne': // Top-right
+      case "ne": // Top-right
         newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
-        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+        newHeight = Math.max(
+          MIN_HEIGHT,
+          localPosition.y + localSize.height - pointerPos.y,
+        );
         newY = localPosition.y + localSize.height - newHeight;
         break;
-      case 'nw': // Top-left
-        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
-        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+      case "nw": // Top-left
+        newWidth = Math.max(
+          MIN_WIDTH,
+          localPosition.x + localSize.width - pointerPos.x,
+        );
+        newHeight = Math.max(
+          MIN_HEIGHT,
+          localPosition.y + localSize.height - pointerPos.y,
+        );
         newX = localPosition.x + localSize.width - newWidth;
         newY = localPosition.y + localSize.height - newHeight;
         break;
@@ -171,20 +187,23 @@ function BookmarkItemComponent({
 
   // Handle delete
   const handleDelete = () => {
-    if (confirm('Delete this bookmark?')) {
+    if (confirm("Delete this bookmark?")) {
       deleteItem.mutate({ itemId: item.id, version: item.version });
     }
   };
 
   // Truncate URL for display
-  const displayUrl = content.url.length > 50 ? content.url.substring(0, 47) + '...' : content.url;
+  const displayUrl =
+    content.url.length > 50
+      ? content.url.substring(0, 47) + "..."
+      : content.url;
 
   return (
     <Group
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable
+      draggable={!readOnly}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
@@ -198,7 +217,7 @@ function BookmarkItemComponent({
         width={localSize.width}
         height={localSize.height}
         fill="#FFF9E6"
-        stroke={isSelected ? '#2196F3' : '#FFB74D'}
+        stroke={isSelected ? "#2196F3" : "#FFB74D"}
         strokeWidth={isSelected ? 3 : 2}
         shadowColor="black"
         shadowBlur={5}
@@ -212,13 +231,7 @@ function BookmarkItemComponent({
         <>
           {/* Favicon */}
           {favicon && (
-            <KonvaImage
-              image={favicon}
-              x={10}
-              y={10}
-              width={20}
-              height={20}
-            />
+            <KonvaImage image={favicon} x={10} y={10} width={20} height={20} />
           )}
 
           {/* Title */}
@@ -268,7 +281,14 @@ function BookmarkItemComponent({
       ) : (
         <>
           {/* Bookmark icon/indicator (fallback when no metadata) */}
-          <Rect x={10} y={10} width={30} height={30} fill="#FFB74D" cornerRadius={4} />
+          <Rect
+            x={10}
+            y={10}
+            width={30}
+            height={30}
+            fill="#FFB74D"
+            cornerRadius={4}
+          />
 
           {/* URL text (fallback when no metadata) */}
           <Text
@@ -309,7 +329,7 @@ function BookmarkItemComponent({
       )}
 
       {/* Resize handles (only when selected) */}
-      {isSelected && (
+      {isSelected && !readOnly && (
         <>
           {/* Bottom-right */}
           <Circle
@@ -318,15 +338,15 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('se', e)}
+            onDragMove={(e) => handleResize("se", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nwse-resize';
+              if (stage) stage.container().style.cursor = "nwse-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -337,15 +357,15 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('sw', e)}
+            onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nesw-resize';
+              if (stage) stage.container().style.cursor = "nesw-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -356,15 +376,15 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('ne', e)}
+            onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nesw-resize';
+              if (stage) stage.container().style.cursor = "nesw-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -375,15 +395,15 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('nw', e)}
+            onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nwse-resize';
+              if (stage) stage.container().style.cursor = "nwse-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -397,11 +417,11 @@ function BookmarkItemComponent({
             onTap={handleDelete}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'pointer';
+              if (stage) stage.container().style.cursor = "pointer";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
           <Text
@@ -426,27 +446,30 @@ function BookmarkItemComponent({
  * - Only re-renders when the item itself is updated
  * - Or when selection state changes
  */
-export const BookmarkItem = React.memo(BookmarkItemComponent, (prevProps, nextProps) => {
-  // Re-render if item changed
-  if (prevProps.item.id !== nextProps.item.id) {
-    return false;
-  }
+export const BookmarkItem = React.memo(
+  BookmarkItemComponent,
+  (prevProps, nextProps) => {
+    // Re-render if item changed
+    if (prevProps.item.id !== nextProps.item.id) {
+      return false;
+    }
 
-  // Re-render if selection state changed
-  if (prevProps.isSelected !== nextProps.isSelected) {
-    return false;
-  }
+    // Re-render if selection state changed
+    if (prevProps.isSelected !== nextProps.isSelected) {
+      return false;
+    }
 
-  // Re-render if item was updated
-  if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
-    return false;
-  }
+    // Re-render if item was updated
+    if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
+      return false;
+    }
 
-  // Re-render if version changed
-  if (prevProps.item.version !== nextProps.item.version) {
-    return false;
-  }
+    // Re-render if version changed
+    if (prevProps.item.version !== nextProps.item.version) {
+      return false;
+    }
 
-  // No changes detected, skip re-render
-  return true;
-});
+    // No changes detected, skip re-render
+    return true;
+  },
+);

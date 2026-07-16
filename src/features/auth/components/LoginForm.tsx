@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import React, { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   Box,
   Button,
@@ -13,22 +13,15 @@ import {
   Link,
   IconButton,
   InputAdornment,
-  Divider,
-  alpha,
-} from '@mui/material';
-import {
-  Visibility,
-  VisibilityOff,
-  Google as GoogleIcon,
-  GitHub as GitHubIcon,
-} from '@mui/icons-material';
-import { signIn } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { AuthLayout } from './AuthLayout';
+} from "@mui/material";
+import { Visibility, VisibilityOff } from "@mui/icons-material";
+import { signIn } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { AuthLayout } from "./AuthLayout";
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -40,7 +33,7 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const registered = searchParams.get('registered');
+  const registered = searchParams.get("registered");
 
   const {
     register,
@@ -55,24 +48,24 @@ export function LoginForm() {
       setIsLoading(true);
       setError(null);
 
-      const result = await signIn('credentials', {
+      const result = await signIn("credentials", {
         email: data.email,
         password: data.password,
         redirect: false,
       });
 
       if (result?.error) {
-        setError('Invalid email or password');
+        setError("Invalid email or password");
         return;
       }
 
       if (result?.ok) {
-        router.push('/dashboard');
+        router.push("/dashboard");
         router.refresh();
       }
     } catch (err) {
-      console.error('Login error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      console.error("Login error:", err);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -91,20 +84,26 @@ export function LoginForm() {
       </Typography>
 
       {registered && (
-        <Alert severity="success" sx={{ mb: 3, animation: 'fadeIn 0.4s ease-out' }}>
+        <Alert
+          severity="success"
+          sx={{ mb: 3, animation: "fadeIn 0.4s ease-out" }}
+        >
           Account created successfully! Please sign in.
         </Alert>
       )}
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3, animation: 'fadeIn 0.4s ease-out' }}>
+        <Alert
+          severity="error"
+          sx={{ mb: 3, animation: "fadeIn 0.4s ease-out" }}
+        >
           {error}
         </Alert>
       )}
 
       <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
         <TextField
-          {...register('email')}
+          {...register("email")}
           label="Email"
           type="email"
           fullWidth
@@ -118,9 +117,9 @@ export function LoginForm() {
         />
 
         <TextField
-          {...register('password')}
+          {...register("password")}
           label="Password"
-          type={showPassword ? 'text' : 'password'}
+          type={showPassword ? "text" : "password"}
           fullWidth
           margin="normal"
           error={!!errors.password}
@@ -135,7 +134,9 @@ export function LoginForm() {
                     onClick={() => setShowPassword(!showPassword)}
                     edge="end"
                     disabled={isLoading}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
                   >
                     {showPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
@@ -145,66 +146,45 @@ export function LoginForm() {
           }}
         />
 
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1, mb: 2 }}>
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1, mb: 2 }}>
           <Link
             href="/auth/forgot-password"
             variant="body2"
             sx={{
-              color: 'primary.main',
-              textDecoration: 'none',
+              color: "primary.main",
+              textDecoration: "none",
               fontWeight: 500,
-              '&:hover': { textDecoration: 'underline' },
+              "&:hover": { textDecoration: "underline" },
             }}
           >
             Forgot password?
           </Link>
         </Box>
 
-        <Button type="submit" variant="contained" fullWidth size="large" disabled={isLoading}>
-          {isLoading ? 'Signing in…' : 'Sign in'}
+        <Button
+          type="submit"
+          variant="contained"
+          fullWidth
+          size="large"
+          disabled={isLoading}
+        >
+          {isLoading ? "Signing in…" : "Sign in"}
         </Button>
 
-        <Divider sx={{ my: 3 }}>
-          <Typography variant="body2" color="text.secondary">
-            or continue with
-          </Typography>
-        </Divider>
-
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          {[
-            { label: 'Google', icon: <GoogleIcon sx={{ mr: 1, fontSize: 20 }} /> },
-            { label: 'GitHub', icon: <GitHubIcon sx={{ mr: 1, fontSize: 20 }} /> },
-          ].map((provider) => (
-            <Button
-              key={provider.label}
-              variant="outlined"
-              fullWidth
-              disabled
-              sx={{
-                py: 1.25,
-                color: 'text.primary',
-                borderColor: 'divider',
-                '&:hover': {
-                  borderColor: 'primary.main',
-                  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
-                },
-              }}
-            >
-              {provider.icon}
-              {provider.label}
-            </Button>
-          ))}
-        </Box>
-
-        <Typography variant="body2" align="center" color="text.secondary" sx={{ mt: 4 }}>
-          Don&apos;t have an account?{' '}
+        <Typography
+          variant="body2"
+          align="center"
+          color="text.secondary"
+          sx={{ mt: 4 }}
+        >
+          Don&apos;t have an account?{" "}
           <Link
             href="/auth/register"
             sx={{
-              color: 'primary.main',
-              textDecoration: 'none',
+              color: "primary.main",
+              textDecoration: "none",
               fontWeight: 600,
-              '&:hover': { textDecoration: 'underline' },
+              "&:hover": { textDecoration: "underline" },
             }}
           >
             Create one
