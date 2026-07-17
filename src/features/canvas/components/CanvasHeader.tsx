@@ -41,6 +41,7 @@ import {
   Shuffle as SerendipityIcon,
   Dashboard as TemplatesIcon,
   AutoFixHigh as AutopilotIcon,
+  Edit as EditIcon,
   MicNone as WhisperIcon,
   ViewInAr as ARIcon,
 } from "@mui/icons-material";
@@ -103,6 +104,7 @@ export interface CanvasHeaderProps {
   onAR?: () => void;
   onPresentationMode?: () => void;
   isPresentationMode?: boolean;
+  canManageCanvas?: boolean;
 }
 
 const ZOOM_STEP = 0.1;
@@ -149,6 +151,7 @@ export function CanvasHeader({
   onAR,
   onPresentationMode,
   isPresentationMode = false,
+  canManageCanvas = true,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -162,6 +165,7 @@ export function CanvasHeader({
   };
 
   const handleNameClick = () => {
+    if (!canManageCanvas) return;
     setIsEditingName(true);
     setEditedName(canvasName);
   };
@@ -246,10 +250,15 @@ export function CanvasHeader({
 
   return (
     <AppBar position="static" color="default" elevation={1}>
-      <Toolbar>
+      <Toolbar sx={{ overflowX: "auto", minHeight: 64 }}>
         {/* Back Button */}
         <Tooltip title="Back to Dashboard">
-          <IconButton edge="start" onClick={handleBackClick} sx={{ mr: 2 }}>
+          <IconButton
+            aria-label="Back to dashboard"
+            edge="start"
+            onClick={handleBackClick}
+            sx={{ mr: 2 }}
+          >
             <ArrowBack />
           </IconButton>
         </Tooltip>
@@ -278,6 +287,7 @@ export function CanvasHeader({
                 ),
                 endAdornment: searchQuery ? (
                   <IconButton
+                    aria-label="Clear canvas search"
                     size="small"
                     onClick={() => {
                       onSearchChange("");
@@ -311,18 +321,23 @@ export function CanvasHeader({
             >
               <Typography
                 variant="h6"
-                component="div"
+                component="h1"
                 noWrap
-                onClick={handleNameClick}
                 sx={{
-                  cursor: "pointer",
-                  "&:hover": {
-                    textDecoration: "underline",
-                  },
+                  cursor: "default",
                 }}
               >
                 {canvasName}
               </Typography>
+              {canManageCanvas && (
+                <IconButton
+                  size="small"
+                  aria-label={`Rename canvas ${canvasName}`}
+                  onClick={handleNameClick}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              )}
               {onViewModeChange && (
                 <ToggleButtonGroup
                   exclusive
@@ -347,14 +362,24 @@ export function CanvasHeader({
           <Box sx={{ mr: 1 }}>
             <Tooltip title="Undo (Ctrl+Z)">
               <span>
-                <IconButton onClick={onUndo} disabled={!canUndo} size="small">
+                <IconButton
+                  aria-label="Undo"
+                  onClick={onUndo}
+                  disabled={!canUndo}
+                  size="small"
+                >
                   <UndoIcon />
                 </IconButton>
               </span>
             </Tooltip>
             <Tooltip title="Redo (Ctrl+Y)">
               <span>
-                <IconButton onClick={onRedo} disabled={!canRedo} size="small">
+                <IconButton
+                  aria-label="Redo"
+                  onClick={onRedo}
+                  disabled={!canRedo}
+                  size="small"
+                >
                   <RedoIcon />
                 </IconButton>
               </span>
@@ -363,11 +388,17 @@ export function CanvasHeader({
         )}
 
         {/* Share Button */}
-        <Tooltip title="Share Canvas">
-          <IconButton onClick={() => setShareDialogOpen(true)} sx={{ mr: 1 }}>
-            <ShareIcon />
-          </IconButton>
-        </Tooltip>
+        {canManageCanvas && (
+          <Tooltip title="Share Canvas">
+            <IconButton
+              aria-label="Share canvas"
+              onClick={() => setShareDialogOpen(true)}
+              sx={{ mr: 1 }}
+            >
+              <ShareIcon />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {/* Collaboration Indicator */}
         {(collaborators.length > 0 || showStatus) && (
@@ -451,6 +482,9 @@ export function CanvasHeader({
             }
           >
             <IconButton
+              aria-label={
+                isPresentationMode ? "Exit presentation" : "Enter presentation"
+              }
               onClick={onPresentationMode}
               color={isPresentationMode ? "secondary" : "default"}
               sx={{ mr: 1 }}
@@ -468,7 +502,12 @@ export function CanvasHeader({
         {/* AI Assistant */}
         {onAI && (
           <Tooltip title="AI Assistant">
-            <IconButton onClick={onAI} color="primary" sx={{ mr: 1 }}>
+            <IconButton
+              aria-label="Open AI assistant"
+              onClick={onAI}
+              color="primary"
+              sx={{ mr: 1 }}
+            >
               <AIIcon />
             </IconButton>
           </Tooltip>
@@ -478,6 +517,7 @@ export function CanvasHeader({
         {onSerendipity && (
           <Tooltip title="Serendipity / Surprise Me">
             <IconButton
+              aria-label="Surprise me"
               onClick={onSerendipity}
               color="secondary"
               sx={{ mr: 1 }}
@@ -490,7 +530,11 @@ export function CanvasHeader({
         {/* Templates / Rituals */}
         {onTemplates && (
           <Tooltip title="Templates & Rituals">
-            <IconButton onClick={onTemplates} sx={{ mr: 1 }}>
+            <IconButton
+              aria-label="Open templates and rituals"
+              onClick={onTemplates}
+              sx={{ mr: 1 }}
+            >
               <TemplatesIcon />
             </IconButton>
           </Tooltip>
@@ -499,7 +543,12 @@ export function CanvasHeader({
         {/* Autopilot */}
         {onAutopilot && (
           <Tooltip title="Autopilot (Auto-organize)">
-            <IconButton onClick={onAutopilot} color="primary" sx={{ mr: 1 }}>
+            <IconButton
+              aria-label="Auto-organize canvas"
+              onClick={onAutopilot}
+              color="primary"
+              sx={{ mr: 1 }}
+            >
               <AutopilotIcon />
             </IconButton>
           </Tooltip>
@@ -508,7 +557,11 @@ export function CanvasHeader({
         {/* Whisper Mode */}
         {onWhisper && (
           <Tooltip title="Whisper Mode (Quick Entry)">
-            <IconButton onClick={onWhisper} sx={{ mr: 1, opacity: 0.7 }}>
+            <IconButton
+              aria-label="Open quick capture"
+              onClick={onWhisper}
+              sx={{ mr: 1, opacity: 0.7 }}
+            >
               <WhisperIcon />
             </IconButton>
           </Tooltip>
@@ -518,6 +571,7 @@ export function CanvasHeader({
         {onTimeMachine && (
           <Tooltip title="Time Machine (Visual History)">
             <IconButton
+              aria-label="Open visual history"
               onClick={onTimeMachine}
               color="secondary"
               sx={{ mr: 1 }}
@@ -530,7 +584,11 @@ export function CanvasHeader({
         {/* AR Mode */}
         {onAR && (
           <Tooltip title="AR Canvas Layer (Experimental)">
-            <IconButton onClick={onAR} sx={{ mr: 1, color: "warning.main" }}>
+            <IconButton
+              aria-label="Open augmented reality view"
+              onClick={onAR}
+              sx={{ mr: 1, color: "warning.main" }}
+            >
               <ARIcon />
             </IconButton>
           </Tooltip>
@@ -539,7 +597,11 @@ export function CanvasHeader({
         {/* Tag Filter */}
         {onTagFilter && (
           <Tooltip title="Filter by Tags">
-            <IconButton onClick={onTagFilter} sx={{ mr: 1 }}>
+            <IconButton
+              aria-label="Filter canvas by tags"
+              onClick={onTagFilter}
+              sx={{ mr: 1 }}
+            >
               <Badge badgeContent={activeTagCount} color="primary">
                 <TagIcon />
               </Badge>
@@ -550,7 +612,11 @@ export function CanvasHeader({
         {/* Search Toggle */}
         {onSearchChange && !showSearch && (
           <Tooltip title="Search">
-            <IconButton onClick={() => setShowSearch(true)} sx={{ mr: 1 }}>
+            <IconButton
+              aria-label="Search canvas"
+              onClick={() => setShowSearch(true)}
+              sx={{ mr: 1 }}
+            >
               <SearchIcon />
             </IconButton>
           </Tooltip>
@@ -612,7 +678,11 @@ export function CanvasHeader({
 
         {/* More Menu */}
         <Tooltip title="More options">
-          <IconButton edge="end" onClick={handleMenuOpen}>
+          <IconButton
+            aria-label="More canvas options"
+            edge="end"
+            onClick={handleMenuOpen}
+          >
             <MoreVert />
           </IconButton>
         </Tooltip>
@@ -654,12 +724,14 @@ export function CanvasHeader({
         </Menu>
       </Toolbar>
 
-      <ShareDialog
-        open={shareDialogOpen}
-        onClose={() => setShareDialogOpen(false)}
-        canvasId={canvasId}
-        canvasName={canvasName}
-      />
+      {canManageCanvas && (
+        <ShareDialog
+          open={shareDialogOpen}
+          onClose={() => setShareDialogOpen(false)}
+          canvasId={canvasId}
+          canvasName={canvasName}
+        />
+      )}
     </AppBar>
   );
 }

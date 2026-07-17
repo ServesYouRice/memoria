@@ -15,7 +15,7 @@
  *   ANALYZE=true pnpm build
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 const BUILD_DIR = '.next';
@@ -50,7 +50,7 @@ function getAllFiles(dir, fileList = []) {
         fileList.push({ path: filePath, size: stat.size });
       }
     });
-  } catch (error) {
+  } catch {
     // Directory doesn't exist, skip
   }
 

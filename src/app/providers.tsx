@@ -42,8 +42,9 @@ const queryClient = new QueryClient({
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
     mutations: {
-      retry: (failureCount, error) => !isClientError(error) && failureCount < 1,
-      retryDelay: 1000,
+      // Side-effecting requests are not safe to replay unless the caller
+      // explicitly supplies an idempotency key.
+      retry: false,
     },
   },
 });

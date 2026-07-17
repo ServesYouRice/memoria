@@ -66,6 +66,12 @@ export interface CanvasVersion {
 
 interface VersionsResponse {
   versions: CanvasVersion[];
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 interface UseCanvasVersionsOptions {
@@ -95,13 +101,31 @@ export function useCanvasVersions(
       if (includeSnapshot) {
         params.set("includeSnapshot", "true");
       }
+      params.set("limit", "100");
 
       const response = await apiFetch(
-        `/api/v1/canvases/${canvasId}/versions${params.size > 0 ? `?${params.toString()}` : ""}`,
+        `/api/v1/canvases/${canvasId}/versions?${params.toString()}`,
       );
       return parseJson<VersionsResponse>(response, "Failed to fetch versions");
     },
     enabled: !!canvasId,
+  });
+}
+
+export function useCanvasVersion(
+  canvasId: string,
+  versionId: string | undefined,
+  enabled = true,
+) {
+  return useQuery<CanvasVersion>({
+    queryKey: [...canvasVersionKeys.canvas(canvasId), "detail", versionId],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/v1/canvases/${canvasId}/versions/${versionId}/restore`,
+      );
+      return parseJson<CanvasVersion>(response, "Failed to fetch version");
+    },
+    enabled: enabled && Boolean(canvasId && versionId),
   });
 }
 

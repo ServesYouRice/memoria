@@ -117,16 +117,23 @@ const api = {
     if (!viewport && hasMore) {
       let currentOffset = offset + items.length;
       const pageLimit = limit || items.length;
+      let pageCount = 1;
 
-      while (hasMore) {
+      while (hasMore && pageCount < 100) {
         const nextPage = await fetchPage(currentOffset, pageLimit);
         const nextItems = Array.isArray(nextPage.items) ? nextPage.items : [];
+        if (nextItems.length === 0) {
+          throw new Error("Item pagination made no progress");
+        }
         items.push(...nextItems);
         total = nextPage.total ?? total;
         const nextOffset = nextPage.offset ?? currentOffset;
         currentOffset = nextOffset + nextItems.length;
         hasMore = nextPage.hasMore ?? currentOffset < total;
+        pageCount += 1;
       }
+
+      if (hasMore) throw new Error("Canvas exceeds the safe item page limit");
 
       offset = 0;
       limit = items.length;

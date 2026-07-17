@@ -7,8 +7,8 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: '20'
-  PNPM_VERSION: '9'
+  NODE_VERSION: '22.14.0'
+  PNPM_VERSION: '11.13.0'
 
 jobs:
   lint-and-typecheck:
@@ -19,11 +19,13 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -47,11 +49,13 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -72,11 +76,13 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -103,6 +109,27 @@ jobs:
           S3_ACCESS_KEY_ID: 'ci-placeholder'
           S3_SECRET_ACCESS_KEY: 'ci-placeholder-secret'
           APP_BOOTSTRAP_TOKEN: 'ci-placeholder-bootstrap-token'
+          MODEL_CREDENTIAL_ENCRYPTION_KEY: 'ci-model-credential-key-0123456789abcdef'
+          EMAIL_PROVIDER: 'sendgrid'
+          SENDGRID_API_KEY: 'ci-placeholder-sendgrid-key'
+
+  dependency-audit:
+    name: Production Dependency Audit
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level=high
 
   e2e:
     name: E2E Tests
@@ -121,16 +148,27 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -156,11 +194,9 @@ jobs:
           NEXTAUTH_SECRET: 'e2e-test-secret-0123456789abcdef-placeholder'
           NEXTAUTH_URL: 'http://localhost:3000'
           REDIS_URL: 'redis://localhost:6379'
-          UPLOAD_STORAGE: 's3'
-          S3_BUCKET: 'ci-placeholder-bucket'
-          S3_REGION: 'us-east-1'
-          S3_ENDPOINT: 'http://localhost:9000'
-          S3_ACCESS_KEY_ID: 'ci-placeholder'
-          S3_SECRET_ACCESS_KEY: 'ci-placeholder-secret'
+          UPLOAD_STORAGE: 'local'
           APP_BOOTSTRAP_TOKEN: 'ci-placeholder-bootstrap-token'
+          MODEL_CREDENTIAL_ENCRYPTION_KEY: 'e2e-model-credential-key-0123456789abcdef'
+          EMAIL_PROVIDER: 'sendgrid'
+          SENDGRID_API_KEY: 'e2e-placeholder-sendgrid-key'
 

@@ -1,18 +1,17 @@
 /**
  * WebSocket Server for Real-Time Collaboration
  * Following ADR-0010: Real-Time Collaboration Strategy
- * Handles Y.js synchronization and presence awareness
+ * Handles collaboration presence, cursors, chat, and reactions.
  */
 
 import { type IncomingMessage } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import * as Y from "yjs";
-import { getDocument } from "./yjs-provider";
 import { decode } from "next-auth/jwt";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { nanoid } from "nanoid";
 import { getRedisClient } from "@/lib/cache/redis-client";
+import { z } from "zod";
 
 export interface CollaborationUser {
   userId: string;
@@ -20,6 +19,7 @@ export interface CollaborationUser {
   name?: string;
   color: string;
   accessLevel?: "OWNER" | "EDIT" | "COMMENT" | "VIEW";
+  sessionVersion?: number;
 }
 
 interface ClientConnection {
@@ -31,13 +31,18 @@ interface ClientConnection {
   isAlive: boolean;
   messageCount: number;
   rateLimitReset: number;
+  lastAuthorizationCheck: number;
 }
 
 // Heartbeat interval for detecting zombie connections (30 seconds)
 const HEARTBEAT_INTERVAL = 30000;
 // Rate limit: 6000 messages per minute (supports frequent cursor + Yjs updates)
-const RATE_LIMIT_MAX = 6000;
+const RATE_LIMIT_MAX = 600;
 const RATE_LIMIT_WINDOW = 60000;
+const MAX_WEBSOCKET_PAYLOAD = 64 * 1024;
+const MAX_COLLABORATORS_PER_CANVAS = 100;
+const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
+const AUTHORIZATION_LEASE_MS = 30_000;
 const REDIS_CHANNEL_PREFIX = "collaboration:canvas:";
 const SESSION_COOKIE_NAMES = [
   "__Secure-authjs.session-token",
@@ -53,12 +58,24 @@ interface CursorPosition {
 }
 
 interface CollaborationBusMessage {
-  type: "update" | "presence" | "cursors";
+  type: "presence" | "cursors";
   canvasId: string;
   instanceId: string;
   payload: any;
   timestamp: number;
 }
+
+const collaborationMessageSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("cursor"),
+    position: z.object({
+      x: z.number().finite().min(-10_000_000).max(10_000_000),
+      y: z.number().finite().min(-10_000_000).max(10_000_000),
+    }),
+  }),
+  z.object({ type: z.literal("awareness") }),
+  z.object({ type: z.literal("message"), payload: z.record(z.unknown()) }),
+]);
 
 // Active connections per canvas
 const connections = new Map<string, Set<ClientConnection>>();
@@ -122,28 +139,6 @@ function parseCookies(request: IncomingMessage): Record<string, string> {
   return list;
 }
 
-function decodeUpdatePayload(payload: unknown): Uint8Array | null {
-  if (!payload) return null;
-
-  if (payload instanceof Uint8Array) {
-    return payload;
-  }
-
-  if (Array.isArray(payload)) {
-    return new Uint8Array(payload);
-  }
-
-  if (typeof payload === "string") {
-    return new Uint8Array(Buffer.from(payload, "base64"));
-  }
-
-  return null;
-}
-
-function encodeUpdatePayload(update: Uint8Array): string {
-  return Buffer.from(update).toString("base64");
-}
-
 function getChannel(canvasId: string): string {
   return `${REDIS_CHANNEL_PREFIX}${canvasId}`;
 }
@@ -194,7 +189,6 @@ function publishPresence(canvasId: string): void {
 
   const users = Array.from(clients).map((client) => ({
     userId: client.user.userId,
-    email: client.user.email,
     name: client.user.name,
     color: client.user.color,
     accessLevel: client.user.accessLevel,
@@ -293,14 +287,6 @@ async function handleRedisMessage(
   const { canvasId } = message;
 
   switch (message.type) {
-    case "update": {
-      const update = decodeUpdatePayload(message.payload?.update);
-      if (!update) return;
-      const doc = await getDocument(canvasId);
-      Y.applyUpdate(doc, update, "redis");
-      broadcastUpdate(canvasId, update);
-      break;
-    }
     case "presence": {
       const users = Array.isArray(message.payload?.users)
         ? message.payload.users
@@ -330,7 +316,10 @@ async function handleRedisMessage(
  * Initialize WebSocket server
  */
 export function createCollaborationServer(server: any): WebSocketServer {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: MAX_WEBSOCKET_PAYLOAD,
+  });
 
   // Handle WebSocket upgrade
   server.on(
@@ -463,6 +452,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             name: user.name || undefined,
             color: getNextUserColor(),
             accessLevel,
+            sessionVersion: user.sessionVersion,
           };
 
           wss.handleUpgrade(request, socket, head, (ws) => {
@@ -473,6 +463,9 @@ export function createCollaborationServer(server: any): WebSocketServer {
           socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
           socket.destroy();
         }
+      } else {
+        socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+        socket.destroy();
       }
     },
   );
@@ -541,24 +534,20 @@ async function handleConnection(
     isAlive: true,
     messageCount: 0,
     rateLimitReset: Date.now() + RATE_LIMIT_WINDOW,
+    lastAuthorizationCheck: Date.now(),
   };
 
   if (!connections.has(canvasId)) {
     connections.set(canvasId, new Set());
   }
+  if (connections.get(canvasId)!.size >= MAX_COLLABORATORS_PER_CANVAS) {
+    ws.close(1013, "Canvas connection limit reached");
+    return;
+  }
   connections.get(canvasId)!.add(connection);
   await subscribeToCanvas(canvasId);
 
   logger.info({ userId: user.userId, canvasId }, "User connected to canvas");
-
-  const doc = await getDocument(canvasId);
-
-  try {
-    const update = Y.encodeStateAsUpdate(doc);
-    ws.send(update);
-  } catch (error) {
-    logger.error({ error, canvasId }, "Error sending initial sync");
-  }
 
   broadcastPresence(canvasId);
   publishPresence(canvasId);
@@ -566,16 +555,17 @@ async function handleConnection(
   ws.on("message", async (data: Buffer, isBinary: boolean) => {
     try {
       if (isBinary) {
-        const update = new Uint8Array(data);
-        await handleBinaryUpdate(connection, update, doc);
+        handleBinaryUpdate(connection);
         return;
       }
 
-      const message =
+      const rawMessage =
         typeof data === "string"
           ? JSON.parse(data)
           : JSON.parse(data.toString());
-      await handleMessage(connection, message, doc);
+      const message = collaborationMessageSchema.parse(rawMessage);
+      if (!(await revalidateConnectionAccess(connection))) return;
+      await handleMessage(connection, message);
     } catch (error) {
       logger.error({ error, canvasId }, "Error handling message");
     }
@@ -604,33 +594,75 @@ async function handleConnection(
   });
 }
 
+async function revalidateConnectionAccess(
+  connection: ClientConnection,
+): Promise<boolean> {
+  if (Date.now() - connection.lastAuthorizationCheck < AUTHORIZATION_LEASE_MS) {
+    return true;
+  }
+
+  connection.lastAuthorizationCheck = Date.now();
+  const isGuest = connection.user.userId.startsWith("guest:");
+  const [canvas, user] = await Promise.all([
+    prisma.canvas.findUnique({
+      where: { id: connection.canvasId },
+      select: {
+        userId: true,
+        isPublic: true,
+        shares: isGuest
+          ? false
+          : {
+              where: { email: connection.user.email.toLowerCase() },
+              select: { role: true },
+            },
+      },
+    }),
+    isGuest
+      ? Promise.resolve(null)
+      : prisma.user.findUnique({
+          where: { id: connection.user.userId },
+          select: { sessionVersion: true },
+        }),
+  ]);
+
+  if (!canvas || (isGuest && !canvas.isPublic)) {
+    connection.ws.close(1008, "Canvas access was revoked");
+    return false;
+  }
+
+  if (!isGuest) {
+    const share = Array.isArray(canvas.shares) ? canvas.shares[0] : undefined;
+    const accessLevel =
+      canvas.userId === connection.user.userId
+        ? "OWNER"
+        : share?.role || (canvas.isPublic ? "VIEW" : null);
+    if (
+      !user ||
+      user.sessionVersion !== connection.user.sessionVersion ||
+      !accessLevel
+    ) {
+      connection.ws.close(1008, "Session or canvas access was revoked");
+      return false;
+    }
+    connection.accessLevel = accessLevel;
+    connection.user.accessLevel = accessLevel;
+  }
+
+  return true;
+}
+
 /**
  * Handle incoming WebSocket message
  */
 async function handleMessage(
   connection: ClientConnection,
-  message: any,
-  doc: Y.Doc,
+  message: z.infer<typeof collaborationMessageSchema>,
 ): Promise<void> {
   if (!applyRateLimit(connection)) {
     return;
   }
 
   switch (message.type) {
-    case "update":
-      {
-        const update = decodeUpdatePayload(message.update);
-        if (!update) {
-          logger.warn(
-            { userId: connection.user.userId },
-            "Invalid update payload",
-          );
-          return;
-        }
-        await handleClientUpdate(connection, update, doc);
-      }
-      break;
-
     case "cursor":
       connection.cursorPosition = message.position;
       broadcastCursors(connection.canvasId);
@@ -643,42 +675,27 @@ async function handleMessage(
       break;
 
     case "message":
+      if (
+        Buffer.byteLength(JSON.stringify(message.payload), "utf8") >
+        MAX_MESSAGE_PAYLOAD_BYTES
+      ) {
+        connection.ws.close(1009, "Message payload too large");
+        return;
+      }
       broadcastMessagePayload(connection.canvasId, message.payload, connection);
       break;
   }
 }
 
-async function handleBinaryUpdate(
-  connection: ClientConnection,
-  update: Uint8Array,
-  doc: Y.Doc,
-): Promise<void> {
+function handleBinaryUpdate(connection: ClientConnection): void {
   if (!applyRateLimit(connection)) {
     return;
   }
 
-  await handleClientUpdate(connection, update, doc);
-}
-
-async function handleClientUpdate(
-  connection: ClientConnection,
-  update: Uint8Array,
-  doc: Y.Doc,
-): Promise<void> {
-  if (connection.accessLevel !== "OWNER" && connection.accessLevel !== "EDIT") {
-    connection.ws.close(1008, "Insufficient permissions");
-    return;
-  }
-
-  Y.applyUpdate(doc, update, "ws");
-  broadcastUpdate(connection.canvasId, update, connection);
-  publishMessage({
-    type: "update",
-    canvasId: connection.canvasId,
-    instanceId,
-    payload: { update: encodeUpdatePayload(update) },
-    timestamp: Date.now(),
-  });
+  // Item mutation through untrusted Yjs documents is intentionally disabled.
+  // REST remains the single versioned write authority until actor-attributed,
+  // schema-validated collaboration patches are implemented end to end.
+  connection.ws.close(1003, "Binary collaboration updates are disabled");
 }
 
 function applyRateLimit(connection: ClientConnection): boolean {
@@ -729,30 +746,12 @@ function broadcastMessagePayload(
     }
   });
 }
-function broadcastUpdate(
-  canvasId: string,
-  update: Uint8Array,
-  sender?: ClientConnection,
-): void {
-  const clients = connections.get(canvasId);
-  if (!clients) return;
-
-  const message = Buffer.from(update);
-
-  clients.forEach((client) => {
-    if (client !== sender && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message, { binary: true });
-    }
-  });
-}
-
 function broadcastPresence(canvasId: string): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
 
   const localUsers = Array.from(clients).map((client) => ({
     userId: client.user.userId,
-    email: client.user.email,
     name: client.user.name,
     color: client.user.color,
     accessLevel: client.user.accessLevel,

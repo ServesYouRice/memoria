@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { createTheme, type PaletteMode, alpha } from '@mui/material/styles';
+import { createTheme, type PaletteMode, alpha } from "@mui/material/styles";
 
 /**
  * Memoria design tokens & MUI theme.
@@ -13,36 +13,36 @@ import { createTheme, type PaletteMode, alpha } from '@mui/material/styles';
 // Brand palette — indigo/violet identity
 export const brand = {
   primary: {
-    light: '#818cf8',
-    main: '#6366f1',
-    dark: '#4f46e5',
-    contrastText: '#ffffff',
+    light: "#818cf8",
+    main: "#6366f1",
+    dark: "#4f46e5",
+    contrastText: "#ffffff",
   },
   secondary: {
-    light: '#a78bfa',
-    main: '#8b5cf6',
-    dark: '#7c3aed',
-    contrastText: '#ffffff',
+    light: "#a78bfa",
+    main: "#8b5cf6",
+    dark: "#7c3aed",
+    contrastText: "#ffffff",
   },
   success: {
-    light: '#4ade80',
-    main: '#22c55e',
-    dark: '#16a34a',
+    light: "#4ade80",
+    main: "#22c55e",
+    dark: "#16a34a",
   },
   warning: {
-    light: '#fbbf24',
-    main: '#f59e0b',
-    dark: '#d97706',
+    light: "#fbbf24",
+    main: "#f59e0b",
+    dark: "#d97706",
   },
   error: {
-    light: '#f87171',
-    main: '#ef4444',
-    dark: '#dc2626',
+    light: "#f87171",
+    main: "#ef4444",
+    dark: "#dc2626",
   },
   info: {
-    light: '#38bdf8',
-    main: '#0ea5e9',
-    dark: '#0284c7',
+    light: "#38bdf8",
+    main: "#0ea5e9",
+    dark: "#0284c7",
   },
 };
 
@@ -50,40 +50,40 @@ export const gradients = {
   brand: `linear-gradient(135deg, ${brand.primary.main} 0%, ${brand.secondary.main} 100%)`,
   brandSoft: `linear-gradient(135deg, ${alpha(brand.primary.main, 0.12)} 0%, ${alpha(
     brand.secondary.main,
-    0.12
+    0.12,
   )} 100%)`,
   hero: `radial-gradient(ellipse 80% 60% at 50% -20%, ${alpha(
     brand.primary.main,
-    0.25
+    0.25,
   )}, transparent), radial-gradient(ellipse 60% 50% at 80% 40%, ${alpha(
     brand.secondary.main,
-    0.15
+    0.15,
   )}, transparent)`,
 };
 
 // Glassmorphism styles (used by AppBar / dialogs)
 export const glassStyles = {
   light: {
-    background: 'rgba(255, 255, 255, 0.8)',
-    backdropFilter: 'blur(12px)',
-    border: '1px solid rgba(15, 23, 42, 0.08)',
+    background: "rgba(255, 255, 255, 0.8)",
+    backdropFilter: "blur(12px)",
+    border: "1px solid rgba(15, 23, 42, 0.08)",
   },
   dark: {
-    background: 'rgba(15, 23, 42, 0.8)',
-    backdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: "rgba(15, 23, 42, 0.8)",
+    backdropFilter: "blur(12px)",
+    border: "1px solid rgba(255, 255, 255, 0.08)",
   },
 };
 
 // Animation timing
 export const transitions = {
-  fast: '150ms cubic-bezier(0.4, 0, 0.2, 1)',
-  normal: '250ms cubic-bezier(0.4, 0, 0.2, 1)',
-  slow: '350ms cubic-bezier(0.4, 0, 0.2, 1)',
+  fast: "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+  normal: "250ms cubic-bezier(0.4, 0, 0.2, 1)",
+  slow: "350ms cubic-bezier(0.4, 0, 0.2, 1)",
 };
 
 export function createAppTheme(mode: PaletteMode) {
-  const isLight = mode === 'light';
+  const isLight = mode === "light";
 
   return createTheme({
     palette: {
@@ -105,26 +105,26 @@ export function createAppTheme(mode: PaletteMode) {
       error: brand.error,
       info: brand.info,
       background: {
-        default: isLight ? '#f8fafc' : '#0b1120',
-        paper: isLight ? '#ffffff' : '#111a2e',
+        default: isLight ? "#f8fafc" : "#0b1120",
+        paper: isLight ? "#ffffff" : "#111a2e",
       },
       text: {
-        primary: isLight ? '#0f172a' : '#f1f5f9',
-        secondary: isLight ? '#64748b' : '#94a3b8',
+        primary: isLight ? "#0f172a" : "#f1f5f9",
+        secondary: isLight ? "#64748b" : "#94a3b8",
       },
-      divider: isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(241, 245, 249, 0.08)',
+      divider: isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)",
     },
     typography: {
       fontFamily:
-        'var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-      h1: { fontWeight: 800, letterSpacing: '-0.025em' },
-      h2: { fontWeight: 700, letterSpacing: '-0.02em' },
-      h3: { fontWeight: 700, letterSpacing: '-0.015em' },
-      h4: { fontWeight: 700, letterSpacing: '-0.01em' },
+        'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+      h1: { fontWeight: 800, letterSpacing: "-0.025em" },
+      h2: { fontWeight: 700, letterSpacing: "-0.02em" },
+      h3: { fontWeight: 700, letterSpacing: "-0.015em" },
+      h4: { fontWeight: 700, letterSpacing: "-0.01em" },
       h5: { fontWeight: 600 },
       h6: { fontWeight: 600 },
       subtitle1: { fontWeight: 500 },
-      button: { fontWeight: 600, letterSpacing: '0.01em' },
+      button: { fontWeight: 600, letterSpacing: "0.01em" },
     },
     shape: {
       borderRadius: 12,
@@ -133,45 +133,45 @@ export function createAppTheme(mode: PaletteMode) {
       MuiCssBaseline: {
         styleOverrides: {
           html: {
-            scrollBehavior: 'smooth',
-            '& *:focus-visible': {
+            scrollBehavior: "smooth",
+            "& *:focus-visible": {
               outline: `2px solid ${brand.primary.main}`,
-              outlineOffset: '2px',
+              outlineOffset: "2px",
             },
           },
           body: {
-            scrollbarWidth: 'thin',
-            '&::-webkit-scrollbar': { width: '8px', height: '8px' },
-            '&::-webkit-scrollbar-track': {
-              background: isLight ? '#f1f5f9' : '#111a2e',
+            scrollbarWidth: "thin",
+            "&::-webkit-scrollbar": { width: "8px", height: "8px" },
+            "&::-webkit-scrollbar-track": {
+              background: isLight ? "#f1f5f9" : "#111a2e",
             },
-            '&::-webkit-scrollbar-thumb': {
-              background: isLight ? '#cbd5e1' : '#475569',
-              borderRadius: '4px',
+            "&::-webkit-scrollbar-thumb": {
+              background: isLight ? "#cbd5e1" : "#475569",
+              borderRadius: "4px",
             },
-            '&::-webkit-scrollbar-thumb:hover': {
-              background: isLight ? '#94a3b8' : '#64748b',
+            "&::-webkit-scrollbar-thumb:hover": {
+              background: isLight ? "#94a3b8" : "#64748b",
             },
           },
-          '@keyframes fadeIn': {
-            from: { opacity: 0, transform: 'translateY(10px)' },
-            to: { opacity: 1, transform: 'translateY(0)' },
+          "@keyframes fadeIn": {
+            from: { opacity: 0, transform: "translateY(10px)" },
+            to: { opacity: 1, transform: "translateY(0)" },
           },
-          '@keyframes slideIn': {
-            from: { opacity: 0, transform: 'translateX(-10px)' },
-            to: { opacity: 1, transform: 'translateX(0)' },
+          "@keyframes slideIn": {
+            from: { opacity: 0, transform: "translateX(-10px)" },
+            to: { opacity: 1, transform: "translateX(0)" },
           },
-          '@keyframes pulse': {
-            '0%, 100%': { opacity: 1 },
-            '50%': { opacity: 0.5 },
+          "@keyframes pulse": {
+            "0%, 100%": { opacity: 1 },
+            "50%": { opacity: 0.5 },
           },
-          '@keyframes shimmer': {
-            '0%': { backgroundPosition: '-200% 0' },
-            '100%': { backgroundPosition: '200% 0' },
+          "@keyframes shimmer": {
+            "0%": { backgroundPosition: "-200% 0" },
+            "100%": { backgroundPosition: "200% 0" },
           },
-          '@keyframes float': {
-            '0%, 100%': { transform: 'translateY(0px)' },
-            '50%': { transform: 'translateY(-10px)' },
+          "@keyframes float": {
+            "0%, 100%": { transform: "translateY(0px)" },
+            "50%": { transform: "translateY(-10px)" },
           },
         },
       },
@@ -181,23 +181,23 @@ export function createAppTheme(mode: PaletteMode) {
         },
         styleOverrides: {
           root: {
-            textTransform: 'none',
+            textTransform: "none",
             fontWeight: 600,
             borderRadius: 10,
-            padding: '8px 18px',
+            padding: "8px 18px",
             transition: `all ${transitions.fast}`,
           },
           containedPrimary: {
             background: gradients.brand,
-            '&:hover': {
+            "&:hover": {
               background: gradients.brand,
-              filter: 'brightness(1.08)',
+              filter: "brightness(1.08)",
               boxShadow: `0 4px 16px ${alpha(brand.primary.main, 0.35)}`,
             },
           },
           sizeLarge: {
-            padding: '12px 28px',
-            fontSize: '1rem',
+            padding: "12px 28px",
+            fontSize: "1rem",
           },
         },
       },
@@ -205,15 +205,15 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           root: {
             borderRadius: 16,
-            backgroundImage: 'none',
-            boxShadow: 'none',
-            border: `1px solid ${isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(241, 245, 249, 0.08)'}`,
+            backgroundImage: "none",
+            boxShadow: "none",
+            border: `1px solid ${isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)"}`,
             transition: `border-color ${transitions.fast}, box-shadow ${transitions.fast}, transform ${transitions.fast}`,
-            '&:hover': {
+            "&:hover": {
               borderColor: alpha(brand.primary.main, 0.4),
               boxShadow: isLight
                 ? `0 8px 24px ${alpha(brand.primary.main, 0.08)}`
-                : '0 8px 24px rgba(0, 0, 0, 0.4)',
+                : "0 8px 24px rgba(0, 0, 0, 0.4)",
             },
           },
         },
@@ -221,17 +221,19 @@ export function createAppTheme(mode: PaletteMode) {
       MuiPaper: {
         styleOverrides: {
           root: {
-            backgroundImage: 'none',
+            backgroundImage: "none",
           },
           outlined: {
-            borderColor: isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(241, 245, 249, 0.08)',
+            borderColor: isLight
+              ? "rgba(15, 23, 42, 0.08)"
+              : "rgba(241, 245, 249, 0.08)",
           },
         },
       },
       MuiTextField: {
         styleOverrides: {
           root: {
-            '& .MuiOutlinedInput-root': {
+            "& .MuiOutlinedInput-root": {
               borderRadius: 10,
             },
           },
@@ -241,7 +243,7 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           paper: {
             borderRadius: 16,
-            border: `1px solid ${isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(241, 245, 249, 0.08)'}`,
+            border: `1px solid ${isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)"}`,
           },
         },
       },
@@ -257,26 +259,26 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           tooltip: {
             borderRadius: 8,
-            fontSize: '0.75rem',
+            fontSize: "0.75rem",
             fontWeight: 500,
-            padding: '6px 10px',
-            backgroundColor: isLight ? '#0f172a' : '#f1f5f9',
-            color: isLight ? '#f1f5f9' : '#0f172a',
+            padding: "6px 10px",
+            backgroundColor: isLight ? "#0f172a" : "#f1f5f9",
+            color: isLight ? "#f1f5f9" : "#0f172a",
           },
         },
       },
       MuiAppBar: {
         defaultProps: {
-          color: 'transparent',
+          color: "transparent",
         },
         styleOverrides: {
           root: {
             ...(isLight ? glassStyles.light : glassStyles.dark),
-            color: 'inherit',
-            boxShadow: 'none',
-            borderLeft: 'none',
-            borderRight: 'none',
-            borderTop: 'none',
+            color: "inherit",
+            boxShadow: "none",
+            borderLeft: "none",
+            borderRight: "none",
+            borderTop: "none",
           },
         },
       },
@@ -284,8 +286,8 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           paper: {
             borderRight: isLight
-              ? '1px solid rgba(15, 23, 42, 0.08)'
-              : '1px solid rgba(241, 245, 249, 0.08)',
+              ? "1px solid rgba(15, 23, 42, 0.08)"
+              : "1px solid rgba(241, 245, 249, 0.08)",
           },
         },
       },
@@ -294,10 +296,10 @@ export function createAppTheme(mode: PaletteMode) {
           paper: {
             borderRadius: 12,
             marginTop: 8,
-            border: `1px solid ${isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(241, 245, 249, 0.08)'}`,
+            border: `1px solid ${isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)"}`,
             boxShadow: isLight
-              ? '0 10px 32px rgba(15, 23, 42, 0.12)'
-              : '0 10px 32px rgba(0, 0, 0, 0.5)',
+              ? "0 10px 32px rgba(15, 23, 42, 0.12)"
+              : "0 10px 32px rgba(0, 0, 0, 0.5)",
           },
         },
       },
@@ -305,7 +307,7 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           root: {
             borderRadius: 8,
-            margin: '2px 6px',
+            margin: "2px 6px",
             transition: `all ${transitions.fast}`,
           },
         },
@@ -335,7 +337,7 @@ export function createAppTheme(mode: PaletteMode) {
       MuiTab: {
         styleOverrides: {
           root: {
-            textTransform: 'none',
+            textTransform: "none",
             fontWeight: 600,
           },
         },
@@ -345,4 +347,4 @@ export function createAppTheme(mode: PaletteMode) {
 }
 
 // Default light theme for backwards compatibility
-export const theme = createAppTheme('light');
+export const theme = createAppTheme("light");

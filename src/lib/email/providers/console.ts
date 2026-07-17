@@ -5,45 +5,44 @@
 
 /* eslint-disable no-console -- console provider intentionally logs emails for local development. */
 
-import { logger } from '@/lib/logger';
-import type { EmailService, SendEmailOptions } from '../types';
+import { logger } from "@/lib/logger";
+import type { EmailService, SendEmailOptions } from "../types";
 
 export class ConsoleEmailProvider implements EmailService {
   async send(options: SendEmailOptions): Promise<void> {
-    logger.info({ email: options }, 'Email would be sent (console provider)');
+    logger.info(
+      { to: this.formatAddresses(options.to), subject: options.subject },
+      "Email captured by console provider",
+    );
 
     // Pretty print for development
-    console.log('\n--- Email (Console Provider) ---');
-    console.log('To:', this.formatAddresses(options.to));
+    console.log("\n--- Email (Console Provider) ---");
+    console.log("To:", this.formatAddresses(options.to));
     if (options.from) {
-      console.log('From:', this.formatAddress(options.from));
+      console.log("From:", this.formatAddress(options.from));
     }
     if (options.cc) {
-      console.log('CC:', this.formatAddresses(options.cc));
+      console.log("CC:", this.formatAddresses(options.cc));
     }
     if (options.bcc) {
-      console.log('BCC:', this.formatAddresses(options.bcc));
+      console.log("BCC:", this.formatAddresses(options.bcc));
     }
-    console.log('Subject:', options.subject);
-    console.log('\n--- Text Content ---');
-    console.log(options.text);
-
-    if (options.html) {
-      console.log('\n--- HTML Content ---');
-      console.log(options.html);
-    }
+    console.log("Subject:", options.subject);
+    console.log(
+      "Content: [redacted — recovery and verification URLs are never logged]",
+    );
 
     if (options.attachments && options.attachments.length > 0) {
       console.log(
-        '\n--- Attachments ---',
-        options.attachments.map(a => a.filename).join(', ')
+        "\n--- Attachments ---",
+        options.attachments.map((a) => a.filename).join(", "),
       );
     }
-    console.log('--- End Email ---\n');
+    console.log("--- End Email ---\n");
   }
 
   async verify(): Promise<boolean> {
-    logger.info('Console email provider verified');
+    logger.info("Console email provider verified");
     return true;
   }
 
@@ -52,10 +51,11 @@ export class ConsoleEmailProvider implements EmailService {
   }
 
   private formatAddresses(
-    addresses: { email: string; name?: string } | { email: string; name?: string }[]
+    addresses:
+      { email: string; name?: string } | { email: string; name?: string }[],
   ): string {
     if (Array.isArray(addresses)) {
-      return addresses.map(a => this.formatAddress(a)).join(', ');
+      return addresses.map((a) => this.formatAddress(a)).join(", ");
     }
     return this.formatAddress(addresses);
   }

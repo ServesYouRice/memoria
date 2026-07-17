@@ -3,15 +3,24 @@
  * Update canvas thumbnail preview image
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/api/auth';
-import { prisma } from '@/lib/db';
-import { NotFoundError, ForbiddenError, ValidationError, errorResponse } from '@/lib/errors';
-import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
+import { type NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api/auth";
+import { prisma } from "@/lib/db";
+import {
+  NotFoundError,
+  ForbiddenError,
+  ValidationError,
+  errorResponse,
+} from "@/lib/errors";
+import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
 }
+
+const MAX_THUMBNAIL_BYTES = 200 * 1024;
+const THUMBNAIL_DATA_URL =
+  /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
 
 /**
  * Update canvas thumbnail
@@ -29,23 +38,34 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas) {
-      throw new NotFoundError('Canvas not found');
+      throw new NotFoundError("Canvas not found");
     }
 
     if (canvas.userId !== userId) {
-      throw new ForbiddenError('You can only update thumbnails for your own canvases');
+      throw new ForbiddenError(
+        "You can only update thumbnails for your own canvases",
+      );
     }
 
     const body = await request.json();
     const { thumbnail } = body;
 
-    if (!thumbnail || typeof thumbnail !== 'string') {
-      throw new ValidationError('Thumbnail data is required');
+    if (!thumbnail || typeof thumbnail !== "string") {
+      throw new ValidationError("Thumbnail data is required");
     }
 
-    // Validate that it's a data URL
-    if (!thumbnail.startsWith('data:image/')) {
-      throw new ValidationError('Thumbnail must be a valid image data URL');
+    const match = THUMBNAIL_DATA_URL.exec(thumbnail);
+    if (!match?.[2]) {
+      throw new ValidationError(
+        "Thumbnail must be a PNG, JPEG, or WebP base64 data URL",
+      );
+    }
+    const thumbnailBytes = Buffer.from(match[2], "base64");
+    if (
+      thumbnailBytes.length === 0 ||
+      thumbnailBytes.length > MAX_THUMBNAIL_BYTES
+    ) {
+      throw new ValidationError("Thumbnail must not exceed 200 KB");
     }
 
     // Update canvas with thumbnail
@@ -78,11 +98,13 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas) {
-      throw new NotFoundError('Canvas not found');
+      throw new NotFoundError("Canvas not found");
     }
 
     if (canvas.userId !== userId) {
-      throw new ForbiddenError('You can only delete thumbnails for your own canvases');
+      throw new ForbiddenError(
+        "You can only delete thumbnails for your own canvases",
+      );
     }
 
     // Remove thumbnail

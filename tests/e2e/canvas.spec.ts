@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
 /**
  * E2E Tests for Canvas Functionality (Slice 3)
@@ -12,60 +12,63 @@ import { test, expect } from '@playwright/test';
  * Note: These tests assume authentication is already implemented (Slice 2)
  */
 
-test.describe('Canvas Page', () => {
+test.describe("Canvas Page", () => {
   test.beforeEach(async ({ page }) => {
     // For demo purposes, we'll set up a mock auth cookie
     // In production, this would use actual authentication
     await page.context().addCookies([
       {
-        name: 'next-auth.session-token',
-        value: 'demo-session-token',
-        domain: 'localhost',
-        path: '/',
+        name: "next-auth.session-token",
+        value: "demo-session-token",
+        domain: "localhost",
+        path: "/",
       },
     ]);
   });
 
-  test('should redirect to sign-in when not authenticated', async ({ page, context }) => {
+  test("should redirect to sign-in when not authenticated", async ({
+    page,
+    context,
+  }) => {
     // Clear cookies to simulate unauthenticated state
     await context.clearCookies();
 
     // Navigate to canvas page
-    await page.goto('/canvas/test-canvas-id');
+    await page.goto("/canvas/test-canvas-id");
 
     // Should redirect to sign-in
     await expect(page).toHaveURL(/\/auth\/signin/);
   });
 
-  test('should load canvas page when authenticated', async ({ page }) => {
+  test("should load canvas page when authenticated", async ({ page }) => {
     // Navigate to canvas page
-    await page.goto('/canvas/test-canvas-id');
+    await page.goto("/canvas/test-canvas-id");
 
     // Should stay on canvas page
     await expect(page).toHaveURL(/\/canvas\/test-canvas-id/);
 
     // Should show canvas elements
-    await expect(page.getByText('Canvas')).toBeVisible();
+    await expect(page.getByText("Canvas")).toBeVisible();
   });
 
-  test('should display zoom level indicator', async ({ page }) => {
-    await page.goto('/canvas/test-canvas-id');
+  test("should display zoom level indicator", async ({ page }) => {
+    await page.goto("/canvas/test-canvas-id");
 
     // Wait for canvas to load
-    await page.waitForSelector('[role="progressbar"]', { state: 'detached' });
+    await page.waitForSelector('[role="progressbar"]', { state: "detached" });
 
     // Should show zoom level
     await expect(page.getByText(/Zoom: 100%/)).toBeVisible();
   });
 
-  test('should handle zoom with mouse wheel', async ({ page }) => {
-    await page.goto('/canvas/test-canvas-id');
+  test("should handle zoom with mouse wheel", async ({ page }) => {
+    await page.goto("/canvas/test-canvas-id");
 
     // Wait for canvas to load
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState("networkidle");
 
     // Get the canvas container
-    const canvas = page.locator('canvas').first();
+    const canvas = page.locator("canvas").first();
 
     // Simulate zoom in with mouse wheel
     await canvas.hover();
@@ -79,32 +82,32 @@ test.describe('Canvas Page', () => {
     expect(zoomText).toBeTruthy();
   });
 
-  test('should be responsive', async ({ page }) => {
+  test("should be responsive", async ({ page }) => {
     // Test mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/canvas/test-canvas-id');
+    await page.goto("/canvas/test-canvas-id");
 
     // Canvas should still be visible
-    await expect(page.getByText('Canvas')).toBeVisible();
+    await expect(page.getByText("Canvas")).toBeVisible();
 
     // Test tablet viewport
     await page.setViewportSize({ width: 768, height: 1024 });
-    await expect(page.getByText('Canvas')).toBeVisible();
+    await expect(page.getByText("Canvas")).toBeVisible();
 
     // Test desktop viewport
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await expect(page.getByText('Canvas')).toBeVisible();
+    await expect(page.getByText("Canvas")).toBeVisible();
   });
 });
 
-test.describe('Canvas API', () => {
-  test('should fetch canvas data', async ({ request }) => {
+test.describe("Canvas API", () => {
+  test("should fetch canvas data", async () => {
     // This test would require a test database with seed data
     // For now, it's a placeholder for future implementation
     test.skip();
   });
 
-  test('should update canvas zoom and pan', async ({ request }) => {
+  test("should update canvas zoom and pan", async () => {
     // This test would require a test database with seed data
     // For now, it's a placeholder for future implementation
     test.skip();

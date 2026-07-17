@@ -19,6 +19,12 @@ export interface Canvas {
   thumbnail?: string | null;
   createdAt: string;
   updatedAt: string;
+  shares?: Array<{
+    id: string;
+    role: "VIEW" | "COMMENT" | "EDIT";
+    createdAt: string;
+  }>;
+  accessLevel?: "OWNER" | "EDIT" | "COMMENT" | "VIEW";
 }
 
 export interface SharedCanvas {
@@ -36,6 +42,7 @@ export interface SharedCanvas {
 
 export interface CreateCanvasInput {
   name?: string;
+  workspaceId?: string;
 }
 
 export interface UpdateCanvasInput {
@@ -61,9 +68,27 @@ export interface CanvasesListResponse {
  */
 const api = {
   async listCanvases() {
-    const response = await apiFetch("/api/v1/canvases");
-    if (!response.ok) throw new Error("Failed to fetch canvases");
-    return response.json() as Promise<CanvasesListResponse>;
+    const canvases: Canvas[] = [];
+    let offset = 0;
+    let total = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await apiFetch(
+        `/api/v1/canvases?limit=100&offset=${offset}`,
+      );
+      if (!response.ok) throw new Error("Failed to fetch canvases");
+      const page = (await response.json()) as CanvasesListResponse;
+      canvases.push(...page.canvases);
+      total = page.pagination.total;
+      offset += page.canvases.length;
+      hasMore = page.pagination.hasMore && page.canvases.length > 0;
+    }
+
+    return {
+      canvases,
+      pagination: { total, limit: canvases.length, offset: 0, hasMore: false },
+    };
   },
 
   async listSharedCanvases() {
@@ -190,6 +215,7 @@ export function useCreateCanvas() {
               id: "temp-id-" + Date.now(),
               name: newCanvas.name || "Untitled Canvas",
               userId: "current-user",
+              workspaceId: newCanvas.workspaceId ?? null,
               zoomLevel: 1,
               panX: 0,
               panY: 0,

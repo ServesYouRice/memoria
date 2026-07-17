@@ -22,6 +22,12 @@ function addCheck(name, status, detail) {
   results.push({ name, status, detail });
 }
 
+function redactedConnectionTarget(value, fallbackPort) {
+  if (!value) return 'Missing';
+  const target = parseConnectionTarget(value, fallbackPort);
+  return `${target.host}:${target.port}`;
+}
+
 if (!existsSync(envFile)) {
   addCheck('env-file', 'fail', `Missing environment file: ${envFile}`);
 } else {
@@ -32,7 +38,7 @@ const envValues = readEnvFile(envFile).values;
 const emailProvider = envValues.get('EMAIL_PROVIDER') || 'console';
 
 for (const key of ['DATABASE_URL', 'AUTH_URL', 'AUTH_SECRET']) {
-  addCheck(key, envValues.get(key) ? 'pass' : 'fail', envValues.get(key) || 'Missing');
+  addCheck(key, envValues.get(key) ? 'pass' : 'fail', envValues.get(key) ? 'Configured' : 'Missing');
 }
 
 if (emailProvider === 'smtp') {
@@ -56,7 +62,7 @@ if ((envValues.get('NODE_ENV') || 'development') === 'production') {
 if (envValues.get('REDIS_URL')) {
   try {
     await waitForPort({ ...parseConnectionTarget(envValues.get('REDIS_URL'), 6379), label: 'Redis', timeoutMs: 5000 });
-    addCheck('redis', 'pass', envValues.get('REDIS_URL'));
+    addCheck('redis', 'pass', redactedConnectionTarget(envValues.get('REDIS_URL'), 6379));
   } catch (error) {
     addCheck('redis', 'fail', error instanceof Error ? error.message : 'Unreachable');
   }
@@ -69,7 +75,7 @@ if (envValues.get('DATABASE_URL')) {
       label: 'Postgres',
       timeoutMs: 5000,
     });
-    addCheck('database', 'pass', envValues.get('DATABASE_URL'));
+    addCheck('database', 'pass', redactedConnectionTarget(envValues.get('DATABASE_URL'), 5432));
   } catch (error) {
     addCheck('database', 'fail', error instanceof Error ? error.message : 'Unreachable');
   }
@@ -121,15 +127,11 @@ try {
   addCheck('env-validation', 'fail', error instanceof Error ? error.message : 'Environment validation failed');
 }
 
-try {
-  await run('node', ['scripts/vector-check.mjs'], {
-    cwd: projectRoot,
-    env: { ...process.env, MEMORIA_ENV_FILE: envFile },
-  });
-  addCheck('vector-extension', 'pass', 'pgvector extension is available');
-} catch (error) {
-  addCheck('vector-extension', 'fail', error instanceof Error ? error.message : 'Vector extension check failed');
-}
+addCheck(
+  'vector-extension',
+  'pass',
+  'Not required: embeddings are stored as JSON in the current schema'
+);
 
 const hasFailure = results.some((entry) => entry.status === 'fail');
 

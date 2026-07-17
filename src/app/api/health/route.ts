@@ -10,29 +10,35 @@
  * - Application version
  */
 
-import { NextResponse } from 'next/server';
-import { createLogger } from '@/lib/logger';
-import { prisma } from '@/lib/db';
-import { API_VERSION } from '@/lib/api/versioning';
+import { NextResponse } from "next/server";
+import { createLogger } from "@/lib/logger";
+import { prisma } from "@/lib/db";
+import { API_VERSION } from "@/lib/api/versioning";
+import { getRedisClient } from "@/lib/cache/redis-client";
 
-const logger = createLogger('health');
+const logger = createLogger("health");
 
 // Track when the application started
 const startTime = Date.now();
 
 interface HealthCheck {
-  status: 'healthy' | 'degraded' | 'unhealthy';
+  status: "healthy" | "degraded" | "unhealthy";
   timestamp: string;
   version: string;
   uptime: number;
   checks: {
     database: {
-      status: 'pass' | 'fail';
+      status: "pass" | "fail";
+      responseTime?: number;
+      error?: string;
+    };
+    redis: {
+      status: "pass" | "fail" | "skip";
       responseTime?: number;
       error?: string;
     };
     memory: {
-      status: 'pass' | 'warn' | 'fail';
+      status: "pass" | "warn" | "fail";
       used: number;
       total: number;
       percentage: number;
@@ -42,32 +48,59 @@ interface HealthCheck {
   };
 }
 
-async function checkDatabase(): Promise<HealthCheck['checks']['database']> {
+async function checkDatabase(): Promise<HealthCheck["checks"]["database"]> {
   const start = Date.now();
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("database timeout")), 3000),
+      ),
+    ]);
     const responseTime = Date.now() - start;
-    return { status: 'pass', responseTime };
+    return { status: "pass", responseTime };
   } catch (error) {
-    logger.error({ error }, 'Database health check failed');
+    logger.error({ error }, "Database health check failed");
     return {
-      status: 'fail',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      status: "fail",
+      error: "database_unavailable",
     };
   }
 }
 
-function checkMemory(): HealthCheck['checks']['memory'] {
+async function checkRedis(): Promise<HealthCheck["checks"]["redis"]> {
+  const start = Date.now();
+  const redis = getRedisClient();
+  if (!redis) {
+    return process.env.NODE_ENV === "production"
+      ? { status: "fail", error: "redis_unavailable" }
+      : { status: "skip", error: "redis_not_configured" };
+  }
+  try {
+    await Promise.race([
+      redis.ping(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("redis timeout")), 3000),
+      ),
+    ]);
+    return { status: "pass", responseTime: Date.now() - start };
+  } catch (error) {
+    logger.error({ error }, "Redis health check failed");
+    return { status: "fail", error: "redis_unavailable" };
+  }
+}
+
+function checkMemory(): HealthCheck["checks"]["memory"] {
   const usage = process.memoryUsage();
   const totalMemory = usage.heapTotal;
   const usedMemory = usage.heapUsed;
   const percentage = (usedMemory / totalMemory) * 100;
 
-  let status: 'pass' | 'warn' | 'fail' = 'pass';
+  let status: "pass" | "warn" | "fail" = "pass";
   if (percentage > 90) {
-    status = 'fail';
+    status = "fail";
   } else if (percentage > 75) {
-    status = 'warn';
+    status = "warn";
   }
 
   return {
@@ -82,21 +115,22 @@ function checkMemory(): HealthCheck['checks']['memory'] {
 
 export async function GET() {
   try {
-    const [database, memory] = await Promise.all([
+    const [database, redis, memory] = await Promise.all([
       checkDatabase(),
+      checkRedis(),
       Promise.resolve(checkMemory()),
     ]);
 
-    const checks = { database, memory };
+    const checks = { database, redis, memory };
 
     // Calculate overall status
-    let overallStatus: HealthCheck['status'] = 'healthy';
-    if (database.status === 'fail') {
-      overallStatus = 'unhealthy';
-    } else if (memory.status === 'warn') {
-      overallStatus = 'degraded';
-    } else if (memory.status === 'fail') {
-      overallStatus = 'unhealthy';
+    let overallStatus: HealthCheck["status"] = "healthy";
+    if (database.status === "fail" || redis.status === "fail") {
+      overallStatus = "unhealthy";
+    } else if (memory.status === "warn") {
+      overallStatus = "degraded";
+    } else if (memory.status === "fail") {
+      overallStatus = "unhealthy";
     }
 
     // Calculate uptime in seconds
@@ -110,25 +144,28 @@ export async function GET() {
       checks,
     };
 
-    const statusCode = overallStatus === 'healthy' ? 200 : 503;
+    const statusCode = overallStatus === "healthy" ? 200 : 503;
 
     // Add cache control headers - don't cache health checks
     const response = NextResponse.json(health, { status: statusCode });
-    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    response.headers.set('Pragma', 'no-cache');
-    response.headers.set('Expires', '0');
+    response.headers.set(
+      "Cache-Control",
+      "no-cache, no-store, must-revalidate",
+    );
+    response.headers.set("Pragma", "no-cache");
+    response.headers.set("Expires", "0");
 
     return response;
   } catch (error) {
-    logger.error({ error }, 'Health check failed');
+    logger.error({ error }, "Health check failed");
     return NextResponse.json(
       {
-        status: 'unhealthy',
+        status: "unhealthy",
         timestamp: new Date().toISOString(),
         version: API_VERSION,
-        error: 'Internal server error',
+        error: "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

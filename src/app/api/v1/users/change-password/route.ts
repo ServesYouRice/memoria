@@ -87,10 +87,17 @@ export async function POST(request: NextRequest) {
     // Hash new password
     const hashedPassword = await hashPassword(data.newPassword);
 
-    // Update password
-    await prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: hashedPassword },
+    // Rotate the security stamp and remove database sessions in the same
+    // transaction so every existing cookie is invalid after this change.
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: hashedPassword,
+          sessionVersion: { increment: 1 },
+        },
+      });
+      await tx.session.deleteMany({ where: { userId } });
     });
 
     return NextResponse.json({ message: "Password changed successfully" });

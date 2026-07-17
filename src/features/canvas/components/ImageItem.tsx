@@ -21,6 +21,7 @@ interface ImageItemProps {
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
   onDragEnd?: (e: any) => void;
+  readOnly?: boolean;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -35,6 +36,7 @@ export function ImageItem({
   onDoubleClick,
   onContextMenu,
   onDragEnd,
+  readOnly = false,
 }: ImageItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -180,7 +182,7 @@ export function ImageItem({
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable
+      draggable={!readOnly}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
@@ -266,7 +268,7 @@ export function ImageItem({
       )}
 
       {/* Resize handles and delete button */}
-      {isSelected && (
+      {isSelected && !readOnly && (
         <>
           {/* Resize handles */}
           <Circle

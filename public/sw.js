@@ -1,77 +1,73 @@
 /**
- * Service Worker
- * Basic PWA functionality
+ * Privacy-preserving service worker.
  *
- * Only static assets are cached. HTML pages (including authenticated,
- * personalized pages like /dashboard) and API responses are always served
- * from the network so users never see another session's state or a stale
- * app shell after a deploy.
+ * Authenticated documents and API responses are deliberately network-only.
+ * Cache Storage is limited to public, immutable application assets and a
+ * dedicated offline document that contains no user data.
  */
 
-// Bump the version when caching behavior or precached assets change.
-const CACHE_NAME = "memoria-static-v2";
-const STATIC_CACHE = [
-  "/manifest.json",
-  "/icons/icon-192x192.png",
-  "/icons/icon-512x512.png",
-];
+const CACHE_NAME = "memoria-public-v2";
+const UNSAFE_LEGACY_CACHES = new Set(["canvascollect-v1"]);
+const PUBLIC_FALLBACKS = ["/offline", "/manifest.json"];
 
-function isCacheableStaticAsset(request) {
-  if (request.method !== "GET") return false;
-
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return false;
-
-  // Never cache pages or data — only immutable/static assets.
-  if (url.pathname.startsWith("/_next/static/")) return true;
-  if (url.pathname.startsWith("/icons/")) return true;
-  if (url.pathname === "/manifest.json") return true;
-  return /\.(?:png|jpg|jpeg|gif|webp|svg|ico|woff2?)$/.test(url.pathname);
+function isPublicAsset(url) {
+  return (
+    url.origin === self.location.origin &&
+    (url.pathname.startsWith("/_next/static/") ||
+      url.pathname.startsWith("/icons/") ||
+      url.pathname === "/manifest.json")
+  );
 }
 
-// Install event - cache static assets
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_CACHE);
-    }),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PUBLIC_FALLBACKS)),
   );
   self.skipWaiting();
 });
 
-// Activate event - cleanup old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name)),
-      );
-    }),
+    caches
+      .keys()
+      .then((names) =>
+        Promise.all(
+          names
+            .filter(
+              (name) => name !== CACHE_NAME || UNSAFE_LEGACY_CACHES.has(name),
+            )
+            .map((name) => caches.delete(name)),
+        ),
+      )
+      .then(() => self.clients.claim()),
   );
-  self.clients.claim();
 });
 
-// Fetch event - static assets: network first with cache fallback; everything
-// else goes straight to the network.
 self.addEventListener("fetch", (event) => {
-  if (!isCacheableStaticAsset(event.request)) return;
+  const { request } = event;
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+
+  if (request.mode === "navigate") {
+    event.respondWith(fetch(request).catch(() => caches.match("/offline")));
+    return;
+  }
+
+  if (!isPublicAsset(url)) return;
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        // Network failed, try cache
-        return caches.match(event.request);
-      }),
+    caches.match(request).then(
+      (cached) =>
+        cached ||
+        fetch(request).then((response) => {
+          if (response.ok && response.type === "basic") {
+            void caches
+              .open(CACHE_NAME)
+              .then((cache) => cache.put(request, response.clone()));
+          }
+          return response;
+        }),
+    ),
   );
 });

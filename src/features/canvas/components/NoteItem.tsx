@@ -24,6 +24,7 @@ interface NoteItemProps {
   onContextMenu?: (e: any) => void;
   onDragEnd?: (e: any) => void;
   onChange?: (data: any) => void;
+  readOnly?: boolean;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -37,6 +38,7 @@ export function NoteItem({
   onSelect,
   onDoubleClick,
   onContextMenu,
+  readOnly = false,
 }: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -162,7 +164,7 @@ export function NoteItem({
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable
+      draggable={!readOnly}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
@@ -206,7 +208,7 @@ export function NoteItem({
         />
       )}
 
-      {isSelected && (
+      {isSelected && !readOnly && (
         <>
           {/* Resize handles */}
           <Circle

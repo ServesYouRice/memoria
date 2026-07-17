@@ -1,6 +1,6 @@
-import React from 'react';
-import { Layer } from 'react-konva';
-import type { CanvasItem } from '@/types/canvas';
+import React from "react";
+import { Layer } from "react-konva";
+import type { CanvasItem } from "@/types/canvas";
 import {
   ItemType,
   isNoteContent,
@@ -11,20 +11,20 @@ import {
   isFrameContent,
   isEmbedContent,
   isPollContent,
-} from '@/types/canvas';
-import { SelectionBox } from '@/features/canvas/components/SelectionBox';
-import type { SelectionBox as SelectionBoxState } from '@/lib/hooks/use-selection-box';
+} from "@/types/canvas";
+import { SelectionBox } from "@/features/canvas/components/SelectionBox";
+import type { SelectionBox as SelectionBoxState } from "@/lib/hooks/use-selection-box";
 
-import { BookmarkItem } from '@/features/canvas/components/BookmarkItem';
-import { NoteItem } from '@/features/canvas/components/NoteItem';
-import { ImageItem } from '@/features/canvas/components/ImageItem';
-import { DrawingItem } from '@/features/canvas/components/DrawingItem';
-import { ShapeItem } from '@/features/canvas/components/ShapeItem';
-import { ArrowItem } from '@/features/canvas/components/ArrowItem';
-import { TextItem } from '@/features/canvas/components/TextItem';
-import { FrameItem } from '@/features/canvas/components/FrameItem';
-import { EmbedItem } from '@/features/canvas/components/EmbedItem';
-import { PollItem } from '@/features/canvas/components/PollItem';
+import { BookmarkItem } from "@/features/canvas/components/BookmarkItem";
+import { NoteItem } from "@/features/canvas/components/NoteItem";
+import { ImageItem } from "@/features/canvas/components/ImageItem";
+import { DrawingItem } from "@/features/canvas/components/DrawingItem";
+import { ShapeItem } from "@/features/canvas/components/ShapeItem";
+import { ArrowItem } from "@/features/canvas/components/ArrowItem";
+import { TextItem } from "@/features/canvas/components/TextItem";
+import { FrameItem } from "@/features/canvas/components/FrameItem";
+import { EmbedItem } from "@/features/canvas/components/EmbedItem";
+import { PollItem } from "@/features/canvas/components/PollItem";
 
 interface CanvasItemLayerProps {
   items: CanvasItem[];
@@ -38,6 +38,7 @@ interface CanvasItemLayerProps {
   onImageDoubleClick: (item: CanvasItem) => void;
   onDragEnd: (event: any, item: CanvasItem) => void;
   onItemChange: (id: string, data: any) => void;
+  readOnly?: boolean;
 }
 
 export function CanvasItemLayer({
@@ -52,6 +53,7 @@ export function CanvasItemLayer({
   onImageDoubleClick,
   onDragEnd,
   onItemChange,
+  readOnly = false,
 }: CanvasItemLayerProps) {
   return (
     <Layer>
@@ -67,6 +69,7 @@ export function CanvasItemLayer({
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
               onDoubleClick={() => onNoteDoubleClick(item)}
               onDragEnd={(event: any) => onDragEnd(event, item)}
+              readOnly={readOnly}
             />
           );
         }
@@ -80,6 +83,7 @@ export function CanvasItemLayer({
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
               onDoubleClick={() => onBookmarkDoubleClick(item)}
               onDragEnd={(event: any) => onDragEnd(event, item)}
+              readOnly={readOnly}
             />
           );
         }
@@ -93,6 +97,7 @@ export function CanvasItemLayer({
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
               onDoubleClick={() => onImageDoubleClick(item)}
               onDragEnd={(event: any) => onDragEnd(event, item)}
+              readOnly={readOnly}
             />
           );
         }

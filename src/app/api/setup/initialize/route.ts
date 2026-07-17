@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import { isBootstrapAvailable } from "@/lib/bootstrap";
 import { hashPassword } from "@/lib/auth/password";
 import { validatePasswordStrength } from "@/lib/validation/password";
+import { timingSafeEqual } from "crypto";
 import {
   BadRequestError,
   ConflictError,
@@ -37,10 +38,11 @@ export async function POST(request: NextRequest) {
 
     const providedToken = payload.token?.trim();
     const expectedToken = env.APP_BOOTSTRAP_TOKEN?.trim();
-    if (
-      !isLocalDevelopmentRequest(request) &&
-      (!providedToken || providedToken !== expectedToken)
-    ) {
+    const tokenMatches =
+      Boolean(providedToken && expectedToken) &&
+      providedToken!.length === expectedToken!.length &&
+      timingSafeEqual(Buffer.from(providedToken!), Buffer.from(expectedToken!));
+    if (!isLocalDevelopmentRequest(request) && !tokenMatches) {
       throw new UnauthorizedError("Invalid bootstrap token.");
     }
 
@@ -65,46 +67,52 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(payload.password);
 
-    const created = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email: normalizedEmail,
-          name: payload.name.trim(),
-          passwordHash,
-          emailVerified: new Date(),
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-        },
-      });
+    const created = await prisma.$transaction(
+      async (tx) => {
+        if ((await tx.user.count()) > 0) {
+          throw new ConflictError("Bootstrap is no longer available.");
+        }
+        const user = await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            name: payload.name.trim(),
+            passwordHash,
+            emailVerified: new Date(),
+          },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        });
 
-      const workspace = await tx.workspace.create({
-        data: {
-          name: "Personal",
-          userId: user.id,
-        },
-        select: {
-          id: true,
-          name: true,
-        },
-      });
+        const workspace = await tx.workspace.create({
+          data: {
+            name: "Personal",
+            userId: user.id,
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
 
-      const canvas = await tx.canvas.create({
-        data: {
-          name: "Inbox",
-          userId: user.id,
-          workspaceId: workspace.id,
-        },
-        select: {
-          id: true,
-          name: true,
-        },
-      });
+        const canvas = await tx.canvas.create({
+          data: {
+            name: "Inbox",
+            userId: user.id,
+            workspaceId: workspace.id,
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
 
-      return { user, workspace, canvas };
-    });
+        return { user, workspace, canvas };
+      },
+      { isolationLevel: "Serializable" },
+    );
 
     return NextResponse.json(
       {

@@ -11,6 +11,7 @@ import { assertAgentCapability, assertCanvasScope } from "@/lib/agents/policy";
 import { AGENT_CAPABILITY_RUNGS } from "@/lib/agents/constants";
 import {
   approveSuggestion,
+  claimSuggestionForExecution,
   createCanvasItemBatchWrite,
   createCanvasItemWrite,
   createKnowledgeEntityWrite,
@@ -380,6 +381,11 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     if (suggestion.expiresAt <= new Date()) {
       throw new BadRequestError("The selected suggestion has expired.");
     }
+
+    await claimSuggestionForExecution({
+      userId: context.userId,
+      suggestionId: suggestion.id,
+    });
 
     const actor = {
       userId: context.userId,

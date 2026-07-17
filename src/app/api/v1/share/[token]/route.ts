@@ -3,9 +3,9 @@
  * GET /api/v1/share/[token] - Get publicly shared canvas (no auth required)
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { errorResponse, NotFoundError, ForbiddenError } from '@/lib/errors';
+import { type NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { errorResponse, NotFoundError, ForbiddenError } from "@/lib/errors";
 
 interface RouteContext {
   params: Promise<{ token: string }>;
@@ -22,10 +22,27 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     // Find canvas by share token
     const canvas = await prisma.canvas.findUnique({
       where: { shareToken: token },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        isPublic: true,
+        zoomLevel: true,
+        panX: true,
+        panY: true,
         items: {
           where: { deletedAt: null },
-          orderBy: [{ zIndex: 'asc' }, { createdAt: 'asc' }],
+          orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }],
+          select: {
+            id: true,
+            type: true,
+            positionX: true,
+            positionY: true,
+            width: true,
+            height: true,
+            zIndex: true,
+            content: true,
+            tags: true,
+          },
         },
         user: {
           select: {
@@ -37,19 +54,19 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas) {
-      throw new NotFoundError('Canvas not found');
+      throw new NotFoundError("Canvas not found");
     }
 
     // Check if canvas is public
     if (!canvas.isPublic) {
-      throw new ForbiddenError('This canvas is not publicly shared');
+      throw new ForbiddenError("This canvas is not publicly shared");
     }
 
     // Return canvas data
     return NextResponse.json({
       id: canvas.id,
       name: canvas.name,
-      owner: canvas.user.name || 'Anonymous',
+      owner: canvas.user.name || "Anonymous",
       items: canvas.items,
       zoomLevel: canvas.zoomLevel,
       panX: canvas.panX,

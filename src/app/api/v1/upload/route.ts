@@ -5,22 +5,19 @@
  * - File type validation (images only)
  * - File size limits
  * - Sanitized filenames
- * - Storage in public/uploads directory
+ * - Private storage with an authorized read proxy
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { mkdir, writeFile, readdir, stat } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { join, resolve, sep } from "path";
 import { randomBytes } from "crypto";
 
 import { runIdempotent, withApiHandler } from "@/lib/api/route-handler";
-import { requireAuth } from "@/lib/api/auth";
+import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
+import { prisma } from "@/lib/db";
 import { ApiError, UnprocessableEntityError } from "@/lib/errors";
-import {
-  S3Client,
-  PutObjectCommand,
-  ListObjectsV2Command,
-} from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getRedisClient } from "@/lib/cache/redis-client";
 
 // Maximum file size: 5MB
@@ -116,43 +113,6 @@ function detectImageType(
   return null;
 }
 
-async function getDirectoryUsage(
-  directory: string,
-): Promise<{ fileCount: number; totalBytes: number }> {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const files = entries.filter((entry) => entry.isFile());
-  const stats = await Promise.all(
-    files.map((entry) => stat(join(directory, entry.name))),
-  );
-  const totalBytes = stats.reduce((sum, entry) => sum + entry.size, 0);
-  return { fileCount: files.length, totalBytes };
-}
-
-async function getS3Usage(client: S3Client, bucket: string, prefix: string) {
-  let continuationToken: string | undefined;
-  let fileCount = 0;
-  let totalBytes = 0;
-
-  do {
-    const page = await client.send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix,
-        ContinuationToken: continuationToken,
-      }),
-    );
-
-    fileCount += page.Contents?.length || 0;
-    totalBytes +=
-      page.Contents?.reduce((sum, entry) => sum + (entry.Size || 0), 0) || 0;
-    continuationToken = page.IsTruncated
-      ? page.NextContinuationToken
-      : undefined;
-  } while (continuationToken);
-
-  return { fileCount, totalBytes };
-}
-
 function getStorageMode(): "local" | "s3" {
   return process.env.UPLOAD_STORAGE === "s3" ? "s3" : "local";
 }
@@ -187,23 +147,6 @@ function getS3Client(): S3Client {
   });
 
   return s3Client;
-}
-
-function buildPublicUrl(key: string): string {
-  const publicBase = process.env.UPLOADS_PUBLIC_URL;
-  if (publicBase) {
-    return `${publicBase.replace(/\/$/, "")}/${key}`;
-  }
-
-  const bucket = process.env.S3_BUCKET;
-  const region = process.env.S3_REGION;
-  const endpoint = process.env.S3_ENDPOINT;
-
-  if (endpoint) {
-    return `${endpoint.replace(/\/$/, "")}/${bucket}/${key}`;
-  }
-
-  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
 }
 
 async function withUploadLock<T>(
@@ -345,11 +288,12 @@ async function runMalwareScan(
 }
 
 export const POST = withApiHandler(async (request: NextRequest) => {
-  const { userId } = await requireAuth();
+  const { userId, email } = await requireAuth();
 
   return runIdempotent(request, userId, async () => {
     const formData = await request.formData();
     const file = formData.get("file") as File;
+    const canvasId = formData.get("canvasId");
 
     if (!file) {
       throw new ApiError(
@@ -359,6 +303,17 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         "No file provided",
       );
     }
+
+    if (typeof canvasId !== "string" || !/^c[a-z0-9]{20,}$/i.test(canvasId)) {
+      throw new ApiError(
+        400,
+        "https://memoria.local/errors/upload",
+        "Bad Request",
+        "A valid canvasId is required",
+      );
+    }
+
+    await requireCanvasAccess(canvasId, userId, email, "EDIT");
 
     if (file.size > MAX_FILE_SIZE) {
       throw new ApiError(
@@ -401,6 +356,33 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     const storageMode = getStorageMode();
 
     return withUploadLock(userId, async () => {
+      const [fileCount, sizeAggregate] = await Promise.all([
+        prisma.uploadAsset.count({ where: { userId } }),
+        prisma.uploadAsset.aggregate({
+          where: { userId },
+          _sum: { size: true },
+        }),
+      ]);
+      const totalBytes = sizeAggregate._sum.size || 0;
+
+      if (fileCount >= MAX_FILES_PER_USER) {
+        throw new ApiError(
+          400,
+          "https://memoria.local/errors/upload",
+          "Bad Request",
+          "Upload limit reached for this account",
+        );
+      }
+
+      if (totalBytes + buffer.length > MAX_TOTAL_BYTES_PER_USER) {
+        throw new ApiError(
+          400,
+          "https://memoria.local/errors/upload",
+          "Bad Request",
+          "Storage quota exceeded for this account",
+        );
+      }
+
       if (storageMode === "s3") {
         const bucket = process.env.S3_BUCKET;
         if (!bucket) {
@@ -413,27 +395,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         }
 
         const key = `uploads/${safeUserId}/${uniqueFilename}`;
-        const keyPrefix = `uploads/${safeUserId}/`;
         const client = getS3Client();
-        const usage = await getS3Usage(client, bucket, keyPrefix);
-
-        if (usage.fileCount >= MAX_FILES_PER_USER) {
-          throw new ApiError(
-            400,
-            "https://canvascollect.com/errors/upload",
-            "Bad Request",
-            "Upload limit reached for this account",
-          );
-        }
-
-        if (usage.totalBytes + buffer.length > MAX_TOTAL_BYTES_PER_USER) {
-          throw new ApiError(
-            400,
-            "https://canvascollect.com/errors/upload",
-            "Bad Request",
-            "Storage quota exceeded for this account",
-          );
-        }
 
         await client.send(
           new PutObjectCommand({
@@ -441,12 +403,24 @@ export const POST = withApiHandler(async (request: NextRequest) => {
             Key: key,
             Body: buffer,
             ContentType: detectedType.mime,
-            CacheControl: "public, max-age=31536000, immutable",
+            CacheControl: "private, no-store",
           }),
         );
 
+        const asset = await prisma.uploadAsset.create({
+          data: {
+            userId,
+            canvasId,
+            storageKey: key,
+            storageMode,
+            filename: file.name,
+            mimeType: detectedType.mime,
+            size: file.size,
+          },
+        });
+
         return NextResponse.json({
-          url: buildPublicUrl(key),
+          url: `/api/v1/uploads/${asset.id}`,
           filename: file.name,
           size: file.size,
           type: detectedType.mime,
@@ -463,7 +437,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         );
       }
 
-      const uploadRoot = resolve(join(process.cwd(), "public", "uploads"));
+      const uploadRoot = resolve(join(process.cwd(), ".data", "uploads"));
       const uploadDir = resolve(join(uploadRoot, safeUserId));
       const filePath = resolve(uploadDir, uniqueFilename);
 
@@ -481,31 +455,23 @@ export const POST = withApiHandler(async (request: NextRequest) => {
 
       await mkdir(uploadDir, { recursive: true });
 
-      const usage = await getDirectoryUsage(uploadDir);
-      if (usage.fileCount >= MAX_FILES_PER_USER) {
-        throw new ApiError(
-          400,
-          "https://canvascollect.com/errors/upload",
-          "Bad Request",
-          "Upload limit reached for this account",
-        );
-      }
-
-      if (usage.totalBytes + buffer.length > MAX_TOTAL_BYTES_PER_USER) {
-        throw new ApiError(
-          400,
-          "https://canvascollect.com/errors/upload",
-          "Bad Request",
-          "Storage quota exceeded for this account",
-        );
-      }
-
       await writeFile(filePath, buffer);
 
-      const publicUrl = `/uploads/${safeUserId}/${uniqueFilename}`;
+      const storageKey = `uploads/${safeUserId}/${uniqueFilename}`;
+      const asset = await prisma.uploadAsset.create({
+        data: {
+          userId,
+          canvasId,
+          storageKey,
+          storageMode,
+          filename: file.name,
+          mimeType: detectedType.mime,
+          size: file.size,
+        },
+      });
 
       return NextResponse.json({
-        url: publicUrl,
+        url: `/api/v1/uploads/${asset.id}`,
         filename: file.name,
         size: file.size,
         type: detectedType.mime,

@@ -32,6 +32,7 @@ interface BookmarkItemProps {
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
   onDragEnd?: (e: any) => void;
+  readOnly?: boolean;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -47,6 +48,7 @@ function BookmarkItemComponent({
   onDoubleClick,
   onContextMenu,
   onDragEnd,
+  readOnly = false,
 }: BookmarkItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -208,7 +210,7 @@ function BookmarkItemComponent({
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable
+      draggable={!readOnly}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
@@ -334,7 +336,7 @@ function BookmarkItemComponent({
       )}
 
       {/* Resize handles (only when selected) */}
-      {isSelected && (
+      {isSelected && !readOnly && (
         <>
           {/* Bottom-right */}
           <Circle
