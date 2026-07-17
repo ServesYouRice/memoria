@@ -248,6 +248,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     selectedTags,
     setSelectedTags,
     canvasLoadError,
+    clearCanvasLoadError: useCallback(() => setCanvasLoadError(null), []),
     isTimeMachineActive,
     setTimeMachineActive,
     timeMachineIndex,

@@ -55,7 +55,13 @@ export function LoginForm() {
       });
 
       if (result?.error) {
-        setError("Invalid email or password");
+        if (result.code === "account_locked") {
+          setError(
+            "Your account is temporarily locked due to too many failed sign-in attempts. Please wait a few minutes and try again.",
+          );
+        } else {
+          setError("Invalid email or password");
+        }
         return;
       }
 
