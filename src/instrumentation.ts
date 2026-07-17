@@ -16,7 +16,7 @@ type LoggerLike = {
   fatal?: (...args: unknown[]) => void;
 };
 
-const APPROVED_NEXT_AUTH_VERSION = "5.0.0-beta.25";
+const APPROVED_NEXT_AUTH_VERSION = "5.0.0-beta.31";
 
 async function checkNextAuthVersion(logger: LoggerLike): Promise<void> {
   try {

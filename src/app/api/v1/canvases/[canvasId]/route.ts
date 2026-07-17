@@ -7,11 +7,7 @@ import {
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { NotFoundError } from "@/lib/errors";
-import {
-  getCachedCanvas,
-  setCachedCanvas,
-  invalidateCanvasCache,
-} from "@/lib/cache/canvas-cache";
+import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
 
 const updateCanvasSchema = z.object({
@@ -34,30 +30,13 @@ export const GET = withApiHandler(
     // Verify canvas access (ownership or share)
     await requireCanvasAccess(canvasId, userId, email, "VIEW");
 
-    // 1. Try to get canvas data (canvas + items) from cache
-    let canvasData = await getCachedCanvas(canvasId);
-
+    // Item pages are loaded by the dedicated, paginated item endpoint. Do not
+    // duplicate the full canvas payload in this metadata request.
+    const canvasData = await prisma.canvas.findUnique({
+      where: { id: canvasId },
+    });
     if (!canvasData) {
-      // 2. Cache miss: Fetch from database (global state only)
-      const data = await prisma.canvas.findUnique({
-        where: { id: canvasId },
-        include: {
-          items: {
-            where: { deletedAt: null },
-            orderBy: { zIndex: "asc" },
-          },
-          // Do NOT include user-specific shares here as they are dynamic
-        },
-      });
-
-      if (!data) {
-        throw new NotFoundError("Canvas not found");
-      }
-
-      canvasData = data;
-
-      // 3. Store in cache
-      await setCachedCanvas(canvasData);
+      throw new NotFoundError("Canvas not found");
     }
 
     // 4. Fetch user-specific share info (always fresh)
@@ -77,6 +56,8 @@ export const GET = withApiHandler(
     return NextResponse.json({
       ...canvasData,
       shares,
+      accessLevel:
+        canvasData.userId === userId ? "OWNER" : shares[0]?.role || "VIEW",
     });
   },
 );

@@ -14,9 +14,8 @@ import { withApiHandler } from "@/lib/api/route-handler";
 import {
   MAX_TEMPLATE_DESCRIPTION_LENGTH,
   MAX_CATEGORY_NAME_LENGTH,
-  DEFAULT_PAGE_LIMIT,
-  MAX_PAGE_LIMIT,
 } from "@/lib/constants";
+import { parsePagination } from "@/lib/api/pagination";
 
 const saveAsTemplateSchema = z.object({
   canvasId: z.string().cuid(),
@@ -137,11 +136,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   const userId = searchParams.get("userId"); // Optional: filter by user
 
   // Pagination parameters with sensible defaults
-  const limit = Math.min(
-    parseInt(searchParams.get("limit") || String(DEFAULT_PAGE_LIMIT), 10),
-    MAX_PAGE_LIMIT,
-  );
-  const offset = parseInt(searchParams.get("offset") || "0", 10);
+  const { limit, offset } = parsePagination(searchParams);
 
   const visibilityFilter = session?.user?.id
     ? {
@@ -170,9 +165,20 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   // Fetch templates with pagination
   const templates = await prisma.canvas.findMany({
     where,
-    include: {
-      items: {
-        where: { deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+      templateDescription: true,
+      templateCategory: true,
+      usageCount: true,
+      zoomLevel: true,
+      panX: true,
+      panY: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: {
+        select: { items: { where: { deletedAt: null } } },
       },
       user: {
         select: {
@@ -187,7 +193,10 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   });
 
   return NextResponse.json({
-    templates,
+    templates: templates.map(({ _count, ...template }) => ({
+      ...template,
+      itemCount: _count.items,
+    })),
     pagination: {
       total,
       limit,

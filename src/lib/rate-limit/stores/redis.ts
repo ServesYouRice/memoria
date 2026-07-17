@@ -6,9 +6,9 @@
  * Falls back to throwing helpful errors if Redis is misconfigured.
  */
 
-import Redis from 'ioredis';
-import { logger } from '@/lib/logger';
-import type { RateLimitStore } from '../types';
+import Redis from "ioredis";
+import { logger } from "@/lib/logger";
+import type { RateLimitStore } from "../types";
 
 export interface RedisConfig {
   host: string;
@@ -23,7 +23,7 @@ export class RedisRateLimitStore implements RateLimitStore {
   private keyPrefix: string;
 
   constructor(config: RedisConfig) {
-    this.keyPrefix = config.keyPrefix || 'ratelimit:';
+    this.keyPrefix = config.keyPrefix || "ratelimit:";
 
     // Support REDIS_URL or individual config
     const redisUrl = process.env.REDIS_URL;
@@ -43,41 +43,43 @@ export class RedisRateLimitStore implements RateLimitStore {
       });
     }
 
-    this.client.on('error', (err) => {
-      logger.error({ error: err }, 'Redis rate limit store error');
+    this.client.on("error", (err) => {
+      logger.error({ error: err }, "Redis rate limit store error");
     });
 
-    this.client.on('connect', () => {
-      logger.info('Redis rate limit store connected');
+    this.client.on("connect", () => {
+      logger.info("Redis rate limit store connected");
     });
   }
 
-  async increment(key: string, windowSeconds: number): Promise<{ count: number; ttl: number }> {
+  async increment(
+    key: string,
+    windowSeconds: number,
+  ): Promise<{ count: number; ttl: number }> {
     const fullKey = `${this.keyPrefix}${key}`;
 
     try {
-      // Use MULTI/EXEC for atomic increment and TTL check
-      const pipeline = this.client.multi();
-      pipeline.incr(fullKey);
-      pipeline.ttl(fullKey);
-      const results = await pipeline.exec();
-
-      if (!results) {
-        throw new Error('Redis pipeline returned null');
-      }
-
-      const count = results[0]?.[1] as number;
-      let ttl = results[1]?.[1] as number;
-
-      // If key is new (no TTL), set expiration
-      if (ttl === -1) {
-        await this.client.expire(fullKey, windowSeconds);
-        ttl = windowSeconds;
-      }
+      // Increment and attach/repair the TTL atomically so a process crash
+      // cannot leave an immortal limiter key behind.
+      const result = (await this.client.eval(
+        `
+          local count = redis.call("INCR", KEYS[1])
+          local ttl = redis.call("TTL", KEYS[1])
+          if count == 1 or ttl < 0 then
+            redis.call("EXPIRE", KEYS[1], ARGV[1])
+            ttl = tonumber(ARGV[1])
+          end
+          return {count, ttl}
+        `,
+        1,
+        fullKey,
+        windowSeconds,
+      )) as [number, number];
+      const [count, ttl] = result;
 
       return { count, ttl };
     } catch (error) {
-      logger.error({ error, key }, 'Redis increment failed');
+      logger.error({ error, key }, "Redis increment failed");
       throw error;
     }
   }
@@ -89,7 +91,7 @@ export class RedisRateLimitStore implements RateLimitStore {
       const value = await this.client.get(fullKey);
       return value ? parseInt(value, 10) : null;
     } catch (error) {
-      logger.error({ error, key }, 'Redis get failed');
+      logger.error({ error, key }, "Redis get failed");
       throw error;
     }
   }
@@ -100,7 +102,7 @@ export class RedisRateLimitStore implements RateLimitStore {
     try {
       await this.client.del(fullKey);
     } catch (error) {
-      logger.error({ error, key }, 'Redis delete failed');
+      logger.error({ error, key }, "Redis delete failed");
       throw error;
     }
   }
@@ -112,7 +114,7 @@ export class RedisRateLimitStore implements RateLimitStore {
   async ping(): Promise<boolean> {
     try {
       const result = await this.client.ping();
-      return result === 'PONG';
+      return result === "PONG";
     } catch {
       return false;
     }

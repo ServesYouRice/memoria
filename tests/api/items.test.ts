@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createItemSchema, updateItemSchema } from '@/lib/validation';
-import { ItemType } from '@prisma/client';
+import { describe, it, expect } from "vitest";
+import { createItemSchema, updateItemSchema } from "@/lib/validation";
+import { ItemType } from "@prisma/client";
 
-describe('Item Validation Schemas', () => {
-  describe('createItemSchema', () => {
-    it('should validate a valid note creation request', () => {
+describe("Item Validation Schemas", () => {
+  describe("createItemSchema", () => {
+    it("should validate a valid note creation request", () => {
       const validNote = {
         type: ItemType.NOTE,
         positionX: 100,
@@ -12,7 +12,7 @@ describe('Item Validation Schemas', () => {
         width: 200,
         height: 150,
         content: {
-          text: 'This is a test note',
+          text: "This is a test note",
         },
       };
 
@@ -20,7 +20,7 @@ describe('Item Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should reject note with invalid width', () => {
+    it("should reject note with invalid width", () => {
       const invalidNote = {
         type: ItemType.NOTE,
         positionX: 100,
@@ -28,7 +28,7 @@ describe('Item Validation Schemas', () => {
         width: 30, // Too small
         height: 150,
         content: {
-          text: 'Test',
+          text: "Test",
         },
       };
 
@@ -36,7 +36,7 @@ describe('Item Validation Schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should reject note with empty text', () => {
+    it("should reject note with empty text", () => {
       const invalidNote = {
         type: ItemType.NOTE,
         positionX: 100,
@@ -44,7 +44,7 @@ describe('Item Validation Schemas', () => {
         width: 200,
         height: 150,
         content: {
-          text: '',
+          text: "",
         },
       };
 
@@ -53,8 +53,8 @@ describe('Item Validation Schemas', () => {
     });
   });
 
-  describe('updateItemSchema', () => {
-    it('should validate a valid update request', () => {
+  describe("updateItemSchema", () => {
+    it("should validate a valid update request", () => {
       const validUpdate = {
         positionX: 150,
         positionY: 250,
@@ -65,10 +65,10 @@ describe('Item Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should validate update with content change', () => {
+    it("should validate update with content change", () => {
       const validUpdate = {
         content: {
-          text: 'Updated text',
+          text: "Updated text",
         },
         version: 2,
       };
@@ -77,7 +77,7 @@ describe('Item Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should require version field', () => {
+    it("should require version field", () => {
       const invalidUpdate = {
         positionX: 150,
         positionY: 250,
@@ -87,7 +87,7 @@ describe('Item Validation Schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should reject negative version', () => {
+    it("should reject negative version", () => {
       const invalidUpdate = {
         positionX: 150,
         version: -1,
@@ -99,18 +99,18 @@ describe('Item Validation Schemas', () => {
   });
 });
 
-describe('API Error Handling', () => {
-  it('should create proper error responses', async () => {
-    const { ApiError } = await import('@/lib/errors');
+describe("API Error Handling", () => {
+  it("should create proper error responses", async () => {
+    const { ApiError } = await import("@/lib/errors");
 
     const error = new ApiError(
       404,
-      'https://canvascollect.com/errors/not-found',
-      'Not Found',
-      'Item not found'
+      "https://canvascollect.com/errors/not-found",
+      "Not Found",
+      "Item not found",
     );
     expect(error.status).toBe(404);
-    expect(error.title).toBe('Not Found');
-    expect(error.detail).toBe('Item not found');
+    expect(error.title).toBe("Not Found");
+    expect(error.detail).toBe("Item not found");
   });
 });

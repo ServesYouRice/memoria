@@ -43,7 +43,8 @@ export interface Template {
   panY: number;
   createdAt: string;
   updatedAt: string;
-  items: CanvasItem[];
+  itemCount: number;
+  items?: CanvasItem[];
   user: {
     id: string;
     name: string | null;
@@ -72,17 +73,38 @@ export function useTemplates(category?: string, userId?: string) {
   if (category) params.append("category", category);
   if (userId) params.append("userId", userId);
 
-  const queryString = params.toString();
-  const url = `/api/v1/templates${queryString ? `?${queryString}` : ""}`;
-
   return useQuery<TemplatesResponse>({
     queryKey: ["templates", category, userId],
     queryFn: async () => {
-      const response = await fetch(url);
-      return parseJson<TemplatesResponse>(
-        response,
-        "Failed to fetch templates",
-      );
+      const templates: Template[] = [];
+      let offset = 0;
+      let total = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const pageParams = new URLSearchParams(params);
+        pageParams.set("limit", "100");
+        pageParams.set("offset", String(offset));
+        const response = await fetch(`/api/v1/templates?${pageParams}`);
+        const page = await parseJson<TemplatesResponse>(
+          response,
+          "Failed to fetch templates",
+        );
+        templates.push(...page.templates);
+        total = page.pagination?.total ?? templates.length;
+        offset += page.templates.length;
+        hasMore = Boolean(
+          page.pagination?.hasMore && page.templates.length > 0,
+        );
+      }
+      return {
+        templates,
+        pagination: {
+          total,
+          limit: templates.length,
+          offset: 0,
+          hasMore: false,
+        },
+      };
     },
   });
 }

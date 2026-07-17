@@ -82,7 +82,11 @@ const envSchema = z
     MINIO_ROOT_PASSWORD: optionalString,
   })
   .superRefine((data, ctx) => {
-    if (data.NODE_ENV === "production" && !data.REDIS_URL) {
+    const validateProductionRuntime =
+      data.NODE_ENV === "production" &&
+      process.env.MEMORIA_BUILD_PHASE !== "true";
+
+    if (validateProductionRuntime && !data.REDIS_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["REDIS_URL"],
@@ -91,7 +95,7 @@ const envSchema = z
       });
     }
 
-    if (data.NODE_ENV === "production" && data.UPLOAD_STORAGE !== "s3") {
+    if (validateProductionRuntime && data.UPLOAD_STORAGE !== "s3") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["UPLOAD_STORAGE"],
@@ -99,7 +103,7 @@ const envSchema = z
       });
     }
 
-    if (data.NODE_ENV === "production" && !data.APP_BOOTSTRAP_TOKEN) {
+    if (validateProductionRuntime && !data.APP_BOOTSTRAP_TOKEN) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["APP_BOOTSTRAP_TOKEN"],
@@ -109,7 +113,7 @@ const envSchema = z
     }
 
     if (
-      data.NODE_ENV === "production" &&
+      validateProductionRuntime &&
       (!data.MODEL_CREDENTIAL_ENCRYPTION_KEY ||
         data.MODEL_CREDENTIAL_ENCRYPTION_KEY.length < 32)
     ) {
@@ -131,7 +135,7 @@ const envSchema = z
     }
 
     if (
-      data.NODE_ENV === "production" &&
+      validateProductionRuntime &&
       data.EMAIL_PROVIDER !== "sendgrid" &&
       data.EMAIL_PROVIDER !== "resend"
     ) {

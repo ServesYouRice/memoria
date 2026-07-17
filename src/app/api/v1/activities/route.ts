@@ -3,10 +3,11 @@
  * Fetch user activity feed
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/api/auth';
-import { prisma } from '@/lib/db';
-import { errorResponse } from '@/lib/errors';
+import { type NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api/auth";
+import { prisma } from "@/lib/db";
+import { errorResponse } from "@/lib/errors";
+import { parsePagination } from "@/lib/api/pagination";
 
 /**
  * GET /api/v1/activities
@@ -17,21 +18,24 @@ export async function GET(request: NextRequest) {
     const { userId } = await requireAuth();
 
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
-    const canvasId = searchParams.get('canvasId');
+    const { limit } = parsePagination(searchParams, {
+      defaultLimit: 50,
+      maxLimit: 100,
+    });
+    const canvasId = searchParams.get("canvasId");
 
     const where: Record<string, unknown> = {
       userId,
     };
 
     if (canvasId) {
-      where['canvasId'] = canvasId;
+      where["canvasId"] = canvasId;
     }
 
     const activities = await prisma.activity.findMany({
       where,
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
       take: limit,
       include: {

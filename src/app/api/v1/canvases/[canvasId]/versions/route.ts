@@ -13,6 +13,7 @@ import {
   errorResponse,
   fromZodError,
 } from "@/lib/errors";
+import { parsePagination } from "@/lib/api/pagination";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
@@ -105,8 +106,11 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId } = await requireAuth();
     const { canvasId } = await params;
-    const includeSnapshot =
-      new URL(request.url).searchParams.get("includeSnapshot") === "true";
+    const { searchParams } = new URL(request.url);
+    const { limit, offset } = parsePagination(searchParams, {
+      defaultLimit: 50,
+      maxLimit: 100,
+    });
 
     // Verify canvas ownership
     const canvas = await prisma.canvas.findUnique({
@@ -123,18 +127,30 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    const versions = await prisma.canvasVersion.findMany({
-      where: { canvasId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        createdAt: true,
-        ...(includeSnapshot ? { snapshot: true } : {}),
+    const [versions, total] = await Promise.all([
+      prisma.canvasVersion.findMany({
+        where: { canvasId },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+        },
+      }),
+      prisma.canvasVersion.count({ where: { canvasId } }),
+    ]);
+
+    return NextResponse.json({
+      versions,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total,
       },
     });
-
-    return NextResponse.json({ versions });
   } catch (error) {
     return errorResponse(error, request.url);
   }

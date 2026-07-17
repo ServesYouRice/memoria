@@ -46,6 +46,27 @@ services:
     tmpfs:
       - /tmp
       - /app/.next/cache
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    command: ['node', 'scripts/scheduler.mjs']
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+      SCHEDULER_BASE_URL: http://app:3000
+      BOOKMARK_REFRESH_INTERVAL_MS: ${BOOKMARK_REFRESH_INTERVAL_MS:-900000}
+    read_only: true
 
   postgres:
     image: pgvector/pgvector:pg16

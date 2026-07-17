@@ -203,7 +203,7 @@ export function CommentsPanel({
               {itemType === "NOTE" ? "Note" : "Bookmark"}
             </Typography>
           </Box>
-          <IconButton onClick={onClose}>
+          <IconButton aria-label="Close comments" onClick={onClose}>
             <Close />
           </IconButton>
         </Box>
@@ -256,6 +256,7 @@ export function CommentsPanel({
                         </Typography>
                         {session?.user?.id === comment.userId && (
                           <IconButton
+                            aria-label="Comment actions"
                             size="small"
                             sx={{ ml: "auto" }}
                             onClick={(e) => handleMenuOpen(e, comment.id)}

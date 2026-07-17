@@ -84,8 +84,12 @@ export async function POST(request: NextRequest) {
       }
       await tx.user.update({
         where: { id: user.id },
-        data: { passwordHash },
+        data: {
+          passwordHash,
+          sessionVersion: { increment: 1 },
+        },
       });
+      await tx.session.deleteMany({ where: { userId: user.id } });
     });
 
     return NextResponse.json({

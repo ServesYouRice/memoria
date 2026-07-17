@@ -8,6 +8,7 @@ await run(pnpm, ['exec', 'next', 'build', '--webpack'], {
   env: {
     ...process.env,
     MEMORIA_SKIP_DB_EAGER_CONNECT: 'true',
+    MEMORIA_BUILD_PHASE: 'true',
   },
 });
 await run('node', ['scripts/build-server.mjs'], { cwd: projectRoot });
