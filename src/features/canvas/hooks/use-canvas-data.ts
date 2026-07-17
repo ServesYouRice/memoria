@@ -248,6 +248,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     selectedTags,
     setSelectedTags,
     canvasLoadError,
+    clearCanvasLoadError: useCallback(() => setCanvasLoadError(null), []),
     isTimeMachineActive,
     setTimeMachineActive,
     timeMachineIndex,
@@ -268,6 +269,5 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     refreshMetadata: useCallback(async () => {
       await Promise.all([refetchCanvas(), refetchItems()]);
     }, [refetchCanvas, refetchItems]),
-    dismissLoadError: useCallback(() => setCanvasLoadError(null), []),
   };
 }

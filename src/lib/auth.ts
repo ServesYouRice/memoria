@@ -6,21 +6,18 @@ import { prisma } from "@/lib/db";
 import * as argon2 from "argon2";
 import {
   clearFailedAttempts,
-  getLockoutRemaining,
   isAccountLocked,
   recordFailedAttempt,
 } from "@/lib/auth/account-lockout";
 
 /**
- * Thrown when sign-in is blocked by account lockout. The `code` is surfaced
- * to the client in the signIn() response so the form can show the real
- * reason instead of "Invalid email or password".
+ * Thrown when a sign-in attempt is rejected because the account is temporarily
+ * locked. The `code` is surfaced to the client (via `signIn(..).code`) so the
+ * login form can show a lockout message instead of the generic
+ * "Invalid email or password".
  */
-export class AccountLockedError extends CredentialsSignin {
-  constructor(remainingMinutes: number) {
-    super("Account locked due to too many failed attempts");
-    this.code = `account_locked:${remainingMinutes}`;
-  }
+class AccountLockedError extends CredentialsSignin {
+  code = "account_locked";
 }
 
 const dummyPasswordHash = argon2.hash("memoria-invalid-user-password", {
@@ -52,12 +49,7 @@ export const authConfig: NextAuthConfig = {
         // Check for lockout
         const isLocked = await isAccountLocked(email);
         if (isLocked) {
-          const remainingSeconds = await getLockoutRemaining(email);
-          const remainingMinutes = Math.max(
-            1,
-            Math.ceil(remainingSeconds / 60),
-          );
-          throw new AccountLockedError(remainingMinutes);
+          throw new AccountLockedError();
         }
 
         const user = await prisma.user.findUnique({

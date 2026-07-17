@@ -2,19 +2,24 @@
 
 import React from "react";
 import { Box, Skeleton } from "@mui/material";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { CanvasCardSkeleton, CardGrid } from "./CanvasCard";
 
 /**
- * Suspense fallback for the dashboard page.
- * Mirrors the PageHeader + card grid layout of DashboardContent.
+ * Loading fallback for the dashboard route's Suspense boundary. Mirrors the
+ * shape of DashboardContent (page header + canvas card grid) so users see the
+ * familiar layout instead of a blank flash while the client bundle and data
+ * hydrate.
  */
 export function DashboardSkeleton() {
   return (
-    <Box>
-      <Box sx={{ mb: 3 }}>
-        <Skeleton width={220} height={40} />
-        <Skeleton width={160} height={20} />
-      </Box>
+    <>
+      <PageHeader
+        title="My canvases"
+        subtitle={<Skeleton width={220} />}
+        actions={<Skeleton variant="rounded" width={140} height={40} />}
+      />
+
       <Box
         sx={{
           display: "grid",
@@ -23,13 +28,17 @@ export function DashboardSkeleton() {
           alignItems: "start",
         }}
       >
-        <CardGrid>
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <CanvasCardSkeleton key={i} index={i} />
-          ))}
-        </CardGrid>
-        <Skeleton variant="rectangular" height={320} sx={{ borderRadius: 2 }} />
+        <Box>
+          <CardGrid>
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <CanvasCardSkeleton key={i} index={i} />
+            ))}
+          </CardGrid>
+        </Box>
+        <Box sx={{ display: { xs: "none", md: "block" } }}>
+          <Skeleton variant="rounded" height={320} />
+        </Box>
       </Box>
-    </Box>
+    </>
   );
 }

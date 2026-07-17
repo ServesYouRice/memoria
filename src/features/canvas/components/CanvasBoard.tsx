@@ -10,8 +10,8 @@ import {
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
+  useTheme,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 import {
   NoteAdd,
   Bookmark,
@@ -73,6 +73,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const stageContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const theme = useTheme();
+  const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
 
   // Data Hook (Single source of truth for display)
   const {
@@ -91,13 +92,13 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     selectedTags,
     setSelectedTags,
     canvasLoadError,
+    clearCanvasLoadError,
     isTimeMachineActive,
     setTimeMachineActive,
     timeMachineIndex,
     setTimeMachineIndex,
     updateCanvasName,
     refreshMetadata,
-    dismissLoadError,
     accessLevel,
   } = useCanvasData({ canvasId });
   const canEdit = accessLevel === "OWNER" || accessLevel === "EDIT";
@@ -493,22 +494,21 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
   // Space Key
   useEffect(() => {
-    const isTypingTarget = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) return false;
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
       return (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
+        !!el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
       );
     };
+
     const handleKey = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      // Never hijack Space while typing, but always clear on keyup so pan
-      // mode can't get stuck if focus moved into an input mid-press.
-      if (e.type === "keyup") {
-        setIsSpacePressed(false);
-      } else if (!isTypingTarget(e.target)) {
-        setIsSpacePressed(true);
+      // Don't hijack Space while the user is typing in a field, dialog, or
+      // the cursor-chat input — otherwise a space toggles canvas pan mode.
+      if (e.code === "Space" && !isEditableTarget(e.target)) {
+        setIsSpacePressed(e.type === "keydown");
       }
     };
     window.addEventListener("keydown", handleKey);
@@ -983,7 +983,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                 Retry
               </Button>
             }
-            onClose={dismissLoadError}
+            onClose={clearCanvasLoadError}
           >
             {canvasLoadError}
           </Alert>
@@ -1010,7 +1010,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             position: "relative",
             overflow: "hidden",
             cursor: isDrawing ? "crosshair" : "default",
-            bgcolor: "background.default",
+            bgcolor: (theme) =>
+              theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
           }}
         >
           {!isDrawing && !isPresentationMode && canEdit && (
@@ -1094,7 +1095,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               gridSize={20}
               offset={{ x: -position.x / zoom, y: -position.y / zoom }}
               visible={gridVisible}
-              stroke={theme.palette.divider}
+              stroke={gridStroke}
             />
             <CanvasItemLayer
               items={renderedItems}

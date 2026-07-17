@@ -55,10 +55,9 @@ export function LoginForm() {
       });
 
       if (result?.error) {
-        const lockoutMatch = result.code?.match(/^account_locked:(\d+)$/);
-        if (lockoutMatch) {
+        if (result.code === "account_locked") {
           setError(
-            `Account temporarily locked after too many failed attempts. Try again in about ${lockoutMatch[1]} minute(s).`,
+            "Your account is temporarily locked due to too many failed sign-in attempts. Please wait a few minutes and try again.",
           );
         } else {
           setError("Invalid email or password");

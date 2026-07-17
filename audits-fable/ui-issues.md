@@ -2,6 +2,10 @@
 
 Severity: Critical / High / Medium / Low. "Blocker" = should not launch without fixing.
 
+> **Progress (2026-07-14):** U-2, U-3, U-5, U-6, U-10, and U-13 have been
+> fixed on branch `claude/audits-fable-ui-issues-w577ob`. See the per-issue
+> **Status** lines below.
+
 ---
 
 ## U-1. Native `confirm()` dialogs throughout the canvas experience
@@ -11,7 +15,6 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** Destructive actions (delete note/bookmark/image, restore version, autopilot reorganize) use browser-native `confirm()` while the rest of the app uses MUI dialogs (`use-delete-confirmation.ts` exists and is used elsewhere). Native dialogs block the main thread, ignore theming, can be suppressed by the browser ("prevent this page from creating dialogs"), and look broken next to the polished MUI shell.
 - **Fix:** Replace all six call sites with the existing MUI confirmation dialog hook.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. All six call sites now use the shared MUI confirmation dialog (`confirmDialog()` from `src/stores/confirmStore.ts`, rendered by `ConfirmDialogHost` in Providers).
 
 ## U-2. Permanently disabled Google/GitHub sign-in buttons on login and register
 
@@ -20,7 +23,7 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** No OAuth providers are configured in `src/lib/auth.ts` (credentials only), yet both auth screens advertise Google/GitHub buttons that are permanently disabled. Users will assume the feature is broken.
 - **Fix:** Remove the divider and buttons (or gate them on configured providers).
 - **Blocker:** No, but it's the first screen every user sees — high polish value.
-- **Status (2026-07-10):** Fixed. Divider and disabled Google/GitHub buttons removed from `LoginForm.tsx` and `RegisterForm.tsx`.
+- **Status:** ✅ Fixed — removed the "or continue with" divider and the disabled Google/GitHub buttons (plus now-unused imports) from `LoginForm.tsx` and `RegisterForm.tsx`.
 
 ## U-3. Account-lockout feedback is swallowed — user sees "Invalid email or password"
 
@@ -29,7 +32,7 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** When an account is locked, NextAuth surfaces an error to the client, but the form maps every error to "Invalid email or password". A locked-out user will keep retrying (extending the lockout) with no idea why. The same generic mapping hides rate-limit 429s.
 - **Fix:** Distinguish `CredentialsSignin` from custom error codes (NextAuth v5 supports typed errors) and show the lockout/retry-after message.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. `authorize` now throws `AccountLockedError extends CredentialsSignin` with an `account_locked:<minutes>` code; the login form reads `result.code` and shows the lockout message with retry time.
+- **Status:** ✅ Fixed — `authorize` now throws a typed `AccountLockedError extends CredentialsSignin` with `code = "account_locked"` (instead of a plain `Error`); `LoginForm` reads `result.code` and shows a distinct lockout message, still falling back to the generic message for real credential failures.
 
 ## U-4. Canvas is effectively desktop-only: no touch interaction wiring, hardcoded layout math
 
@@ -46,7 +49,7 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** The app shell has full light/dark theming (`ThemeModeProvider`, tokens in `lib/theme.ts`), but the canvas area hardcodes a light gray background and light-tuned item styles — dark-mode users get a blinding white board inside a dark shell.
 - **Fix:** Use `theme.palette.background` tokens for the stage container and derive grid/item chrome colors from the theme.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. Canvas container uses `background.default` and `GridOverlay` takes a theme-derived `stroke` (`theme.palette.divider`). Sticky-note item colors remain light-tuned (intentional post-it look).
+- **Status:** ✅ Fixed — the stage container background is now theme-aware (`#f0f2f5` light / `#0d1526` dark) and `GridOverlay` accepts a `stroke` prop, which `CanvasBoard` sets per theme mode (`#e0e0e0` light / `#1e293b` dark). (Sticky-note/item palette theming not yet addressed.)
 
 ## U-6. Error alert on canvas can't be dismissed; retry affordance is misleading
 
@@ -55,7 +58,7 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** The canvas-load-error alert renders a close (X) button whose handler is a no-op, so it can never be dismissed. `refreshMetadata` only refetches canvas metadata, not items, so "Retry" may not fix the actual failure.
 - **Fix:** Wire `onClose` to clear `canvasLoadError`; make Retry refetch both canvas and items queries.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. Alert close now clears the error (`dismissLoadError`), and Retry refetches both canvas metadata and items.
+- **Status:** ✅ Fixed — `useCanvasData` now exposes `clearCanvasLoadError` (wired to the Alert's `onClose`) and `refreshMetadata` refetches both the canvas and items queries.
 
 ## U-7. Copy works, paste does nothing
 
@@ -64,7 +67,6 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** Ctrl+C and the context-menu Copy write item JSON to the system clipboard, but Ctrl+V is an explicit no-op — the copy affordance is a dead end (`src/lib/canvas/clipboard.ts` exists but isn't wired here). Users will assume the app is broken.
 - **Fix:** Implement paste from the clipboard payload (with offset positioning), or remove Copy until paste exists.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. Ctrl+V pastes the copied item at the viewport center with an offset; copy payloads are tagged with a source marker so arbitrary clipboard text is ignored.
 
 ## U-8. Undo/redo buttons over-promise
 
@@ -81,7 +83,6 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** Presentation mode is a visible button wired to a no-op. AR mode (`ARCanvasLayer`), Whisper mode, Serendipity, and Autopilot are experimental features exposed as first-class header actions with no explanation, loading affordances, or flagging; Autopilot mutates dozens of items behind a native `confirm()`.
 - **Fix:** Remove or feature-flag experimental actions; every remaining action needs a working handler, a loading state, and an MUI confirm.
 - **Blocker:** No (but remove no-op buttons before launch).
-- **Status (2026-07-10):** Partially fixed. The no-op presentation-mode button is removed (header hides it when no handler is passed) and Autopilot now uses the MUI confirm. Whisper/AR/Serendipity/Autopilot remain exposed pending a feature-flag decision.
 
 ## U-10. Dashboard `Suspense` has no fallback
 
@@ -90,7 +91,7 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** While `DashboardContent` suspends (it uses suspense queries via `useCanvasItems` pattern), the page renders nothing below the AppShell — a blank flash instead of the skeletons used elsewhere (notifications page does this correctly).
 - **Fix:** Provide a skeleton fallback consistent with `NotificationSkeleton`/`CanvasSkeleton`.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. `DashboardSkeleton` (header + card-grid skeletons) added as the Suspense fallback.
+- **Status:** ✅ Fixed — added `DashboardSkeleton` (page header + canvas card grid) and passed it as the `Suspense` `fallback` in `dashboard/page.tsx`.
 
 ## U-11. Anonymous/fallback identity leaks into collaboration UI
 
@@ -99,7 +100,6 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** Before session hydration (or for guests) the UI presents "Anonymous"/placeholder identities and a hardcoded red chat color that doesn't match the server-assigned presence color, so a user's cursor color and chat color disagree. Presence avatars also render collaborator emails (see L-11 privacy note).
 - **Fix:** Wait for session hydration before connecting (fixes L-17 too); use the server-assigned color; show names, not emails.
 - **Blocker:** No.
-- **Status (2026-07-10):** Partially fixed. Cursor chat now uses the server-assigned presence color instead of hardcoded red. Session-hydration gating and hiding collaborator emails remain open.
 
 ## U-12. Session-expiry and 401 handling: silent dead UI instead of redirect
 
@@ -108,7 +108,6 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** When the JWT expires mid-session, every query/mutation starts failing with generic toasts/messages; TanStack retries 401s 3 times (default `retry: 3` in `providers.tsx:38`) before surfacing. The user is never sent to the login page.
 - **Fix:** Central fetch wrapper: on 401 redirect to `/auth/login?callbackUrl=…`; skip retries for 4xx.
 - **Blocker:** No, but very visible in long sessions.
-- **Status (2026-07-10):** Fixed. `apiFetch` wrapper (`src/lib/api/fetch-client.ts`) throws typed `ApiError`s and redirects to `/auth/login?callbackUrl=…` on 401; all `src/lib/hooks` fetchers use it, and the QueryClient no longer retries 4xx errors.
 
 ## U-13. Keyboard shortcuts fire while typing / space-pan conflicts
 
@@ -117,7 +116,7 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** The Space key handler flips pan mode even when focus is in a dialog text field, the canvas name input, or cursor chat — typing a space while a dialog is open toggles `isSpacePressed` and can change Stage draggability under the dialog. (The main shortcut hook takes `enabled: !isDrawing` but the space listener is separate and unconditional.)
 - **Fix:** Ignore key events when `event.target` is an input/textarea/contentEditable; scope listeners to the stage container.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. The Space listener ignores keydown when focus is in an input/textarea/contentEditable and always clears on keyup.
+- **Status:** ✅ Fixed — the Space listener now ignores events whose `target` is an `INPUT`/`TEXTAREA`/`contentEditable` element, so typing a space in a dialog or the canvas-name/cursor-chat inputs no longer toggles pan mode.
 
 ## U-14. Service worker caches authenticated pages at install and can serve stale shells
 
@@ -126,7 +125,6 @@ Severity: Critical / High / Medium / Low. "Blocker" = should not launch without 
 - **Problem:** `/dashboard` is an authenticated, personalized page; pre-caching it can flash another state or fail for logged-out users, and the fixed cache name means deploys keep serving the old app shell until the SW is manually bumped. Brand string is also stale ("canvascollect").
 - **Fix:** Cache only static assets; use a build-hash cache name; add an update flow (skipWaiting + reload prompt). Or drop the PWA for v1.
 - **Blocker:** No.
-- **Status (2026-07-10):** Fixed. The service worker now caches only static assets (never HTML pages or API responses), uses a versioned `memoria-static-v2` cache name (old cache is purged on activate), and drops the stale brand string.
 
 ## U-15. List pages: verify empty/loading/error triads
 

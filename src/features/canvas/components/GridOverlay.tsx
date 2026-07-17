@@ -13,7 +13,7 @@ export interface GridOverlayProps {
   visible: boolean;
   offset?: { x: number; y: number };
   zoom?: number;
-  /** Line color; pass a theme-derived color so the grid works in dark mode */
+  /** Line color; defaults to a light-mode grey. Pass a theme value for dark mode. */
   stroke?: string;
 }
 
