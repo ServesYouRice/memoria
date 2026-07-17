@@ -22,6 +22,7 @@ import type Konva from "konva";
 import { type CanvasItem, isBookmarkContent } from "@/types/canvas";
 import { useAutosave } from "@/lib/hooks/use-autosave";
 import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { confirmDialog } from "@/stores/confirmStore";
 
 interface BookmarkItemProps {
   item: CanvasItem;
@@ -186,8 +187,14 @@ function BookmarkItemComponent({
   };
 
   // Handle delete
-  const handleDelete = () => {
-    if (confirm("Delete this bookmark?")) {
+  const handleDelete = async () => {
+    const confirmed = await confirmDialog({
+      title: "Delete bookmark",
+      message: "Delete this bookmark? This action cannot be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (confirmed) {
       deleteItem.mutate({ itemId: item.id, version: item.version });
     }
   };

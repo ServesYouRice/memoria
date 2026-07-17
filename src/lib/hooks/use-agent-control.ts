@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ProviderSlot } from "@/lib/agents/providers";
 import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
@@ -184,7 +185,7 @@ async function parseJson<T>(response: Response, fallback: string) {
 
 const api = {
   async listAgentProfiles() {
-    const response = await fetch("/api/v1/agent-profiles");
+    const response = await apiFetch("/api/v1/agent-profiles");
     return parseJson<{ agentProfiles: AgentProfileSummary[] }>(
       response,
       "Failed to load agent profiles.",
@@ -192,7 +193,7 @@ const api = {
   },
 
   async listProviders() {
-    const response = await fetch("/api/agent/v1/providers");
+    const response = await apiFetch("/api/agent/v1/providers");
     return parseJson<{
       providerSlots: ProviderSlot[];
       credentials: AgentProviderCredential[];
@@ -200,7 +201,7 @@ const api = {
   },
 
   async listIntegrations() {
-    const response = await fetch("/api/agent/v1/integrations");
+    const response = await apiFetch("/api/agent/v1/integrations");
     return parseJson<{ integrationAccounts: AgentIntegrationAccount[] }>(
       response,
       "Failed to load integration accounts.",
@@ -208,7 +209,7 @@ const api = {
   },
 
   async listTimeline(limit: number) {
-    const response = await fetch(`/api/agent/v1/actions?limit=${limit}`);
+    const response = await apiFetch(`/api/agent/v1/actions?limit=${limit}`);
     return parseJson<AgentTimelineResponse>(
       response,
       "Failed to load agent timeline.",
@@ -216,7 +217,7 @@ const api = {
   },
 
   async listKnowledge(canvasId: string) {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/agent/v1/knowledge?canvasId=${canvasId}`,
     );
     return parseJson<{ entities: KnowledgeEntityRecord[] }>(
@@ -226,7 +227,7 @@ const api = {
   },
 
   async approveSuggestion(suggestionId: string) {
-    const response = await fetch("/api/agent/v1/actions", {
+    const response = await apiFetch("/api/agent/v1/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -242,7 +243,7 @@ const api = {
   },
 
   async rejectSuggestion(suggestionId: string) {
-    const response = await fetch("/api/agent/v1/actions", {
+    const response = await apiFetch("/api/agent/v1/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -258,7 +259,7 @@ const api = {
   },
 
   async executeSuggestion(suggestionId: string) {
-    const response = await fetch("/api/agent/v1/actions", {
+    const response = await apiFetch("/api/agent/v1/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -274,7 +275,7 @@ const api = {
   },
 
   async revertChangeSet(changeSetId: string) {
-    const response = await fetch("/api/agent/v1/actions", {
+    const response = await apiFetch("/api/agent/v1/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

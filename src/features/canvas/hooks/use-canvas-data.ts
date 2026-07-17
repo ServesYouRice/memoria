@@ -264,6 +264,8 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
 
     // Actions
     updateCanvasName,
+    // Retry refetches both canvas metadata and items — either can be the
+    // source of the load error surfaced in the UI.
     refreshMetadata: useCallback(async () => {
       await Promise.all([refetchCanvas(), refetchItems()]);
     }, [refetchCanvas, refetchItems]),

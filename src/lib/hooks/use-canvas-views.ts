@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CanvasViewType } from "@prisma/client";
 
@@ -38,7 +39,7 @@ async function parseCanvasViewJson<T>(response: Response, fallback: string) {
 
 const api = {
   async getCanvasView(canvasId: string, viewType: CanvasViewType) {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/v1/canvases/${canvasId}/views?viewType=${viewType}`,
     );
     return parseCanvasViewJson<{ view: CanvasViewRecord | null }>(
@@ -52,7 +53,7 @@ const api = {
     viewType: CanvasViewType,
     input: SaveCanvasViewInput,
   ) {
-    const response = await fetch(`/api/v1/canvases/${canvasId}/views`, {
+    const response = await apiFetch(`/api/v1/canvases/${canvasId}/views`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

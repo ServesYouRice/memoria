@@ -3,6 +3,7 @@
  * React Query hooks for managing canvas item comments
  */
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface Comment {
@@ -42,7 +43,7 @@ export function useComments(itemId: string) {
       let hasMore = true;
 
       while (hasMore) {
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/v1/items/${itemId}/comments?limit=100&offset=${offset}`,
         );
         if (!response.ok) throw new Error("Failed to fetch comments");
@@ -81,7 +82,7 @@ export function useCreateComment() {
       itemId: string;
       content: string;
     }) => {
-      const response = await fetch(`/api/v1/items/${itemId}/comments`, {
+      const response = await apiFetch(`/api/v1/items/${itemId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
@@ -159,7 +160,7 @@ export function useUpdateComment() {
       commentId: string;
       content: string;
     }) => {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/items/${itemId}/comments/${commentId}`,
         {
           method: "PATCH",
@@ -232,7 +233,7 @@ export function useDeleteComment() {
       itemId: string;
       commentId: string;
     }) => {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/items/${itemId}/comments/${commentId}`,
         {
           method: "DELETE",

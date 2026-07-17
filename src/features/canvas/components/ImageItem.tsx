@@ -12,6 +12,7 @@ import type Konva from "konva";
 import { type CanvasItem, isImageContent } from "@/types/canvas";
 import { useAutosave } from "@/lib/hooks/use-autosave";
 import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { confirmDialog } from "@/stores/confirmStore";
 
 interface ImageItemProps {
   item: CanvasItem;
@@ -164,8 +165,14 @@ export function ImageItem({
     });
   };
 
-  const handleDelete = () => {
-    if (confirm("Delete this image?")) {
+  const handleDelete = async () => {
+    const confirmed = await confirmDialog({
+      title: "Delete image",
+      message: "Delete this image? This action cannot be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (confirmed) {
       deleteItem.mutate({ itemId: item.id, version: item.version });
     }
   };

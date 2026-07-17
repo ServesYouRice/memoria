@@ -3,7 +3,8 @@
  * React Query hook for fetching user activities
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from "@/lib/api/fetch-client";
+import { useQuery } from "@tanstack/react-query";
 
 export interface Activity {
   id: string;
@@ -31,15 +32,15 @@ interface ActivitiesResponse {
  */
 export function useActivities(canvasId?: string, limit: number = 50) {
   const params = new URLSearchParams();
-  params.append('limit', limit.toString());
-  if (canvasId) params.append('canvasId', canvasId);
+  params.append("limit", limit.toString());
+  if (canvasId) params.append("canvasId", canvasId);
 
   return useQuery<ActivitiesResponse>({
-    queryKey: ['activities', canvasId, limit],
+    queryKey: ["activities", canvasId, limit],
     queryFn: async () => {
-      const response = await fetch(`/api/v1/activities?${params}`);
+      const response = await apiFetch(`/api/v1/activities?${params}`);
       if (!response.ok) {
-        throw new Error('Failed to fetch activities');
+        throw new Error("Failed to fetch activities");
       }
       return response.json();
     },

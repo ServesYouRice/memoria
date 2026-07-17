@@ -39,6 +39,7 @@
  * @see {@link useCanvasItemsWithPolling} for collaborative real-time updates
  */
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import {
   useMutation,
   useQuery,
@@ -97,7 +98,7 @@ const api = {
     };
 
     const fetchPage = async (offset?: number, limit?: number) => {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/canvas-items?${buildParams(offset, limit)}`,
       );
       if (!response.ok) throw new Error("Failed to fetch items");
@@ -147,14 +148,14 @@ const api = {
   },
 
   async getItem(itemId: string) {
-    const response = await fetch(`/api/v1/canvas-items/${itemId}`);
+    const response = await apiFetch(`/api/v1/canvas-items/${itemId}`);
     if (!response.ok) throw new Error("Failed to fetch item");
 
     return response.json() as Promise<CanvasItem>;
   },
 
   async createItem(input: CreateCanvasItemInput) {
-    const response = await fetch("/api/v1/canvas-items", {
+    const response = await apiFetch("/api/v1/canvas-items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -169,7 +170,7 @@ const api = {
   },
 
   async updateItem(itemId: string, input: UpdateCanvasItemInput) {
-    const response = await fetch(`/api/v1/canvas-items/${itemId}`, {
+    const response = await apiFetch(`/api/v1/canvas-items/${itemId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -184,7 +185,7 @@ const api = {
   },
 
   async deleteItem(itemId: string, input: DeleteCanvasItemInput) {
-    const response = await fetch(`/api/v1/canvas-items/${itemId}`, {
+    const response = await apiFetch(`/api/v1/canvas-items/${itemId}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),

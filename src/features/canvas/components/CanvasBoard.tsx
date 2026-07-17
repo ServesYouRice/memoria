@@ -40,6 +40,7 @@ import { useCanvasKeyboard } from "@/features/canvas/hooks/use-canvas-keyboard";
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
+import { confirmDialog } from "@/stores/confirmStore";
 
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
@@ -466,6 +467,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     email: session?.user?.email || "anon@example.com",
     onMessage: handleRemoteMessage,
   });
+
+  // Server-assigned presence color, so chat bubbles match the cursor color
+  const ownPresenceColor =
+    collaborators.find((user) => user.userId === session?.user?.id)?.color ||
+    "#f00";
 
   // Follow Mode
   useEffect(() => {
@@ -937,9 +943,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                 const actions = await calculateAutopilotLayout(allItems);
                 if (
                   actions.length > 0 &&
-                  confirm(
-                    `Autopilot will reorganize ${actions.length} items. Continue?`,
-                  )
+                  (await confirmDialog({
+                    title: "Autopilot",
+                    message: `Autopilot will reorganize ${actions.length} items. Continue?`,
+                    confirmText: "Reorganize",
+                  }))
                 ) {
                   for (const action of actions) {
                     const item = allItems.find((i) => i.id === action.itemId);
@@ -1122,7 +1130,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                       x: canvasX,
                       y: canvasY,
                       userName: session?.user?.name || "Anonymous",
-                      userColor: "#f00",
+                      userColor: ownPresenceColor,
                     });
                   }
                 }
@@ -1187,7 +1195,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             );
           })}
 
-          {selectedItemIds.size > 1 && !isPresentationMode && (
+          {selectedItemIds.size > 1 && (
             <Box
               sx={{
                 position: "absolute",
@@ -1208,7 +1216,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             </Box>
           )}
 
-          {isDrawing && !isPresentationMode && (
+          {isDrawing && (
             <Box
               sx={{
                 position: "absolute",
@@ -1296,7 +1304,14 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
           onRestore={async (version) => {
-            if (confirm("Restore to this version?")) {
+            const confirmed = await confirmDialog({
+              title: "Restore version",
+              message:
+                "Restore the canvas to this version? The current state will be replaced.",
+              confirmText: "Restore",
+              destructive: true,
+            });
+            if (confirmed) {
               await restoreVersion({ canvasId, versionId: version.id });
               setTimeMachineActive(false);
               queryClient.invalidateQueries({

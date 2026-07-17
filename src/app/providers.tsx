@@ -28,13 +28,17 @@ import { createAppTheme } from "@/lib/theme";
 import { ThemeModeProvider, useThemeMode } from "@/lib/theme-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GlobalShortcutsProvider } from "@/components/GlobalShortcutsProvider";
+import { ConfirmDialogHost } from "@/components/ConfirmDialogHost";
+import { isClientError } from "@/lib/api/fetch-client";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000, // 5 minutes
       refetchOnWindowFocus: false,
-      retry: 3,
+      // 4xx responses (401 expired session, 403, 404, validation errors)
+      // won't succeed on retry — only retry transient failures.
+      retry: (failureCount, error) => !isClientError(error) && failureCount < 3,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
     mutations: {
@@ -63,6 +67,7 @@ function ThemedProviders({ children, nonce }: ThemedProvidersProps) {
         <CssBaseline />
         <GlobalShortcutsProvider>
           {children}
+          <ConfirmDialogHost />
           <Toaster
             richColors
             closeButton

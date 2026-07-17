@@ -14,6 +14,7 @@ import { type CanvasItem, isNoteContent } from "@/types/canvas";
 import { useAutosave } from "@/lib/hooks/use-autosave";
 import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
 import { stripHtmlTags } from "@/lib/utils/html";
+import { confirmDialog } from "@/stores/confirmStore";
 
 interface NoteItemProps {
   item: CanvasItem;
@@ -146,8 +147,14 @@ export function NoteItem({
     });
   };
 
-  const handleDelete = () => {
-    if (confirm("Delete this note?")) {
+  const handleDelete = async () => {
+    const confirmed = await confirmDialog({
+      title: "Delete note",
+      message: "Delete this note? This action cannot be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (confirmed) {
       deleteItem.mutate({ itemId: item.id, version: item.version });
     }
   };
