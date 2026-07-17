@@ -14,21 +14,20 @@
  * - GlobalShortcutsProvider for keyboard shortcuts
  */
 
-'use client';
+"use client";
 
-import React from 'react';
-import { SessionProvider } from 'next-auth/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
-import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import { Toaster } from 'sonner';
-import { createAppTheme } from '@/lib/theme';
-import { ThemeModeProvider, useThemeMode } from '@/lib/theme-context';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { GlobalShortcutsProvider } from '@/components/GlobalShortcutsProvider';
-
+import React from "react";
+import { SessionProvider } from "next-auth/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
+import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import { Toaster } from "sonner";
+import { createAppTheme } from "@/lib/theme";
+import { ThemeModeProvider, useThemeMode } from "@/lib/theme-context";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GlobalShortcutsProvider } from "@/components/GlobalShortcutsProvider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,8 +38,9 @@ const queryClient = new QueryClient({
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
     mutations: {
-      retry: 1,
-      retryDelay: 1000,
+      // Side-effecting requests are not safe to replay unless the caller
+      // explicitly supplies an idempotency key.
+      retry: false,
     },
   },
 });
@@ -63,8 +63,13 @@ function ThemedProviders({ children, nonce }: ThemedProvidersProps) {
         <CssBaseline />
         <GlobalShortcutsProvider>
           {children}
-          <Toaster richColors closeButton position="bottom-right" theme={mode} />
-          {process.env.NODE_ENV === 'development' && <ReactQueryDevtools />}
+          <Toaster
+            richColors
+            closeButton
+            position="bottom-right"
+            theme={mode}
+          />
+          {process.env.NODE_ENV === "development" && <ReactQueryDevtools />}
         </GlobalShortcutsProvider>
       </MuiThemeProvider>
     </AppRouterCacheProvider>
@@ -92,4 +97,3 @@ export function Providers({ children, nonce }: ProvidersProps) {
     </ErrorBoundary>
   );
 }
-

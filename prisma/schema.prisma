@@ -1,6 +1,5 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -15,6 +14,7 @@ model User {
   emailVerified DateTime? // null = not verified, DateTime = verified at
   name          String?
   image         String?
+  sessionVersion Int      @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -40,6 +40,7 @@ model User {
   workspaceCheckpoints WorkspaceCheckpoint[]
   canvasViews   CanvasView[]
   agentJobs     AgentJob[]
+  uploadAssets  UploadAsset[]
 }
 
 model Activity {
@@ -102,6 +103,7 @@ model Canvas {
   savedViews  SavedView[]
   canvasViews CanvasView[]
   connections ItemConnection[]
+  uploadAssets UploadAsset[]
 
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -347,6 +349,7 @@ model IdempotencyKey {
   method      String
   createdAt   DateTime @default(now())
   lockedAt    DateTime @default(now())
+  requestHash String?
   
   responseCode Int?
   responseBody Json?
@@ -449,6 +452,7 @@ enum SuggestionKind {
 enum SuggestionStatus {
   OPEN
   APPROVED
+  EXECUTING
   REJECTED
   EXPIRED
   EXECUTED
@@ -457,6 +461,23 @@ enum SuggestionStatus {
 enum KnowledgeEntityStatus {
   ACTIVE
   ARCHIVED
+}
+
+model UploadAsset {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId    String
+  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  storageKey  String   @unique
+  storageMode String
+  filename    String
+  mimeType    String
+  size        Int
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([canvasId, createdAt])
 }
 
 enum KnowledgeRelationStatus {

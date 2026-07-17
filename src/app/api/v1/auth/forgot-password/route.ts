@@ -43,6 +43,7 @@ import { sendPasswordResetEmail } from "@/lib/email";
 import { errorResponse } from "@/lib/errors";
 import { z } from "zod";
 import { nanoid } from "nanoid";
+import { createHash } from "crypto";
 
 const forgotPasswordSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -65,13 +66,14 @@ export async function POST(request: NextRequest) {
     if (user) {
       // Generate secure token
       const token = nanoid(32); // 32-character random token
+      const tokenHash = createHash("sha256").update(token).digest("hex");
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + TOKEN_EXPIRY_HOURS);
 
       // Save token to database
       await prisma.passwordResetToken.create({
         data: {
-          token,
+          token: tokenHash,
           email: email.toLowerCase(),
           expiresAt,
         },

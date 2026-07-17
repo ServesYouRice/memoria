@@ -4,14 +4,14 @@
  * Displays uploaded images on the canvas
  */
 
-'use client';
+"use client";
 
-import React, { useRef, useState, useEffect } from 'react';
-import { Group, Rect, Circle, Text, Image as KonvaImage } from 'react-konva';
-import type Konva from 'konva';
-import { type CanvasItem, isImageContent } from '@/types/canvas';
-import { useAutosave } from '@/lib/hooks/use-autosave';
-import { useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
+import React, { useRef, useState, useEffect } from "react";
+import { Group, Rect, Circle, Text, Image as KonvaImage } from "react-konva";
+import type Konva from "konva";
+import { type CanvasItem, isImageContent } from "@/types/canvas";
+import { useAutosave } from "@/lib/hooks/use-autosave";
+import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
 
 interface ImageItemProps {
   item: CanvasItem;
@@ -20,6 +20,7 @@ interface ImageItemProps {
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
   onDragEnd?: (e: any) => void;
+  readOnly?: boolean;
 }
 
 const RESIZE_HANDLE_SIZE = 8;
@@ -27,7 +28,15 @@ const MIN_WIDTH = 100;
 const MIN_HEIGHT = 100;
 const DELETE_BUTTON_SIZE = 20;
 
-export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, onContextMenu, onDragEnd }: ImageItemProps) {
+export function ImageItem({
+  item,
+  isSelected = false,
+  onSelect,
+  onDoubleClick,
+  onContextMenu,
+  onDragEnd,
+  readOnly = false,
+}: ImageItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -47,7 +56,9 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
 
   const deleteItem = useDeleteCanvasItem();
 
-  const content = isImageContent(item.content) ? item.content : { url: '', filename: 'Invalid image' };
+  const content = isImageContent(item.content)
+    ? item.content
+    : { url: "", filename: "Invalid image" };
 
   useEffect(() => {
     setLocalPosition({ x: item.positionX, y: item.positionY });
@@ -58,12 +69,12 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
   useEffect(() => {
     if (content.url) {
       const img = new window.Image();
-      img.crossOrigin = 'anonymous';
+      img.crossOrigin = "anonymous";
       img.onload = () => {
         setImage(img);
       };
       img.onerror = () => {
-        console.error('Failed to load image:', content.url);
+        console.error("Failed to load image:", content.url);
       };
       img.src = content.url;
     }
@@ -91,8 +102,8 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
   };
 
   const handleResize = (
-    corner: 'se' | 'sw' | 'ne' | 'nw',
-    e: Konva.KonvaEventObject<MouseEvent>
+    corner: "se" | "sw" | "ne" | "nw",
+    e: Konva.KonvaEventObject<MouseEvent>,
   ) => {
     const stage = e.target.getStage();
     if (!stage) return;
@@ -106,23 +117,35 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
     let newY = localPosition.y;
 
     switch (corner) {
-      case 'se': // Bottom-right
+      case "se": // Bottom-right
         newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
         newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
         break;
-      case 'sw': // Bottom-left
-        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
+      case "sw": // Bottom-left
+        newWidth = Math.max(
+          MIN_WIDTH,
+          localPosition.x + localSize.width - pointerPos.x,
+        );
         newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
         newX = localPosition.x + localSize.width - newWidth;
         break;
-      case 'ne': // Top-right
+      case "ne": // Top-right
         newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
-        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+        newHeight = Math.max(
+          MIN_HEIGHT,
+          localPosition.y + localSize.height - pointerPos.y,
+        );
         newY = localPosition.y + localSize.height - newHeight;
         break;
-      case 'nw': // Top-left
-        newWidth = Math.max(MIN_WIDTH, localPosition.x + localSize.width - pointerPos.x);
-        newHeight = Math.max(MIN_HEIGHT, localPosition.y + localSize.height - pointerPos.y);
+      case "nw": // Top-left
+        newWidth = Math.max(
+          MIN_WIDTH,
+          localPosition.x + localSize.width - pointerPos.x,
+        );
+        newHeight = Math.max(
+          MIN_HEIGHT,
+          localPosition.y + localSize.height - pointerPos.y,
+        );
         newX = localPosition.x + localSize.width - newWidth;
         newY = localPosition.y + localSize.height - newHeight;
         break;
@@ -142,7 +165,7 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
   };
 
   const handleDelete = () => {
-    if (confirm('Delete this image?')) {
+    if (confirm("Delete this image?")) {
       deleteItem.mutate({ itemId: item.id, version: item.version });
     }
   };
@@ -152,7 +175,7 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable
+      draggable={!readOnly}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
@@ -166,7 +189,7 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
         width={localSize.width}
         height={localSize.height}
         fill="#ffffff"
-        stroke={isSelected ? '#2196F3' : '#e0e0e0'}
+        stroke={isSelected ? "#2196F3" : "#e0e0e0"}
         strokeWidth={isSelected ? 3 : 1}
         shadowColor="black"
         shadowBlur={5}
@@ -228,11 +251,17 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
 
       {/* Saving indicator */}
       {isSaving && (
-        <Text x={localSize.width - 80} y={localSize.height - 25} text="Saving..." fontSize={10} fill="#999" />
+        <Text
+          x={localSize.width - 80}
+          y={localSize.height - 25}
+          text="Saving..."
+          fontSize={10}
+          fill="#999"
+        />
       )}
 
       {/* Resize handles and delete button */}
-      {isSelected && (
+      {isSelected && !readOnly && (
         <>
           {/* Resize handles */}
           <Circle
@@ -241,15 +270,15 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('se', e)}
+            onDragMove={(e) => handleResize("se", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nwse-resize';
+              if (stage) stage.container().style.cursor = "nwse-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -259,15 +288,15 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('sw', e)}
+            onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nesw-resize';
+              if (stage) stage.container().style.cursor = "nesw-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -277,15 +306,15 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('ne', e)}
+            onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nesw-resize';
+              if (stage) stage.container().style.cursor = "nesw-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -295,15 +324,15 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize('nw', e)}
+            onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={handleResizeEnd}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'nwse-resize';
+              if (stage) stage.container().style.cursor = "nwse-resize";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
 
@@ -317,11 +346,11 @@ export function ImageItem({ item, isSelected = false, onSelect, onDoubleClick, o
             onTap={handleDelete}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'pointer';
+              if (stage) stage.container().style.cursor = "pointer";
             }}
             onMouseLeave={(e) => {
               const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = 'default';
+              if (stage) stage.container().style.cursor = "default";
             }}
           />
           <Text

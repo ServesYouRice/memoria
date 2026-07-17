@@ -10,6 +10,7 @@ import {
   fromZodError,
 } from "@/lib/errors";
 import { getCachedSession, runWithSessionCache } from "@/lib/api/session-cache";
+import { createHash } from "crypto";
 
 const logger = createLogger("api");
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -217,6 +218,11 @@ export async function runIdempotent<T>(
   const key = req.headers.get("x-idempotency-key");
   if (!key) return handler();
 
+  const requestBytes = await req.clone().arrayBuffer();
+  const requestHash = createHash("sha256")
+    .update(new Uint8Array(requestBytes))
+    .digest("hex");
+
   const scope = {
     key,
     userId,
@@ -230,6 +236,12 @@ export async function runIdempotent<T>(
     where: { key_userId_method_path: scope },
   });
 
+  await prisma.idempotencyKey
+    .deleteMany({ where: { createdAt: { lt: expiryCutoff } } })
+    .catch((error) =>
+      logger.warn({ error }, "Unable to clean expired idempotency records"),
+    );
+
   if (existing && existing.createdAt < expiryCutoff) {
     await prisma.idempotencyKey
       .delete({ where: { id: existing.id } })
@@ -238,6 +250,11 @@ export async function runIdempotent<T>(
   }
 
   if (existing) {
+    if (existing.requestHash && existing.requestHash !== requestHash) {
+      throw new ConflictError(
+        "Idempotency key was already used with a different request body",
+      );
+    }
     if (existing.responseCode !== null && existing.responseCode !== undefined) {
       return buildReplayResponse(
         existing.responseCode,
@@ -250,12 +267,18 @@ export async function runIdempotent<T>(
 
   try {
     await prisma.idempotencyKey.create({
-      data: scope,
+      data: { ...scope, requestHash },
     });
   } catch {
     const raced = await prisma.idempotencyKey.findUnique({
       where: { key_userId_method_path: scope },
     });
+
+    if (raced?.requestHash && raced.requestHash !== requestHash) {
+      throw new ConflictError(
+        "Idempotency key was already used with a different request body",
+      );
+    }
 
     if (raced?.responseCode !== null && raced?.responseCode !== undefined) {
       return buildReplayResponse(
@@ -272,13 +295,20 @@ export async function runIdempotent<T>(
     const response = await handler();
     const body = await readResponseBody(response);
 
-    await prisma.idempotencyKey.update({
-      where: { key_userId_method_path: scope },
-      data: {
-        responseCode: response.status,
-        responseBody: body as any,
-      },
-    });
+    await prisma.idempotencyKey
+      .update({
+        where: { key_userId_method_path: scope },
+        data: {
+          responseCode: response.status,
+          responseBody: body as any,
+        },
+      })
+      .catch((error) =>
+        logger.error(
+          { error, key, userId },
+          "Mutation succeeded but idempotency response journaling failed",
+        ),
+      );
 
     return response;
   } catch (error) {

@@ -1,24 +1,17 @@
 /**
  * Root Layout
  *
- * - Loads Inter via next/font (self-hosted, no layout shift)
+ * - Uses a hermetic system font stack (no build-time network dependency)
  * - Analytics integration (Issue #40)
  * - CSP nonce integration for MUI/Emotion
  */
 
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "./providers";
 import { PWARegister } from "@/components/PWARegister";
 import { getNonce } from "@/lib/nonce";
 import "./tiptap.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -47,8 +40,8 @@ export default async function RootLayout({
   const nonce = await getNonce();
 
   return (
-    <html lang="en" className={inter.variable}>
-      <body className={inter.className}>
+    <html lang="en">
+      <body>
         <PWARegister />
         <Providers nonce={nonce}>{children}</Providers>
         <Analytics />

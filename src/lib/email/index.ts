@@ -120,6 +120,11 @@ function getEmailConfig(): EmailServiceConfig {
 function createEmailProvider(config: EmailServiceConfig): EmailService {
   switch (config.provider) {
     case "console":
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(
+          "The console email provider is forbidden in production because recovery links contain secrets.",
+        );
+      }
       logger.info("Using console email provider (development mode)");
       return new ConsoleEmailProvider();
 

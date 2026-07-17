@@ -3,11 +3,11 @@
  * Restore canvas to a previous version
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/api/auth';
-import { prisma } from '@/lib/db';
-import { NotFoundError, ForbiddenError, errorResponse } from '@/lib/errors';
-import { invalidateCanvasCache } from '@/lib/cache/canvas-cache';
+import { type NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api/auth";
+import { prisma } from "@/lib/db";
+import { NotFoundError, ForbiddenError, errorResponse } from "@/lib/errors";
+import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 
 interface RouteContext {
   params: Promise<{ canvasId: string; versionId: string }>;
@@ -36,6 +36,25 @@ interface Snapshot {
   items?: SnapshotItem[];
 }
 
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  try {
+    const { userId } = await requireAuth();
+    const { canvasId, versionId } = await params;
+    const version = await prisma.canvasVersion.findFirst({
+      where: {
+        id: versionId,
+        canvasId,
+        canvas: { userId },
+      },
+      select: { id: true, name: true, createdAt: true, snapshot: true },
+    });
+    if (!version) throw new NotFoundError("Version not found");
+    return NextResponse.json(version);
+  } catch (error) {
+    return errorResponse(error, request.url);
+  }
+}
+
 /**
  * POST /api/v1/canvases/[canvasId]/versions/[versionId]/restore
  * Restore canvas to this version
@@ -51,11 +70,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas) {
-      throw new NotFoundError('Canvas not found');
+      throw new NotFoundError("Canvas not found");
     }
 
     if (canvas.userId !== userId) {
-      throw new ForbiddenError('You can only restore your own canvases');
+      throw new ForbiddenError("You can only restore your own canvases");
     }
 
     // Get version
@@ -64,7 +83,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!version || version.canvasId !== canvasId) {
-      throw new NotFoundError('Version not found');
+      throw new NotFoundError("Version not found");
     }
 
     const snapshot = version.snapshot as Snapshot;
@@ -91,14 +110,21 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             deletedAt: new Date(),
             deletedById: userId,
             updatedById: userId,
+            version: { increment: 1 },
           },
         });
         return;
       }
 
       if (hasLegacyItems) {
-        await tx.canvasItem.deleteMany({
-          where: { canvasId },
+        await tx.canvasItem.updateMany({
+          where: { canvasId, deletedAt: null },
+          data: {
+            deletedAt: new Date(),
+            deletedById: userId,
+            updatedById: userId,
+            version: { increment: 1 },
+          },
         });
 
         await tx.canvasItem.createMany({
@@ -112,7 +138,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             zIndex: item.zIndex,
             content: item.content as any,
             tags: item.tags || [],
-            version: item.version ?? 1,
+            version: 1,
             createdById: item.createdById || userId,
             updatedById: item.updatedById || userId,
           })),
@@ -132,13 +158,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           deletedAt: new Date(),
           deletedById: userId,
           updatedById: userId,
+          version: { increment: 1 },
         },
       });
 
       for (const item of snapshotItems) {
-        await tx.canvasItem.upsert({
-          where: { id: item.id as string },
-          update: {
+        const itemId = item.id as string;
+        const updated = await tx.canvasItem.updateMany({
+          where: { id: itemId, canvasId },
+          data: {
             type: item.type as any,
             positionX: item.positionX,
             positionY: item.positionY,
@@ -150,24 +178,28 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             deletedAt: null,
             deletedById: null,
             updatedById: userId,
-            version: item.version ?? 1,
-          },
-          create: {
-            id: item.id as string,
-            canvasId,
-            type: item.type as any,
-            positionX: item.positionX,
-            positionY: item.positionY,
-            width: item.width,
-            height: item.height,
-            zIndex: item.zIndex,
-            content: item.content as any,
-            tags: item.tags || [],
-            version: item.version ?? 1,
-            createdById: item.createdById || userId,
-            updatedById: userId,
+            version: { increment: 1 },
           },
         });
+        if (updated.count === 0) {
+          await tx.canvasItem.create({
+            data: {
+              id: itemId,
+              canvasId,
+              type: item.type as any,
+              positionX: item.positionX,
+              positionY: item.positionY,
+              width: item.width,
+              height: item.height,
+              zIndex: item.zIndex,
+              content: item.content as any,
+              tags: item.tags || [],
+              version: 1,
+              createdById: item.createdById || userId,
+              updatedById: userId,
+            },
+          });
+        }
       }
     });
 

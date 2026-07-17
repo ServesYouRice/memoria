@@ -1,5 +1,5 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+# #!/usr/bin/env sh
+# . "$(dirname -- "$0")/_/husky.sh"
 
 # FIXED: Issue #44 - Pre-push hook to run comprehensive checks before pushing
 

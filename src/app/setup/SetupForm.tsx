@@ -11,15 +11,14 @@ import {
 } from "@mui/material";
 
 interface SetupFormProps {
-  defaultToken?: string;
   needsToken: boolean;
 }
 
-export function SetupForm({ defaultToken = "", needsToken }: SetupFormProps) {
+export function SetupForm({ needsToken }: SetupFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [token, setToken] = useState(defaultToken);
+  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -94,7 +93,8 @@ export function SetupForm({ defaultToken = "", needsToken }: SetupFormProps) {
             value={token}
             onChange={(event) => setToken(event.target.value)}
             fullWidth
-            autoComplete="off"
+            type="password"
+            autoComplete="new-password"
           />
         )}
 

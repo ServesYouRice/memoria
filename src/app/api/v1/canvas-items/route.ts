@@ -140,7 +140,15 @@ export async function GET(request: NextRequest) {
         });
 
     // Verify user has VIEW permission (via ownership or share)
-    await requireCanvasAccess(query.canvasId, userId, email, "VIEW");
+    const accessLevel = await requireCanvasAccess(
+      query.canvasId,
+      userId,
+      email,
+      "VIEW",
+    );
+    if (query.includeDeleted && accessLevel !== "OWNER") {
+      await requireCanvasAccess(query.canvasId, userId, email, "OWNER");
+    }
 
     // Base where clause (always applied)
     const baseWhere = {

@@ -69,6 +69,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   // Refs
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const stageContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const theme = useTheme();
   const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
@@ -97,7 +98,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     setTimeMachineIndex,
     updateCanvasName,
     refreshMetadata,
+    accessLevel,
   } = useCanvasData({ canvasId });
+  const canEdit = accessLevel === "OWNER" || accessLevel === "EDIT";
+  const isOwner = accessLevel === "OWNER";
 
   // Store state
   const {
@@ -206,6 +210,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
   useCanvasKeyboard({
     onDelete: async () => {
+      if (!canEdit) return;
       // Delete Logic
       if (selectedItemIds.size > 0) {
         try {
@@ -291,15 +296,62 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       const selectedItem = allItems.find((item) => item.id === selectedItemId);
       if (selectedItem) {
         const copyData = {
+          memoriaClipboard: 1,
           type: selectedItem.type,
           content: selectedItem.content,
           width: selectedItem.width,
           height: selectedItem.height,
         };
-        navigator.clipboard.writeText(JSON.stringify(copyData));
+        void navigator.clipboard.writeText(JSON.stringify(copyData));
       }
     },
-    onPaste: () => {}, // Minimal paste
+    onPaste: async () => {
+      if (!canEdit) return;
+      try {
+        const clipboardText = await navigator.clipboard.readText();
+        const data: unknown = JSON.parse(clipboardText);
+        if (
+          !data ||
+          typeof data !== "object" ||
+          !("memoriaClipboard" in data) ||
+          data.memoriaClipboard !== 1 ||
+          !("type" in data) ||
+          typeof data.type !== "string" ||
+          !Object.values(ItemType).includes(data.type as ItemType) ||
+          !("content" in data) ||
+          typeof data.content !== "object" ||
+          data.content === null
+        ) {
+          return;
+        }
+
+        const width =
+          "width" in data && typeof data.width === "number"
+            ? Math.min(2000, Math.max(40, data.width))
+            : 200;
+        const height =
+          "height" in data && typeof data.height === "number"
+            ? Math.min(2000, Math.max(40, data.height))
+            : 150;
+        const pointer = stageRef.current?.getPointerPosition();
+        const positionX = pointer ? (pointer.x - position.x) / zoom + 20 : 120;
+        const positionY = pointer ? (pointer.y - position.y) / zoom + 20 : 120;
+
+        await createItem({
+          canvasId,
+          type: data.type as ItemType,
+          positionX,
+          positionY,
+          width,
+          height,
+          zIndex: Math.max(0, ...allItems.map((item) => item.zIndex)) + 1,
+          content: data.content as CanvasItem["content"],
+          tags: [],
+        });
+      } catch {
+        // Clipboard access can be denied or contain unrelated content.
+      }
+    },
     onSelectAll: () => {
       const allIds = new Set(items.map((item) => item.id));
       setSelectedItemIds(allIds);
@@ -332,6 +384,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       setContextMenuPosition(null);
     },
     enabled: !isDrawing,
+    canEdit,
     isDrawing,
     stageRef: stageRef as React.RefObject<Konva.Stage>,
     onChatOpen: (pos) => {
@@ -351,15 +404,19 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   // Screen Size
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   useEffect(() => {
+    const target = stageContainerRef.current;
+    if (!target) return;
     const updateSize = () => {
+      const bounds = target.getBoundingClientRect();
       setStageSize({
-        width: window.innerWidth,
-        height: window.innerHeight - 64, // Header
+        width: Math.max(1, Math.floor(bounds.width)),
+        height: Math.max(1, Math.floor(bounds.height)),
       });
     };
     updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(target);
+    return () => observer.disconnect();
   }, []);
 
   // Gesture (Zoom)
@@ -401,6 +458,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     connected: collaborationConnected,
     status: collaborationStatus,
     broadcastMessage,
+    updateCursor,
   } = useCollaboration({
     canvasId,
     name: session?.user?.name || "Anonymous",
@@ -414,12 +472,19 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     if (followingUserId) {
       const targetCursor = cursors.find((c) => c.userId === followingUserId);
       if (targetCursor) {
-        const newX = window.innerWidth / 2 - targetCursor.position.x * zoom;
-        const newY = window.innerHeight / 2 - targetCursor.position.y * zoom;
+        const newX = stageSize.width / 2 - targetCursor.position.x * zoom;
+        const newY = stageSize.height / 2 - targetCursor.position.y * zoom;
         setPosition({ x: newX, y: newY });
       }
     }
-  }, [cursors, followingUserId, zoom, setPosition]);
+  }, [
+    cursors,
+    followingUserId,
+    setPosition,
+    stageSize.height,
+    stageSize.width,
+    zoom,
+  ]);
 
   // Space Key
   useEffect(() => {
@@ -536,7 +601,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   };
 
   const generateThumbnail = useCallback(() => {
-    if (!stageRef.current) return;
+    if (!stageRef.current || !isOwner) return;
     try {
       const thumbnail = stageRef.current.toDataURL({
         pixelRatio: 0.3,
@@ -547,15 +612,20 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     } catch (err) {
       console.error("Failed to generate thumbnail:", err);
     }
-  }, [canvasId, updateThumbnail]);
+  }, [canvasId, isOwner, updateThumbnail]);
+
+  const thumbnailRevision = React.useMemo(
+    () => allItems.map((item) => `${item.id}:${item.version}`).join("|"),
+    [allItems],
+  );
 
   useEffect(() => {
-    if (allItems.length === 0) return;
+    if (!isOwner || allItems.length === 0) return;
     const timeoutId = setTimeout(() => {
       generateThumbnail();
     }, 3000);
     return () => clearTimeout(timeoutId);
-  }, [allItems, generateThumbnail]);
+  }, [allItems.length, generateThumbnail, isOwner, thumbnailRevision]);
 
   const handleContextMenu = (
     e: React.MouseEvent | Konva.KonvaEventObject<MouseEvent>,
@@ -572,18 +642,21 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   };
 
   const handleNoteDoubleClick = (item: CanvasItem) => {
+    if (!canEdit) return;
     if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
       setEditingNoteItem(item);
       setEditNoteDialogOpen(true);
     }
   };
   const handleBookmarkDoubleClick = (item: CanvasItem) => {
+    if (!canEdit) return;
     if (item.type === ItemType.BOOKMARK) {
       setEditingBookmarkItem(item);
       setEditBookmarkDialogOpen(true);
     }
   };
   const handleImageDoubleClick = (item: CanvasItem) => {
+    if (!canEdit) return;
     if (item.type === ItemType.IMAGE) {
       setEditingImageItem(item);
       setEditImageDialogOpen(true);
@@ -596,6 +669,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   };
 
   const handleDeleteFromMenu = () => {
+    if (!canEdit) return;
     if (!selectedItemId) return;
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
@@ -604,6 +678,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   };
 
   const handleDuplicateFromMenu = () => {
+    if (!canEdit) return;
     if (!selectedItemId) return;
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (!selectedItem) return;
@@ -625,12 +700,13 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (!selectedItem) return;
     const copyData = {
+      memoriaClipboard: 1,
       type: selectedItem.type,
       content: selectedItem.content,
       width: selectedItem.width,
       height: selectedItem.height,
     };
-    navigator.clipboard.writeText(JSON.stringify(copyData));
+    void navigator.clipboard.writeText(JSON.stringify(copyData));
   };
 
   const handleSelectItem = (id: string, multi: boolean = false) => {
@@ -791,14 +867,14 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     },
   );
 
-  const isPresentationMode = false; // Simplified for now, or state
+  const [isPresentationMode, setPresentationMode] = useState(false);
 
   return (
     <Box
       ref={containerRef}
       sx={{
         width: "100%",
-        height: "100vh",
+        height: "100dvh",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -808,7 +884,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       <CanvasHeader
         canvasId={canvasId}
         canvasName={canvasName}
-        onCanvasNameChange={updateCanvasName}
+        onCanvasNameChange={isOwner ? updateCanvasName : () => {}}
         zoom={zoom}
         onZoomChange={setZoom}
         onFitToScreen={() => {
@@ -816,10 +892,14 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           setPosition({ x: 0, y: 0 });
         }}
         onExport={() => setExportDialogOpen(true)}
-        onSaveAsTemplate={() => setTemplateDialogOpen(true)}
-        onVersionHistory={() => setVersionHistoryOpen(true)}
+        onSaveAsTemplate={
+          isOwner ? () => setTemplateDialogOpen(true) : undefined
+        }
+        onVersionHistory={
+          isOwner ? () => setVersionHistoryOpen(true) : undefined
+        }
         onTagFilter={() => setTagFilterOpen(true)}
-        onAI={() => setAiDialogOpen(true)}
+        onAI={canEdit ? () => setAiDialogOpen(true) : undefined}
         activeTagCount={selectedTags.length}
         gridVisible={gridVisible}
         onGridToggle={() => setGridVisible(!gridVisible)}
@@ -840,8 +920,9 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         followingUserId={followingUserId}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onPresentationMode={() => {}}
-        isPresentationMode={false}
+        onPresentationMode={() => setPresentationMode((active) => !active)}
+        isPresentationMode={isPresentationMode}
+        canManageCanvas={isOwner}
         onTimeMachine={() => {
           setTimeMachineActive(!isTimeMachineActive);
           if (!isTimeMachineActive && versions.length > 0) {
@@ -850,29 +931,33 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         }}
         onSerendipity={() => setSerendipityOpen(true)}
         onTemplates={() => setTemplatesOpen(true)}
-        onAutopilot={async () => {
-          const actions = await calculateAutopilotLayout(allItems);
-          if (
-            actions.length > 0 &&
-            confirm(
-              `Autopilot will reorganize ${actions.length} items. Continue?`,
-            )
-          ) {
-            for (const action of actions) {
-              const item = allItems.find((i) => i.id === action.itemId);
-              if (item) {
-                await updateItem({
-                  itemId: action.itemId,
-                  data: {
-                    version: item.version,
-                    positionX: action.newPosition.x,
-                    positionY: action.newPosition.y,
-                  },
-                });
+        onAutopilot={
+          canEdit
+            ? async () => {
+                const actions = await calculateAutopilotLayout(allItems);
+                if (
+                  actions.length > 0 &&
+                  confirm(
+                    `Autopilot will reorganize ${actions.length} items. Continue?`,
+                  )
+                ) {
+                  for (const action of actions) {
+                    const item = allItems.find((i) => i.id === action.itemId);
+                    if (item) {
+                      await updateItem({
+                        itemId: action.itemId,
+                        data: {
+                          version: item.version,
+                          positionX: action.newPosition.x,
+                          positionY: action.newPosition.y,
+                        },
+                      });
+                    }
+                  }
+                }
               }
-            }
-          }
-        }}
+            : undefined
+        }
         onWhisper={() => setWhisperOpen(true)}
         onAR={() => setAROpen(true)}
       />
@@ -897,15 +982,21 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         </Box>
       )}
 
-      {viewMode === "manual" && !isPresentationMode && <MainToolbar />}
+      {viewMode === "manual" && !isPresentationMode && canEdit && (
+        <MainToolbar />
+      )}
       {viewMode === "manual" &&
         !isPresentationMode &&
+        canEdit &&
         activeTool === "draw" && <DrawingToolbar />}
 
       {viewMode === "organizer" ? (
         <CanvasOrganizerView canvasId={canvasId} items={allItems} />
       ) : (
         <Box
+          ref={stageContainerRef}
+          role="region"
+          aria-label="Infinite canvas. Switch to Organizer view for an accessible item list."
           sx={{
             flexGrow: 1,
             position: "relative",
@@ -915,7 +1006,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
           }}
         >
-          {!isDrawing && !isPresentationMode && (
+          {!isDrawing && !isPresentationMode && canEdit && (
             <SpeedDial
               ariaLabel="Add Item"
               sx={{ position: "absolute", bottom: 16, right: 16 }}
@@ -951,10 +1042,40 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             scaleY={zoom}
             x={position.x}
             y={position.y}
-            draggable={!isDrawing && !isSpacePressed && !isTimeMachineActive}
-            onMouseDown={handleStageMouseDown}
-            onMouseMove={handleStageMouseMove}
-            onMouseUp={handleStageMouseUp}
+            draggable={!isDrawing && isSpacePressed && !isTimeMachineActive}
+            onDragMove={(event) =>
+              setPosition({ x: event.target.x(), y: event.target.y() })
+            }
+            onDragEnd={(event) =>
+              setPosition({ x: event.target.x(), y: event.target.y() })
+            }
+            onWheel={(event) => {
+              event.evt.preventDefault();
+              const stage = event.target.getStage();
+              const pointer = stage?.getPointerPosition();
+              if (!pointer) return;
+              const factor = event.evt.deltaY > 0 ? 1 / 1.1 : 1.1;
+              const nextZoom = Math.min(5, Math.max(0.1, zoom * factor));
+              const worldX = (pointer.x - position.x) / zoom;
+              const worldY = (pointer.y - position.y) / zoom;
+              setZoom(nextZoom);
+              setPosition({
+                x: pointer.x - worldX * nextZoom,
+                y: pointer.y - worldY * nextZoom,
+              });
+            }}
+            onMouseDown={isSpacePressed ? undefined : handleStageMouseDown}
+            onMouseMove={(event) => {
+              if (!isSpacePressed) handleStageMouseMove(event);
+              const pointer = event.target.getStage()?.getPointerPosition();
+              if (pointer) {
+                updateCursor(
+                  (pointer.x - position.x) / zoom,
+                  (pointer.y - position.y) / zoom,
+                );
+              }
+            }}
+            onMouseUp={isSpacePressed ? undefined : handleStageMouseUp}
             onClick={handleStageClick}
             ref={stageRef}
             onContextMenu={(e) => e.evt.preventDefault()}
@@ -980,6 +1101,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               onImageDoubleClick={handleImageDoubleClick}
               onDragEnd={handleDragEnd}
               onItemChange={handleItemChange}
+              readOnly={!canEdit}
             />
           </Stage>
 

@@ -39,19 +39,24 @@
  * @see {@link useCanvasItemsWithPolling} for collaborative real-time updates
  */
 
-import { useMutation, useQuery, useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { type ItemType, type CanvasItem } from '@/types/canvas';
+import {
+  useMutation,
+  useQuery,
+  useSuspenseQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { type ItemType, type CanvasItem } from "@/types/canvas";
 import {
   type CreateCanvasItemInput,
   type UpdateCanvasItemInput,
   type DeleteCanvasItemInput,
-} from '@/lib/validation/canvas-item';
+} from "@/lib/validation/canvas-item";
 import {
   POLLING_INTERVAL_ACTIVE_MS,
   POLLING_INTERVAL_INACTIVE_MS,
   ENABLE_COLLABORATIVE_POLLING,
-} from '@/lib/constants';
+} from "@/lib/constants";
 
 /**
  * Viewport parameters for viewport-based loading
@@ -69,32 +74,40 @@ export interface ViewportParams {
  * API client functions
  */
 const api = {
-  async listItems(canvasId: string, type?: ItemType, viewport?: ViewportParams) {
+  async listItems(
+    canvasId: string,
+    type?: ItemType,
+    viewport?: ViewportParams,
+  ) {
     const buildParams = (offset?: number, limit?: number) => {
       const params = new URLSearchParams({ canvasId });
-      if (type) params.set('type', type);
+      if (type) params.set("type", type);
 
       if (viewport) {
-        params.set('minX', viewport.minX.toString());
-        params.set('maxX', viewport.maxX.toString());
-        params.set('minY', viewport.minY.toString());
-        params.set('maxY', viewport.maxY.toString());
+        params.set("minX", viewport.minX.toString());
+        params.set("maxX", viewport.maxX.toString());
+        params.set("minY", viewport.minY.toString());
+        params.set("maxY", viewport.maxY.toString());
       }
 
-      if (limit !== undefined) params.set('limit', limit.toString());
-      if (offset !== undefined) params.set('offset', offset.toString());
+      if (limit !== undefined) params.set("limit", limit.toString());
+      if (offset !== undefined) params.set("offset", offset.toString());
 
       return params;
     };
 
     const fetchPage = async (offset?: number, limit?: number) => {
-      const response = await fetch(`/api/v1/canvas-items?${buildParams(offset, limit)}`);
-      if (!response.ok) throw new Error('Failed to fetch items');
+      const response = await fetch(
+        `/api/v1/canvas-items?${buildParams(offset, limit)}`,
+      );
+      if (!response.ok) throw new Error("Failed to fetch items");
       return response.json();
     };
 
     const firstPage = await fetchPage(viewport?.offset, viewport?.limit);
-    const items: CanvasItem[] = Array.isArray(firstPage.items) ? firstPage.items : [];
+    const items: CanvasItem[] = Array.isArray(firstPage.items)
+      ? firstPage.items
+      : [];
     let total = firstPage.total ?? items.length;
     let offset = firstPage.offset ?? 0;
     let limit = firstPage.limit ?? items.length;
@@ -103,16 +116,23 @@ const api = {
     if (!viewport && hasMore) {
       let currentOffset = offset + items.length;
       const pageLimit = limit || items.length;
+      let pageCount = 1;
 
-      while (hasMore) {
+      while (hasMore && pageCount < 100) {
         const nextPage = await fetchPage(currentOffset, pageLimit);
         const nextItems = Array.isArray(nextPage.items) ? nextPage.items : [];
+        if (nextItems.length === 0) {
+          throw new Error("Item pagination made no progress");
+        }
         items.push(...nextItems);
         total = nextPage.total ?? total;
         const nextOffset = nextPage.offset ?? currentOffset;
         currentOffset = nextOffset + nextItems.length;
         hasMore = nextPage.hasMore ?? currentOffset < total;
+        pageCount += 1;
       }
+
+      if (hasMore) throw new Error("Canvas exceeds the safe item page limit");
 
       offset = 0;
       limit = items.length;
@@ -128,21 +148,21 @@ const api = {
 
   async getItem(itemId: string) {
     const response = await fetch(`/api/v1/canvas-items/${itemId}`);
-    if (!response.ok) throw new Error('Failed to fetch item');
+    if (!response.ok) throw new Error("Failed to fetch item");
 
     return response.json() as Promise<CanvasItem>;
   },
 
   async createItem(input: CreateCanvasItemInput) {
-    const response = await fetch('/api/v1/canvas-items', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch("/api/v1/canvas-items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to create item');
+      throw new Error(error.detail || "Failed to create item");
     }
 
     return response.json() as Promise<CanvasItem>;
@@ -150,14 +170,14 @@ const api = {
 
   async updateItem(itemId: string, input: UpdateCanvasItemInput) {
     const response = await fetch(`/api/v1/canvas-items/${itemId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to update item');
+      throw new Error(error.detail || "Failed to update item");
     }
 
     return response.json() as Promise<CanvasItem>;
@@ -165,14 +185,14 @@ const api = {
 
   async deleteItem(itemId: string, input: DeleteCanvasItemInput) {
     const response = await fetch(`/api/v1/canvas-items/${itemId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete item');
+      throw new Error(error.detail || "Failed to delete item");
     }
 
     return response.json();
@@ -183,11 +203,12 @@ const api = {
  * Query keys factory
  */
 export const canvasItemKeys = {
-  all: ['canvas-items'] as const,
-  lists: () => [...canvasItemKeys.all, 'list'] as const,
+  all: ["canvas-items"] as const,
+  lists: () => [...canvasItemKeys.all, "list"] as const,
   list: (canvasId: string, type?: ItemType, viewport?: ViewportParams) =>
     [...canvasItemKeys.lists(), { canvasId, type, viewport }] as const,
-  detail: (itemId: string) => [...canvasItemKeys.all, 'detail', itemId] as const,
+  detail: (itemId: string) =>
+    [...canvasItemKeys.all, "detail", itemId] as const,
 };
 
 /**
@@ -219,7 +240,11 @@ export const canvasItemKeys = {
  * });
  * ```
  */
-export function useCanvasItems(canvasId: string, type?: ItemType, viewport?: ViewportParams) {
+export function useCanvasItems(
+  canvasId: string,
+  type?: ItemType,
+  viewport?: ViewportParams,
+) {
   return useSuspenseQuery({
     queryKey: canvasItemKeys.list(canvasId, type, viewport),
     queryFn: () => api.listItems(canvasId, type, viewport),
@@ -270,10 +295,10 @@ function usePageVisibility() {
     setIsVisible(!document.hidden);
 
     // Listen for visibility changes
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -311,10 +336,14 @@ export function useCanvasItemsWithPolling(
     type?: ItemType;
     viewport?: ViewportParams;
     enablePolling?: boolean;
-  }
+  },
 ) {
   const isPageVisible = usePageVisibility();
-  const { type, viewport, enablePolling = ENABLE_COLLABORATIVE_POLLING } = options || {};
+  const {
+    type,
+    viewport,
+    enablePolling = ENABLE_COLLABORATIVE_POLLING,
+  } = options || {};
 
   // Determine refetch interval based on visibility and polling config
   const refetchInterval =
@@ -383,7 +412,7 @@ export function useCreateCanvasItem() {
 
       // Snapshot previous value for rollback
       const previousItems = queryClient.getQueryData(
-        canvasItemKeys.list(newItem.canvasId)
+        canvasItemKeys.list(newItem.canvasId),
       );
 
       // Optimistically update cache with temporary item
@@ -401,7 +430,7 @@ export function useCreateCanvasItem() {
         (old: any) => ({
           ...old,
           items: old ? [...old.items, optimisticItem] : [optimisticItem],
-        })
+        }),
       );
 
       return { previousItems };
@@ -417,7 +446,7 @@ export function useCreateCanvasItem() {
       if (context?.previousItems) {
         queryClient.setQueryData(
           canvasItemKeys.list(newItem.canvasId),
-          context.previousItems
+          context.previousItems,
         );
       }
     },
@@ -460,8 +489,13 @@ export function useUpdateCanvasItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ itemId, data }: { itemId: string; data: UpdateCanvasItemInput }) =>
-      api.updateItem(itemId, data),
+    mutationFn: ({
+      itemId,
+      data,
+    }: {
+      itemId: string;
+      data: UpdateCanvasItemInput;
+    }) => api.updateItem(itemId, data),
     onMutate: async ({ itemId, data }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({
@@ -469,7 +503,9 @@ export function useUpdateCanvasItem() {
       });
 
       // Snapshot previous value
-      const previousItem = queryClient.getQueryData(canvasItemKeys.detail(itemId));
+      const previousItem = queryClient.getQueryData(
+        canvasItemKeys.detail(itemId),
+      );
 
       // Optimistically update the item in detail cache
       queryClient.setQueryData(canvasItemKeys.detail(itemId), (old: any) => {
@@ -491,17 +527,20 @@ export function useUpdateCanvasItem() {
             items: old.items.map((item: any) =>
               item.id === itemId
                 ? { ...item, ...data, updatedAt: new Date().toISOString() }
-                : item
+                : item,
             ),
           };
-        }
+        },
       );
 
       return { previousItem, itemId };
     },
     onSuccess: (updatedItem) => {
       // Update cache with real server data
-      queryClient.setQueryData(canvasItemKeys.detail(updatedItem.id), updatedItem);
+      queryClient.setQueryData(
+        canvasItemKeys.detail(updatedItem.id),
+        updatedItem,
+      );
 
       // Invalidate list queries to ensure consistency
       queryClient.invalidateQueries({
@@ -513,12 +552,12 @@ export function useUpdateCanvasItem() {
       if (context?.previousItem) {
         queryClient.setQueryData(
           canvasItemKeys.detail(context.itemId),
-          context.previousItem
+          context.previousItem,
         );
       }
 
       // Handle version mismatch - refetch all data
-      if (error.message.includes('Version mismatch')) {
+      if (error.message.includes("Version mismatch")) {
         queryClient.invalidateQueries({
           queryKey: canvasItemKeys.all,
         });
@@ -583,7 +622,7 @@ export function useDeleteCanvasItem() {
             ...old,
             items: old.items.filter((item: any) => item.id !== itemId),
           };
-        }
+        },
       );
 
       // Remove from detail cache

@@ -109,12 +109,14 @@ export class SlidingWindowRateLimiter implements RateLimiter {
     } catch (error) {
       logger.error({ error, identifier }, "Rate limit check failed");
 
-      // Fail open - allow request on error
+      // Production requires Redis. If that shared abuse control is unavailable,
+      // fail closed rather than silently removing the protection.
+      const failClosed = process.env.NODE_ENV === "production";
       return {
-        allowed: true,
+        allowed: !failClosed,
         current: 0,
         limit: this.config.maxRequests,
-        remaining: this.config.maxRequests,
+        remaining: failClosed ? 0 : this.config.maxRequests,
         resetAt: Math.floor(now / 1000) + this.config.windowSeconds,
         resetIn: this.config.windowSeconds,
       };
@@ -219,21 +221,9 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
  * Uses IP address with X-Forwarded-For support
  */
 export function getClientIdentifier(request: Request): string {
-  // Check for forwarded IP (from proxy/load balancer)
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    // Take first IP if multiple
-    return forwardedFor.split(",")[0].trim();
-  }
-
-  // Check for real IP header
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) {
-    return realIp;
-  }
-
-  // Fallback - this may not work in all environments
-  return "unknown";
+  // server.ts overwrites this from the TCP peer. Forwarding headers remain
+  // untrusted because the reference deployment is directly reachable.
+  return request.headers.get("x-memoria-client-ip") || "unknown";
 }
 
 /**
