@@ -1,4 +1,4 @@
-FROM node:22.14.0-alpine AS build
+FROM node:26.5.0-alpine AS build
 
 WORKDIR /app
 RUN corepack enable
@@ -28,7 +28,7 @@ ENV NODE_ENV=production \
 
 RUN pnpm db:generate && pnpm build && pnpm prune --prod
 
-FROM node:22.14.0-alpine AS runtime
+FROM node:26.5.0-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
