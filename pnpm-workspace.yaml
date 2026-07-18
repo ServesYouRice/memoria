@@ -3,6 +3,14 @@ packages:
 
 verifyDepsBeforeRun: false
 
+overrides:
+  # GHSA-38f7-945m-qr2g: effect <3.20.0 loses AsyncLocalStorage context under
+  # concurrent RPC load. Pulled in only transitively via prisma → @prisma/config.
+  "effect@<3.20.0": ">=3.20.0"
+  # GHSA-7fh5-64p2-3v2j: postcss <8.5.10 XSS via unescaped </style>. Bundled by
+  # next; a patch-line bump to the fixed 8.5.x is safe for the build pipeline.
+  "postcss@<8.5.10": ">=8.5.10"
+
 allowBuilds:
   "@percy/core": true
   "@prisma/client": true
