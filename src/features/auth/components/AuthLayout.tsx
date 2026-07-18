@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Box, Container, Typography } from '@mui/material';
-import { AutoAwesomeMosaicOutlined as LogoIcon } from '@mui/icons-material';
-import { gradients } from '@/lib/theme';
+import React from "react";
+import { Box, Container, Typography } from "@mui/material";
+import { MemoriaLogo } from "@/components/MemoriaLogo";
+import { gradients } from "@/lib/theme";
 
 export interface AuthLayoutProps {
   children: React.ReactNode;
@@ -19,74 +19,66 @@ export interface AuthLayoutProps {
  */
 export function AuthLayout({
   children,
-  headline = 'Welcome to Memoria',
-  tagline = 'A collaborative canvas for your notes, bookmarks, and ideas.',
+  headline = "Welcome to Memoria",
+  tagline = "A collaborative canvas for your notes, bookmarks, and ideas.",
 }: AuthLayoutProps) {
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex' }}>
+    <Box sx={{ minHeight: "100vh", display: "flex" }}>
       {/* Brand panel */}
       <Box
         sx={{
-          display: { xs: 'none', md: 'flex' },
+          display: { xs: "none", md: "flex" },
           flex: 1,
           background: gradients.brand,
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
           p: 6,
-          color: '#fff',
-          position: 'relative',
-          overflow: 'hidden',
+          color: "#fff",
+          position: "relative",
+          overflow: "hidden",
         }}
       >
         <Box
           aria-hidden
           sx={{
-            position: 'absolute',
+            position: "absolute",
             width: 420,
             height: 420,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,255,255,0.16) 0%, transparent 70%)',
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(255,255,255,0.16) 0%, transparent 70%)",
             top: -140,
             right: -80,
-            animation: 'float 7s ease-in-out infinite',
+            animation: "float 7s ease-in-out infinite",
           }}
         />
         <Box
           aria-hidden
           sx={{
-            position: 'absolute',
+            position: "absolute",
             width: 280,
             height: 280,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%)',
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%)",
             bottom: -80,
-            left: '8%',
-            animation: 'float 9s ease-in-out 1s infinite',
+            left: "8%",
+            animation: "float 9s ease-in-out 1s infinite",
           }}
         />
 
-        <Box sx={{ position: 'relative', textAlign: 'center', maxWidth: 420 }}>
-          <Box
-            sx={{
-              width: 88,
-              height: 88,
-              borderRadius: 4,
-              bgcolor: 'rgba(255,255,255,0.18)',
-              backdropFilter: 'blur(10px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mx: 'auto',
-              mb: 4,
-            }}
-          >
-            <LogoIcon sx={{ fontSize: 44 }} />
+        <Box sx={{ position: "relative", textAlign: "center", maxWidth: 420 }}>
+          <Box sx={{ width: 88, mx: "auto", mb: 4 }}>
+            <MemoriaLogo size={88} />
           </Box>
           <Typography variant="h3" fontWeight={700} gutterBottom>
             {headline}
           </Typography>
-          <Typography variant="h6" sx={{ opacity: 0.9, lineHeight: 1.7, fontWeight: 400 }}>
+          <Typography
+            variant="h6"
+            sx={{ opacity: 0.9, lineHeight: 1.7, fontWeight: 400 }}
+          >
             {tagline}
           </Typography>
         </Box>
@@ -95,31 +87,25 @@ export function AuthLayout({
       {/* Form column */}
       <Box
         sx={{
-          flex: { xs: 1, md: '0 0 520px' },
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          bgcolor: 'background.default',
+          flex: { xs: 1, md: "0 0 520px" },
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          bgcolor: "background.default",
           p: { xs: 3, sm: 6 },
         }}
       >
         <Container maxWidth="sm">
-          <Box sx={{ animation: 'fadeIn 0.5s ease-out' }}>
+          <Box sx={{ animation: "fadeIn 0.5s ease-out" }}>
             {/* Mobile logo */}
-            <Box sx={{ display: { xs: 'flex', md: 'none' }, justifyContent: 'center', mb: 4 }}>
-              <Box
-                sx={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 3,
-                  background: gradients.brand,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <LogoIcon sx={{ fontSize: 28, color: '#fff' }} />
-              </Box>
+            <Box
+              sx={{
+                display: { xs: "flex", md: "none" },
+                justifyContent: "center",
+                mb: 4,
+              }}
+            >
+              <MemoriaLogo size={56} />
             </Box>
             {children}
           </Box>
