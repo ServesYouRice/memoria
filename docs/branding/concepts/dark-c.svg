@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#312e81"/>
+      <stop offset="1" stop-color="#581c87"/>
+    </linearGradient>
+    <pattern id="grid" x="32" y="32" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M 48 0 H 0 V 48" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.12"/>
+    </pattern>
+    <clipPath id="tile"><rect width="512" height="512" rx="116"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#brand)"/>
+    <rect width="512" height="512" fill="url(#grid)"/>
+  </g>
+  <g transform="rotate(-9 246 246)">
+    <rect x="146" y="131" width="200" height="230" rx="14" fill="#ffffff" opacity="0.4"/>
+  </g>
+  <g transform="rotate(5 256 266)">
+    <rect x="156" y="151" width="200" height="230" rx="14" fill="#ffffff"/>
+    <rect x="172" y="167" width="168" height="152" rx="6" fill="#6d28d9"/>
+    <circle cx="298" cy="207" r="17" fill="#fbbf24"/>
+    <path d="M 172 319 L 230 247 L 265 289 L 294 255 L 340 319 Z" fill="#ffffff" opacity="0.9"/>
+  </g>
+</svg>
