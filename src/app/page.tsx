@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation';
-import Link from 'next/link';
-import { auth } from '@/lib/auth';
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { auth } from "@/lib/auth";
 import {
   Box,
   Button,
@@ -11,7 +11,7 @@ import {
   Stack,
   Divider,
   alpha,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Dashboard as MultiCanvasIcon,
   Lock as SecurityIcon,
@@ -21,39 +21,45 @@ import {
   Groups as CollaborationIcon,
   BookmarkBorder as BookmarkIcon,
   AutoAwesomeMosaicOutlined as LogoIcon,
-} from '@mui/icons-material';
-import { brand, gradients } from '@/lib/theme';
+} from "@mui/icons-material";
+import { brand, gradients } from "@/lib/theme";
 
 const FEATURES = [
   {
     icon: MultiCanvasIcon,
-    title: 'Multi-canvas',
-    description: 'Create unlimited canvases to organize different projects, ideas, and workflows.',
+    title: "Multi-canvas",
+    description:
+      "Create unlimited canvases to organize different projects, ideas, and workflows.",
   },
   {
     icon: CanvasIcon,
-    title: 'Infinite canvas',
-    description: 'Pan, zoom, and arrange your notes freely on an unlimited workspace.',
+    title: "Infinite canvas",
+    description:
+      "Pan, zoom, and arrange your notes freely on an unlimited workspace.",
   },
   {
     icon: CollaborationIcon,
-    title: 'Real-time collaboration',
-    description: 'Work together with your team in real time with presence and live cursors.',
+    title: "Real-time collaboration",
+    description:
+      "Work together with your team in real time with presence and live cursors.",
   },
   {
     icon: SecurityIcon,
-    title: 'Security first',
-    description: 'Enterprise-grade security with Argon2 hashing, rate limiting, and strict CSP.',
+    title: "Security first",
+    description:
+      "Enterprise-grade security with Argon2 hashing, rate limiting, and strict CSP.",
   },
   {
     icon: PerformanceIcon,
-    title: 'Lightning fast',
-    description: 'Optimized performance with instant autosave and efficient state management.',
+    title: "Lightning fast",
+    description:
+      "Optimized performance with instant autosave and efficient state management.",
   },
   {
     icon: ExportIcon,
-    title: 'Export anywhere',
-    description: 'Export your canvases as PNG, PDF, or JSON for sharing and presentations.',
+    title: "Export anywhere",
+    description:
+      "Export your canvases as PNG, PDF, or JSON for sharing and presentations.",
   },
 ];
 
@@ -61,27 +67,34 @@ export default async function Home() {
   const session = await auth();
 
   if (session?.user) {
-    redirect('/dashboard');
+    redirect("/dashboard");
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ minHeight: "100dvh", bgcolor: "background.default" }}>
       {/* Top bar */}
       <Container maxWidth="lg">
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 2.5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            py: 2.5,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Box
               sx={{
                 width: 34,
                 height: 34,
                 borderRadius: 2,
                 background: gradients.brand,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              <LogoIcon sx={{ fontSize: 19, color: '#fff' }} />
+              <LogoIcon sx={{ fontSize: 19, color: "#fff" }} />
             </Box>
             <Typography variant="h6" fontWeight={700}>
               Memoria
@@ -99,23 +112,35 @@ export default async function Home() {
       </Container>
 
       {/* Hero */}
-      <Box sx={{ position: 'relative', overflow: 'hidden' }}>
+      <Box sx={{ position: "relative", overflow: "hidden" }}>
         <Box
           aria-hidden
-          sx={{ position: 'absolute', inset: 0, background: gradients.hero, pointerEvents: 'none' }}
+          sx={{
+            position: "absolute",
+            inset: 0,
+            background: gradients.hero,
+            pointerEvents: "none",
+          }}
         />
-        <Container maxWidth="md" sx={{ position: 'relative', textAlign: 'center', py: { xs: 10, md: 14 } }}>
+        <Container
+          maxWidth="md"
+          sx={{
+            position: "relative",
+            textAlign: "center",
+            py: { xs: 10, md: 14 },
+          }}
+        >
           <Typography
             variant="body2"
             sx={{
-              display: 'inline-block',
+              display: "inline-block",
               px: 1.5,
               py: 0.5,
               mb: 3,
               borderRadius: 99,
-              border: '1px solid',
+              border: "1px solid",
               borderColor: (theme) => alpha(theme.palette.primary.main, 0.3),
-              color: 'primary.main',
+              color: "primary.main",
               fontWeight: 600,
             }}
           >
@@ -124,19 +149,19 @@ export default async function Home() {
           <Typography
             variant="h1"
             sx={{
-              fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' },
+              fontSize: { xs: "2.5rem", sm: "3.25rem", md: "4rem" },
               lineHeight: 1.08,
               mb: 3,
             }}
           >
-            Organize your ideas on an{' '}
+            Organize your ideas on an{" "}
             <Box
               component="span"
               sx={{
                 background: gradients.brand,
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
+                backgroundClip: "text",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
               }}
             >
               infinite canvas
@@ -145,16 +170,37 @@ export default async function Home() {
           <Typography
             variant="h6"
             color="text.secondary"
-            sx={{ fontWeight: 400, lineHeight: 1.6, maxWidth: 560, mx: 'auto', mb: 5 }}
+            sx={{
+              fontWeight: 400,
+              lineHeight: 1.6,
+              maxWidth: 560,
+              mx: "auto",
+              mb: 5,
+            }}
           >
-            Memoria is a collaborative canvas for notes and bookmarks — beautiful, secure, and
-            blazing fast, designed for modern teams and creative minds.
+            Memoria is a collaborative canvas for notes and bookmarks —
+            beautiful, secure, and blazing fast, designed for modern teams and
+            creative minds.
           </Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-            <Button component={Link} href="/auth/register" variant="contained" size="large">
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={2}
+            justifyContent="center"
+          >
+            <Button
+              component={Link}
+              href="/auth/register"
+              variant="contained"
+              size="large"
+            >
               Get started free
             </Button>
-            <Button component={Link} href="/auth/login" variant="outlined" size="large">
+            <Button
+              component={Link}
+              href="/auth/login"
+              variant="outlined"
+              size="large"
+            >
               Sign in
             </Button>
           </Stack>
@@ -166,18 +212,24 @@ export default async function Home() {
           <Box
             sx={{
               mt: 8,
-              mx: 'auto',
+              mx: "auto",
               maxWidth: 480,
               p: 4,
               borderRadius: 4,
-              border: '1px solid',
-              borderColor: 'divider',
-              bgcolor: 'background.paper',
-              boxShadow: (theme) => `0 24px 64px ${alpha(brand.primary.main, theme.palette.mode === 'light' ? 0.12 : 0.25)}`,
-              animation: 'fadeIn 0.8s ease-out 0.2s both',
+              border: "1px solid",
+              borderColor: "divider",
+              bgcolor: "background.paper",
+              boxShadow: (theme) =>
+                `0 24px 64px ${alpha(brand.primary.main, theme.palette.mode === "light" ? 0.12 : 0.25)}`,
+              animation: "fadeIn 0.8s ease-out 0.2s both",
             }}
           >
-            <Stack direction="row" spacing={2} justifyContent="center" sx={{ mb: 2.5 }}>
+            <Stack
+              direction="row"
+              spacing={2}
+              justifyContent="center"
+              sx={{ mb: 2.5 }}
+            >
               {[CanvasIcon, BookmarkIcon].map((Icon, i) => (
                 <Box
                   key={i}
@@ -186,13 +238,13 @@ export default async function Home() {
                     height: 64,
                     borderRadius: 3,
                     background: gradients.brandSoft,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     animation: `float 4s ease-in-out ${i * 0.5}s infinite`,
                   }}
                 >
-                  <Icon sx={{ fontSize: 30, color: 'primary.main' }} />
+                  <Icon sx={{ fontSize: 30, color: "primary.main" }} />
                 </Box>
               ))}
             </Stack>
@@ -200,7 +252,8 @@ export default async function Home() {
               Everything in one place
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Sticky notes, bookmarks, images, and rich text — arranged your way.
+              Sticky notes, bookmarks, images, and rich text — arranged your
+              way.
             </Typography>
           </Box>
         </Container>
@@ -208,24 +261,39 @@ export default async function Home() {
 
       {/* Features */}
       <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
-        <Box sx={{ textAlign: 'center', mb: 7 }}>
-          <Typography variant="h2" sx={{ fontSize: { xs: '2rem', md: '2.75rem' }, mb: 1.5 }}>
+        <Box sx={{ textAlign: "center", mb: 7 }}>
+          <Typography
+            variant="h2"
+            sx={{ fontSize: { xs: "2rem", md: "2.75rem" }, mb: 1.5 }}
+          >
             Everything you need
           </Typography>
-          <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400, maxWidth: 600, mx: 'auto' }}>
-            Powerful features to capture, organize, and collaborate on your ideas
+          <Typography
+            variant="h6"
+            color="text.secondary"
+            sx={{ fontWeight: 400, maxWidth: 600, mx: "auto" }}
+          >
+            Powerful features to capture, organize, and collaborate on your
+            ideas
           </Typography>
         </Box>
 
         <Box
           sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+            },
             gap: 3,
           }}
         >
           {FEATURES.map((feature, index) => (
-            <Card key={feature.title} sx={{ animation: `fadeIn 0.5s ease-out ${index * 0.08}s both` }}>
+            <Card
+              key={feature.title}
+              sx={{ animation: `fadeIn 0.5s ease-out ${index * 0.08}s both` }}
+            >
               <CardContent sx={{ p: 3.5 }}>
                 <Box
                   sx={{
@@ -233,18 +301,22 @@ export default async function Home() {
                     height: 52,
                     borderRadius: 2.5,
                     background: gradients.brandSoft,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     mb: 2.5,
                   }}
                 >
-                  <feature.icon sx={{ fontSize: 26, color: 'primary.main' }} />
+                  <feature.icon sx={{ fontSize: 26, color: "primary.main" }} />
                 </Box>
                 <Typography variant="h6" gutterBottom fontWeight={600}>
                   {feature.title}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ lineHeight: 1.7 }}
+                >
                   {feature.description}
                 </Typography>
               </CardContent>
@@ -257,19 +329,24 @@ export default async function Home() {
       <Container maxWidth="md" sx={{ pb: { xs: 8, md: 12 } }}>
         <Box
           sx={{
-            textAlign: 'center',
+            textAlign: "center",
             px: { xs: 3, md: 8 },
             py: { xs: 6, md: 8 },
             borderRadius: 5,
             background: gradients.brand,
-            color: '#fff',
+            color: "#fff",
           }}
         >
-          <Typography variant="h3" gutterBottom sx={{ fontSize: { xs: '1.75rem', md: '2.25rem' } }}>
+          <Typography
+            variant="h3"
+            gutterBottom
+            sx={{ fontSize: { xs: "1.75rem", md: "2.25rem" } }}
+          >
             Ready to get organized?
           </Typography>
-          <Typography sx={{ opacity: 0.9, maxWidth: 480, mx: 'auto', mb: 4 }}>
-            Join thousands of users and experience a better way to capture and organize your ideas.
+          <Typography sx={{ opacity: 0.9, maxWidth: 480, mx: "auto", mb: 4 }}>
+            Join thousands of users and experience a better way to capture and
+            organize your ideas.
           </Typography>
           <Button
             component={Link}
@@ -277,9 +354,9 @@ export default async function Home() {
             size="large"
             variant="contained"
             sx={{
-              bgcolor: '#fff',
-              color: 'primary.main',
-              '&:hover': { bgcolor: '#fff', filter: 'brightness(0.95)' },
+              bgcolor: "#fff",
+              color: "primary.main",
+              "&:hover": { bgcolor: "#fff", filter: "brightness(0.95)" },
             }}
           >
             Start free now
@@ -293,10 +370,10 @@ export default async function Home() {
         <Box
           sx={{
             py: 4,
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            alignItems: { xs: 'flex-start', md: 'center' },
-            justifyContent: 'space-between',
+            display: "flex",
+            flexDirection: { xs: "column", md: "row" },
+            alignItems: { xs: "flex-start", md: "center" },
+            justifyContent: "space-between",
             gap: 2,
           }}
         >
@@ -308,9 +385,29 @@ export default async function Home() {
               A modern, secure, and fast note-taking application.
             </Typography>
           </Box>
-          <Typography variant="body2" color="text.secondary">
-            © {new Date().getFullYear()} Memoria. Built with ❤️ for productivity.
-          </Typography>
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            flexWrap="wrap"
+            alignItems="center"
+          >
+            <Button component={Link} href="/help" size="small">
+              Help
+            </Button>
+            <Button component={Link} href="/status" size="small">
+              Status
+            </Button>
+            <Button component={Link} href="/privacy" size="small">
+              Privacy
+            </Button>
+            <Button component={Link} href="/terms" size="small">
+              Terms
+            </Button>
+            <Typography variant="body2" color="text.secondary">
+              © {new Date().getFullYear()} Memoria.
+            </Typography>
+          </Stack>
         </Box>
       </Container>
     </Box>

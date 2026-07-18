@@ -15,6 +15,7 @@ import {
 import { sanitizeComment } from "@/lib/sanitization";
 import { errorResponse } from "@/lib/errors";
 import type { CanvasShare } from "@prisma/client";
+import { ActivityType, logActivity } from "@/lib/activity";
 
 interface RouteContext {
   params: Promise<{ itemId: string }>;
@@ -131,6 +132,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           select: commentUserSelect,
         },
       },
+    });
+
+    await logActivity({
+      userId: session.user.id,
+      type: ActivityType.COMMENT_ADDED,
+      canvasId: item.canvasId,
+      canvasName: item.canvas.name,
+      itemId,
     });
 
     return NextResponse.json(comment, { status: 201 });

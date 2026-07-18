@@ -2,9 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  // Legacy suites that used unsigned fake cookies and removed routes remain as
-  // migration references, but are not release evidence. CI runs the real-user
-  // smoke flow until those scenarios are rebuilt on the shared fixture.
+  // Release evidence uses real registration and Auth.js sessions. Opt-in Percy
+  // visual specs are run separately by the test:visual command.
   testMatch: "smoke.spec.ts",
   fullyParallel: false,
   forbidOnly: !!process.env["CI"],

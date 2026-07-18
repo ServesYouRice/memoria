@@ -10,8 +10,6 @@ describe("/api/metrics", () => {
     expect(response.headers.get("Content-Type")).toContain("text/plain");
     expect(body).toContain("process_cpu_user_seconds_total");
     expect(body).toContain("nodejs_heap_size_total_bytes");
-    expect(body).not.toContain("canvascollect_http_requests_total");
-    expect(body).not.toContain("canvascollect_http_request_duration_seconds");
   });
 
   it("sets no-cache headers", async () => {

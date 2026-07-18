@@ -83,8 +83,8 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
     raw,
     'DATABASE_URL',
     targetMode === 'selfhost'
-      ? `postgresql://canvascollect:${databasePassword}@postgres:5432/canvascollect`
-      : `postgresql://canvascollect:${databasePassword}@localhost:5432/canvascollect`
+      ? `postgresql://memoria:${databasePassword}@postgres:5432/memoria`
+      : `postgresql://memoria:${databasePassword}@localhost:5432/memoria`
   );
   raw = upsertEnvValue(raw, 'REDIS_PASSWORD', redisPassword);
   raw = upsertEnvValue(

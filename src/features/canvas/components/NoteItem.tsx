@@ -12,7 +12,6 @@ import { Group, Rect, Text, Circle } from "react-konva";
 import type Konva from "konva";
 import { type CanvasItem, isNoteContent } from "@/types/canvas";
 import { useAutosave } from "@/lib/hooks/use-autosave";
-import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
 import { stripHtmlTags } from "@/lib/utils/html";
 
 interface NoteItemProps {
@@ -29,7 +28,6 @@ interface NoteItemProps {
 const RESIZE_HANDLE_SIZE = 8;
 const MIN_WIDTH = 150;
 const MIN_HEIGHT = 100;
-const DELETE_BUTTON_SIZE = 20;
 
 export function NoteItem({
   item,
@@ -54,8 +52,6 @@ export function NoteItem({
     version: item.version,
     debounceMs: 500,
   });
-
-  const deleteItem = useDeleteCanvasItem();
 
   const content = isNoteContent(item.content)
     ? item.content
@@ -144,12 +140,6 @@ export function NoteItem({
       width: localSize.width,
       height: localSize.height,
     });
-  };
-
-  const handleDelete = () => {
-    if (confirm("Delete this note?")) {
-      deleteItem.mutate({ itemId: item.id, version: item.version });
-    }
   };
 
   return (
@@ -274,32 +264,6 @@ export function NoteItem({
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "default";
             }}
-          />
-
-          {/* Delete button */}
-          <Circle
-            x={localSize.width - DELETE_BUTTON_SIZE}
-            y={DELETE_BUTTON_SIZE}
-            radius={DELETE_BUTTON_SIZE}
-            fill="#F44336"
-            onClick={handleDelete}
-            onTap={handleDelete}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "pointer";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-          />
-          <Text
-            x={localSize.width - DELETE_BUTTON_SIZE - 5}
-            y={DELETE_BUTTON_SIZE - 6}
-            text="×"
-            fontSize={20}
-            fill="white"
-            listening={false}
           />
         </>
       )}

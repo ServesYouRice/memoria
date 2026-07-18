@@ -4,19 +4,16 @@ import { resolveAgentRequestContext } from "@/lib/agents/auth";
 import { assertAgentCapability } from "@/lib/agents/policy";
 import { AGENT_CAPABILITY_RUNGS } from "@/lib/agents/constants";
 import { listScopedCanvases } from "@/lib/agents/query-core";
+import { parsePagination } from "@/lib/api/pagination";
 
 export const GET = withApiHandler(async (request: NextRequest) => {
   const context = await resolveAgentRequestContext(request);
   assertAgentCapability(context.agentProfile, AGENT_CAPABILITY_RUNGS.READ);
 
-  const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") || "50", 10),
-    100,
-  );
-  const offset = parseInt(
-    request.nextUrl.searchParams.get("offset") || "0",
-    10,
-  );
+  const { limit, offset } = parsePagination(request.nextUrl.searchParams, {
+    defaultLimit: 50,
+    maxLimit: 100,
+  });
 
   return NextResponse.json(
     await listScopedCanvases(context, {

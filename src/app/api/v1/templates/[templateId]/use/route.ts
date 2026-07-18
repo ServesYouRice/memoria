@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { NotFoundError, UnauthorizedError, errorResponse } from "@/lib/errors";
 import { type Prisma } from "@prisma/client";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { ActivityType, logActivity } from "@/lib/activity";
 
 interface RouteContext {
   params: Promise<{ templateId: string }>;
@@ -80,6 +81,14 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
     });
 
     await invalidateCanvasCache(templateId);
+
+    await logActivity({
+      userId: session.user.id,
+      type: ActivityType.TEMPLATE_USED,
+      canvasId: newCanvas.id,
+      canvasName: newCanvas.name,
+      metadata: { templateId },
+    });
 
     return NextResponse.json(newCanvas, { status: 201 });
   } catch (error) {

@@ -24,6 +24,77 @@ const deleteAccountSchema = z.object({
   }),
 });
 
+/** Export the signed-in user's portable account data without credentials or secrets. */
+export async function GET(request: NextRequest) {
+  try {
+    const { userId } = await requireAuth();
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        image: true,
+        emailVerified: true,
+        createdAt: true,
+        updatedAt: true,
+        workspaces: {
+          select: { id: true, name: true, createdAt: true, updatedAt: true },
+        },
+        canvases: {
+          select: {
+            id: true,
+            name: true,
+            workspaceId: true,
+            zoomLevel: true,
+            panX: true,
+            panY: true,
+            isPublic: true,
+            isTemplate: true,
+            templateDescription: true,
+            templateCategory: true,
+            createdAt: true,
+            updatedAt: true,
+            items: {
+              select: {
+                id: true,
+                type: true,
+                positionX: true,
+                positionY: true,
+                width: true,
+                height: true,
+                zIndex: true,
+                content: true,
+                tags: true,
+                version: true,
+                deletedAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+            shares: {
+              select: { email: true, role: true, createdAt: true },
+            },
+          },
+        },
+      },
+    });
+    if (!user) throw new BadRequestError("Account not found");
+
+    return NextResponse.json(
+      { exportedAt: new Date().toISOString(), formatVersion: 1, user },
+      {
+        headers: {
+          "Cache-Control": "private, no-store",
+          "Content-Disposition": `attachment; filename="memoria-account-${new Date().toISOString().slice(0, 10)}.json"`,
+        },
+      },
+    );
+  } catch (error) {
+    return errorResponse(error, request.url);
+  }
+}
+
 /**
  * DELETE /api/v1/users/account
  * Permanently delete user account and all associated data

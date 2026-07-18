@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { userId } = await requireAuth();
 
     const { searchParams } = new URL(request.url);
-    const { limit } = parsePagination(searchParams, {
+    const { limit, offset } = parsePagination(searchParams, {
       defaultLimit: 50,
       maxLimit: 100,
     });
@@ -32,25 +32,37 @@ export async function GET(request: NextRequest) {
       where["canvasId"] = canvasId;
     }
 
-    const activities = await prisma.activity.findMany({
-      where,
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: limit,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
+    const [activities, total] = await Promise.all([
+      prisma.activity.findMany({
+        where,
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: limit,
+        skip: offset,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
           },
         },
+      }),
+      prisma.activity.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      activities,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + activities.length < total,
       },
     });
-
-    return NextResponse.json({ activities });
   } catch (error) {
     return errorResponse(error, request.url);
   }

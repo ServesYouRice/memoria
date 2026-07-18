@@ -1,7 +1,7 @@
-import { beforeAll, afterAll, vi } from 'vitest';
+import { beforeAll, afterAll, vi } from "vitest";
 
 // Mock HTMLCanvasElement for Konva tests
-if (typeof HTMLCanvasElement !== 'undefined') {
+if (typeof HTMLCanvasElement !== "undefined") {
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
     fillRect: vi.fn(),
     clearRect: vi.fn(),
@@ -31,7 +31,7 @@ if (typeof HTMLCanvasElement !== 'undefined') {
     clip: vi.fn(),
   })) as any;
 
-  HTMLCanvasElement.prototype.toDataURL = vi.fn(() => '');
+  HTMLCanvasElement.prototype.toDataURL = vi.fn(() => "");
   HTMLCanvasElement.prototype.toBlob = vi.fn();
 }
 
@@ -45,12 +45,12 @@ global.IntersectionObserver = vi.fn(() => ({
 
 beforeAll(async () => {
   // Setup test database if needed
-  const dbPassword = process.env.DATABASE_PASSWORD || 'devpassword';
+  const dbPassword = process.env.DATABASE_PASSWORD || "devpassword";
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ||
-    `postgresql://canvascollect:${dbPassword}@localhost:5432/canvascollect`;
-  process.env.DEMO_USER_ID = 'test-user-id';
-  process.env.NODE_ENV = 'test';
+    `postgresql://memoria:${dbPassword}@localhost:5432/memoria`;
+  process.env.DEMO_USER_ID = "test-user-id";
+  process.env.NODE_ENV = "test";
 });
 
 afterAll(async () => {

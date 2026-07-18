@@ -15,6 +15,7 @@ import { createLogger } from "@/lib/logger";
 import { prisma } from "@/lib/db";
 import { API_VERSION } from "@/lib/api/versioning";
 import { getRedisClient } from "@/lib/cache/redis-client";
+import { checkPrivateUploadStorage } from "@/lib/uploads/private-storage";
 
 const logger = createLogger("health");
 
@@ -37,6 +38,15 @@ interface HealthCheck {
       responseTime?: number;
       error?: string;
     };
+    storage: {
+      status: "pass" | "fail" | "skip";
+      responseTime?: number;
+      error?: string;
+    };
+    migrations: {
+      status: "pass" | "fail";
+      error?: string;
+    };
     memory: {
       status: "pass" | "warn" | "fail";
       used: number;
@@ -46,6 +56,44 @@ interface HealthCheck {
       external: number;
     };
   };
+}
+
+async function checkStorage(): Promise<HealthCheck["checks"]["storage"]> {
+  if (
+    process.env.UPLOAD_STORAGE !== "s3" &&
+    process.env.NODE_ENV !== "production"
+  ) {
+    return { status: "skip" };
+  }
+  const start = Date.now();
+  try {
+    await Promise.race([
+      checkPrivateUploadStorage(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("storage timeout")), 3000),
+      ),
+    ]);
+    return { status: "pass", responseTime: Date.now() - start };
+  } catch (error) {
+    logger.error({ error }, "Storage health check failed");
+    return { status: "fail", error: "storage_unavailable" };
+  }
+}
+
+async function checkMigrations(): Promise<HealthCheck["checks"]["migrations"]> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ failed: number }>>`
+      SELECT COUNT(*)::int AS "failed"
+      FROM "_prisma_migrations"
+      WHERE "finished_at" IS NULL AND "rolled_back_at" IS NULL
+    `;
+    return Number(rows[0]?.failed || 0) === 0
+      ? { status: "pass" }
+      : { status: "fail", error: "migration_incomplete" };
+  } catch (error) {
+    logger.error({ error }, "Migration health check failed");
+    return { status: "fail", error: "migration_status_unavailable" };
+  }
 }
 
 async function checkDatabase(): Promise<HealthCheck["checks"]["database"]> {
@@ -115,17 +163,24 @@ function checkMemory(): HealthCheck["checks"]["memory"] {
 
 export async function GET() {
   try {
-    const [database, redis, memory] = await Promise.all([
+    const [database, redis, storage, migrations, memory] = await Promise.all([
       checkDatabase(),
       checkRedis(),
+      checkStorage(),
+      checkMigrations(),
       Promise.resolve(checkMemory()),
     ]);
 
-    const checks = { database, redis, memory };
+    const checks = { database, redis, storage, migrations, memory };
 
     // Calculate overall status
     let overallStatus: HealthCheck["status"] = "healthy";
-    if (database.status === "fail" || redis.status === "fail") {
+    if (
+      database.status === "fail" ||
+      redis.status === "fail" ||
+      storage.status === "fail" ||
+      migrations.status === "fail"
+    ) {
       overallStatus = "unhealthy";
     } else if (memory.status === "warn") {
       overallStatus = "degraded";

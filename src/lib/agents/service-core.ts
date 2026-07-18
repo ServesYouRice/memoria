@@ -1121,7 +1121,15 @@ export async function executeExternalWebhook(input: {
   );
   const baseMetadata = {
     integrationAccountId: integrationAccount.id,
-    request: requestData,
+    request: {
+      method: requestData.method,
+      path: requestData.path,
+      headerNames: Object.keys(requestData.headers || {}).sort(),
+      bodyBytes: Buffer.byteLength(
+        JSON.stringify(requestData.body ?? {}),
+        "utf8",
+      ),
+    },
     ...(input.metadata && typeof input.metadata === "object"
       ? (input.metadata as Record<string, unknown>)
       : {}),
@@ -1154,7 +1162,16 @@ export async function executeExternalWebhook(input: {
       method: requestData.method,
       headers: requestData.headers,
       body: requestData.body,
+      deliveryId: agentAction.id,
+      idempotencyKey: agentAction.id,
     });
+
+    const persistedDelivery = {
+      deliveryId: delivery.deliveryId,
+      status: delivery.status,
+      ok: delivery.ok,
+      responseBytes: Buffer.byteLength(delivery.responseBody, "utf8"),
+    };
 
     const replayCursor = normalizeReplayCursor(integrationAccount.replayCursor);
     replayCursor.lastOutboundDeliveryId = delivery.deliveryId;
@@ -1176,7 +1193,7 @@ export async function executeExternalWebhook(input: {
           status: AgentActionStatus.FAILED,
           metadata: toJsonValue({
             ...baseMetadata,
-            delivery,
+            delivery: persistedDelivery,
           }),
         },
       });
@@ -1192,7 +1209,7 @@ export async function executeExternalWebhook(input: {
         status: AgentActionStatus.COMPLETED,
         metadata: toJsonValue({
           ...baseMetadata,
-          delivery,
+          delivery: persistedDelivery,
         }),
       },
     });

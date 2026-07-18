@@ -3,9 +3,9 @@
  * Display recent user activities
  */
 
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 import {
   Box,
   Typography,
@@ -15,12 +15,17 @@ import {
   CircularProgress,
   Alert,
   Avatar,
-} from '@mui/material';
-import { Edit } from '@mui/icons-material';
-import { useActivities } from '@/lib/hooks/use-activities';
-import { formatDistanceToNow } from 'date-fns';
-import Link from 'next/link';
-import { activityIcons, activityColors, getActivityMessage } from './activity-utils';
+  Button,
+} from "@mui/material";
+import { Edit } from "@mui/icons-material";
+import { useActivities } from "@/lib/hooks/use-activities";
+import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
+import {
+  activityIcons,
+  activityColors,
+  getActivityMessage,
+} from "./activity-utils";
 
 interface ActivityFeedProps {
   canvasId?: string;
@@ -29,30 +34,39 @@ interface ActivityFeedProps {
 }
 
 /** Standalone sentence form of the shared activity message ("Created canvas …"). */
-function activitySentence(activity: Parameters<typeof getActivityMessage>[0]): string {
+function activitySentence(
+  activity: Parameters<typeof getActivityMessage>[0],
+): string {
   const message = getActivityMessage(activity);
   return message.charAt(0).toUpperCase() + message.slice(1);
 }
 
-export function ActivityFeed({ canvasId, limit = 20, showTitle = true }: ActivityFeedProps) {
-  const { data, isLoading, error } = useActivities(canvasId, limit);
+export function ActivityFeed({
+  canvasId,
+  limit = 20,
+  showTitle = true,
+}: ActivityFeedProps) {
+  const {
+    data,
+    isLoading,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useActivities(canvasId, limit);
 
-  const activities = data?.activities || [];
+  const activities = data?.pages.flatMap((page) => page.activities) || [];
 
   if (isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+      <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
         <CircularProgress />
       </Box>
     );
   }
 
   if (error) {
-    return (
-      <Alert severity="error">
-        Failed to load activity feed
-      </Alert>
-    );
+    return <Alert severity="error">Failed to load activity feed</Alert>;
   }
 
   return (
@@ -64,7 +78,7 @@ export function ActivityFeed({ canvasId, limit = 20, showTitle = true }: Activit
       )}
 
       {activities.length === 0 ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
+        <Box sx={{ textAlign: "center", py: 4 }}>
           <Typography variant="body2" color="text.secondary">
             No recent activity
           </Typography>
@@ -78,14 +92,14 @@ export function ActivityFeed({ canvasId, limit = 20, showTitle = true }: Activit
                 px: 0,
                 py: 1.5,
                 borderBottom: 1,
-                borderColor: 'divider',
-                '&:last-child': { borderBottom: 0 },
+                borderColor: "divider",
+                "&:last-child": { borderBottom: 0 },
               }}
             >
               <Avatar
                 sx={{
                   mr: 2,
-                  bgcolor: `${activityColors[activity.type] || 'default'}.main`,
+                  bgcolor: `${activityColors[activity.type] || "default"}.main`,
                   width: 36,
                   height: 36,
                 }}
@@ -98,12 +112,12 @@ export function ActivityFeed({ canvasId, limit = 20, showTitle = true }: Activit
                     {activity.canvasId && !canvasId ? (
                       <Link
                         href={`/canvas/${activity.canvasId}`}
-                        style={{ textDecoration: 'none', color: 'inherit' }}
+                        style={{ textDecoration: "none", color: "inherit" }}
                       >
                         <Typography
                           variant="body2"
                           sx={{
-                            '&:hover': { textDecoration: 'underline' },
+                            "&:hover": { textDecoration: "underline" },
                           }}
                         >
                           {activitySentence(activity)}
@@ -126,6 +140,16 @@ export function ActivityFeed({ canvasId, limit = 20, showTitle = true }: Activit
               />
             </ListItem>
           ))}
+          {hasNextPage && (
+            <ListItem sx={{ justifyContent: "center" }}>
+              <Button
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? "Loading…" : "Load more activity"}
+              </Button>
+            </ListItem>
+          )}
         </List>
       )}
     </Box>

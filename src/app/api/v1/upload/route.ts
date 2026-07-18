@@ -130,7 +130,7 @@ function getS3Client(): S3Client {
   if (!region || !accessKeyId || !secretAccessKey) {
     throw new ApiError(
       500,
-      "https://canvascollect.com/errors/upload-storage",
+      "https://memoria.local/errors/upload-storage",
       "Upload storage misconfigured",
       "S3 credentials are missing",
     );
@@ -182,7 +182,7 @@ async function withUploadLock<T>(
 
     throw new ApiError(
       503,
-      "https://canvascollect.com/errors/upload-lock-timeout",
+      "https://memoria.local/errors/upload-lock-timeout",
       "Upload system busy",
       "Could not acquire upload quota lock. Please retry.",
     );
@@ -219,7 +219,7 @@ async function runMalwareScan(
     if (scanRequired) {
       throw new ApiError(
         503,
-        "https://canvascollect.com/errors/upload-scan",
+        "https://memoria.local/errors/upload-scan",
         "Malware scan unavailable",
         "UPLOAD_SCAN_URL is not configured",
       );
@@ -250,7 +250,7 @@ async function runMalwareScan(
   } catch (error) {
     throw new ApiError(
       503,
-      "https://canvascollect.com/errors/upload-scan",
+      "https://memoria.local/errors/upload-scan",
       "Malware scan unavailable",
       error instanceof Error ? error.message : "Scan service unavailable",
     );
@@ -261,7 +261,7 @@ async function runMalwareScan(
   if (!response.ok) {
     throw new ApiError(
       503,
-      "https://canvascollect.com/errors/upload-scan",
+      "https://memoria.local/errors/upload-scan",
       "Malware scan failed",
       `Scan service returned ${response.status}`,
     );
@@ -274,7 +274,7 @@ async function runMalwareScan(
   if (!scanResult || typeof scanResult.clean !== "boolean") {
     throw new ApiError(
       502,
-      "https://canvascollect.com/errors/upload-scan",
+      "https://memoria.local/errors/upload-scan",
       "Malware scan failed",
       "Scan service response was invalid",
     );
@@ -298,7 +298,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     if (!file) {
       throw new ApiError(
         400,
-        "https://canvascollect.com/errors/upload",
+        "https://memoria.local/errors/upload",
         "Bad Request",
         "No file provided",
       );
@@ -318,7 +318,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     if (file.size > MAX_FILE_SIZE) {
       throw new ApiError(
         400,
-        "https://canvascollect.com/errors/upload",
+        "https://memoria.local/errors/upload",
         "Bad Request",
         `File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`,
       );
@@ -331,7 +331,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     if (!detectedType || !ALLOWED_MIME_TYPES.includes(detectedType.mime)) {
       throw new ApiError(
         400,
-        "https://canvascollect.com/errors/upload",
+        "https://memoria.local/errors/upload",
         "Bad Request",
         "Invalid or unsupported image format",
       );
@@ -340,7 +340,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     if (file.type && file.type !== detectedType.mime) {
       throw new ApiError(
         400,
-        "https://canvascollect.com/errors/upload",
+        "https://memoria.local/errors/upload",
         "Bad Request",
         "File type does not match content",
       );
@@ -388,7 +388,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         if (!bucket) {
           throw new ApiError(
             500,
-            "https://canvascollect.com/errors/upload-storage",
+            "https://memoria.local/errors/upload-storage",
             "Upload storage misconfigured",
             "S3_BUCKET is not configured",
           );
@@ -431,7 +431,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       if (process.env.NODE_ENV === "production") {
         throw new ApiError(
           500,
-          "https://canvascollect.com/errors/upload-storage",
+          "https://memoria.local/errors/upload-storage",
           "Upload storage misconfigured",
           "Local uploads are development-only. Configure S3-compatible storage in production.",
         );
@@ -447,7 +447,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       if (!filePath.startsWith(uploadPrefix)) {
         throw new ApiError(
           400,
-          "https://canvascollect.com/errors/upload",
+          "https://memoria.local/errors/upload",
           "Bad Request",
           "Invalid upload path",
         );

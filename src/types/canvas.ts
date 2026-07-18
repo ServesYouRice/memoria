@@ -4,16 +4,16 @@
  */
 
 export enum ItemType {
-  NOTE = 'NOTE',
-  BOOKMARK = 'BOOKMARK',
-  IMAGE = 'IMAGE',
-  DRAWING = 'DRAWING',
-  SHAPE = 'SHAPE',
-  ARROW = 'ARROW',
-  TEXT = 'TEXT',
-  FRAME = 'FRAME',
-  EMBED = 'EMBED',
-  POLL = 'POLL',
+  NOTE = "NOTE",
+  BOOKMARK = "BOOKMARK",
+  IMAGE = "IMAGE",
+  DRAWING = "DRAWING",
+  SHAPE = "SHAPE",
+  ARROW = "ARROW",
+  TEXT = "TEXT",
+  FRAME = "FRAME",
+  EMBED = "EMBED",
+  POLL = "POLL",
 }
 
 /**
@@ -81,7 +81,8 @@ export interface DrawingContent {
  * Shape item content
  */
 export interface ShapeContent {
-  shapeType: 'rectangle' | 'circle' | 'triangle' | 'diamond' | 'star' | 'arrow_shape';
+  shapeType:
+    "rectangle" | "circle" | "triangle" | "diamond" | "star" | "arrow_shape";
   stroke?: string;
   fill?: string;
   strokeWidth?: number;
@@ -98,8 +99,8 @@ export interface ArrowContent {
   endPoint?: { x: number; y: number };
   stroke?: string;
   strokeWidth?: number;
-  arrowHeadStart?: 'none' | 'arrow' | 'circle';
-  arrowHeadEnd?: 'none' | 'arrow' | 'circle';
+  arrowHeadStart?: "none" | "arrow" | "circle";
+  arrowHeadEnd?: "none" | "arrow" | "circle";
   label?: string;
 }
 
@@ -110,7 +111,7 @@ export interface TextContent {
   text: string;
   fontSize?: number;
   fontFamily?: string;
-  align?: 'left' | 'center' | 'right';
+  align?: "left" | "center" | "right";
   color?: string;
 }
 
@@ -127,7 +128,7 @@ export interface FrameContent {
  */
 export interface EmbedContent {
   url: string;
-  embedType: 'youtube' | 'figma' | 'loom' | 'generic';
+  embedType: "youtube" | "figma" | "loom" | "generic";
 }
 
 /**
@@ -186,8 +187,10 @@ export interface CanvasItem {
 /**
  * Canvas item for client-side rendering
  */
-export interface ClientCanvasItem
-  extends Omit<CanvasItem, 'createdAt' | 'updatedAt' | 'deletedAt'> {
+export interface ClientCanvasItem extends Omit<
+  CanvasItem,
+  "createdAt" | "updatedAt" | "deletedAt"
+> {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -195,7 +198,7 @@ export interface ClientCanvasItem
 
 /**
  * Type guards for canvas item content
- * FIXED: Issue #38 - Added JSDoc to complex functions
+ * Canvas item type guards.
  */
 
 /**
@@ -211,7 +214,7 @@ export interface ClientCanvasItem
  * ```
  */
 export function isNoteContent(content: ItemContent): content is NoteContent {
-  return 'text' in content;
+  return "text" in content;
 }
 
 /**
@@ -226,24 +229,28 @@ export function isNoteContent(content: ItemContent): content is NoteContent {
  * }
  * ```
  */
-export function isBookmarkContent(content: ItemContent): content is BookmarkContent {
-  return 'url' in content && !('filename' in content);
+export function isBookmarkContent(
+  content: ItemContent,
+): content is BookmarkContent {
+  return "url" in content && !("filename" in content);
 }
 
 export function isImageContent(content: ItemContent): content is ImageContent {
-  return 'url' in content && 'filename' in content;
+  return "url" in content && "filename" in content;
 }
 
-export function isDrawingContent(content: ItemContent): content is DrawingContent {
-  return 'paths' in content;
+export function isDrawingContent(
+  content: ItemContent,
+): content is DrawingContent {
+  return "paths" in content;
 }
 
 export function isShapeContent(content: ItemContent): content is ShapeContent {
-  return 'shapeType' in content;
+  return "shapeType" in content;
 }
 
 export function isArrowContent(content: ItemContent): content is ArrowContent {
-  return 'startItemId' in content || 'startPoint' in content;
+  return "startItemId" in content || "startPoint" in content;
 }
 
 export function isTextContent(content: ItemContent): content is TextContent {
@@ -252,19 +259,21 @@ export function isTextContent(content: ItemContent): content is TextContent {
   // Assuming NoteContent is specifically for sticky notes and TextContent for standalone text.
   // We might need a better guard if they overlap. For now simple check.
   // CHECK: NoteContent has 'text' only?
-  return 'text' in content && 'fontSize' in content;
+  return "text" in content && "fontSize" in content;
 }
 
 export function isFrameContent(content: ItemContent): content is FrameContent {
-  return 'backgroundColor' in content || ('title' in content && !('url' in content));
+  return (
+    "backgroundColor" in content || ("title" in content && !("url" in content))
+  );
 }
 
 export function isEmbedContent(content: ItemContent): content is EmbedContent {
-  return 'embedType' in content;
+  return "embedType" in content;
 }
 
 export function isPollContent(content: ItemContent): content is PollContent {
-  return 'question' in content && 'options' in content;
+  return "question" in content && "options" in content;
 }
 
 /**

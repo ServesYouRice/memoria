@@ -3,10 +3,10 @@
  *
  * Manages rectangle selection on canvas for multi-select functionality
  *
- * FIXED: Issue from debugging audit - setTimeout cleanup to prevent memory leaks
+ * Selection-box interaction with timer cleanup.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from "react";
 
 export interface SelectionBox {
   x: number;
@@ -24,9 +24,9 @@ export function useSelectionBox() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const startPoint = useRef<Point | null>(null);
-  const clearTimerRef = useRef<NodeJS.Timeout | null>(null); // FIXED: Store timer for cleanup
+  const clearTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // FIXED: Cleanup timer on unmount
+  // Clean up the pending selection timer on unmount.
   useEffect(() => {
     return () => {
       if (clearTimerRef.current) {
@@ -52,22 +52,25 @@ export function useSelectionBox() {
   /**
    * Update selection as mouse moves
    */
-  const updateSelection = useCallback((currentPoint: Point) => {
-    if (!isSelecting || !startPoint.current) return;
+  const updateSelection = useCallback(
+    (currentPoint: Point) => {
+      if (!isSelecting || !startPoint.current) return;
 
-    const start = startPoint.current;
-    const x = Math.min(start.x, currentPoint.x);
-    const y = Math.min(start.y, currentPoint.y);
-    const width = Math.abs(currentPoint.x - start.x);
-    const height = Math.abs(currentPoint.y - start.y);
+      const start = startPoint.current;
+      const x = Math.min(start.x, currentPoint.x);
+      const y = Math.min(start.y, currentPoint.y);
+      const width = Math.abs(currentPoint.x - start.x);
+      const height = Math.abs(currentPoint.y - start.y);
 
-    setSelectionBox({ x, y, width, height });
-  }, [isSelecting]);
+      setSelectionBox({ x, y, width, height });
+    },
+    [isSelecting],
+  );
 
   /**
    * End selection and return final box
    *
-   * FIXED: Clear any existing timer before setting new one
+   * Clear any existing timer before setting a new one.
    */
   const endSelection = useCallback((): SelectionBox | null => {
     setIsSelecting(false);
@@ -91,7 +94,7 @@ export function useSelectionBox() {
   /**
    * Cancel selection
    *
-   * FIXED: Clear timer when canceling
+   * Clear the timer when canceling.
    */
   const cancelSelection = useCallback(() => {
     setIsSelecting(false);
@@ -108,14 +111,17 @@ export function useSelectionBox() {
   /**
    * Check if an item intersects with selection box
    */
-  const isItemInSelection = useCallback((itemBox: SelectionBox, box: SelectionBox): boolean => {
-    return !(
-      itemBox.x + itemBox.width < box.x ||
-      itemBox.x > box.x + box.width ||
-      itemBox.y + itemBox.height < box.y ||
-      itemBox.y > box.y + box.height
-    );
-  }, []);
+  const isItemInSelection = useCallback(
+    (itemBox: SelectionBox, box: SelectionBox): boolean => {
+      return !(
+        itemBox.x + itemBox.width < box.x ||
+        itemBox.x > box.x + box.width ||
+        itemBox.y + itemBox.height < box.y ||
+        itemBox.y > box.y + box.height
+      );
+    },
+    [],
+  );
 
   return {
     isSelecting,

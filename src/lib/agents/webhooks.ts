@@ -5,6 +5,7 @@ import { validateUrlForSsrfWithDns } from "@/lib/utils/ssrf-protection";
 const RESERVED_HEADERS = new Set([
   "content-length",
   "host",
+  "idempotency-key",
   "x-memoria-delivery-id",
   "x-memoria-signature",
   "x-memoria-signature-timestamp",
@@ -17,6 +18,8 @@ export interface SignedWebhookRequest {
   method?: "POST" | "PUT" | "PATCH";
   headers?: Record<string, string>;
   timeoutMs?: number;
+  deliveryId?: string;
+  idempotencyKey?: string;
 }
 
 export interface SignedWebhookResponse {
@@ -116,7 +119,7 @@ export async function deliverSignedWebhook(
 ): Promise<SignedWebhookResponse> {
   const body = JSON.stringify(input.body ?? {});
   const timestamp = Date.now().toString();
-  const deliveryId = randomUUID();
+  const deliveryId = input.deliveryId || randomUUID();
   const signature = createWebhookSignature({
     secret: input.secret,
     timestamp,
@@ -145,6 +148,7 @@ export async function deliverSignedWebhook(
         signal: controller.signal,
         headers: {
           "content-type": "application/json",
+          "idempotency-key": input.idempotencyKey || deliveryId,
           "x-memoria-delivery-id": deliveryId,
           "x-memoria-signature": `sha256=${signature}`,
           "x-memoria-signature-timestamp": timestamp,

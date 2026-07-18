@@ -88,7 +88,7 @@ Current limits:
 
 ## Stack
 
-- Next.js 15
+- Next.js 16.2
 - TypeScript
 - Prisma + PostgreSQL
 - Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.31`; upstream still exposes the Next.js package on the beta track
@@ -122,7 +122,8 @@ Production rules enforced by the app:
 - local uploads are rejected
 - S3-compatible storage must be configured
 - a bootstrap token must exist for first-run setup
-- SMTP is intentionally disabled in this build; use `console`, `sendgrid`, or `resend`
+- SMTP is intentionally disabled in this build
+- production email requires `sendgrid` or `resend`; the `console` provider is development/test only
 
 ## Development Notes
 
@@ -142,10 +143,9 @@ Production rules enforced by the app:
 
 ## Project State
 
-Use this README, [ARCHITECTURE.md](./ARCHITECTURE.md), and the current reference
-set in [`docs/README.md`](./docs/README.md). Historical slice checklists, MVP
-summaries, old UI plans, and point-in-time audits have been moved to
-[`docs/archive/`](./docs/archive/) and should be treated as background only.
+Use this README and [ARCHITECTURE.md](./ARCHITECTURE.md) as the maintained
+project documentation. [REMAINING-WORK.md](./REMAINING-WORK.md) contains only
+verified unfinished work and should be updated whenever an item is closed.
 
 ## Verification
 

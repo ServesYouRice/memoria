@@ -69,7 +69,7 @@ export class BadRequestError extends ApiError {
   constructor(detail?: string) {
     super(
       400,
-      "https://canvascollect.com/errors/bad-request",
+      "https://memoria.local/errors/bad-request",
       "Bad Request",
       detail,
     );
@@ -83,7 +83,7 @@ export class ValidationError extends ApiError {
   ) {
     super(
       400,
-      "https://canvascollect.com/errors/validation",
+      "https://memoria.local/errors/validation",
       "Validation Error",
       detail,
       {
@@ -97,7 +97,7 @@ export class UnauthorizedError extends ApiError {
   constructor(detail = "Authentication required") {
     super(
       401,
-      "https://canvascollect.com/errors/unauthorized",
+      "https://memoria.local/errors/unauthorized",
       "Unauthorized",
       detail,
     );
@@ -106,23 +106,13 @@ export class UnauthorizedError extends ApiError {
 
 export class ForbiddenError extends ApiError {
   constructor(detail = "You do not have permission to access this resource") {
-    super(
-      403,
-      "https://canvascollect.com/errors/forbidden",
-      "Forbidden",
-      detail,
-    );
+    super(403, "https://memoria.local/errors/forbidden", "Forbidden", detail);
   }
 }
 
 export class NotFoundError extends ApiError {
   constructor(detail = "Resource not found") {
-    super(
-      404,
-      "https://canvascollect.com/errors/not-found",
-      "Not Found",
-      detail,
-    );
+    super(404, "https://memoria.local/errors/not-found", "Not Found", detail);
   }
 }
 
@@ -130,7 +120,7 @@ export class ConflictError extends ApiError {
   constructor(detail: string, extensions?: Record<string, unknown>) {
     super(
       409,
-      "https://canvascollect.com/errors/conflict",
+      "https://memoria.local/errors/conflict",
       "Conflict",
       detail,
       extensions,
@@ -151,7 +141,7 @@ export class UnprocessableEntityError extends ApiError {
   constructor(detail?: string) {
     super(
       422,
-      "https://canvascollect.com/errors/unprocessable-entity",
+      "https://memoria.local/errors/unprocessable-entity",
       "Unprocessable Entity",
       detail,
     );
@@ -162,7 +152,7 @@ export class TooManyRequestsError extends ApiError {
   constructor(detail = "Rate limit exceeded", retryAfter?: number) {
     super(
       429,
-      "https://canvascollect.com/errors/too-many-requests",
+      "https://memoria.local/errors/too-many-requests",
       "Too Many Requests",
       detail,
       {
@@ -176,7 +166,7 @@ export class InternalServerError extends ApiError {
   constructor(detail = "An unexpected error occurred") {
     super(
       500,
-      "https://canvascollect.com/errors/internal-server-error",
+      "https://memoria.local/errors/internal-server-error",
       "Internal Server Error",
       detail,
     );
@@ -209,7 +199,7 @@ export function fromZodError(error: ZodError): ValidationError {
 
 /**
  * Convenience factory functions for common errors
- * FIXED: Issue #38 - Added JSDoc to complex functions
+ * Convert unknown errors to the public problem-details contract.
  */
 
 /**
@@ -344,7 +334,7 @@ export function createProblem(
   additional?: Record<string, unknown>,
 ): ProblemDetail {
   return {
-    type: type || `https://canvascollect.com/errors/${status}`,
+    type: type || `https://memoria.local/errors/${status}`,
     title,
     status,
     detail,
@@ -357,7 +347,7 @@ export function createValidationProblem(
   detail = "One or more validation errors occurred",
 ): ProblemDetail {
   return {
-    type: "https://canvascollect.com/errors/validation",
+    type: "https://memoria.local/errors/validation",
     title: "Validation Error",
     status: 400,
     detail,
@@ -377,7 +367,7 @@ export const Problems = {
       401,
       "Unauthorized",
       detail || "Authentication required",
-      "https://canvascollect.com/errors/unauthorized",
+      "https://memoria.local/errors/unauthorized",
     ),
 
   Forbidden: (detail?: string) =>
@@ -385,7 +375,7 @@ export const Problems = {
       403,
       "Forbidden",
       detail || "You do not have permission to access this resource",
-      "https://canvascollect.com/errors/forbidden",
+      "https://memoria.local/errors/forbidden",
     ),
 
   NotFound: (detail?: string) =>
@@ -393,7 +383,7 @@ export const Problems = {
       404,
       "Not Found",
       detail || "Resource not found",
-      "https://canvascollect.com/errors/not-found",
+      "https://memoria.local/errors/not-found",
     ),
 
   Conflict: (detail?: string) =>
@@ -401,7 +391,7 @@ export const Problems = {
       409,
       "Conflict",
       detail,
-      "https://canvascollect.com/errors/conflict",
+      "https://memoria.local/errors/conflict",
     ),
 
   UnprocessableEntity: (detail?: string) =>
@@ -409,7 +399,7 @@ export const Problems = {
       422,
       "Unprocessable Entity",
       detail,
-      "https://canvascollect.com/errors/unprocessable-entity",
+      "https://memoria.local/errors/unprocessable-entity",
     ),
 
   TooManyRequests: (detail?: string, retryAfter?: number) =>
@@ -417,7 +407,7 @@ export const Problems = {
       429,
       "Too Many Requests",
       detail || "Rate limit exceeded",
-      "https://canvascollect.com/errors/too-many-requests",
+      "https://memoria.local/errors/too-many-requests",
       { retryAfter },
     ),
 
@@ -426,7 +416,7 @@ export const Problems = {
       500,
       "Internal Server Error",
       detail || "An unexpected error occurred",
-      "https://canvascollect.com/errors/internal-server-error",
+      "https://memoria.local/errors/internal-server-error",
     ),
 
   ServiceUnavailable: (detail?: string) =>
@@ -434,7 +424,7 @@ export const Problems = {
       503,
       "Service Unavailable",
       detail,
-      "https://canvascollect.com/errors/service-unavailable",
+      "https://memoria.local/errors/service-unavailable",
     ),
 } as const;
 
@@ -478,7 +468,7 @@ export function errorResponse(
 
   // Generic error handler - don't leak details in production
   const problemDetail: ProblemDetail = {
-    type: "https://canvascollect.com/errors/internal-server-error",
+    type: "https://memoria.local/errors/internal-server-error",
     title: "Internal Server Error",
     status: 500,
     detail:

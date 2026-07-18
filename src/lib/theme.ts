@@ -134,23 +134,24 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           html: {
             scrollBehavior: "smooth",
+            scrollbarWidth: "thin",
+            scrollbarColor: `${isLight ? "#cbd5e1" : "#475569"} ${isLight ? "#f1f5f9" : "#111a2e"}`,
+            scrollbarGutter: "stable",
             "& *:focus-visible": {
               outline: `2px solid ${brand.primary.main}`,
               outlineOffset: "2px",
             },
           },
           body: {
-            scrollbarWidth: "thin",
-            "&::-webkit-scrollbar": { width: "8px", height: "8px" },
-            "&::-webkit-scrollbar-track": {
-              background: isLight ? "#f1f5f9" : "#111a2e",
-            },
-            "&::-webkit-scrollbar-thumb": {
-              background: isLight ? "#cbd5e1" : "#475569",
-              borderRadius: "4px",
-            },
-            "&::-webkit-scrollbar-thumb:hover": {
-              background: isLight ? "#94a3b8" : "#64748b",
+            minBlockSize: "100dvh",
+          },
+          "@media (prefers-reduced-motion: reduce)": {
+            html: { scrollBehavior: "auto" },
+            "*, *::before, *::after": {
+              animationDuration: "0.01ms !important",
+              animationIterationCount: "1 !important",
+              transitionDuration: "0.01ms !important",
+              scrollBehavior: "auto !important",
             },
           },
           "@keyframes fadeIn": {

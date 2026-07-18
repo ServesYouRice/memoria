@@ -1,7 +1,7 @@
 /**
  * Application Constants
  *
- * FIXED: Issue #37 - Extract magic numbers to constants
+ * Shared application constants.
  *
  * Central location for all application-wide constants.
  * This improves maintainability and makes values easier to update.

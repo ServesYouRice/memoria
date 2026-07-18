@@ -50,8 +50,8 @@ export const GET = withApiHandler(async (req: NextRequest) => {
 
       const fetchResult = await safeFetch(content.url, { timeout: 5000 });
       if (!fetchResult.ok || !fetchResult.data) {
-        await prisma.canvasItem.update({
-          where: { id: item.id },
+        await prisma.canvasItem.updateMany({
+          where: { id: item.id, version: item.version, deletedAt: null },
           data: { updatedAt: new Date(), version: { increment: 1 } },
         });
         results.push({ id: item.id, status: "fetch-failed" });
@@ -86,8 +86,8 @@ export const GET = withApiHandler(async (req: NextRequest) => {
           },
         });
 
-        await prisma.canvasItem.update({
-          where: { id: item.id },
+        const update = await prisma.canvasItem.updateMany({
+          where: { id: item.id, version: item.version, deletedAt: null },
           data: {
             content: {
               ...nextContent,
@@ -96,17 +96,25 @@ export const GET = withApiHandler(async (req: NextRequest) => {
             version: { increment: 1 },
           },
         });
+        if (update.count === 0) {
+          results.push({ id: item.id, status: "skipped-concurrent-change" });
+          continue;
+        }
         invalidatedCanvasIds.add(item.canvasId);
         results.push({ id: item.id, status: "updated" });
       } else {
         // Just touch updatedAt
-        await prisma.canvasItem.update({
-          where: { id: item.id },
+        const update = await prisma.canvasItem.updateMany({
+          where: { id: item.id, version: item.version, deletedAt: null },
           data: {
             updatedAt: new Date(),
             version: { increment: 1 },
           },
         });
+        if (update.count === 0) {
+          results.push({ id: item.id, status: "skipped-concurrent-change" });
+          continue;
+        }
         invalidatedCanvasIds.add(item.canvasId);
         results.push({ id: item.id, status: "unchanged" });
       }

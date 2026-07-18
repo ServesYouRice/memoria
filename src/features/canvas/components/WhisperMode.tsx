@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Box, TextField, Fade, Typography, IconButton } from "@mui/material";
 import {
-  Mic as MicIcon,
+  Box,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  TextField,
+  Typography,
+  IconButton,
+} from "@mui/material";
+import {
+  EditNote as QuickEntryIcon,
   Send as SendIcon,
   Close as CloseIcon,
 } from "@mui/icons-material";
@@ -40,27 +48,15 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
     }
   };
 
-  if (!open) return null;
-
   return (
-    <Fade in={open}>
-      <Box
-        sx={{
-          position: "fixed",
-          bottom: 40,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "60%",
-          maxWidth: 600,
-          bgcolor: "rgba(255, 255, 255, 0.95)",
-          backdropFilter: "blur(10px)",
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.2)",
-          borderRadius: 4,
-          p: 2,
-          zIndex: 1400,
-          border: "1px solid rgba(255, 255, 255, 0.5)",
-        }}
-      >
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="sm"
+      aria-labelledby="quick-capture-title"
+    >
+      <DialogTitle id="quick-capture-title" sx={{ pb: 1 }}>
         <Box
           sx={{
             display: "flex",
@@ -70,13 +66,13 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center" }}>
-            <MicIcon color="action" fontSize="small" sx={{ mr: 1 }} />
+            <QuickEntryIcon color="action" fontSize="small" sx={{ mr: 1 }} />
             <Typography
               variant="caption"
               color="text.secondary"
               sx={{ fontWeight: 600 }}
             >
-              WHISPER MODE
+              QUICK CAPTURE
             </Typography>
           </Box>
           <IconButton
@@ -87,13 +83,15 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
+      </DialogTitle>
+      <DialogContent>
         <TextField
           inputRef={inputRef}
           fullWidth
           multiline
           minRows={1}
           maxRows={4}
-          placeholder="Whisper your thought..."
+          placeholder="Capture a thought…"
           variant="standard"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -114,7 +112,7 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
             style: { fontSize: "1.2rem" },
           }}
         />
-      </Box>
-    </Fade>
+      </DialogContent>
+    </Dialog>
   );
 }

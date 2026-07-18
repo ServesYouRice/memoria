@@ -3,7 +3,7 @@
  * React Query hook for fetching user activities
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 export interface Activity {
   id: string;
@@ -24,24 +24,36 @@ export interface Activity {
 
 interface ActivitiesResponse {
   activities: Activity[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 /**
  * Fetch user activities
  */
 export function useActivities(canvasId?: string, limit: number = 50) {
-  const params = new URLSearchParams();
-  params.append('limit', limit.toString());
-  if (canvasId) params.append('canvasId', canvasId);
-
-  return useQuery<ActivitiesResponse>({
-    queryKey: ['activities', canvasId, limit],
-    queryFn: async () => {
+  return useInfiniteQuery<ActivitiesResponse>({
+    queryKey: ["activities", canvasId, limit],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        offset: String(pageParam),
+      });
+      if (canvasId) params.append("canvasId", canvasId);
       const response = await fetch(`/api/v1/activities?${params}`);
       if (!response.ok) {
-        throw new Error('Failed to fetch activities');
+        throw new Error("Failed to fetch activities");
       }
       return response.json();
     },
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore
+        ? lastPage.pagination.offset + lastPage.activities.length
+        : undefined,
   });
 }

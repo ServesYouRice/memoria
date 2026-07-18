@@ -23,6 +23,7 @@ import {
   deleteCanvasItemSchema,
   parseCanvasItemContent,
 } from "@/lib/validation/canvas-item";
+import { ActivityType, logActivity } from "@/lib/activity";
 
 interface RouteContext {
   params: Promise<{ itemId: string }>;
@@ -134,6 +135,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     await invalidateCanvasCache(updatedItem.canvasId);
 
+    await logActivity({
+      userId,
+      type: ActivityType.ITEM_UPDATED,
+      canvasId: updatedItem.canvasId,
+      itemId: updatedItem.id,
+    });
+
     return NextResponse.json(updatedItem);
   } catch (error) {
     return errorResponse(error, request.url);
@@ -198,6 +206,13 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     });
 
     await invalidateCanvasCache(currentItem.canvasId);
+
+    await logActivity({
+      userId,
+      type: ActivityType.ITEM_DELETED,
+      canvasId: currentItem.canvasId,
+      itemId,
+    });
 
     return NextResponse.json({ success: true, item: deletedItem });
   } catch (error) {

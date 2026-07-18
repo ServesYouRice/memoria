@@ -9,6 +9,7 @@ import { z } from "zod";
 import { NotFoundError } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
+import { ActivityType, logActivity } from "@/lib/activity";
 
 const updateCanvasSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -97,6 +98,13 @@ export const PATCH = withApiHandler(
     // Invalidate cache
     await invalidateCanvasCache(canvasId);
 
+    await logActivity({
+      userId,
+      type: ActivityType.CANVAS_UPDATED,
+      canvasId,
+      canvasName: updatedCanvas.name,
+    });
+
     return NextResponse.json(updatedCanvas);
   },
 );
@@ -110,12 +118,19 @@ export const DELETE = withApiHandler(
     await requireCanvasOwnership(canvasId, userId);
 
     // Delete canvas (cascade will delete items, shares, etc.)
-    await prisma.canvas.delete({
+    const deletedCanvas = await prisma.canvas.delete({
       where: { id: canvasId },
     });
 
     // Invalidate cache
     await invalidateCanvasCache(canvasId);
+
+    await logActivity({
+      userId,
+      type: ActivityType.CANVAS_DELETED,
+      canvasId,
+      canvasName: deletedCanvas.name,
+    });
 
     return NextResponse.json(
       { message: "Canvas deleted successfully" },

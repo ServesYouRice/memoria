@@ -88,7 +88,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     selectedVersionId,
     isTimeMachineActive,
   );
-  const updateCanvasMutation = useUpdateCanvas();
+  const { mutateAsync: updateCanvas } = useUpdateCanvas();
 
   useEffect(() => {
     if (!canvas) {
@@ -135,6 +135,34 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
   }, [canvasId, position.x, position.y, zoom]);
 
   useEffect(() => {
+    if (!viewportInitializedRef.current || canvas?.accessLevel !== "OWNER") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      updateCanvas({
+        canvasId,
+        data: { zoomLevel: zoom, panX: position.x, panY: position.y },
+      }).catch((error) => {
+        setCanvasLoadError(
+          error instanceof Error
+            ? error.message
+            : "Failed to save canvas viewport",
+        );
+      });
+    }, 750);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    canvas?.accessLevel,
+    canvasId,
+    position.x,
+    position.y,
+    updateCanvas,
+    zoom,
+  ]);
+
+  useEffect(() => {
     if (!canvasError) {
       return;
     }
@@ -160,7 +188,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     const previousName = canvasName;
     setCanvasName(name);
     try {
-      await updateCanvasMutation.mutateAsync({
+      await updateCanvas({
         canvasId,
         data: { name },
       });

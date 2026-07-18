@@ -143,6 +143,7 @@ export async function requireItemOwnership(itemId: string, userId: string) {
     where: { id: itemId },
     select: {
       id: true,
+      canvasId: true,
       canvas: {
         select: { userId: true },
       },

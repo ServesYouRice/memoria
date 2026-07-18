@@ -1,6 +1,10 @@
 import { unlink } from "fs/promises";
 import { join, resolve, sep } from "path";
-import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  HeadBucketCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 
 let s3Client: S3Client | null = null;
 
@@ -50,4 +54,17 @@ export async function deletePrivateUploadObject(
       if (error.code !== "ENOENT") throw error;
     },
   );
+}
+
+export async function checkPrivateUploadStorage(): Promise<void> {
+  if (process.env.UPLOAD_STORAGE !== "s3") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Production private upload storage is not configured");
+    }
+    return;
+  }
+
+  const bucket = process.env.S3_BUCKET;
+  if (!bucket) throw new Error("Private upload bucket is not configured");
+  await getS3Client().send(new HeadBucketCommand({ Bucket: bucket }));
 }

@@ -3,6 +3,7 @@ import { IntegrationProviderType, SuggestionKind } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { withApiHandler } from "@/lib/api/route-handler";
+import { parsePagination } from "@/lib/api/pagination";
 import {
   getOwnedAgentProfile,
   resolveAgentRequestContext,
@@ -212,10 +213,10 @@ async function resolveRequiredAgentProfile(
 export const GET = withApiHandler(async (request: NextRequest) => {
   const context = await resolveAgentRequestContext(request);
 
-  const limit = Math.min(
-    parseInt(request.nextUrl.searchParams.get("limit") || "50", 10),
-    100,
-  );
+  const { limit } = parsePagination(request.nextUrl.searchParams, {
+    defaultLimit: 50,
+    maxLimit: 100,
+  });
 
   return NextResponse.json(
     await listScopedActionTimeline(context, {

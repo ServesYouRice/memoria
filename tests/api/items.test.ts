@@ -105,7 +105,7 @@ describe("API Error Handling", () => {
 
     const error = new ApiError(
       404,
-      "https://canvascollect.com/errors/not-found",
+      "https://memoria.local/errors/not-found",
       "Not Found",
       "Item not found",
     );

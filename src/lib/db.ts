@@ -191,7 +191,7 @@ export async function withTimeout<T>(
 /**
  * Database retry wrapper with exponential backoff
  *
- * FIXED: Issue #26 - Retry logic for transient database failures
+ * Retry transient database failures.
  *
  * Automatically retries database operations on transient failures like:
  * - Connection timeouts

@@ -5,7 +5,12 @@
  * Phase 3: Includes shared canvas support
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 export interface Canvas {
   id: string;
@@ -66,28 +71,12 @@ export interface CanvasesListResponse {
  * API client functions
  */
 const api = {
-  async listCanvases() {
-    const canvases: Canvas[] = [];
-    let offset = 0;
-    let total = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const response = await fetch(
-        `/api/v1/canvases?limit=100&offset=${offset}`,
-      );
-      if (!response.ok) throw new Error("Failed to fetch canvases");
-      const page = (await response.json()) as CanvasesListResponse;
-      canvases.push(...page.canvases);
-      total = page.pagination.total;
-      offset += page.canvases.length;
-      hasMore = page.pagination.hasMore && page.canvases.length > 0;
-    }
-
-    return {
-      canvases,
-      pagination: { total, limit: canvases.length, offset: 0, hasMore: false },
-    };
+  async listCanvases(offset = 0, workspaceId?: string) {
+    const params = new URLSearchParams({ limit: "24", offset: String(offset) });
+    if (workspaceId) params.set("workspaceId", workspaceId);
+    const response = await fetch(`/api/v1/canvases?${params}`);
+    if (!response.ok) throw new Error("Failed to fetch canvases");
+    return (await response.json()) as CanvasesListResponse;
   },
 
   async listSharedCanvases() {
@@ -166,10 +155,15 @@ export const canvasKeys = {
 /**
  * List all canvases for the current user
  */
-export function useCanvases() {
-  return useQuery({
-    queryKey: canvasKeys.list(),
-    queryFn: api.listCanvases,
+export function useCanvases(workspaceId?: string) {
+  return useInfiniteQuery({
+    queryKey: [...canvasKeys.list(), workspaceId || "all"],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api.listCanvases(pageParam, workspaceId),
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore
+        ? lastPage.pagination.offset + lastPage.canvases.length
+        : undefined,
   });
 }
 

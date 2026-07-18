@@ -49,7 +49,7 @@ export async function proxy(request: NextRequest) {
     if (versionError) {
       const errorResponse = NextResponse.json(
         {
-          type: "https://canvascollect.com/errors/unsupported-version",
+          type: "https://memoria.local/errors/unsupported-version",
           title: "Unsupported API Version",
           status: 400,
           detail: versionError,

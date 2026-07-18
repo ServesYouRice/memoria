@@ -127,7 +127,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
  * - limit: Number of templates to return (default: 50, max: 100)
  * - offset: Number of templates to skip (default: 0)
  *
- * FIXED: Issue #16 - Added pagination limits to prevent fetching thousands of templates
+ * Pagination limits prevent unbounded template listings.
  */
 export const GET = withApiHandler(async (request: NextRequest) => {
   const session = await auth();

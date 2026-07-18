@@ -1,4 +1,5 @@
 import { IntegrationProviderType, SuggestionKind } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import type { AgentRequestContext } from "@/lib/agents/auth";
 import { getOwnedAgentProfile } from "@/lib/agents/auth";
@@ -20,6 +21,14 @@ import {
   requireScopedKnowledgeEntity,
   requireScopedItem,
 } from "@/lib/agents/query-core";
+
+const mcpLimitSchema = z.coerce.number().int().min(1).max(100).default(50);
+const mcpOffsetSchema = z.coerce
+  .number()
+  .int()
+  .min(0)
+  .max(1_000_000)
+  .default(0);
 import {
   approveSuggestion,
   claimSuggestionForExecution,
@@ -332,8 +341,8 @@ export async function executeMcpTool(
 
   switch (toolName) {
     case "canvases.list": {
-      const limit = Math.min(Number(args.limit || 50), 100);
-      const offset = Math.max(Number(args.offset || 0), 0);
+      const limit = mcpLimitSchema.parse(args.limit);
+      const offset = mcpOffsetSchema.parse(args.offset);
       return createTextResult(
         await listScopedCanvases(context, { limit, offset }),
       );
@@ -668,7 +677,7 @@ export async function executeMcpTool(
       );
     }
     case "actions.list": {
-      const limit = Math.min(Number(args.limit || 50), 100);
+      const limit = mcpLimitSchema.parse(args.limit);
       return createTextResult(
         await listScopedActionTimeline(context, { limit }),
       );

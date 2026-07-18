@@ -21,7 +21,6 @@ import { Group, Rect, Text, Circle, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import { type CanvasItem, isBookmarkContent } from "@/types/canvas";
 import { useAutosave } from "@/lib/hooks/use-autosave";
-import { useDeleteCanvasItem } from "@/lib/hooks/use-canvas-items";
 
 interface BookmarkItemProps {
   item: CanvasItem;
@@ -37,7 +36,6 @@ interface BookmarkItemProps {
 const RESIZE_HANDLE_SIZE = 8;
 const MIN_WIDTH = 200;
 const MIN_HEIGHT = 80;
-const DELETE_BUTTON_SIZE = 20;
 
 function BookmarkItemComponent({
   item,
@@ -65,8 +63,6 @@ function BookmarkItemComponent({
     version: item.version,
     debounceMs: 500,
   });
-
-  const deleteItem = useDeleteCanvasItem();
 
   // Extract bookmark content
   const content = isBookmarkContent(item.content)
@@ -183,13 +179,6 @@ function BookmarkItemComponent({
       width: localSize.width,
       height: localSize.height,
     });
-  };
-
-  // Handle delete
-  const handleDelete = () => {
-    if (confirm("Delete this bookmark?")) {
-      deleteItem.mutate({ itemId: item.id, version: item.version });
-    }
   };
 
   // Truncate URL for display
@@ -405,32 +394,6 @@ function BookmarkItemComponent({
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "default";
             }}
-          />
-
-          {/* Delete button */}
-          <Circle
-            x={localSize.width - DELETE_BUTTON_SIZE}
-            y={DELETE_BUTTON_SIZE}
-            radius={DELETE_BUTTON_SIZE}
-            fill="#F44336"
-            onClick={handleDelete}
-            onTap={handleDelete}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "pointer";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-          />
-          <Text
-            x={localSize.width - DELETE_BUTTON_SIZE - 5}
-            y={DELETE_BUTTON_SIZE - 6}
-            text="×"
-            fontSize={20}
-            fill="white"
-            listening={false}
           />
         </>
       )}

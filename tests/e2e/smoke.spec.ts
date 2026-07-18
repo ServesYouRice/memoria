@@ -49,4 +49,23 @@ test.describe("production-critical smoke flow", () => {
     expect(response?.headers()["content-security-policy"]).toBeTruthy();
     expect(response?.headers()["x-content-type-options"]).toBe("nosniff");
   });
+
+  test("publishes reachable policy, help, status, and sitemap surfaces", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    for (const label of ["Help", "Status", "Privacy", "Terms"]) {
+      await expect(page.getByRole("link", { name: label })).toBeVisible();
+    }
+
+    await page.getByRole("link", { name: "Help" }).click();
+    await expect(page.getByRole("heading", { name: "Help" })).toBeVisible();
+
+    const sitemapResponse = await page.request.get("/sitemap.xml");
+    expect(sitemapResponse.ok()).toBeTruthy();
+    const sitemap = await sitemapResponse.text();
+    for (const path of ["/help", "/status", "/privacy", "/terms"]) {
+      expect(sitemap).toContain(path);
+    }
+  });
 });

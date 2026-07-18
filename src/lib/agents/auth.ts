@@ -133,10 +133,16 @@ async function authenticateIntegrationToken(
     throw new UnauthorizedError("Invalid integration token.");
   }
 
-  await prisma.integrationAccount.update({
-    where: { id: integration.id },
-    data: { lastSeenAt: new Date() },
-  });
+  const lastSeenCutoff = new Date(Date.now() - 5 * 60 * 1000);
+  if (!integration.lastSeenAt || integration.lastSeenAt < lastSeenCutoff) {
+    await prisma.integrationAccount.updateMany({
+      where: {
+        id: integration.id,
+        OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: lastSeenCutoff } }],
+      },
+      data: { lastSeenAt: new Date() },
+    });
+  }
 
   return {
     actorType: "integration",

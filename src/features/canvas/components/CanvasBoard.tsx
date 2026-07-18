@@ -18,6 +18,7 @@ import {
   Poll,
 } from "@mui/icons-material";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import {
   useDeleteCanvasItem,
   useCreateCanvasItem,
@@ -42,6 +43,7 @@ import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
 
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
+import { toast } from "sonner";
 
 import type { CanvasItem } from "@/types/canvas";
 import { ItemType, isNoteContent } from "@/types/canvas";
@@ -59,6 +61,7 @@ import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
 import { MainToolbar } from "@/features/canvas/components/MainToolbar";
 import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -70,6 +73,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const focusedItemRef = useRef<string | null>(null);
 
   // Data Hook (Single source of truth for display)
   const {
@@ -137,6 +142,12 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const [serendipityOpen, setSerendipityOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [whisperOpen, setWhisperOpen] = useState(false);
+  const [pendingAutopilotActions, setPendingAutopilotActions] = useState<
+    Awaited<ReturnType<typeof calculateAutopilotLayout>>
+  >([]);
+  const [pendingRestoreVersionId, setPendingRestoreVersionId] = useState<
+    string | null
+  >(null);
   const [arOpen, setAROpen] = useState(false);
 
   // Item Dialogs
@@ -298,7 +309,9 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           width: selectedItem.width,
           height: selectedItem.height,
         };
-        void navigator.clipboard.writeText(JSON.stringify(copyData));
+        void navigator.clipboard
+          .writeText(JSON.stringify(copyData))
+          .catch(() => toast.error("Clipboard access was denied"));
       }
     },
     onPaste: async () => {
@@ -345,7 +358,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           tags: [],
         });
       } catch {
-        // Clipboard access can be denied or contain unrelated content.
+        toast.error("Clipboard content could not be pasted");
       }
     },
     onSelectAll: () => {
@@ -399,6 +412,28 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
   // Screen Size
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+
+  useEffect(() => {
+    const itemId = searchParams.get("item");
+    if (!itemId || focusedItemRef.current === itemId) return;
+    const item = allItems.find((candidate) => candidate.id === itemId);
+    if (!item) return;
+
+    focusedItemRef.current = itemId;
+    setSelectedItemId(itemId);
+    setSelectedItemIds(new Set([itemId]));
+    setPosition({
+      x: stageSize.width / 2 - (item.positionX + item.width / 2) * zoom,
+      y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
+    });
+  }, [
+    allItems,
+    searchParams,
+    setPosition,
+    stageSize.height,
+    stageSize.width,
+    zoom,
+  ]);
   useEffect(() => {
     const target = stageContainerRef.current;
     if (!target) return;
@@ -690,7 +725,9 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       width: selectedItem.width,
       height: selectedItem.height,
     };
-    void navigator.clipboard.writeText(JSON.stringify(copyData));
+    void navigator.clipboard
+      .writeText(JSON.stringify(copyData))
+      .catch(() => toast.error("Clipboard access was denied"));
   };
 
   const handleSelectItem = (id: string, multi: boolean = false) => {
@@ -919,26 +956,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           canEdit
             ? async () => {
                 const actions = await calculateAutopilotLayout(allItems);
-                if (
-                  actions.length > 0 &&
-                  confirm(
-                    `Autopilot will reorganize ${actions.length} items. Continue?`,
-                  )
-                ) {
-                  for (const action of actions) {
-                    const item = allItems.find((i) => i.id === action.itemId);
-                    if (item) {
-                      await updateItem({
-                        itemId: action.itemId,
-                        data: {
-                          version: item.version,
-                          positionX: action.newPosition.x,
-                          positionY: action.newPosition.y,
-                        },
-                      });
-                    }
-                  }
-                }
+                if (actions.length > 0) setPendingAutopilotActions(actions);
               }
             : undefined
         }
@@ -1277,16 +1295,69 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
           onRestore={async (version) => {
-            if (confirm("Restore to this version?")) {
-              await restoreVersion({ canvasId, versionId: version.id });
-              setTimeMachineActive(false);
-              queryClient.invalidateQueries({
-                queryKey: canvasItemKeys.list(canvasId),
-              });
-            }
+            setPendingRestoreVersionId(version.id);
           }}
         />
       )}
+      <ConfirmDialog
+        open={pendingAutopilotActions.length > 0}
+        title="Apply automatic layout?"
+        message={`Autopilot will reorganize ${pendingAutopilotActions.length} items in one atomic update.`}
+        confirmLabel="Apply layout"
+        onClose={() => setPendingAutopilotActions([])}
+        onConfirm={async () => {
+          const itemsToUpdate = pendingAutopilotActions.flatMap((action) => {
+            const item = allItems.find(
+              (candidate) => candidate.id === action.itemId,
+            );
+            return item
+              ? [
+                  {
+                    id: item.id,
+                    version: item.version,
+                    positionX: action.newPosition.x,
+                    positionY: action.newPosition.y,
+                  },
+                ]
+              : [];
+          });
+          const response = await fetch("/api/v1/canvas-items", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ canvasId, items: itemsToUpdate }),
+          });
+          if (!response.ok) {
+            toast.error(
+              "The layout could not be applied. Refresh and try again.",
+            );
+            return;
+          }
+          setPendingAutopilotActions([]);
+          await queryClient.invalidateQueries({
+            queryKey: canvasItemKeys.list(canvasId),
+          });
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingRestoreVersionId)}
+        title="Restore canvas version?"
+        message="The current canvas state will be replaced by this saved version."
+        confirmLabel="Restore"
+        destructive
+        onClose={() => setPendingRestoreVersionId(null)}
+        onConfirm={async () => {
+          if (!pendingRestoreVersionId) return;
+          await restoreVersion({
+            canvasId,
+            versionId: pendingRestoreVersionId,
+          });
+          setPendingRestoreVersionId(null);
+          setTimeMachineActive(false);
+          await queryClient.invalidateQueries({
+            queryKey: canvasItemKeys.list(canvasId),
+          });
+        }}
+      />
     </Box>
   );
 }

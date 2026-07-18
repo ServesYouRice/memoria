@@ -1,10 +1,15 @@
 import OpenAI from "openai";
 import { ServiceUnavailableError } from "@/lib/errors";
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env["OPENAI_API_KEY"] || "dummy-key",
-});
+function getOpenAIClient() {
+  const apiKey = process.env["OPENAI_API_KEY"];
+  if (!apiKey || apiKey === "dummy-key") {
+    throw new ServiceUnavailableError(
+      "AI features are not configured. Set OPENAI_API_KEY to enable them.",
+    );
+  }
+  return new OpenAI({ apiKey });
+}
 
 export interface GenerateOptions {
   prompt: string;
@@ -14,15 +19,7 @@ export interface GenerateOptions {
 }
 
 export async function generateText(options: GenerateOptions): Promise<string> {
-  if (
-    !process.env["OPENAI_API_KEY"] ||
-    process.env["OPENAI_API_KEY"] === "dummy-key"
-  ) {
-    throw new ServiceUnavailableError(
-      "AI features are not configured. Set OPENAI_API_KEY to enable them.",
-    );
-  }
-
+  const openai = getOpenAIClient();
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",

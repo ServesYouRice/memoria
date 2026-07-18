@@ -3,7 +3,7 @@
 /**
  * Bundle Size Checker
  *
- * FIXED: Issue #27 - Bundle size monitoring
+ * Bundle size monitoring.
  *
  * This script analyzes the Next.js build output and reports bundle sizes.
  * Run after `pnpm build` to see bundle statistics.

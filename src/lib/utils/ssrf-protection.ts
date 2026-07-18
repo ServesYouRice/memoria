@@ -215,7 +215,7 @@ export async function safeFetch(
         redirect: "manual", // Handle redirects manually for validation
         signal: controller.signal,
         headers: {
-          "User-Agent": "CanvasCollect/1.0 (Link Preview Bot)",
+          "User-Agent": "Memoria/1.0 (Link Preview Bot)",
           Accept:
             "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },

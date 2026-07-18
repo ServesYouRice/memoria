@@ -488,6 +488,16 @@ export function createCollaborationServer(server: any): WebSocketServer {
           clients.delete(client);
           return;
         }
+        // Re-check authorization even when a client is idle. Share revocation,
+        // role changes, public-link removal, and session invalidation must not
+        // depend on the client sending another application message.
+        void revalidateConnectionAccess(client, true).catch((error) => {
+          logger.error(
+            { error, userId: client.user.userId, canvasId },
+            "WebSocket authorization refresh failed",
+          );
+          client.ws.close(1011, "Authorization refresh failed");
+        });
         client.isAlive = false;
         client.ws.ping();
       });
@@ -596,8 +606,12 @@ async function handleConnection(
 
 async function revalidateConnectionAccess(
   connection: ClientConnection,
+  force = false,
 ): Promise<boolean> {
-  if (Date.now() - connection.lastAuthorizationCheck < AUTHORIZATION_LEASE_MS) {
+  if (
+    !force &&
+    Date.now() - connection.lastAuthorizationCheck < AUTHORIZATION_LEASE_MS
+  ) {
     return true;
   }
 

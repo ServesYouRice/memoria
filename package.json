@@ -2,6 +2,7 @@
   "name": "memoria",
   "short_name": "Memoria",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "tsx server.ts",

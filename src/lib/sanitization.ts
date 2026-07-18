@@ -1,7 +1,7 @@
 /**
  * Input Sanitization Utilities
  *
- * FIXED: Issue #38 - Added comprehensive JSDoc to complex functions
+ * Content sanitization helpers.
  * UPDATED: December 2024 - Uses conservative server-safe HTML stripping
  *
  * Provides XSS protection for user input.

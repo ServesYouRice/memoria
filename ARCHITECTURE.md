@@ -84,14 +84,16 @@ Errors use RFC 7807-style problem JSON via shared error helpers.
 
 ## Collaboration
 
-Real-time collaboration uses Yjs documents over a custom `ws` WebSocket server.
-The server:
+Real-time collaboration uses a custom `ws` WebSocket server for ephemeral
+presence, cursors, chat, and reactions. Canvas item writes continue through the
+validated HTTP API; untrusted Yjs document persistence is intentionally
+disabled. The server:
 
 - authenticates upgrades from Auth.js/NextAuth session cookies;
 - verifies canvas ownership or shared access;
-- broadcasts Yjs updates and presence to connected clients;
+- broadcasts presence, cursor, chat, and reaction messages to connected clients;
 - uses Redis pub/sub when available for multi-instance fanout;
-- persists document state back into `CanvasItem` rows on a debounced interval.
+- does not persist collaboration messages or mutate `CanvasItem` rows.
 
 HTTP polling remains available for non-collaboration views and fallback
 refreshes.

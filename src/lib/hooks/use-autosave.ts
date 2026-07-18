@@ -4,14 +4,13 @@
  *
  * Debounces updates in 250-500ms windows to reduce write amplification
  *
- * FIXED: Issue #9 - Memory leak from unstable cleanup effect
- * FIXED: Debugging audit - Race condition between flush() and timer
+ * Debounced autosave with stable cleanup and serialized flushes.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
-import { useUpdateCanvasItem } from './use-canvas-items';
-import { type UpdateCanvasItemInput } from '@/lib/validation/canvas-item';
-import { AUTOSAVE_DEBOUNCE_MS } from '@/lib/constants';
+import { useEffect, useRef, useCallback } from "react";
+import { useUpdateCanvasItem } from "./use-canvas-items";
+import { type UpdateCanvasItemInput } from "@/lib/validation/canvas-item";
+import { AUTOSAVE_DEBOUNCE_MS } from "@/lib/constants";
 
 interface UseAutosaveOptions {
   itemId: string;
@@ -47,7 +46,7 @@ export function useAutosave({
   const pendingChangesRef = useRef<Partial<UpdateCanvasItemInput>>({});
   const timerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const currentVersionRef = useRef(version);
-  const isFlushingRef = useRef(false); // FIXED: Track flush state to prevent race condition
+  const isFlushingRef = useRef(false);
 
   // Store callbacks in refs to avoid recreating flush on every callback change
   const onSuccessRef = useRef(onSuccess);
@@ -70,7 +69,7 @@ export function useAutosave({
    * Flush pending changes immediately
    * Stable function that doesn't depend on callbacks
    *
-   * FIXED: Added flag to prevent race condition when flush is called
+   * Serialize flush calls so a timer cannot race a manual flush.
    * while timer is still pending
    */
   const flush = useCallback(() => {
@@ -104,7 +103,7 @@ export function useAutosave({
           isFlushingRef.current = false;
           onErrorRef.current?.(error as Error);
         },
-      }
+      },
     );
   }, [itemId, updateItem]);
 
@@ -127,13 +126,13 @@ export function useAutosave({
         timerRef.current = undefined; // Clear ref after flush
       }, debounceMs);
     },
-    [flush, debounceMs]
+    [flush, debounceMs],
   );
 
   /**
    * Cleanup: flush on unmount
    *
-   * FIXED: Now depends on stable flush function
+   * Depends on the stable flush callback.
    * This prevents the effect from re-running on every callback change,
    * which was causing potential memory leaks and duplicate timers
    */

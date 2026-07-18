@@ -1,42 +1,45 @@
-import { NextResponse } from 'next/server';
-import { safeFetch } from '@/lib/utils/ssrf-protection';
-import { extractMetadata, validateMetadata } from '@/lib/utils/metadata-extractor';
-import { getCachedUnfurl, setCachedUnfurl } from '@/lib/cache/unfurl-cache';
-import { logger } from '@/lib/logger';
-import { withAuthValidation } from '@/lib/api/route-handler';
-import { unfurlSchema } from '@/lib/validation/unfurl';
-import { ApiError } from '@/lib/errors';
+import { NextResponse } from "next/server";
+import { safeFetch } from "@/lib/utils/ssrf-protection";
+import {
+  extractMetadata,
+  validateMetadata,
+} from "@/lib/utils/metadata-extractor";
+import { getCachedUnfurl, setCachedUnfurl } from "@/lib/cache/unfurl-cache";
+import { logger } from "@/lib/logger";
+import { withAuthValidation } from "@/lib/api/route-handler";
+import { unfurlSchema } from "@/lib/validation/unfurl";
+import { ApiError } from "@/lib/errors";
 
 export const POST = withAuthValidation(unfurlSchema, async ({ url }) => {
   // Check cache first (ADR-0011)
   const cachedMetadata = await getCachedUnfurl(url);
   if (cachedMetadata) {
-    logger.info({ url }, 'Cache hit for unfurl');
+    logger.info({ url }, "Cache hit for unfurl");
     return NextResponse.json(cachedMetadata);
   }
 
   // Validate and fetch URL with SSRF protection
   const fetchResult = await safeFetch(url, {
     maxRedirects: 5,
-    timeout: 10000,      // 10 seconds
+    timeout: 10000, // 10 seconds
     maxSize: 2 * 1024 * 1024, // 2MB max response size
   });
 
   if (!fetchResult.ok) {
     throw new ApiError(
       fetchResult.status || 500,
-      'https://canvascollect.com/errors/unfurl',
-      'Unfurl Failed',
-      fetchResult.error || 'Failed to fetch URL'
+      "https://memoria.local/errors/unfurl",
+      "Unfurl Failed",
+      fetchResult.error || "Failed to fetch URL",
     );
   }
 
   if (!fetchResult.data) {
     throw new ApiError(
       500,
-      'https://canvascollect.com/errors/unfurl',
-      'Unfurl Failed',
-      'No data received'
+      "https://memoria.local/errors/unfurl",
+      "Unfurl Failed",
+      "No data received",
     );
   }
 

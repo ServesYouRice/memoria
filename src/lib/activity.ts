@@ -2,19 +2,23 @@
  * Activity logging utilities
  */
 
-import { prisma } from './db';
+import { type Prisma } from "@prisma/client";
+import { prisma } from "./db";
+import { createLogger } from "./logger";
+
+const logger = createLogger("activity");
 
 export enum ActivityType {
-  CANVAS_CREATED = 'CANVAS_CREATED',
-  CANVAS_UPDATED = 'CANVAS_UPDATED',
-  CANVAS_DELETED = 'CANVAS_DELETED',
-  CANVAS_SHARED = 'CANVAS_SHARED',
-  ITEM_CREATED = 'ITEM_CREATED',
-  ITEM_UPDATED = 'ITEM_UPDATED',
-  ITEM_DELETED = 'ITEM_DELETED',
-  COMMENT_ADDED = 'COMMENT_ADDED',
-  TEMPLATE_CREATED = 'TEMPLATE_CREATED',
-  TEMPLATE_USED = 'TEMPLATE_USED',
+  CANVAS_CREATED = "CANVAS_CREATED",
+  CANVAS_UPDATED = "CANVAS_UPDATED",
+  CANVAS_DELETED = "CANVAS_DELETED",
+  CANVAS_SHARED = "CANVAS_SHARED",
+  ITEM_CREATED = "ITEM_CREATED",
+  ITEM_UPDATED = "ITEM_UPDATED",
+  ITEM_DELETED = "ITEM_DELETED",
+  COMMENT_ADDED = "COMMENT_ADDED",
+  TEMPLATE_CREATED = "TEMPLATE_CREATED",
+  TEMPLATE_USED = "TEMPLATE_USED",
 }
 
 interface LogActivityOptions {
@@ -23,7 +27,7 @@ interface LogActivityOptions {
   canvasId?: string;
   canvasName?: string;
   itemId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Prisma.InputJsonObject;
 }
 
 /**
@@ -43,6 +47,6 @@ export async function logActivity(options: LogActivityOptions): Promise<void> {
     });
   } catch (error) {
     // Don't throw on activity logging failures - log and continue
-    console.error('Failed to log activity:', error);
+    logger.warn({ error, type: options.type }, "Failed to log activity");
   }
 }

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { runIdempotent, withApiHandler } from "@/lib/api/route-handler";
 import { parsePagination } from "@/lib/api/pagination";
 import { ValidationError } from "@/lib/errors";
+import { ActivityType, logActivity } from "@/lib/activity";
 
 /**
  * GET /api/v1/canvases
@@ -19,7 +20,15 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const { limit, offset } = parsePagination(searchParams);
 
-  const where = { userId };
+  const workspaceId = searchParams.get("workspaceId") || undefined;
+  if (workspaceId) {
+    const workspace = await prisma.workspace.findFirst({
+      where: { id: workspaceId, userId },
+      select: { id: true },
+    });
+    if (!workspace) throw new ValidationError("Workspace not found.");
+  }
+  const where = { userId, ...(workspaceId ? { workspaceId } : {}) };
 
   // Get total count
   const total = await prisma.canvas.count({ where });
@@ -82,6 +91,13 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         userId,
         workspaceId: validatedData.workspaceId,
       },
+    });
+
+    await logActivity({
+      userId,
+      type: ActivityType.CANVAS_CREATED,
+      canvasId: canvas.id,
+      canvasName: canvas.name,
     });
 
     return NextResponse.json(canvas, { status: 201 });

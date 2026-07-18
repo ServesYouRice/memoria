@@ -42,7 +42,7 @@ import {
   Dashboard as TemplatesIcon,
   AutoFixHigh as AutopilotIcon,
   Edit as EditIcon,
-  MicNone as WhisperIcon,
+  EditNote as WhisperIcon,
   ViewInAr as ARIcon,
 } from "@mui/icons-material";
 import { ShareDialog } from "./ShareDialog";
@@ -554,9 +554,9 @@ export function CanvasHeader({
           </Tooltip>
         )}
 
-        {/* Whisper Mode */}
+        {/* Quick capture */}
         {onWhisper && (
-          <Tooltip title="Whisper Mode (Quick Entry)">
+          <Tooltip title="Quick capture">
             <IconButton
               aria-label="Open quick capture"
               onClick={onWhisper}

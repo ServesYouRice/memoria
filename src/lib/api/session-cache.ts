@@ -1,7 +1,7 @@
 /**
  * Session Caching for API Routes
  *
- * FIXED: Issue #25 - Inefficient session checks
+ * Cached session checks.
  *
  * Prevents multiple database calls to fetch the same session within a single request.
  * Uses AsyncLocalStorage to cache session data per-request.

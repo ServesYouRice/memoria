@@ -10,10 +10,11 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
-import { errorResponse } from "@/lib/errors";
+import { ConflictError, errorResponse } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { runIdempotent } from "@/lib/api/route-handler";
 import {
@@ -24,6 +25,7 @@ import {
   type ViewportPaginationInput,
 } from "@/lib/validation/canvas-item";
 import type { CanvasItem } from "@prisma/client";
+import { ActivityType, logActivity } from "@/lib/activity";
 
 /**
  * POST /api/v1/canvas-items
@@ -64,8 +66,68 @@ export async function POST(request: NextRequest) {
       // Invalidate canvas cache
       await invalidateCanvasCache(data.canvasId);
 
+      await logActivity({
+        userId,
+        type: ActivityType.ITEM_CREATED,
+        canvasId: data.canvasId,
+        itemId: item.id,
+      });
+
       return NextResponse.json(item, { status: 201 });
     });
+  } catch (error) {
+    return errorResponse(error, request.url);
+  }
+}
+
+const batchPositionSchema = z.object({
+  canvasId: z.string().cuid(),
+  items: z
+    .array(
+      z.object({
+        id: z.string().cuid(),
+        version: z.number().int().positive(),
+        positionX: z.number().finite(),
+        positionY: z.number().finite(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+/** Atomically apply a bounded layout change without leaving a partial canvas. */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { userId, email } = await requireAuth();
+    const data = batchPositionSchema.parse(await request.json());
+    await requireCanvasAccess(data.canvasId, userId, email, "EDIT");
+
+    await prisma.$transaction(async (tx) => {
+      for (const item of data.items) {
+        const updated = await tx.canvasItem.updateMany({
+          where: {
+            id: item.id,
+            canvasId: data.canvasId,
+            version: item.version,
+            deletedAt: null,
+          },
+          data: {
+            positionX: item.positionX,
+            positionY: item.positionY,
+            version: { increment: 1 },
+            updatedById: userId,
+          },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictError(
+            "Canvas changed while the layout was being prepared. Refresh and try again.",
+          );
+        }
+      }
+    });
+
+    await invalidateCanvasCache(data.canvasId);
+    return NextResponse.json({ updated: data.items.length });
   } catch (error) {
     return errorResponse(error, request.url);
   }
@@ -159,7 +221,6 @@ export async function GET(request: NextRequest) {
 
     // Apply viewport filtering if viewport parameters are provided
     if (hasViewportParams) {
-      // FIXED: Use proper type instead of 'as any'
       const { minX, maxX, minY, maxY, limit, offset } =
         query as ViewportPaginationInput;
 
@@ -172,8 +233,7 @@ export async function GET(request: NextRequest) {
       // (item.positionY + item.height) >= minY &&  // item bottom edge >= viewport top
       // item.positionY <= maxY                     // item top edge <= viewport bottom
 
-      // FIXED: Use parameterized queries instead of string concatenation
-      // This prevents SQL injection even though inputs are validated
+      // Parameterized fragments keep the optional predicates injection-safe.
 
       // Build type filter fragment
       const typeFilter = query.type

@@ -42,10 +42,10 @@
  * @see {@link RATE_LIMITS} for preset configurations
  */
 
-import { NextResponse } from 'next/server';
-import { logger } from '@/lib/logger';
-import { createRateLimiter, getClientIdentifier, RATE_LIMITS } from './index';
-import type { RateLimitConfig } from './types';
+import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
+import { createRateLimiter, getClientIdentifier, RATE_LIMITS } from "./index";
+import type { RateLimitConfig } from "./types";
 
 /**
  * Create a 429 Too Many Requests error response
@@ -67,10 +67,10 @@ import type { RateLimitConfig } from './types';
 function rateLimitExceeded(resetAt: number, remaining: number = 0) {
   return NextResponse.json(
     {
-      type: 'https://canvascollect.com/errors/rate-limit-exceeded',
-      title: 'Too Many Requests',
+      type: "https://memoria.local/errors/rate-limit-exceeded",
+      title: "Too Many Requests",
       status: 429,
-      detail: 'Rate limit exceeded. Please try again later.',
+      detail: "Rate limit exceeded. Please try again later.",
       extensions: {
         resetAt,
         remaining,
@@ -79,11 +79,11 @@ function rateLimitExceeded(resetAt: number, remaining: number = 0) {
     {
       status: 429,
       headers: {
-        'Retry-After': Math.ceil((resetAt - Date.now() / 1000)).toString(),
-        'X-RateLimit-Remaining': remaining.toString(),
-        'X-RateLimit-Reset': resetAt.toString(),
+        "Retry-After": Math.ceil(resetAt - Date.now() / 1000).toString(),
+        "X-RateLimit-Remaining": remaining.toString(),
+        "X-RateLimit-Reset": resetAt.toString(),
       },
-    }
+    },
   );
 }
 
@@ -109,7 +109,10 @@ function rateLimitExceeded(resetAt: number, remaining: number = 0) {
  * }
  * ```
  */
-export async function checkRateLimit(request: Request, config: RateLimitConfig) {
+export async function checkRateLimit(
+  request: Request,
+  config: RateLimitConfig,
+) {
   const identifier = config.identifier
     ? await config.identifier(request)
     : getClientIdentifier(request);
@@ -125,7 +128,7 @@ export async function checkRateLimit(request: Request, config: RateLimitConfig) 
       limit: result.limit,
       remaining: result.remaining,
     },
-    'Rate limit check'
+    "Rate limit check",
   );
 
   return result;
@@ -166,16 +169,19 @@ export async function checkRateLimit(request: Request, config: RateLimitConfig) 
  */
 export function withRateLimit<T extends any[]>(
   config: RateLimitConfig,
-  handler: (request: Request, ...args: T) => Promise<NextResponse>
+  handler: (request: Request, ...args: T) => Promise<NextResponse>,
 ) {
   return async (request: Request, ...args: T): Promise<NextResponse> => {
     const result = await checkRateLimit(request, config);
 
     // Add rate limit headers to response
     const addRateLimitHeaders = (response: NextResponse): NextResponse => {
-      response.headers.set('X-RateLimit-Limit', result.limit.toString());
-      response.headers.set('X-RateLimit-Remaining', result.remaining.toString());
-      response.headers.set('X-RateLimit-Reset', result.resetAt.toString());
+      response.headers.set("X-RateLimit-Limit", result.limit.toString());
+      response.headers.set(
+        "X-RateLimit-Remaining",
+        result.remaining.toString(),
+      );
+      response.headers.set("X-RateLimit-Reset", result.resetAt.toString());
       return response;
     };
 
@@ -219,7 +225,7 @@ export function withRateLimit<T extends any[]>(
  */
 export async function checkRateLimitByUser(
   userId: string,
-  config: Omit<RateLimitConfig, 'identifier'>
+  config: Omit<RateLimitConfig, "identifier">,
 ) {
   const fullConfig: RateLimitConfig = {
     ...config,
@@ -227,7 +233,7 @@ export async function checkRateLimitByUser(
   };
 
   // Create temporary request object for identifier extraction
-  const request = new Request('http://localhost');
+  const request = new Request("http://localhost");
   return checkRateLimit(request, fullConfig);
 }
 
@@ -244,20 +250,23 @@ export const rateLimitPresets = {
   /**
    * Apply to authentication endpoints
    */
-  auth: (handler: (request: Request, ...args: any[]) => Promise<NextResponse>) =>
-    withRateLimit(RATE_LIMITS.auth, handler),
+  auth: (
+    handler: (request: Request, ...args: any[]) => Promise<NextResponse>,
+  ) => withRateLimit(RATE_LIMITS.auth, handler),
 
   /**
    * Apply to password reset endpoints
    */
-  passwordReset: (handler: (request: Request, ...args: any[]) => Promise<NextResponse>) =>
-    withRateLimit(RATE_LIMITS.passwordReset, handler),
+  passwordReset: (
+    handler: (request: Request, ...args: any[]) => Promise<NextResponse>,
+  ) => withRateLimit(RATE_LIMITS.passwordReset, handler),
 
   /**
    * Apply strict rate limiting
    */
-  strict: (handler: (request: Request, ...args: any[]) => Promise<NextResponse>) =>
-    withRateLimit(RATE_LIMITS.strict, handler),
+  strict: (
+    handler: (request: Request, ...args: any[]) => Promise<NextResponse>,
+  ) => withRateLimit(RATE_LIMITS.strict, handler),
 };
 
 export { rateLimitExceeded };

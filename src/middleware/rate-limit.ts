@@ -30,7 +30,7 @@ function getClientIdentifier(request: NextRequest): string {
 function rateLimitExceeded(resetAt: number, remaining: number = 0) {
   return NextResponse.json(
     {
-      type: "https://canvascollect.com/errors/rate-limit-exceeded",
+      type: "https://memoria.local/errors/rate-limit-exceeded",
       title: "Too Many Requests",
       status: 429,
       detail: "Rate limit exceeded. Please try again later.",

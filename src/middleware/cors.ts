@@ -1,7 +1,7 @@
 /**
  * CORS Configuration Middleware
  *
- * FIXED: Issue #15 - Missing CORS configuration
+ * Cross-origin request policy.
  *
  * Implements a secure CORS policy for API routes.
  * Follows best practices from OWASP and ADR-0012: Security Headers & CORS Policy.

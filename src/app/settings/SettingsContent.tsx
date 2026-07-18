@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { signOut } from 'next-auth/react';
-import { toast } from 'sonner';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
+import { toast } from "sonner";
 import {
   Box,
   Typography,
@@ -24,7 +24,7 @@ import {
   Stack,
   Switch,
   alpha,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Person as PersonIcon,
   Email as EmailIcon,
@@ -35,11 +35,12 @@ import {
   Logout as LogoutIcon,
   Save as SaveIcon,
   KeyOutlined as ApiKeysIcon,
-} from '@mui/icons-material';
-import { useThemeMode } from '@/lib/theme-context';
-import { AgentControlCenter } from '@/features/agents/components/AgentControlCenter';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { gradients } from '@/lib/theme';
+  DownloadOutlined as DownloadIcon,
+} from "@mui/icons-material";
+import { useThemeMode } from "@/lib/theme-context";
+import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { gradients } from "@/lib/theme";
 
 interface SettingsContentProps {
   user: {
@@ -52,15 +53,15 @@ interface SettingsContentProps {
 
 // Keyboard shortcuts data
 const keyboardShortcuts = [
-  { keys: ['Ctrl', 'K'], description: 'Open Command Palette' },
-  { keys: ['Ctrl', 'Z'], description: 'Undo' },
-  { keys: ['Ctrl', 'Y'], description: 'Redo' },
-  { keys: ['Ctrl', 'S'], description: 'Save (auto-saved)' },
-  { keys: ['Delete'], description: 'Delete selected item' },
-  { keys: ['Escape'], description: 'Deselect / Close dialog' },
-  { keys: ['Ctrl', '+'], description: 'Zoom in' },
-  { keys: ['Ctrl', '-'], description: 'Zoom out' },
-  { keys: ['Ctrl', '0'], description: 'Reset zoom' },
+  { keys: ["Ctrl", "K"], description: "Open Command Palette" },
+  { keys: ["Ctrl", "Z"], description: "Undo" },
+  { keys: ["Ctrl", "Y"], description: "Redo" },
+  { keys: ["Ctrl", "S"], description: "Save (auto-saved)" },
+  { keys: ["Delete"], description: "Delete selected item" },
+  { keys: ["Escape"], description: "Deselect / Close dialog" },
+  { keys: ["Ctrl", "+"], description: "Zoom in" },
+  { keys: ["Ctrl", "-"], description: "Zoom out" },
+  { keys: ["Ctrl", "0"], description: "Reset zoom" },
 ];
 
 function SettingsSection({
@@ -80,14 +81,14 @@ function SettingsSection({
       sx={{
         p: { xs: 2.5, sm: 3.5 },
         borderRadius: 3,
-        ...(danger && { borderColor: 'error.main' }),
+        ...(danger && { borderColor: "error.main" }),
       }}
     >
       <Typography
         variant="h6"
         fontWeight={600}
-        color={danger ? 'error' : undefined}
-        sx={{ mb: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}
+        color={danger ? "error" : undefined}
+        sx={{ mb: 2.5, display: "flex", alignItems: "center", gap: 1 }}
       >
         {icon} {title}
       </Typography>
@@ -101,35 +102,62 @@ export function SettingsContent({ user }: SettingsContentProps) {
   const { mode, toggleTheme } = useThemeMode();
 
   // Form states
-  const [name, setName] = useState(user.name || '');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [name, setName] = useState(user.name || "");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   // UI states
   const [saving, setSaving] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportAccount = async () => {
+    try {
+      setExporting(true);
+      const response = await fetch("/api/v1/users/account");
+      if (!response.ok) throw new Error("Failed to export account data");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `memoria-account-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success("Account export downloaded");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to export account data",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Profile update
   const handleSaveProfile = async () => {
     try {
       setSaving(true);
-      const response = await fetch('/api/v1/users/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/v1/users/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to update profile');
+        throw new Error(error.detail || "Failed to update profile");
       }
-      toast.success('Profile updated');
+      toast.success("Profile updated");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update profile",
+      );
     } finally {
       setSaving(false);
     }
@@ -138,31 +166,33 @@ export function SettingsContent({ user }: SettingsContentProps) {
   // Password change
   const handleChangePassword = async () => {
     if (newPassword !== confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error("Passwords do not match");
       return;
     }
     if (newPassword.length < 10) {
-      toast.error('Password must be at least 10 characters');
+      toast.error("Password must be at least 10 characters");
       return;
     }
 
     try {
       setSavingPassword(true);
-      const response = await fetch('/api/v1/users/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/v1/users/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to change password');
+        throw new Error(error.detail || "Failed to change password");
       }
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      toast.success('Password changed');
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Password changed");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to change password');
+      toast.error(
+        error instanceof Error ? error.message : "Failed to change password",
+      );
     } finally {
       setSavingPassword(false);
     }
@@ -170,46 +200,54 @@ export function SettingsContent({ user }: SettingsContentProps) {
 
   // Account deletion
   const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== 'DELETE' || !deletePassword) return;
+    if (deleteConfirmText !== "DELETE" || !deletePassword) return;
 
     try {
       setDeleting(true);
-      const response = await fetch('/api/v1/users/account', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: deletePassword, confirmation: 'DELETE' }),
+      const response = await fetch("/api/v1/users/account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: deletePassword,
+          confirmation: "DELETE",
+        }),
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to delete account');
+        throw new Error(error.detail || "Failed to delete account");
       }
-      await signOut({ callbackUrl: '/' });
+      await signOut({ callbackUrl: "/" });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete account');
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete account",
+      );
       setDeleting(false);
     }
   };
 
   const closeDeleteDialog = () => {
     setDeleteDialogOpen(false);
-    setDeleteConfirmText('');
-    setDeletePassword('');
+    setDeleteConfirmText("");
+    setDeletePassword("");
   };
 
   const getInitials = (name?: string | null, email?: string | null) => {
     if (name) return name.charAt(0).toUpperCase();
     if (email) return email.charAt(0).toUpperCase();
-    return 'U';
+    return "U";
   };
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Manage your account, preferences, and integrations" />
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your account, preferences, and integrations"
+      />
 
       <Stack spacing={3}>
         {/* Profile */}
         <SettingsSection icon={<PersonIcon color="primary" />} title="Profile">
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, mb: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2.5, mb: 3 }}>
             <Avatar
               sx={{
                 width: 64,
@@ -217,7 +255,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
                 fontSize: 26,
                 fontWeight: 700,
                 background: gradients.brand,
-                color: '#fff',
+                color: "#fff",
               }}
               src={user.image || undefined}
             >
@@ -225,7 +263,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
             </Avatar>
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="subtitle1" fontWeight={600} noWrap>
-                {user.name || 'User'}
+                {user.name || "User"}
               </Typography>
               <Typography variant="body2" color="text.secondary" noWrap>
                 {user.email}
@@ -242,17 +280,21 @@ export function SettingsContent({ user }: SettingsContentProps) {
               onChange={(e) => setName(e.target.value)}
               fullWidth
               slotProps={{
-                input: { startAdornment: <PersonIcon color="action" sx={{ mr: 1 }} /> },
+                input: {
+                  startAdornment: <PersonIcon color="action" sx={{ mr: 1 }} />,
+                },
               }}
             />
             <TextField
               label="Email"
-              value={user.email || ''}
+              value={user.email || ""}
               disabled
               fullWidth
               helperText="Email cannot be changed"
               slotProps={{
-                input: { startAdornment: <EmailIcon color="action" sx={{ mr: 1 }} /> },
+                input: {
+                  startAdornment: <EmailIcon color="action" sx={{ mr: 1 }} />,
+                },
               }}
             />
             <Button
@@ -260,15 +302,18 @@ export function SettingsContent({ user }: SettingsContentProps) {
               onClick={handleSaveProfile}
               disabled={saving || name === user.name}
               startIcon={<SaveIcon />}
-              sx={{ alignSelf: 'flex-start' }}
+              sx={{ alignSelf: "flex-start" }}
             >
-              {saving ? 'Saving…' : 'Save changes'}
+              {saving ? "Saving…" : "Save changes"}
             </Button>
           </Stack>
         </SettingsSection>
 
         {/* Password */}
-        <SettingsSection icon={<LockIcon color="primary" />} title="Change password">
+        <SettingsSection
+          icon={<LockIcon color="primary" />}
+          title="Change password"
+        >
           <Stack spacing={2.5}>
             <TextField
               label="Current password"
@@ -294,48 +339,70 @@ export function SettingsContent({ user }: SettingsContentProps) {
               onChange={(e) => setConfirmPassword(e.target.value)}
               fullWidth
               autoComplete="new-password"
-              error={confirmPassword.length > 0 && newPassword !== confirmPassword}
+              error={
+                confirmPassword.length > 0 && newPassword !== confirmPassword
+              }
               helperText={
                 confirmPassword.length > 0 && newPassword !== confirmPassword
-                  ? 'Passwords do not match'
-                  : ''
+                  ? "Passwords do not match"
+                  : ""
               }
             />
             <Button
               variant="contained"
               onClick={handleChangePassword}
-              disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword}
+              disabled={
+                savingPassword ||
+                !currentPassword ||
+                !newPassword ||
+                !confirmPassword
+              }
               startIcon={<LockIcon />}
-              sx={{ alignSelf: 'flex-start' }}
+              sx={{ alignSelf: "flex-start" }}
             >
-              {savingPassword ? 'Changing…' : 'Change password'}
+              {savingPassword ? "Changing…" : "Change password"}
             </Button>
           </Stack>
         </SettingsSection>
 
         {/* Preferences */}
-        <SettingsSection icon={<ThemeIcon color="primary" />} title="Preferences">
+        <SettingsSection
+          icon={<ThemeIcon color="primary" />}
+          title="Preferences"
+        >
           <List disablePadding>
-            <ListItem sx={{ borderRadius: 2, px: 1, '&:hover': { bgcolor: 'action.hover' } }}>
+            <ListItem
+              sx={{
+                borderRadius: 2,
+                px: 1,
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
               <ListItemIcon>
                 <ThemeIcon />
               </ListItemIcon>
-              <ListItemText primary="Dark mode" secondary="Switch between light and dark themes" />
+              <ListItemText
+                primary="Dark mode"
+                secondary="Switch between light and dark themes"
+              />
               <Switch
-                checked={mode === 'dark'}
+                checked={mode === "dark"}
                 onChange={toggleTheme}
-                inputProps={{ 'aria-label': 'Toggle dark mode' }}
+                inputProps={{ "aria-label": "Toggle dark mode" }}
               />
             </ListItem>
           </List>
         </SettingsSection>
 
         {/* Keyboard shortcuts */}
-        <SettingsSection icon={<KeyboardIcon color="primary" />} title="Keyboard shortcuts">
+        <SettingsSection
+          icon={<KeyboardIcon color="primary" />}
+          title="Keyboard shortcuts"
+        >
           <Box
             sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
               gap: 1.5,
             }}
           >
@@ -343,9 +410,9 @@ export function SettingsContent({ user }: SettingsContentProps) {
               <Box
                 key={index}
                 sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   p: 1.5,
                   borderRadius: 2,
                   bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
@@ -354,7 +421,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
                 <Typography variant="body2" color="text.secondary">
                   {shortcut.description}
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <Box sx={{ display: "flex", gap: 0.5 }}>
                   {shortcut.keys.map((key, i) => (
                     <Box
                       key={i}
@@ -363,11 +430,11 @@ export function SettingsContent({ user }: SettingsContentProps) {
                         px: 1.25,
                         py: 0.5,
                         borderRadius: 1,
-                        bgcolor: 'background.paper',
+                        bgcolor: "background.paper",
                         border: 1,
-                        borderColor: 'divider',
-                        fontFamily: 'monospace',
-                        fontSize: '0.75rem',
+                        borderColor: "divider",
+                        fontFamily: "monospace",
+                        fontSize: "0.75rem",
                         fontWeight: 600,
                       }}
                     >
@@ -384,8 +451,18 @@ export function SettingsContent({ user }: SettingsContentProps) {
         <AgentControlCenter />
 
         {/* Developer settings */}
-        <SettingsSection icon={<ApiKeysIcon color="primary" />} title="Developer settings">
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+        <SettingsSection
+          icon={<ApiKeysIcon color="primary" />}
+          title="Developer settings"
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+            }}
+          >
             <Box>
               <Typography variant="subtitle1" fontWeight={600}>
                 API keys
@@ -394,24 +471,42 @@ export function SettingsContent({ user }: SettingsContentProps) {
                 Manage API keys for external access and extensions
               </Typography>
             </Box>
-            <Button variant="outlined" onClick={() => router.push('/api-keys')}>
+            <Button variant="outlined" onClick={() => router.push("/api-keys")}>
               Manage keys
             </Button>
           </Box>
         </SettingsSection>
 
+        <SettingsSection
+          icon={<DownloadIcon color="primary" />}
+          title="Your data"
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Download a JSON copy of your profile, workspaces, canvases, items,
+            and sharing settings.
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={handleExportAccount}
+            disabled={exporting}
+          >
+            {exporting ? "Preparing export…" : "Download account data"}
+          </Button>
+        </SettingsSection>
+
         {/* Danger zone */}
         <SettingsSection icon={<DeleteIcon />} title="Danger zone" danger>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Once you delete your account, there is no going back. All your canvases, notes, and data
-            will be permanently deleted.
+            Once you delete your account, there is no going back. All your
+            canvases, notes, and data will be permanently deleted.
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             <Button
               variant="outlined"
               color="error"
-              onClick={() => signOut({ callbackUrl: '/' })}
+              onClick={() => signOut({ callbackUrl: "/" })}
               startIcon={<LogoutIcon />}
             >
               Sign out
@@ -429,12 +524,20 @@ export function SettingsContent({ user }: SettingsContentProps) {
       </Stack>
 
       {/* Delete confirmation dialog */}
-      <Dialog open={deleteDialogOpen} onClose={closeDeleteDialog} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 600, color: 'error.main' }}>Delete account</DialogTitle>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={closeDeleteDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 600, color: "error.main" }}>
+          Delete account
+        </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            This action cannot be undone. All your data will be permanently deleted. Enter your
-            password and type <strong>DELETE</strong> to confirm.
+            This action cannot be undone. All your data will be permanently
+            deleted. Enter your password and type <strong>DELETE</strong> to
+            confirm.
           </DialogContentText>
           <Stack spacing={2}>
             <TextField
@@ -451,7 +554,9 @@ export function SettingsContent({ user }: SettingsContentProps) {
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
               placeholder="Type DELETE to confirm"
-              error={deleteConfirmText.length > 0 && deleteConfirmText !== 'DELETE'}
+              error={
+                deleteConfirmText.length > 0 && deleteConfirmText !== "DELETE"
+              }
             />
           </Stack>
         </DialogContent>
@@ -461,9 +566,11 @@ export function SettingsContent({ user }: SettingsContentProps) {
             onClick={handleDeleteAccount}
             color="error"
             variant="contained"
-            disabled={deleteConfirmText !== 'DELETE' || !deletePassword || deleting}
+            disabled={
+              deleteConfirmText !== "DELETE" || !deletePassword || deleting
+            }
           >
-            {deleting ? 'Deleting…' : 'Delete account'}
+            {deleting ? "Deleting…" : "Delete account"}
           </Button>
         </DialogActions>
       </Dialog>

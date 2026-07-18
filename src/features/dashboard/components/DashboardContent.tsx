@@ -73,15 +73,21 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  const { data: canvasesData, isLoading, error } = useCanvases();
+  const {
+    data: canvasesData,
+    isLoading,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useCanvases(workspaceId || undefined);
   const createCanvas = useCreateCanvas();
   const duplicateCanvas = useDuplicateCanvas();
   const { mode, toggleTheme } = useThemeMode();
 
   const canvases = useMemo(() => {
-    const all = canvasesData?.canvases ?? [];
-    return workspaceId ? all.filter((c) => c.workspaceId === workspaceId) : all;
-  }, [canvasesData, workspaceId]);
+    return canvasesData?.pages.flatMap((page) => page.canvases) ?? [];
+  }, [canvasesData]);
 
   const handleCreateCanvas = async () => {
     try {
@@ -358,47 +364,59 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           )}
 
           {!isLoading && hasCanvases && (
-            <CardGrid>
-              {canvases.map((canvas, index) => (
-                <CanvasCard
-                  key={canvas.id}
-                  name={canvas.name}
-                  thumbnail={canvas.thumbnail}
-                  index={index}
-                  selected={selectedCanvasIds.has(canvas.id)}
-                  meta={`Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}
-                  onClick={(e) => handleCanvasClick(canvas.id, e)}
-                  corner={
-                    selectionMode ? (
-                      <Checkbox
-                        checked={selectedCanvasIds.has(canvas.id)}
-                        onChange={() => toggleCanvasSelection(canvas.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        sx={{
-                          bgcolor: "background.paper",
-                          borderRadius: 1,
-                          p: 0.25,
-                        }}
-                      />
-                    ) : (
-                      <IconButton
-                        size="small"
-                        aria-label={`Actions for ${canvas.name}`}
-                        onClick={(e) => handleMenuOpen(e, canvas.id)}
-                        sx={{
-                          bgcolor: (theme) =>
-                            alpha(theme.palette.background.paper, 0.85),
-                          backdropFilter: "blur(4px)",
-                          "&:hover": { bgcolor: "background.paper" },
-                        }}
-                      >
-                        <MoreVert fontSize="small" />
-                      </IconButton>
-                    )
-                  }
-                />
-              ))}
-            </CardGrid>
+            <>
+              <CardGrid>
+                {canvases.map((canvas, index) => (
+                  <CanvasCard
+                    key={canvas.id}
+                    name={canvas.name}
+                    thumbnail={canvas.thumbnail}
+                    index={index}
+                    selected={selectedCanvasIds.has(canvas.id)}
+                    meta={`Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}
+                    onClick={(e) => handleCanvasClick(canvas.id, e)}
+                    corner={
+                      selectionMode ? (
+                        <Checkbox
+                          checked={selectedCanvasIds.has(canvas.id)}
+                          onChange={() => toggleCanvasSelection(canvas.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          sx={{
+                            bgcolor: "background.paper",
+                            borderRadius: 1,
+                            p: 0.25,
+                          }}
+                        />
+                      ) : (
+                        <IconButton
+                          size="small"
+                          aria-label={`Actions for ${canvas.name}`}
+                          onClick={(e) => handleMenuOpen(e, canvas.id)}
+                          sx={{
+                            bgcolor: (theme) =>
+                              alpha(theme.palette.background.paper, 0.85),
+                            backdropFilter: "blur(4px)",
+                            "&:hover": { bgcolor: "background.paper" },
+                          }}
+                        >
+                          <MoreVert fontSize="small" />
+                        </IconButton>
+                      )
+                    }
+                  />
+                ))}
+              </CardGrid>
+              {hasNextPage && (
+                <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
+                  <Button
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                  >
+                    {isFetchingNextPage ? "Loading…" : "Load more canvases"}
+                  </Button>
+                </Box>
+              )}
+            </>
           )}
         </Box>
 
