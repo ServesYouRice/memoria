@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { Box, Button, Container, Stack, Typography } from "@mui/material";
-import { AutoAwesomeMosaicOutlined as LogoIcon } from "@mui/icons-material";
+import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { gradients } from "@/lib/theme";
 
 export interface AuthLayoutProps {
@@ -70,21 +70,8 @@ export function AuthLayout({
         />
 
         <Box sx={{ position: "relative", textAlign: "center", maxWidth: 420 }}>
-          <Box
-            sx={{
-              width: 88,
-              height: 88,
-              borderRadius: 4,
-              bgcolor: "rgba(255,255,255,0.18)",
-              backdropFilter: "blur(10px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              mx: "auto",
-              mb: 4,
-            }}
-          >
-            <LogoIcon sx={{ fontSize: 44 }} />
+          <Box sx={{ width: 88, mx: "auto", mb: 4 }}>
+            <MemoriaLogo size={88} />
           </Box>
           <Typography variant="h3" fontWeight={700} gutterBottom>
             {headline}
@@ -119,19 +106,7 @@ export function AuthLayout({
                 mb: 4,
               }}
             >
-              <Box
-                sx={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 3,
-                  background: gradients.brand,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <LogoIcon sx={{ fontSize: 28, color: "#fff" }} />
-              </Box>
+              <MemoriaLogo size={56} />
             </Box>
             {children}
             <Stack

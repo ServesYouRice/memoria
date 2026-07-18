@@ -3,6 +3,7 @@
  * React Query hooks for canvas version history
  */
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
 import { canvasKeys } from "@/lib/hooks/use-canvases";
@@ -97,9 +98,13 @@ export function useCanvasVersions(
     queryKey: canvasVersionKeys.list(canvasId, includeSnapshot),
     queryFn: async () => {
       const params = new URLSearchParams();
+      if (includeSnapshot) {
+        params.set("includeSnapshot", "true");
+      }
       params.set("limit", "100");
-      const response = await fetch(
-        `/api/v1/canvases/${canvasId}/versions?${params}`,
+
+      const response = await apiFetch(
+        `/api/v1/canvases/${canvasId}/versions?${params.toString()}`,
       );
       return parseJson<VersionsResponse>(response, "Failed to fetch versions");
     },
@@ -138,7 +143,7 @@ export function useCreateVersion() {
       canvasId: string;
       name?: string;
     }) => {
-      const response = await fetch(`/api/v1/canvases/${canvasId}/versions`, {
+      const response = await apiFetch(`/api/v1/canvases/${canvasId}/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -168,7 +173,7 @@ export function useRestoreVersion() {
       canvasId: string;
       versionId: string;
     }) => {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/v1/canvases/${canvasId}/versions/${versionId}/restore`,
         {
           method: "POST",

@@ -37,9 +37,9 @@ import {
   SettingsOutlined as SettingsIcon,
   KeyOutlined as ApiKeysIcon,
   LogoutOutlined as LogoutIcon,
-  AutoAwesomeMosaicOutlined as LogoIcon,
   DeleteOutlineOutlined as TrashIcon,
 } from "@mui/icons-material";
+import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { gradients } from "@/lib/theme";
 
@@ -118,20 +118,7 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
               mr: { md: 2 },
             }}
           >
-            <Box
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: 2,
-                background: gradients.brand,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <LogoIcon sx={{ fontSize: 18, color: "#fff" }} />
-            </Box>
+            <MemoriaLogo size={32} />
             <Typography
               variant="h6"
               sx={{ fontWeight: 700, display: { xs: "none", sm: "block" } }}
@@ -278,19 +265,7 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
         <Box sx={{ width: 264 }} role="navigation" aria-label="Main navigation">
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
-            <Box
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: 2,
-                background: gradients.brand,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <LogoIcon sx={{ fontSize: 18, color: "#fff" }} />
-            </Box>
+            <MemoriaLogo size={32} />
             <Typography variant="h6" fontWeight={700}>
               Memoria
             </Typography>

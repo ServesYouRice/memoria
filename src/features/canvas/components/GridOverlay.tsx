@@ -3,8 +3,8 @@
  * Renders a visible grid on the canvas for alignment
  */
 
-import React from 'react';
-import { Layer, Line } from 'react-konva';
+import React from "react";
+import { Layer, Line } from "react-konva";
 
 export interface GridOverlayProps {
   width: number;
@@ -13,6 +13,8 @@ export interface GridOverlayProps {
   visible: boolean;
   offset?: { x: number; y: number };
   zoom?: number;
+  /** Line color; defaults to a light-mode grey. Pass a theme value for dark mode. */
+  stroke?: string;
 }
 
 export function GridOverlay({
@@ -22,6 +24,7 @@ export function GridOverlay({
   visible,
   offset = { x: 0, y: 0 },
   zoom = 1,
+  stroke = "#e0e0e0",
 }: GridOverlayProps) {
   if (!visible) return null;
 
@@ -31,11 +34,13 @@ export function GridOverlay({
   const adjustedGridSize = gridSize;
 
   // Calculate the starting positions based on offset
-  const startX = Math.floor((-offset.x / zoom) / adjustedGridSize) * adjustedGridSize;
-  const startY = Math.floor((-offset.y / zoom) / adjustedGridSize) * adjustedGridSize;
+  const startX =
+    Math.floor(-offset.x / zoom / adjustedGridSize) * adjustedGridSize;
+  const startY =
+    Math.floor(-offset.y / zoom / adjustedGridSize) * adjustedGridSize;
 
-  const endX = startX + (width / zoom) + adjustedGridSize;
-  const endY = startY + (height / zoom) + adjustedGridSize;
+  const endX = startX + width / zoom + adjustedGridSize;
+  const endY = startY + height / zoom + adjustedGridSize;
 
   // Vertical lines
   for (let x = startX; x <= endX; x += adjustedGridSize) {
@@ -43,10 +48,10 @@ export function GridOverlay({
       <Line
         key={`v-${x}`}
         points={[x, startY, x, endY]}
-        stroke="#e0e0e0"
+        stroke={stroke}
         strokeWidth={1 / zoom}
         listening={false}
-      />
+      />,
     );
   }
 
@@ -56,10 +61,10 @@ export function GridOverlay({
       <Line
         key={`h-${y}`}
         points={[startX, y, endX, y]}
-        stroke="#e0e0e0"
+        stroke={stroke}
         strokeWidth={1 / zoom}
         listening={false}
-      />
+      />,
     );
   }
 
@@ -78,7 +83,7 @@ export function snapToGrid(value: number, gridSize: number): number {
  */
 export function snapPositionToGrid(
   position: { x: number; y: number },
-  gridSize: number
+  gridSize: number,
 ): { x: number; y: number } {
   return {
     x: snapToGrid(position.x, gridSize),

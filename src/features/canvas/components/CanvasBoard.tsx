@@ -10,6 +10,7 @@ import {
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
+  useTheme,
 } from "@mui/material";
 import {
   NoteAdd,
@@ -75,6 +76,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const focusedItemRef = useRef<string | null>(null);
+  const theme = useTheme();
+  const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
 
   // Data Hook (Single source of truth for display)
   const {
@@ -93,6 +96,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     selectedTags,
     setSelectedTags,
     canvasLoadError,
+    clearCanvasLoadError,
     isTimeMachineActive,
     setTimeMachineActive,
     timeMachineIndex,
@@ -498,6 +502,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     onMessage: handleRemoteMessage,
   });
 
+  // Server-assigned presence color, so chat bubbles match the cursor color
+  const ownPresenceColor =
+    collaborators.find((user) => user.userId === session?.user?.id)?.color ||
+    "#f00";
+
   // Follow Mode
   useEffect(() => {
     if (followingUserId) {
@@ -519,8 +528,20 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
   // Space Key
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return (
+        !!el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      );
+    };
+
     const handleKey = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
+      // Don't hijack Space while the user is typing in a field, dialog, or
+      // the cursor-chat input — otherwise a space toggles canvas pan mode.
+      if (e.code === "Space" && !isEditableTarget(e.target)) {
         setIsSpacePressed(e.type === "keydown");
       }
     };
@@ -977,6 +998,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                 Retry
               </Button>
             }
+            onClose={clearCanvasLoadError}
           >
             {canvasLoadError}
           </Alert>
@@ -1003,7 +1025,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             position: "relative",
             overflow: "hidden",
             cursor: isDrawing ? "crosshair" : "default",
-            bgcolor: "background.default",
+            bgcolor: (theme) =>
+              theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
           }}
         >
           {!isDrawing && !isPresentationMode && canEdit && (
@@ -1087,6 +1110,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               gridSize={20}
               offset={{ x: -position.x / zoom, y: -position.y / zoom }}
               visible={gridVisible}
+              stroke={gridStroke}
             />
             <CanvasItemLayer
               items={renderedItems}
@@ -1121,7 +1145,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                       x: canvasX,
                       y: canvasY,
                       userName: session?.user?.name || "Anonymous",
-                      userColor: "#f00",
+                      userColor: ownPresenceColor,
                     });
                   }
                 }
@@ -1186,7 +1210,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             );
           })}
 
-          {selectedItemIds.size > 1 && !isPresentationMode && (
+          {selectedItemIds.size > 1 && (
             <Box
               sx={{
                 position: "absolute",
@@ -1207,7 +1231,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             </Box>
           )}
 
-          {isDrawing && !isPresentationMode && (
+          {isDrawing && (
             <Box
               sx={{
                 position: "absolute",

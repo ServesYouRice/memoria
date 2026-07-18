@@ -20,8 +20,8 @@ import {
   BrushOutlined as CanvasIcon,
   Groups as CollaborationIcon,
   BookmarkBorder as BookmarkIcon,
-  AutoAwesomeMosaicOutlined as LogoIcon,
 } from "@mui/icons-material";
+import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { brand, gradients } from "@/lib/theme";
 
 const FEATURES = [
@@ -83,19 +83,7 @@ export default async function Home() {
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Box
-              sx={{
-                width: 34,
-                height: 34,
-                borderRadius: 2,
-                background: gradients.brand,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <LogoIcon sx={{ fontSize: 19, color: "#fff" }} />
-            </Box>
+            <MemoriaLogo size={34} />
             <Typography variant="h6" fontWeight={700}>
               Memoria
             </Typography>

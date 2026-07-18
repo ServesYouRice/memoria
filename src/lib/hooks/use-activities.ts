@@ -3,6 +3,7 @@
  * React Query hook for fetching user activities
  */
 
+import { apiFetch } from "@/lib/api/fetch-client";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 export interface Activity {
@@ -45,7 +46,7 @@ export function useActivities(canvasId?: string, limit: number = 50) {
         offset: String(pageParam),
       });
       if (canvasId) params.append("canvasId", canvasId);
-      const response = await fetch(`/api/v1/activities?${params}`);
+      const response = await apiFetch(`/api/v1/activities?${params}`);
       if (!response.ok) {
         throw new Error("Failed to fetch activities");
       }

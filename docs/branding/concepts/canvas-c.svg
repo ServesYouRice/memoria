@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <pattern id="grid" x="76" y="88" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M 44 0 H 0 V 44" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.18"/>
+    </pattern>
+    <clipPath id="tile"><rect width="512" height="512" rx="116"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#brand)"/>
+    <!-- the canvas: dark panel with whitish grid lines -->
+    <rect x="76" y="98" width="360" height="336" rx="28" fill="#000000" opacity="0.18"/>
+    <rect x="76" y="88" width="360" height="336" rx="28" fill="#241f52"/>
+    <rect x="76" y="88" width="360" height="336" rx="28" fill="url(#grid)"/>
+    <rect x="77.5" y="89.5" width="357" height="333" rx="26.5" fill="none"
+          stroke="#ffffff" stroke-width="3" opacity="0.28"/>
+  </g>
+  <g transform="translate(256 256) scale(0.78) translate(-252 -256)">
+    <g transform="rotate(-9 246 246)">
+      <rect x="146" y="131" width="200" height="230" rx="14" fill="#ffffff" opacity="0.4"/>
+    </g>
+    <g transform="rotate(5 256 266)">
+      <rect x="156" y="151" width="200" height="230" rx="14" fill="#ffffff"/>
+      <rect x="172" y="167" width="168" height="152" rx="6" fill="#6d28d9"/>
+      <circle cx="298" cy="207" r="17" fill="#fbbf24"/>
+      <path d="M 172 319 L 230 247 L 265 289 L 294 255 L 340 319 Z" fill="#ffffff" opacity="0.9"/>
+    </g>
+  </g>
+</svg>

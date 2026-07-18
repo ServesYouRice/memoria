@@ -1,7 +1,7 @@
 {
   "name": "Memoria",
   "short_name": "Memoria",
-  "theme_color": "#0096fd",
+  "theme_color": "#6366f1",
   "background_color": "#ffffff",
   "display": "standalone",
   "orientation": "any",

@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
@@ -6,10 +6,19 @@ import { prisma } from "@/lib/db";
 import * as argon2 from "argon2";
 import {
   clearFailedAttempts,
-  getLockoutRemaining,
   isAccountLocked,
   recordFailedAttempt,
 } from "@/lib/auth/account-lockout";
+
+/**
+ * Thrown when a sign-in attempt is rejected because the account is temporarily
+ * locked. The `code` is surfaced to the client (via `signIn(..).code`) so the
+ * login form can show a lockout message instead of the generic
+ * "Invalid email or password".
+ */
+class AccountLockedError extends CredentialsSignin {
+  code = "account_locked";
+}
 
 const dummyPasswordHash = argon2.hash("memoria-invalid-user-password", {
   type: argon2.argon2id,
@@ -40,14 +49,7 @@ export const authConfig: NextAuthConfig = {
         // Check for lockout
         const isLocked = await isAccountLocked(email);
         if (isLocked) {
-          const remainingSeconds = await getLockoutRemaining(email);
-          const remainingMinutes = Math.max(
-            1,
-            Math.ceil(remainingSeconds / 60),
-          );
-          throw new Error(
-            `Account locked due to too many failed attempts. Try again in ${remainingMinutes} minute(s).`,
-          );
+          throw new AccountLockedError();
         }
 
         const user = await prisma.user.findUnique({
