@@ -35,8 +35,8 @@ export function MemoriaLogo({ size = 32, className, style }: MemoriaLogoProps) {
     >
       <defs>
         <linearGradient id={brandId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#6366f1" />
-          <stop offset="1" stopColor="#8b5cf6" />
+          <stop offset="0" stopColor="#f43f5e" />
+          <stop offset="1" stopColor="#be123c" />
         </linearGradient>
         <pattern
           id={gridId}
@@ -71,7 +71,7 @@ export function MemoriaLogo({ size = 32, className, style }: MemoriaLogoProps) {
           fill="#000000"
           opacity="0.18"
         />
-        <rect x="76" y="88" width="360" height="336" rx="28" fill="#241f52" />
+        <rect x="76" y="88" width="360" height="336" rx="28" fill="#1c2452" />
         <rect
           x="76"
           y="88"
