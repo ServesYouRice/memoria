@@ -18,14 +18,14 @@
     <rect x="77.5" y="89.5" width="357" height="333" rx="26.5" fill="none"
           stroke="#ffffff" stroke-width="3" opacity="0.28"/>
   </g>
-  <g transform="translate(256 256) scale(0.78) translate(-256 -256)">
-    <g transform="rotate(12 256 256)" fill="#93c5fd">
-      <rect x="214" y="136" width="84" height="84" rx="26"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(72 256 256)"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(144 256 256)"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(216 256 256)"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(288 256 256)"/>
-    </g>
-    <circle cx="256" cy="256" r="34" fill="#fbbf24"/>
+  <g transform="translate(256 254) scale(0.72) translate(-256 -262)">
+    <circle cx="368" cy="128" r="13" fill="#fbbf24"/>
+    <path d="M 132 352 L 172 172 L 280 272
+             C 302 292 312 314 300 331
+             C 284 352 228 352 212 331
+             C 200 314 210 292 232 272
+             L 340 172 L 380 352"
+          fill="none" stroke="#ffffff" stroke-width="28"
+          stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

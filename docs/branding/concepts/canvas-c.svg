@@ -18,14 +18,15 @@
     <rect x="77.5" y="89.5" width="357" height="333" rx="26.5" fill="none"
           stroke="#ffffff" stroke-width="3" opacity="0.28"/>
   </g>
-  <g transform="translate(256 256) scale(0.78) translate(-256 -256)">
-    <g transform="rotate(12 256 256)" fill="#93c5fd">
-      <rect x="214" y="136" width="84" height="84" rx="26"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(72 256 256)"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(144 256 256)"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(216 256 256)"/>
-      <rect x="214" y="136" width="84" height="84" rx="26" transform="rotate(288 256 256)"/>
+  <g transform="translate(256 256) scale(0.78) translate(-252 -256)">
+    <g transform="rotate(-9 246 246)">
+      <rect x="146" y="131" width="200" height="230" rx="14" fill="#ffffff" opacity="0.4"/>
     </g>
-    <circle cx="256" cy="256" r="34" fill="#fbbf24"/>
+    <g transform="rotate(5 256 266)">
+      <rect x="156" y="151" width="200" height="230" rx="14" fill="#ffffff"/>
+      <rect x="172" y="167" width="168" height="152" rx="6" fill="#6d28d9"/>
+      <circle cx="298" cy="207" r="17" fill="#fbbf24"/>
+      <path d="M 172 319 L 230 247 L 265 289 L 294 255 L 340 319 Z" fill="#ffffff" opacity="0.9"/>
+    </g>
   </g>
 </svg>
