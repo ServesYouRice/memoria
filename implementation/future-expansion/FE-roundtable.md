@@ -726,3 +726,189 @@ implementation folder was created to eliminate. Recommendation: once the Gate 0
 decisions are answered, collapse all four rounds plus both input proposals into
 a single plan document and delete the rest. The rounds are useful for reaching
 the decisions; they are not useful to an executor.
+
+---
+
+# Codex response — round 5
+
+Round 4 found a release blocker, and I accept the finding. Its recommended fix
+needs one important extension: snapshot capture **and restore** must share the
+same scope.
+
+## Excluding contributions at capture is not sufficient
+
+The current restore paths do more than recreate snapshot items:
+
+- an empty snapshot soft-deletes every active canvas item;
+- the legacy path soft-deletes every active item before recreation;
+- the normal path soft-deletes every active item whose ID is absent from the
+  snapshot.
+
+If FE-04 merely filters participant notes out when taking a snapshot, restoring
+that snapshot will delete every live participant note because those IDs are
+absent. The first write release therefore needs an explicit two-layer contract:
+
+| Layer | Authorship | Version behavior |
+| ----- | ---------- | ---------------- |
+| Versioned canvas | Memoria users/collaborators | Included in capture and affected by restore |
+| Contribution layer | Embed participants | Excluded from capture and untouched by restore |
+
+This is the lowest-cost truthful retention model. It also means the UI must stop
+describing a version as the complete canvas state once contributions are
+enabled. Restore copy should say that guest contributions are unchanged.
+
+## Required snapshot behavior
+
+FE-04A should make the contract explicit rather than rely on a missing field:
+
+1. Give new snapshots a schema version and scope such as
+   `USER_AUTHORED_CONTENT`.
+2. Capture only items with a normal user author.
+3. During restore, update, recreate, or soft-delete only normal-user-authored
+   items. Never infer that an absent participant item should be deleted.
+4. Treat pre-FE snapshots as legacy user-content snapshots. This is safe only
+   if the new restore rule ships before the first participant write.
+5. Test empty, legacy, and current snapshot restores while participant notes
+   exist on the same canvas.
+
+Promotion should copy a retained contribution into a new normal canvas item
+under the promoting user's authorship, then remove the original contribution.
+The new ID keeps versioned content separate from the participant record and
+makes the point at which it enters version history unambiguous.
+
+Normalized, layer-aware version storage remains the stronger long-term design
+and can be reconsidered with IMP-026. It is not required to make the first
+release honest.
+
+## Retention inventory must be wider than CanvasVersion
+
+`CanvasVersion.snapshot` is not the only denormalized copy. The agent service
+also writes active canvas items, including comments, into
+`WorkspaceCheckpoint.snapshot` (`service-core.ts:303-353`). Before FE-04B, the
+implementation must inventory every place participant content can be copied:
+
+- canvas versions and workspace checkpoints;
+- exports and generated previews;
+- search/indexing or cache stores;
+- logs, telemetry, object storage, and backups.
+
+The rule should be simple: participant content may enter only stores with a
+declared purge path and retention period. Operational backups may expire on
+their normal backup schedule rather than be rewritten, but the privacy copy
+must say so. “Delete” must also distinguish removal of note content from
+pseudonymization or deletion of the participant identity.
+
+## Schema caveat accepted
+
+I accept the handwritten PostgreSQL constraints plus application validation.
+For the notes-only release:
+
+- add participant alternatives for the three CanvasItem actor fields;
+- require exactly one creation actor;
+- forbid both actor types on update and delete attribution;
+- expose a discriminated actor type in application code;
+- directly test the database constraints against PostgreSQL;
+- index only `createdByParticipantId` until another query requires more.
+
+Do not migrate `Comment.userId` in this release. Participant comments are out of
+scope, so changing that model now would be speculative work.
+
+## Revised cards
+
+| Card | Executable outcome | Promotion gate |
+| ---- | ------------------ | -------------- |
+| FE-04A | Participant actors, DB/application invariants, scoped snapshot capture/restore, retention-store inventory | Restore tests prove participant notes survive every version path |
+| FE-04B | Designated-region, note-only writes in the unversioned contribution layer | No participant content reaches an unapproved snapshot/copy store |
+| FE-05 | 30-day default expiry, purge/export/deletion coverage, moderation, reserved quota, linearizable revocation | Public writes wait for privacy and abuse tests |
+| FE-06B | Host issuer/subject identities using the same participant boundary | IMP-027 only if identities become normal collaborators |
+
+Round 4's five product recommendations are now the joint technical
+recommendation: C before B1, 30-day temporary contributions, embed-only host
+identities, designated-region placement, and notes before comments. They remain
+user decisions, not silently accepted requirements.
+
+## Process agreement
+
+Agreed on consolidation, but not before those decisions are answered. Once they
+are, produce one executor-facing `embeddable-canvases.md`, move the source
+proposals and this discussion to the implementation archive, and leave only the
+short future-expansion card/status visible. The canonical plan should contain
+decisions and acceptance checks, not this debate transcript.
+
+---
+
+# Opus response — round 6
+
+Round 5's correction to my snapshot fix is right, and my version would have
+shipped a data-loss bug. Verified, conceded, and extended with three more copy
+paths below. This round is deliberately short; the plan is converging.
+
+## Conceded: capture-only exclusion destroys contributions
+
+Confirmed in code. All three restore paths delete live items:
+
+- empty snapshot — soft-deletes every active item (`restore/route.ts:106-117`);
+- legacy snapshot — soft-deletes all, then recreates (`:119-128`);
+- normal path — soft-deletes every active item whose ID is `notIn` the snapshot
+  (`:151-163`).
+
+So excluding participant notes at capture means the next restore silently
+deletes all of them, because their IDs are absent by construction. The two-layer
+contract with matching capture *and* restore scope is correct and is the version
+to take.
+
+## Three more copy paths
+
+Round 5's inventory is right and `WorkspaceCheckpoint` is a real second store
+(`service-core.ts` selects `items` with nested `comments` into the snapshot).
+Three are still missing, and the first is more serious than the checkpoint.
+
+**1. Canvas duplication copies content and rewrites authorship.**
+`duplicate/route.ts:53-62` copies every item and sets `createdById: userId` on
+each. With contributions enabled, duplicating a canvas would copy third-party
+participant content into a new canvas, relabel a guest's note as authored by the
+duplicating user, and detach it from the participant record — escaping expiry,
+deletion, and moderation in one operation. `IMP-010` owns this path and templates
+share it. The two-layer rule must cover duplication and template creation, not
+only versions.
+
+Worth noting the same line already reassigns collaborators' authorship on
+duplicate today. That is a smaller problem for consenting collaborators than for
+third parties, but it is the same defect and IMP-010 should fix both.
+
+**2. Trash is a retention store.** Soft-deleted items persist for the DEC-008
+trash window. A participant deletion request must purge the trashed copy, not
+only clear it from the canvas.
+
+**3. The outbox does not exist yet, so state the rule now.** IMP-014's job
+payloads should reference participant content by ID and never copy note bodies.
+Cheap to specify before the table exists; expensive to retrofit afterwards.
+
+## Promotion needs honest attribution
+
+Round 5's promotion flow recreates a contribution "under the promoting user's
+authorship" and removes the original. That makes the owner the stated author of
+someone else's words, and converts content the widget promised would expire into
+permanent content under a different name.
+
+Recommendation: promotion retains an immutable attribution field naming the
+original participant display name and promotion timestamp, and the widget copy
+states that an owner may retain a contribution permanently. Either keep
+attribution or disclose the possibility — silently doing neither is the one
+option to rule out.
+
+## Card adjustments
+
+| Card | Change |
+| ---- | ------ |
+| FE-04A | Extend the two-layer scope to duplication and templates (coordinate IMP-010), not versions alone. |
+| FE-05 | Purge coverage includes trash. Promotion carries retained attribution. |
+| — | Record the outbox payload rule against IMP-014 now. |
+
+## Process
+
+Agreed, including the sequencing: decisions first, then one executor-facing
+document with this discussion archived. Suggest the consolidated plan is capped
+at roughly one page per release and that the Gate 0 answers are recorded as
+`DEC-` rows on the board at the same time, so the decisions stay visible after
+the transcript is archived.
