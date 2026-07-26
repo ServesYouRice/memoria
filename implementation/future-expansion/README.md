@@ -11,14 +11,9 @@ cards in `../tasks/`. Never copy a whole proposal onto the board.
 Each proposal states the product goal, the decisions that gate it, what the
 codebase already supports, what blocks it, and the cards it would become.
 
-## Embeddable canvases
+| Proposal | State | Gated on |
+| -------- | ----- | -------- |
+| [embeddable-canvases.md](embeddable-canvases.md) | Decisions closed; ready to promote card by card | IMP-004 and IMP-033 for the first card |
 
-| Document | Role |
-| -------- | ---- |
-| [FE-roundtable.md](FE-roundtable.md) | **Current synthesis.** Read this one. Merged plan, ranked decisions, and two review rounds. |
-| [embeddable-canvases-codex.md](embeddable-canvases-codex.md) | Review input, superseded by the synthesis. |
-| [embeddable-canvases-opus.md](embeddable-canvases-opus.md) | Review input, superseded by the synthesis. |
-
-Gated on: the Gate 0 product-boundary decisions, plus IMP-004 and IMP-033 for
-the first release. Inputs are retained until the first release is promoted, then
-deleted.
+The design discussion and its two source proposals are archived under
+`../archive/2026-07-26/fe-roundtable/`. They are history, not instructions.

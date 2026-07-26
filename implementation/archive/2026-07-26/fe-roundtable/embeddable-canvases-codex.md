@@ -133,14 +133,14 @@ integration credentials, active/revoked sessions, usage, and copyable snippets.
 
 ## Existing prerequisites
 
-- [IMP-004](../tasks/IMP-004.md): trusted client identity and rate limits.
-- [IMP-006](../tasks/IMP-006.md): WebSocket admission and role boundaries.
-- [IMP-007](../tasks/IMP-007.md): lossless autosave and rollback.
-- [IMP-008](../tasks/IMP-008.md): explicit capability/geometry contract.
-- [IMP-017](../tasks/IMP-017.md): committed item synchronization.
-- [IMP-018](../tasks/IMP-018.md): quotas and retention.
-- [IMP-022](../tasks/IMP-022.md): accessible responsive canvas.
-- [IMP-024](../tasks/IMP-024.md): viewport-first bounded loading.
+- [IMP-004](../../../tasks/IMP-004.md): trusted client identity and rate limits.
+- [IMP-006](../../../tasks/IMP-006.md): WebSocket admission and role boundaries.
+- [IMP-007](../../../tasks/IMP-007.md): lossless autosave and rollback.
+- [IMP-008](../../../tasks/IMP-008.md): explicit capability/geometry contract.
+- [IMP-017](../../../tasks/IMP-017.md): committed item synchronization.
+- [IMP-018](../../../tasks/IMP-018.md): quotas and retention.
+- [IMP-022](../../../tasks/IMP-022.md): accessible responsive canvas.
+- [IMP-024](../../../tasks/IMP-024.md): viewport-first bounded loading.
 
 ## Decisions before promotion
 

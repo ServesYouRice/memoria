@@ -1032,3 +1032,37 @@ notes on a session canvas still need a non-`User` author.
 Release 1 is FE-01 through FE-05. The retention machinery that dominated this
 discussion moves to FE-06 and is no longer on the path to the first shippable
 widget.
+
+---
+
+# Round 8 — closing answers
+
+| Question | Answer |
+| -------- | ------ |
+| Can a session canvas be kept | Yes |
+| Host identity flow-through | Optional — anonymous is the default |
+| What ends a session | Explicit host call, plus idle timeout with no reconnect |
+| Responsible operator for privacy | The host application |
+
+Two consequences change the plan; the other two confirm it.
+
+**Keeping a canvas is the leak path between the two phases.** Promotion moves
+guest content out of the disposable layer, which has no retention machinery, and
+into the persistent layer, where every finding of rounds 4–6 applies. To keep
+release 1 free of that, promotion must copy contributions into owner-authored
+items carrying round 6's retained attribution, and must not migrate participant
+records. Participant-authored rows then remain exclusive to session canvases
+until FE-06, and the snapshot, duplication, and trash problems stay out of scope.
+
+**"Host is the responsible operator" is a controller/processor split, not a
+flag.** The host app decides what is collected and from whom; the Memoria
+operator holds it. That structure is workable and normal, but it needs terms in
+the integration agreement, the host's identity and policy surfaced in the widget
+rather than Memoria's, and a documented processor obligation. It should be
+reviewed by someone qualified rather than asserted by this plan.
+
+Session end takes all three signals: explicit host call, idle timeout without
+reconnect, and a hard maximum TTL as a backstop, since idle detection fails when
+a client disappears uncleanly.
+
+Decisions are closed. Consolidating per the round 5 process agreement.
