@@ -144,8 +144,10 @@ Production rules enforced by the app:
 ## Project State
 
 Use this README and [ARCHITECTURE.md](./ARCHITECTURE.md) as the maintained
-project documentation. [REMAINING-WORK.md](./REMAINING-WORK.md) contains only
-verified unfinished work and should be updated whenever an item is closed.
+project documentation. [implementation/KANBAN.md](./implementation/KANBAN.md)
+is the only live implementation backlog; its linked cards contain executable
+scope and acceptance criteria. Consolidated audits are archived under
+`implementation/archive/` and are not current instructions.
 
 ## Verification
 
