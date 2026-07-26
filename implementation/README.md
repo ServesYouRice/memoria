@@ -4,6 +4,9 @@
 card. The work loop lives in `../AGENTS.md`; this file defines only what the
 board's columns and evidence values mean.
 
+Documents under `future-expansion/` are parked proposals. They become live work
+only after the user promotes a selected release into Kanban task cards.
+
 ## Status rules
 
 - `READY`: may start now.
