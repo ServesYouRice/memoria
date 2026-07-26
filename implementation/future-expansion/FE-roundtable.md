@@ -912,3 +912,123 @@ document with this discussion archived. Suggest the consolidated plan is capped
 at roughly one page per release and that the Gate 0 answers are recorded as
 `DEC-` rows on the board at the same time, so the decisions stay visible after
 the transcript is archived.
+
+---
+
+# Round 7 — user decisions and plan reset
+
+The user has answered. One answer introduces a requirement no round considered
+and it changes the release axis.
+
+## Answers
+
+| Question | Answer |
+| -------- | ------ |
+| Who may embed | Own apps first, open later — **plus** host apps should be able to spin up session-scoped disposable canvases with near-zero setup, bringing at most their own credentials |
+| Contribution lifespan | Owner chooses per embed |
+| First write mode | Anonymous **and** host-account identity together |
+| Ship read-only alone | No — hold until notes work |
+
+Read literally, answers 2–4 select the largest possible first release: both
+identity models, both retention modes, no earlier shippable milestone. Answer 1
+is what makes it affordable.
+
+## The new requirement
+
+Every round assumed the same flow: an owner has a canvas, configures a
+`CanvasEmbed` against it, and a host site frames it. The user wants something
+different — a host app boots and *provisions* a throwaway canvas for a session,
+with as little human configuration as possible.
+
+That is a different primitive: **ephemeral canvas provisioning**, not embed
+configuration of existing content. It should be an API call returning a ready
+embed URL, not a settings screen.
+
+## Why this simplifies rather than complicates
+
+Rounds 4–6 spent almost all their effort on one class of problem: participant
+content leaking out of a persistent canvas through copies. Snapshot retention,
+restore resurrection, duplication laundering, trash purge, per-contribution
+expiry. Every one of those is a problem of *persistent canvases with mixed
+authorship*.
+
+A canvas created for a session and deleted whole at the end has none of them:
+
+| Round 4–6 problem | On a disposable canvas |
+| ----------------- | ---------------------- |
+| Snapshot retains deleted contributions | No version history exists |
+| Restore resurrects expired content | Nothing to restore |
+| Duplicate/template launders authorship | Not offered on session canvases |
+| Per-contribution 30-day expiry | Canvas TTL replaces it entirely |
+| Participant deletion request | Delete the canvas |
+| Contribution subquota vs owner quota | Per-integration session budget |
+
+So the release axis should be **disposable before persistent**, not read before
+write. A disposable-only first release delivers exactly what was described —
+host app boots, spawns a board, everyone leaves notes, it disappears — supports
+both identity models cheaply, and skips the entire retention apparatus.
+
+Persistent-canvas embedding is where "owner chooses per embed" retention
+actually lives, and it inherits all of rounds 4–6. That becomes release 2.
+
+This also honours "hold until notes work": there is no standalone read-only
+release. Read-only becomes a mode of the same release, not a milestone.
+
+## What disposable canvases still need
+
+1. **An owner.** `Canvas.userId` is required and cascades from `User`
+   (`prisma/schema.prisma:77-78`). Recommendation: session canvases are owned by
+   the integration's owning Memoria user. No schema change, and deleting that
+   account correctly removes them.
+2. **A lifetime.** No canvas-level expiry concept exists today. Needs
+   `expiresAt` plus a purge job through IMP-014, and a defined answer to what
+   "session long" means — explicit TTL, idle timeout, or host-signalled close.
+3. **A provisioning credential.** The host app authenticates as an integration
+   and receives an embed URL. This is the `EmbedIntegration` record from round 3,
+   needed earlier than planned — it is what makes setup automatic.
+4. **A session budget.** Concurrent live session canvases and items per session,
+   charged to the integration rather than to a person's canvas quota.
+5. **Exclusion from normal surfaces.** Session canvases must not appear in
+   dashboards, search, templates, exports, or duplication. This is the same
+   two-layer discipline as round 5, applied at canvas granularity instead of
+   item granularity — and it is considerably easier to enforce.
+
+## Honest cost note
+
+Choosing both identity models in one release is still real work: anonymous
+participants and host-asserted identities share the participant table, but
+host identity additionally requires the integration credential, server-to-server
+exchange, and secret rotation. The saving grace is that provisioning needs that
+credential anyway, so the marginal cost of B1 is much lower here than it was in
+the earlier plan. That is a genuine consequence of answer 1, not a rationalisation.
+
+The participant/authorship migration from rounds 4–5 is still required, because
+notes on a session canvas still need a non-`User` author.
+
+## New questions this raises
+
+1. Can a session canvas be **kept** — promoted to a permanent canvas owned by
+   someone? This is likely wanted ("save this board"), and it is exactly where
+   round 6's promotion-attribution problem returns.
+2. Does the host app's user identity flow through by default, or is anonymous
+   the default with credentials optional per session?
+3. What ends a session — a fixed TTL, idle timeout, or an explicit host call?
+4. Who is the responsible operator for privacy purposes on an auto-provisioned
+   canvas: the Memoria operator, or the host app? This needs an answer before
+   public traffic, and it is now less obvious than it was.
+
+## Revised card sequence
+
+| Card | Outcome | Depends |
+| ---- | ------- | ------- |
+| FE-01 | `CanvasEmbed` + `EmbedIntegration`, per-embed origin allowlist, route-scoped framing | IMP-004, IMP-033 |
+| FE-02 | Session canvas provisioning API, TTL, purge, surface exclusion | FE-01, IMP-014 |
+| FE-03 | Widget tickets and capability enforcement | FE-01, IMP-006, IMP-008 |
+| FE-04A | Participant actors and authorship invariants | FE-03 |
+| FE-04B | Note-only writes, anonymous and host-asserted, on session canvases | FE-04A, FE-02, IMP-007, IMP-017, IMP-018 |
+| FE-05 | Moderation, session budgets, linearizable revocation, privacy baseline | FE-04B |
+| FE-06 | Persistent-canvas embedding with owner-chosen retention — inherits all of rounds 4–6 | FE-05, IMP-010, IMP-026 |
+
+Release 1 is FE-01 through FE-05. The retention machinery that dominated this
+discussion moves to FE-06 and is no longer on the path to the first shippable
+widget.
