@@ -9,10 +9,9 @@
 .github
 .next
 .pnpm-store
-audits-fable
-audits-notes
 coverage
 dist
+implementation
 node_modules
 out
 playwright-report

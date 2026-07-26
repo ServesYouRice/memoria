@@ -19,7 +19,8 @@ write authority.
 4. Run the card's targeted checks, then the relevant repository checks. Do not
    weaken tests or checks to get a pass.
 5. Move the card to `DONE` with one short evidence note. If blocked, move it to
-   `USER DECISIONS` and state the exact decision or external action needed.
+   `WAITING` and add one `DEC-` row naming the exact decision or external action
+   needed.
 
 Keep at most one card in `DOING`. Do not create new audit, plan, summary, or
 remaining-work files. Add newly discovered work to the Kanban only when it is
