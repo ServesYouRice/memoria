@@ -388,3 +388,341 @@ If validating the note-taking idea quickly matters more than building the
 durable path, that argues for a throwaway prototype on a branch rather than
 pulling FE-04 forward — the prerequisite list is real and shortening it means
 shipping the widget on top of the weakest boundaries in the system.
+
+---
+
+# Codex response — round 3
+
+The schema finding is correct and materially improves the plan. Persistent
+widget authorship is a data-model change, not merely another authentication
+mode. I accept the capability, quota-ceiling, privacy, revocation, and product-
+expectation corrections. I would refine the participant migration, the exact
+revocation guarantee, and the proposed IMP-027 dependency as follows.
+
+## Accepted additions
+
+1. FE-04 is undercosted while `CanvasItem.createdById` and `Comment.userId`
+   require `User` rows.
+2. The `CONTRIBUTE` capability vocabulary is concrete IMP-008 scope, not a label
+   that FE can assume already exists.
+3. Widget popularity must not consume all owner capacity or make the owner's
+   canvas unusable.
+4. Privacy notice, retention, participant deletion, and operator responsibility
+   must be decided before accepting public content, not added as polish later.
+5. Revocation needs defined behavior for open sockets and racing writes.
+6. Release R is a foundation/demand test, not fulfillment of the original
+   interactive request.
+
+## Participant and authorship adjustment
+
+Do not create shadow `User` rows. That would leak embed lifecycle into login,
+email uniqueness, account deletion, sessions, notifications, and every user
+aggregate.
+
+The least disruptive durable model is a canvas-scoped participant plus dual
+author references:
+
+```text
+CanvasParticipant
+  id
+  canvasId
+  embedId
+  kind: GUEST | EXTERNAL
+  displayName
+  state: ACTIVE | MUTED | BANNED | DELETED
+  externalIdentityId?   # only after B1 exists
+  managementSecretHash?
+  contributionExpiresAt?
+  createdAt / updatedAt / deletedAt
+
+CanvasItem
+  createdById?                 # existing User relation
+  createdByParticipantId?      # new participant relation
+  updatedByParticipantId?
+  deletedByParticipantId?
+
+Comment
+  userId?                      # existing User relation
+  participantId?               # new participant relation
+```
+
+Use database check constraints so every newly created item/comment has exactly
+one user or participant author. Keep existing user columns and paths intact to
+reduce migration blast radius. Update API response types and author rendering to
+return a discriminated author shape rather than assuming `comment.user` exists.
+
+Participants should normally be soft-deleted/pseudonymized rather than cascaded,
+so retained content does not lose its audit subject. A participant deletion
+request can delete that participant's content first, then erase or pseudonymize
+the participant according to the selected retention policy.
+
+This still touches hot read, version, restore, export, account-deletion, and UI
+paths. It deserves a separate FE card and real migration/integration tests,
+rather than being hidden inside contributor UI work.
+
+## Reconcile the existing `guest:` identity
+
+There are two valid lifetimes, so “one concept” should mean one runtime contract,
+not necessarily one database row for every viewer:
+
+```text
+ConnectionPrincipal =
+  | UserPrincipal
+  | EphemeralViewerPrincipal
+  | CanvasParticipantPrincipal
+```
+
+- A read-only public viewer may remain ephemeral and never enter PostgreSQL.
+- A contributor must use a persistent `CanvasParticipant` before the first
+  durable write.
+- IMP-006 should replace ad hoc `guest:${nanoid(...)}` handling with this
+  discriminated principal/capability contract and a scoped ticket.
+
+This prevents two authorization systems while avoiding millions of pointless
+participant rows for read-only traffic.
+
+## Capability adjustment
+
+IMP-008 must produce server-enforced capabilities usable by normal shares and
+embed principals. FE should consume, not redefine, that vocabulary. Initial
+contributor capabilities remain:
+
+- `canvas:view`
+- `note:create`
+- `own-note:update`
+- `own-note:delete`
+- optionally `comment:create`
+
+The existing `VIEW | COMMENT | EDIT` roles may map to capability sets, but embed
+participants receive capabilities directly from embed policy and ticket. They
+must never be materialized as an `EDIT` CanvasShare to gain note creation.
+
+## Quota ceiling adjustment
+
+Use a dedicated contribution subquota below the total canvas quota. For example,
+if a canvas supports 2,000 items, the owner might allocate at most 500 active
+widget contributions. The exact numbers remain DEC-008/user policy.
+
+At contribution ceiling:
+
+1. Reject new widget writes with a typed `contribution_quota_exhausted` problem.
+2. Keep reads and the owner's normal edit paths available.
+3. Switch the widget to an explicit read-only state.
+4. Resume only after deletion, expiry, moderation, or an owner limit change.
+
+Rate-window exhaustion remains a separate 429 with `Retry-After`; durable quota
+exhaustion should not pretend that waiting a few seconds will fix it.
+
+## Privacy and retention adjustment
+
+Before FE-04B accepts content, the widget needs:
+
+- the responsible operator's identity and privacy/terms links;
+- a selected default contribution retention period;
+- data minimization for IP/device metadata;
+- a participant management mechanism for viewing/deleting one's contributions,
+  or a documented operator request path;
+- clear behavior when a host app supplies identity under B1;
+- deletion and export tests covering participant-authored items/comments.
+
+A 30-day default is a reasonable starting recommendation for public stream-room
+notes, with an owner action to retain/promote selected contributions. It should
+remain a user decision because other embedded canvases may intentionally be
+durable. Legal obligations vary by operator and jurisdiction; the product must
+surface configuration and obtain appropriate legal review rather than encode an
+unsupported universal claim.
+
+## Linearizable revocation adjustment
+
+“Reject in-flight writes” needs a precise boundary. A network request that has
+already committed cannot be retroactively rejected. Define revocation by a
+linearization point:
+
+1. Add `policyVersion` (or `authVersion`) to `CanvasEmbed`; include it in every
+   ticket.
+2. Revoking, pausing, changing origins, or reducing capabilities increments the
+   version and publishes an embed-policy event.
+3. Every write transaction verifies the embed is active and its policy version
+   still matches, using a row lock or equivalent conditional transaction.
+4. The operation that obtains the relevant lock first defines ordering: a write
+   committed before revocation remains; a write ordered after it fails.
+5. Connected sockets receive the control event and close immediately. Normal
+   heartbeat/revalidation is only fallback.
+6. Canvas deletion invalidates all embeds and tickets through the same path.
+
+This gives testable behavior without claiming the server can cancel work that
+already crossed its durable commit point.
+
+## IMP-027 dependency: related, not always hard
+
+I do not accept IMP-027 as an unconditional prerequisite for FE-06B.
+`CanvasShare` migration from email to stable Memoria identity and an embed-only
+`(integration, subject)` participant solve related but different lifecycles.
+
+- If B1 users remain embed-scoped, they should be `ExternalIdentity` plus
+  `CanvasParticipant`, not ordinary CanvasShare rows. FE-06B must coordinate its
+  principal schema with IMP-027 but can remain independent.
+- If B1 users should also open the canvas in the normal Memoria application,
+  receive invitations, or become normal collaborators, IMP-027 becomes a hard
+  prerequisite and an explicit promotion/linking flow is required.
+
+The plan should record this as a branching product decision rather than force
+all host identities into the normal sharing model.
+
+## Prototype caveat
+
+I agree that pulling production FE-04 ahead of its prerequisites is unsafe. I
+would not recommend a throwaway branch that writes to real canvases through
+weakened boundaries, because prototypes have a habit of becoming deployments.
+
+For early demand validation, use one of:
+
+- FE-01/02 read-only in production plus a nonfunctional note-entry mock;
+- a local-only UI prototype backed by disposable fixtures;
+- an isolated nonproduction environment with synthetic users/data and no public
+  exposure.
+
+That tests placement, stream layout, and interaction demand without creating a
+second insecure write path that later needs removal.
+
+## Revised FE-04/05 promotion sequence
+
+The earlier combined plan remains, except replace FE-04 with two cards and
+strengthen FE-05:
+
+| Card | Outcome | Depends |
+| ---- | ------- | ------- |
+| FE-04A | Persistent participant and dual-author migration | FE-03, IMP-008; coordinate IMP-027 |
+| FE-04B | Note-only own-content contribution | FE-04A, IMP-007, IMP-017, IMP-018 |
+| FE-05 | Moderation, privacy/retention, reserved quotas, linearizable revocation | FE-04B |
+| FE-06B | Host issuer/subject integration | FE-03, FE-04A, FE-05; IMP-027 only if promoted to normal sharing |
+
+FE-04B may run in a restricted operator-only pilot, but public write widgets
+must not launch before FE-05.
+
+## Current consensus and remaining user decisions
+
+Consensus now covers the iframe boundary, phased identity models, dedicated
+embed resource, ticket design, participant authorship migration, capability
+dependency, reserved quotas, privacy baseline, and revocation semantics.
+
+The remaining material decisions are:
+
+1. After read-only R, ship pseudonymous contributors C or signed host identities
+   B1 first? For the streaming example, C is simpler; for the user's other
+   account-based projects, B1 is the direct goal.
+2. Are contributions temporary by default? Recommendation: 30 days for public
+   room mode, durable only when the owner retains/promotes them.
+3. Can B1 identities remain embed-only, or should they become normal Memoria
+   collaborators? Embed-only is recommended initially.
+4. Is note placement server-assigned/designated-region or freely positioned?
+   Server-assigned/designated-region is recommended for the first write release.
+5. Is comment creation in the first write scope? Recommendation: notes first;
+   comments later unless the stream UX specifically needs threads.
+
+---
+
+# Opus response — round 4
+
+Round 3 improves on my round 2 in five places and I take its versions. One new
+finding follows that invalidates part of the retention plan both of us endorsed.
+
+## Accepted from round 3
+
+| Point | Why theirs is better |
+| ----- | -------------------- |
+| Dual author columns + constraint | Keeps existing `User` columns and paths intact. Lower blast radius than the nullable-author rewrite I proposed. |
+| `ConnectionPrincipal` union | Correctly separates ephemeral read-only viewers from persistent contributors. My "one participant concept" implied a row per viewer, which would have been millions of useless rows. |
+| Contribution subquota | Reserving a slice below the canvas quota prevents starvation outright, rather than degrading after the owner is already squeezed. Better than my read-only fallback. |
+| Typed `contribution_quota_exhausted` vs 429 | Right. Durable exhaustion must not masquerade as a retryable rate limit. |
+| `policyVersion` linearization | My "reject in-flight writes" was imprecise — a committed write cannot be retroactively rejected. The version-stamped lock ordering is the correct and testable formulation. |
+| IMP-027 as conditional | I over-claimed it as a hard prerequisite. The branch on embed-scoped vs promoted-to-collaborator is the right framing. |
+| Prototype pushback | Conceded. "Prototypes become deployments" is accurate, and a second insecure write path is worse than waiting. |
+
+## New finding: retention and version snapshots contradict each other
+
+Both rounds endorsed a ~30-day contribution retention default and participant
+deletion. Verified against the schema, neither is achievable as specified.
+
+`CanvasVersion.snapshot` is a `Json` column holding "complete canvas state
+including items" (`prisma/schema.prisma:124`) — a denormalized copy, not a
+relation. Consequences:
+
+1. **Retention does not delete anything.** Expiring a contribution removes the
+   `CanvasItem` row while full copies survive in every snapshot taken during its
+   life, retained per DEC-008 (50 versions). No cascade will ever reach them.
+2. **Participant deletion cannot be satisfied** by deleting rows, which
+   undermines the deletion path round 3 requires before accepting public content.
+3. **Restore resurrects deleted content.** `restore/route.ts:131` re-creates
+   items directly from `snapshotItems`, so restoring any older version brings
+   back expired or participant-deleted contributions.
+4. **Snapshot schema drift is already a live problem.** `restore/route.ts:91`
+   carries a `hasLegacyItems` fallback for snapshots whose items predate stable
+   IDs. Adding participant authorship creates a second drift class that restore
+   must handle.
+
+This is a correctness and a legal problem at once: the product would tell a
+contributor their note was deleted while retaining it and being able to restore
+it. Options:
+
+| Option | Cost | Note |
+| ------ | ---- | ---- |
+| Exclude participant content from snapshots | Low | Version history no longer represents the canvas as it was |
+| Strip expired/deleted participant content from snapshots on write | Medium | Requires a scan or index over JSON blobs |
+| Normalize version items out of JSON into rows | High | Real fix; large, and overlaps IMP-026 |
+| Scope retention to "hidden from canvas", not deleted | Low | Honest only if the copy says so |
+
+Recommendation: exclude participant-authored content from snapshots for the
+first write release, and revisit under IMP-026. It is the only option that keeps
+the deletion promise truthful without a large migration. This must be decided
+before FE-04B accepts content, not after.
+
+## Implementation caveats on round 3
+
+**Check constraints have no precedent here.** No migration in `prisma/migrations/`
+contains a `CHECK`; the existing `ADD CONSTRAINT` statements are all foreign
+keys. Prisma does not model CHECK constraints in `schema.prisma`, so this needs
+hand-written SQL in the migration, and `prisma migrate dev` will not detect drift
+on it afterwards. The XOR is also invisible to Prisma's generated types — both
+author fields will be optional in TypeScript regardless. Enforce the
+discriminated author shape in the validation layer as well, and test the
+constraint directly, since nothing else will catch its removal.
+
+**The blast radius is smaller than feared, which supports this approach.**
+18 references to `createdById`/`createdBy` and 9 on the comment author path
+across `src/`, excluding tests. That is a reviewable change, not a rewrite.
+
+**Index only what is queried.** Nullable column adds are cheap in PostgreSQL;
+indexes and backfills are not. Add the three participant columns in one
+migration but index only those actually filtered on — likely
+`createdByParticipantId` alone for the first release.
+
+## Adjustments to the revised sequence
+
+| Card | Change |
+| ---- | ------ |
+| FE-04A | Add the snapshot decision above as explicit scope. Add a validation-layer author discriminator, since the DB constraint is invisible to Prisma types. |
+| FE-04B | Gate on the snapshot behavior being implemented, not merely decided. |
+| FE-05 | Deletion and export tests must cover version snapshots, not only live rows. |
+
+## Answers to the round 3 decisions
+
+1. **C before B1.** Both were named in the original request, so neither is
+   hypothetical, but the streaming room was the concrete description and C needs
+   no integration credential. Build B1 second on the same participant table.
+2. **Temporary by default — with the caveat above.** 30 days is reasonable only
+   once snapshot handling makes it true.
+3. **Embed-only initially.** Agreed; promotion to collaborator is a later flow.
+4. **Designated region.** Agreed. It also bounds the geometry surface, which
+   keeps FE-04B off IMP-030's contested paths.
+5. **Notes first, no comments.** Agreed, and it avoids the `Comment.userId`
+   migration entirely in the first write release — participant comments can wait
+   for FE-05.
+
+## Process note
+
+This document is now ~700 lines across four rounds, which is the shape the
+implementation folder was created to eliminate. Recommendation: once the Gate 0
+decisions are answered, collapse all four rounds plus both input proposals into
+a single plan document and delete the rest. The rounds are useful for reaching
+the decisions; they are not useful to an executor.
