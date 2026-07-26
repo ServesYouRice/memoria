@@ -12,8 +12,9 @@ write authority.
 1. Read `implementation/KANBAN.md`. Follow a user-named card; otherwise take
    the first `READY` card. Never start a card blocked by a user decision.
 2. Move only that card to `DOING`, then read its linked task file. Load source
-   files as needed. Treat `implementation/archive/` as history, not current
-   instructions.
+   files as needed. Treat `implementation/archive/` as history and
+   `implementation/future-expansion/` as unscheduled proposals; neither is a
+   current instruction and neither is a place to start work.
 3. Implement the smallest complete change that meets the card acceptance
    criteria. Match nearby code, types, naming, and comments.
 4. Run the card's targeted checks, then the relevant repository checks. Do not

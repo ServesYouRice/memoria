@@ -25,4 +25,6 @@ exhaustive list), optional `<context>`, `<steps>`, `<acceptance>`, and
 `<verification>`. Repository-wide context stays in `../AGENTS.md`; per-task
 context is loaded only from the selected card.
 
-Archived audits under `archive/` are evidence history, not instructions.
+Archived audits under `archive/` are evidence history. Proposals under
+`future-expansion/` are unscheduled and have no status row. Neither is an
+instruction, and an executor starts from neither.
