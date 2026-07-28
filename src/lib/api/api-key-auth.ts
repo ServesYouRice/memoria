@@ -11,7 +11,6 @@
 import { type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { verifyApiKey, isValidApiKeyFormat } from "./api-key";
-import * as argon2 from "argon2";
 import { createRateLimiter } from "@/lib/rate-limit";
 import type { RateLimitResult } from "@/lib/rate-limit";
 
@@ -88,44 +87,18 @@ export async function authenticateApiKey(req: NextRequest) {
   // We need to iterate because we can't query by hash directly
   for (const apiKey of apiKeys) {
     let isValid = false;
-    let needsUpgrade = false;
-
-    // Check if the stored key is a hash (starts with $argon2)
-    if (apiKey.key.startsWith("$argon2")) {
-      // Stored value is already a hash - verify against it
-      isValid = await verifyApiKey(header, apiKey.key);
-    } else {
-      // Legacy plaintext key - compare directly
-      // SECURITY: Timing-safe comparison would be better, but we're migrating away from this
-      isValid = apiKey.key === header;
-      needsUpgrade = isValid;
-    }
+    if (!apiKey.key.startsWith("$argon2")) continue;
+    isValid = await verifyApiKey(header, apiKey.key);
 
     if (isValid) {
       // Update last used timestamp (fire-and-forget)
       const updateData: {
         lastUsedAt: Date;
-        key?: string;
         keyPrefix?: string | null;
         keySuffix?: string | null;
       } = {
         lastUsedAt: new Date(),
       };
-
-      // Upgrade legacy plaintext key to hash
-      if (needsUpgrade) {
-        try {
-          const hashedKey = await argon2.hash(header, {
-            type: argon2.argon2id,
-            memoryCost: 19456,
-            timeCost: 2,
-            parallelism: 1,
-          });
-          updateData.key = hashedKey;
-        } catch {
-          // If hashing fails, just update lastUsedAt
-        }
-      }
 
       prisma.apiKey
         .update({

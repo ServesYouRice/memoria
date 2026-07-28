@@ -16,6 +16,7 @@ ENV NODE_ENV=production \
     AUTH_SECRET=build-auth-secret-0123456789-abcdef \
     REDIS_URL=redis://localhost:6379 \
     APP_BOOTSTRAP_TOKEN=build-bootstrap-token-123456789 \
+    INTERNAL_OPERATIONS_TOKEN=build-operations-token-0123456789-abcdef \
     MODEL_CREDENTIAL_ENCRYPTION_KEY=build-model-key-abcdef-0123456789 \
     EMAIL_PROVIDER=sendgrid \
     SENDGRID_API_KEY=build-sendgrid-key \
@@ -44,4 +45,4 @@ COPY --from=build --chown=memoria:memoria /app/scripts ./scripts
 
 USER memoria
 EXPOSE 3000
-CMD ["sh", "-c", "pnpm db:migrate && exec node scripts/start-server.mjs"]
+CMD ["node", "scripts/start-server.mjs"]

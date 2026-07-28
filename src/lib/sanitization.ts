@@ -214,6 +214,29 @@ export function sanitizeMarkdown(markdown: string): string {
   });
 }
 
+export function sanitizeNoteHtml(content: string): string {
+  return sanitizeAllowedHtml(content, {
+    allowedTags: [
+      "p",
+      "br",
+      "strong",
+      "em",
+      "s",
+      "code",
+      "pre",
+      "h1",
+      "h2",
+      "h3",
+      "ul",
+      "ol",
+      "li",
+      "a",
+      "blockquote",
+    ],
+    allowedAttrs: ["href"],
+  });
+}
+
 /**
  * Sanitize comment content
  * Allows basic formatting but removes dangerous HTML

@@ -1,11 +1,14 @@
 services:
   app:
+    image: ${MEMORIA_IMAGE:-memoria:local}
     build:
       context: .
       dockerfile: Dockerfile
     container_name: memoria-app
     restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -22,6 +25,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       APP_BOOTSTRAP_TOKEN: ${APP_BOOTSTRAP_TOKEN}
+      INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid or resend}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@memoria.local}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Memoria}
@@ -53,6 +57,19 @@ services:
       retries: 10
       start_period: 30s
 
+  migrate:
+    image: ${MEMORIA_IMAGE:-memoria:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ['pnpm', 'db:migrate']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    restart: 'no'
+
   scheduler:
     build:
       context: .
@@ -66,6 +83,38 @@ services:
       CRON_SECRET: ${CRON_SECRET}
       SCHEDULER_BASE_URL: http://app:3000
       BOOKMARK_REFRESH_INTERVAL_MS: ${BOOKMARK_REFRESH_INTERVAL_MS:-900000}
+    read_only: true
+
+  outbox-worker:
+    image: ${MEMORIA_IMAGE:-memoria:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: ['pnpm', 'worker:outbox']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      AUTH_URL: ${AUTH_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      APP_BOOTSTRAP_TOKEN: ${APP_BOOTSTRAP_TOKEN}
+      INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
+      MODEL_CREDENTIAL_ENCRYPTION_KEY: ${MODEL_CREDENTIAL_ENCRYPTION_KEY}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid or resend}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      UPLOAD_STORAGE: ${UPLOAD_STORAGE:-s3}
+      S3_BUCKET: ${S3_BUCKET:-memoria-uploads}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
     read_only: true
 
   postgres:

@@ -24,10 +24,22 @@ export interface SendEmailOptions {
   bcc?: EmailAddress | EmailAddress[];
   replyTo?: EmailAddress;
   attachments?: EmailAttachment[];
+  deliveryId?: string;
+}
+
+export class EmailDeliveryError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public retryable: boolean,
+  ) {
+    super(message);
+    this.name = "EmailDeliveryError";
+  }
 }
 
 export interface EmailServiceConfig {
-  provider: 'console' | 'smtp' | 'sendgrid' | 'resend';
+  provider: "console" | "smtp" | "sendgrid" | "resend";
   from: EmailAddress;
   // Provider-specific configuration
   smtp?: {

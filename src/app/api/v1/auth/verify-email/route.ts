@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: "Email verified successfully!",
+      redirectTo: "/auth/login?verified=1",
     });
   } catch (error) {
     return errorResponse(error, request.url);

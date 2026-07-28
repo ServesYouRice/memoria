@@ -12,11 +12,28 @@
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly problemType?: string;
+  readonly code?: string;
+  readonly requestId?: string;
+  readonly retryAfterSeconds?: number;
 
-  constructor(status: number, message: string) {
+  constructor(
+    status: number,
+    message: string,
+    options?: {
+      problemType?: string;
+      code?: string;
+      requestId?: string;
+      retryAfterSeconds?: number;
+    },
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.problemType = options?.problemType;
+    this.code = options?.code;
+    this.requestId = options?.requestId;
+    this.retryAfterSeconds = options?.retryAfterSeconds;
   }
 }
 
@@ -39,17 +56,35 @@ function redirectToLogin() {
   window.location.assign(`/auth/login?callbackUrl=${callbackUrl}`);
 }
 
-async function extractErrorMessage(response: Response): Promise<string | null> {
+async function extractProblem(response: Response): Promise<{
+  message: string | null;
+  problemType?: string;
+  code?: string;
+}> {
   const payload = await response.json().catch(() => null);
   if (payload && typeof payload === "object") {
     const record = payload as Record<string, unknown>;
+    const extensions =
+      record.extensions && typeof record.extensions === "object"
+        ? (record.extensions as Record<string, unknown>)
+        : undefined;
     for (const key of ["detail", "message", "error"] as const) {
       if (typeof record[key] === "string" && record[key]) {
-        return record[key] as string;
+        return {
+          message: record[key] as string,
+          problemType:
+            typeof record.type === "string" ? record.type : undefined,
+          code:
+            typeof record.code === "string"
+              ? record.code
+              : typeof extensions?.code === "string"
+                ? extensions.code
+                : undefined,
+        };
       }
     }
   }
-  return null;
+  return { message: null };
 }
 
 /**
@@ -63,18 +98,40 @@ export async function apiFetch(
   const response = await fetch(input, init);
   if (response.ok) return response;
 
-  const detail = await extractErrorMessage(response.clone());
+  const problem = await extractProblem(response.clone());
+  const parsedRetryAfter = Number.parseInt(
+    response.headers.get("retry-after") || "",
+    10,
+  );
+  const metadata = {
+    ...problem,
+    requestId: response.headers.get("x-request-id") || undefined,
+    retryAfterSeconds: Number.isFinite(parsedRetryAfter)
+      ? Math.max(0, parsedRetryAfter)
+      : undefined,
+  };
 
   if (response.status === 401) {
     redirectToLogin();
     throw new ApiError(
       401,
-      detail ?? "Your session has expired. Please sign in again.",
+      problem.message ?? "Your session has expired. Please sign in again.",
+      metadata,
     );
   }
 
   throw new ApiError(
     response.status,
-    detail ?? `Request failed with status ${response.status}`,
+    problem.message ?? `Request failed with status ${response.status}`,
+    metadata,
+  );
+}
+
+export function isVersionConflict(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.status === 409 ||
+      error.code === "VERSION_CONFLICT" ||
+      error.problemType?.endsWith("/version-conflict") === true)
   );
 }

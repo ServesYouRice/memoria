@@ -9,6 +9,7 @@ import { parse } from "url";
 import next from "next";
 import { createCollaborationServer } from "./src/lib/collaboration/websocket-server";
 import { logger } from "./src/lib/logger";
+import { deriveClientIp } from "./src/lib/network/client-ip";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
@@ -25,8 +26,11 @@ app
         // Never trust a caller-supplied forwarding header for security
         // decisions. The custom server is the only component allowed to set
         // this value, so middleware can key abuse controls to the actual peer.
-        req.headers["x-memoria-client-ip"] =
-          req.socket.remoteAddress || "unknown";
+        req.headers["x-memoria-client-ip"] = deriveClientIp(
+          req.socket.remoteAddress,
+          req.headers["x-forwarded-for"],
+          process.env.TRUSTED_PROXY_CIDRS,
+        );
         const parsedUrl = parse(req.url!, true);
         await handle(req, res, parsedUrl);
       } catch (err) {

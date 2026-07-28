@@ -1,9 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/metrics/route";
 
 describe("/api/metrics", () => {
+  const token = "m".repeat(32);
+  beforeAll(() => vi.stubEnv("INTERNAL_OPERATIONS_TOKEN", token));
+  const request = () =>
+    new Request("http://localhost/api/metrics", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
   it("returns Prometheus text metrics", async () => {
-    const response = await GET();
+    const response = await GET(request());
     const body = await response.text();
 
     expect(response.status).toBe(200);
@@ -13,7 +20,7 @@ describe("/api/metrics", () => {
   });
 
   it("sets no-cache headers", async () => {
-    const response = await GET();
+    const response = await GET(request());
 
     expect(response.headers.get("Cache-Control")).toBe(
       "no-cache, no-store, must-revalidate",

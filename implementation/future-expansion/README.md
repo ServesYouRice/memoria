@@ -14,6 +14,7 @@ codebase already supports, what blocks it, and the cards it would become.
 | Proposal | State | Gated on |
 | -------- | ----- | -------- |
 | [embeddable-canvases.md](embeddable-canvases.md) | Decisions closed; ready to promote card by card | IMP-004 and IMP-033 for the first card |
+| [live-content-embeds.md](live-content-embeds.md) | Parked; link previews selected for launch | Provider policy, sandbox, privacy, and accessibility decisions |
 
 The design discussion and its two source proposals are archived under
 `../archive/2026-07-26/fe-roundtable/`. They are history, not instructions.

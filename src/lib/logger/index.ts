@@ -46,35 +46,84 @@
  * @see {@link https://getpino.io Pino Documentation}
  */
 
-import pino from 'pino';
-import { nanoid } from 'nanoid';
+import pino from "pino";
+import { nanoid } from "nanoid";
+
+const SECRET_FIELD =
+  /^(password|passwordhash|token|accesstoken|refreshtoken|secret|apikey|authorization|cookie)$/i;
+
+export function sanitizeLogValue(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): unknown {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object") {
+        return JSON.stringify(sanitizeLogValue(parsed));
+      }
+    } catch {
+      // Plain log strings are scrubbed below.
+    }
+    return value
+      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, "Bearer [REDACTED]")
+      .replace(
+        /((?:password|token|secret|api[_-]?key|authorization|cookie)\s*[=:]\s*)\S+/gi,
+        "$1[REDACTED]",
+      );
+  }
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: sanitizeLogValue(value.message, seen),
+      stack: sanitizeLogValue(value.stack, seen),
+    };
+  }
+  if (Array.isArray(value))
+    return value.map((entry) => sanitizeLogValue(entry, seen));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      SECRET_FIELD.test(key) ? "[REDACTED]" : sanitizeLogValue(entry, seen),
+    ]),
+  );
+}
 
 /**
  * Base Pino logger instance with structured JSON output
  */
 const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
+  level: process.env.LOG_LEVEL || "info",
   formatters: {
     level: (label) => {
       return { level: label };
     },
   },
+  hooks: {
+    logMethod(args, method) {
+      method.apply(
+        this,
+        args.map((arg) => sanitizeLogValue(arg)) as Parameters<typeof method>,
+      );
+    },
+  },
   redact: {
     paths: [
-      'password',
-      'passwordHash',
-      'token',
-      'accessToken',
-      'refreshToken',
-      'secret',
-      'apiKey',
-      'authorization',
+      "password",
+      "passwordHash",
+      "token",
+      "accessToken",
+      "refreshToken",
+      "secret",
+      "apiKey",
+      "authorization",
     ],
     remove: true,
   },
-  ...(process.env.NODE_ENV === 'development' && {
-
-  }),
+  ...(process.env.NODE_ENV === "development" && {}),
 });
 
 /**

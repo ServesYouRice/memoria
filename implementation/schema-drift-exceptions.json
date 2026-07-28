@@ -1,0 +1,8 @@
+[
+  {
+    "id": "generated-search-vector",
+    "expires": "2027-01-31",
+    "sql": "ALTER TABLE \"CanvasItem\" ALTER COLUMN \"searchVector\" DROP DEFAULT;",
+    "reason": "Prisma cannot model the PostgreSQL generated tsvector expression; the committed migration remains authoritative."
+  }
+]

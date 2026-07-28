@@ -99,6 +99,7 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(raw, 'AUTH_SECRET', authSecret);
   raw = upsertEnvValue(raw, 'NEXTAUTH_SECRET', authSecret);
   raw = upsertEnvValue(raw, 'APP_BOOTSTRAP_TOKEN', bootstrapToken);
+  raw = upsertEnvValue(raw, 'REGISTRATION_MODE', 'open');
   raw = upsertEnvValue(raw, 'EMAIL_PROVIDER', selfHostChoices?.emailProvider || 'console');
   if (selfHostChoices?.emailProvider === 'sendgrid') {
     raw = upsertEnvValue(raw, 'SENDGRID_API_KEY', selfHostChoices.providerKey);

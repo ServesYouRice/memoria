@@ -232,6 +232,20 @@ export function validateCorsConfig(): void {
       );
     }
 
+    const authOrigin = process.env["AUTH_URL"] || process.env["NEXTAUTH_URL"];
+    if (authOrigin) {
+      const normalizedAuthOrigin = new URL(authOrigin).origin;
+      if (!config.allowedOrigins.includes(normalizedAuthOrigin)) {
+        logger.warn(
+          {
+            authOrigin: normalizedAuthOrigin,
+            allowedOrigins: config.allowedOrigins,
+          },
+          "CORS origins do not include the configured authentication origin",
+        );
+      }
+    }
+
     // Warn if no AUTH_URL/NEXTAUTH_URL is set
     if (
       !process.env["AUTH_URL"] &&

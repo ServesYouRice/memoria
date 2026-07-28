@@ -11,7 +11,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { ItemType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { ConflictError, errorResponse } from "@/lib/errors";
@@ -26,6 +26,9 @@ import {
 } from "@/lib/validation/canvas-item";
 import type { CanvasItem } from "@prisma/client";
 import { ActivityType, logActivity } from "@/lib/activity";
+import { requirePollsEnabled } from "@/lib/polls/availability";
+import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
+import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 
 /**
  * POST /api/v1/canvas-items
@@ -40,27 +43,40 @@ export async function POST(request: NextRequest) {
 
       // Validate input
       const data = createCanvasItemSchema.parse(body);
+      requirePollsEnabled(data.type);
       const validatedContent = parseCanvasItemContent(data.type, data.content);
 
       // Verify user has EDIT permission (via ownership or share)
       await requireCanvasAccess(data.canvasId, userId, email, "EDIT");
 
       // Create item
-      const item = await prisma.canvasItem.create({
-        data: {
+      const item = await prisma.$transaction(async (tx) => {
+        await assertCanvasItemCapacity(tx, data.canvasId);
+        const created = await tx.canvasItem.create({
+          data: {
+            canvasId: data.canvasId,
+            type: data.type,
+            positionX: data.positionX,
+            positionY: data.positionY,
+            width: data.width,
+            height: data.height,
+            zIndex: data.zIndex,
+            content: (validatedContent ??
+              Prisma.JsonNull) as Prisma.InputJsonValue,
+            tags: data.tags || [],
+            version: 1,
+            createdById: userId,
+            updatedById: userId,
+          },
+        });
+        await recordCanvasItemEvent(tx, {
           canvasId: data.canvasId,
-          type: data.type,
-          positionX: data.positionX,
-          positionY: data.positionY,
-          width: data.width,
-          height: data.height,
-          zIndex: data.zIndex,
-          content: validatedContent ?? Prisma.JsonNull,
-          tags: data.tags || [],
-          version: 1,
-          createdById: userId,
-          updatedById: userId,
-        },
+          actorId: userId,
+          itemId: created.id,
+          version: created.version,
+          operation: "created",
+        });
+        return created;
       });
 
       // Invalidate canvas cache
@@ -123,6 +139,13 @@ export async function PATCH(request: NextRequest) {
             "Canvas changed while the layout was being prepared. Refresh and try again.",
           );
         }
+        await recordCanvasItemEvent(tx, {
+          canvasId: data.canvasId,
+          actorId: userId,
+          itemId: item.id,
+          version: item.version + 1,
+          operation: "updated",
+        });
       }
     });
 
@@ -208,6 +231,7 @@ export async function GET(request: NextRequest) {
       email,
       "VIEW",
     );
+    if (query.type) requirePollsEnabled(query.type);
     if (query.includeDeleted && accessLevel !== "OWNER") {
       await requireCanvasAccess(query.canvasId, userId, email, "OWNER");
     }
@@ -215,7 +239,7 @@ export async function GET(request: NextRequest) {
     // Base where clause (always applied)
     const baseWhere = {
       canvasId: query.canvasId,
-      ...(query.type && { type: query.type }),
+      type: query.type ?? { not: ItemType.POLL },
       ...(query.includeDeleted ? {} : { deletedAt: null }),
     };
 
@@ -238,7 +262,7 @@ export async function GET(request: NextRequest) {
       // Build type filter fragment
       const typeFilter = query.type
         ? Prisma.sql`AND "type" = ${query.type}::\"ItemType\"`
-        : Prisma.empty;
+        : Prisma.sql`AND "type" <> 'POLL'::\"ItemType\"`;
 
       // Build deleted filter fragment
       const deletedFilter = query.includeDeleted

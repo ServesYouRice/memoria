@@ -1,6 +1,8 @@
 import { Box, Alert, Typography } from "@mui/material";
 import { env } from "@/lib/env";
 import { isBootstrapAvailable } from "@/lib/bootstrap";
+
+export const dynamic = "force-dynamic";
 import { SetupForm } from "./SetupForm";
 
 export default async function SetupPage() {

@@ -6,10 +6,12 @@ import { parsePagination } from "@/lib/api/pagination";
 import { ConflictError, errorResponse } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 
-const restoreSchema = z.object({
-  itemId: z.string().cuid(),
-  version: z.number().int().positive(),
-});
+const restoreSchema = z
+  .object({
+    itemId: z.string().cuid(),
+    version: z.number().int().positive(),
+  })
+  .strict();
 
 export async function GET(request: NextRequest) {
   try {

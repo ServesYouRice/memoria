@@ -74,13 +74,8 @@ async function checkHealthRoute(results, baseUrl, timeoutMs) {
     }
 
     const overallStatus = typeof payload.status === 'string' ? payload.status : 'unknown';
-    if (overallStatus === 'healthy') {
-      addResult(results, 'health-route', 'pass', 'Health route reports healthy');
-      return;
-    }
-
-    if (overallStatus === 'degraded') {
-      addResult(results, 'health-route', 'warn', 'Health route reports degraded');
+    if (overallStatus === 'ok') {
+      addResult(results, 'health-route', 'pass', 'Liveness route reports ok');
       return;
     }
 
@@ -112,6 +107,10 @@ async function checkCollaborationUpgrade(results, baseUrl, timeoutMs) {
       settled = true;
       addResult(results, 'collaboration-ws', status, detail);
       socket.removeAllListeners();
+      // terminate() emits asynchronously when an HTTP rejection arrives before
+      // the WebSocket reaches OPEN. Keep a no-op listener during cleanup so an
+      // expected rejected upgrade cannot crash the smoke runner.
+      socket.on('error', () => {});
       socket.terminate();
       resolve();
     };

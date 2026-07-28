@@ -13,7 +13,7 @@ import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/api/auth";
 import { errorResponse, BadRequestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { deletePrivateUploadObject } from "@/lib/uploads/private-storage";
+import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 
 const logger = createLogger("users/account");
 
@@ -134,11 +134,14 @@ export async function DELETE(request: NextRequest) {
 
     const uploadAssets = await prisma.uploadAsset.findMany({
       where: { userId },
-      select: { storageKey: true, storageMode: true },
+      select: { id: true },
     });
 
     // Use transaction for atomic deletion
     await prisma.$transaction(async (tx) => {
+      for (const asset of uploadAssets) {
+        await enqueueUploadDeletion(tx, asset.id);
+      }
       // Get all user's canvases
       const userCanvases = await tx.canvas.findMany({
         where: { userId },
@@ -219,21 +222,6 @@ export async function DELETE(request: NextRequest) {
         where: { id: userId },
       });
     });
-
-    const cleanupResults = await Promise.allSettled(
-      uploadAssets.map((asset) =>
-        deletePrivateUploadObject(asset.storageMode, asset.storageKey),
-      ),
-    );
-    const failedStorageDeletes = cleanupResults.filter(
-      (result) => result.status === "rejected",
-    );
-    if (failedStorageDeletes.length > 0) {
-      logger.error(
-        { userId, failedStorageDeletes: failedStorageDeletes.length },
-        "Account deleted but some private upload objects require cleanup",
-      );
-    }
 
     logger.info({ userId, email }, "User account deleted");
 

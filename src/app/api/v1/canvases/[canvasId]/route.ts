@@ -10,6 +10,7 @@ import { NotFoundError } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { ActivityType, logActivity } from "@/lib/activity";
+import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 
 const updateCanvasSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -118,8 +119,13 @@ export const DELETE = withApiHandler(
     await requireCanvasOwnership(canvasId, userId);
 
     // Delete canvas (cascade will delete items, shares, etc.)
-    const deletedCanvas = await prisma.canvas.delete({
-      where: { id: canvasId },
+    const deletedCanvas = await prisma.$transaction(async (tx) => {
+      const assets = await tx.uploadAsset.findMany({
+        where: { canvasId, status: { not: "DELETED" } },
+        select: { id: true },
+      });
+      for (const asset of assets) await enqueueUploadDeletion(tx, asset.id);
+      return tx.canvas.delete({ where: { id: canvasId } });
     });
 
     // Invalidate cache

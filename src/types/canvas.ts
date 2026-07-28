@@ -32,6 +32,9 @@ export interface ItemGeometry {
  */
 export interface NoteContent {
   text: string;
+  formatVersion?: 1;
+  document?: Record<string, unknown>;
+  plainText?: string;
 }
 
 /**

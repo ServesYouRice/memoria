@@ -39,7 +39,7 @@
  * @see {@link useCanvasItemsWithPolling} for collaborative real-time updates
  */
 
-import { apiFetch } from "@/lib/api/fetch-client";
+import { apiFetch, ApiError, isVersionConflict } from "@/lib/api/fetch-client";
 import {
   useMutation,
   useQuery,
@@ -177,8 +177,15 @@ const api = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || "Failed to update item");
+      const error = await response.json().catch(() => ({}));
+      throw new ApiError(
+        response.status,
+        error.detail || "Failed to update item",
+        {
+          problemType: error.type,
+          code: error.code || error.extensions?.code,
+        },
+      );
     }
 
     return response.json() as Promise<CanvasItem>;
@@ -500,13 +507,16 @@ export function useUpdateCanvasItem() {
     onMutate: async ({ itemId, data }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({
-        queryKey: canvasItemKeys.detail(itemId),
+        queryKey: canvasItemKeys.all,
       });
 
       // Snapshot previous value
       const previousItem = queryClient.getQueryData(
         canvasItemKeys.detail(itemId),
       );
+      const previousListQueries = queryClient.getQueriesData({
+        queryKey: canvasItemKeys.lists(),
+      });
 
       // Optimistically update the item in detail cache
       queryClient.setQueryData(canvasItemKeys.detail(itemId), (old: any) => {
@@ -534,7 +544,7 @@ export function useUpdateCanvasItem() {
         },
       );
 
-      return { previousItem, itemId };
+      return { previousItem, previousListQueries, itemId };
     },
     onSuccess: (updatedItem) => {
       // Update cache with real server data
@@ -556,13 +566,18 @@ export function useUpdateCanvasItem() {
           context.previousItem,
         );
       }
+      context?.previousListQueries?.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
 
-      // Handle version mismatch - refetch all data
-      if (error.message.includes("Version mismatch")) {
+      if (isVersionConflict(error)) {
         queryClient.invalidateQueries({
           queryKey: canvasItemKeys.all,
         });
       }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: canvasItemKeys.lists() });
     },
   });
 }

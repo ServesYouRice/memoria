@@ -8,15 +8,10 @@ import { forbiddenError, notFoundError } from "@/lib/errors";
 export const POST = withAuthValidation(
   summarizeSchema,
   async ({ canvasId }, _req, session) => {
-    const email = session.user.email?.toLowerCase() || "";
     const canvas = await prisma.canvas.findUnique({
       where: { id: canvasId },
       include: {
         items: { where: { deletedAt: null } },
-        shares: {
-          where: { email },
-          select: { id: true },
-        },
       },
     });
 
@@ -24,12 +19,7 @@ export const POST = withAuthValidation(
       throw notFoundError("Canvas", canvasId);
     }
 
-    // Basic permission check - owner or shared (simplified for now)
-    if (
-      canvas.userId !== session.user.id &&
-      canvas.shares.length === 0 &&
-      !canvas.isPublic
-    ) {
+    if (canvas.userId !== session.user.id) {
       throw forbiddenError();
     }
 

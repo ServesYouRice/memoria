@@ -1,7 +1,10 @@
-import { unlink } from "fs/promises";
+import { createReadStream } from "fs";
+import { unlink, stat } from "fs/promises";
 import { join, resolve, sep } from "path";
+import { Readable } from "stream";
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -34,6 +37,41 @@ function getLocalPath(storageKey: string) {
     throw new Error("Invalid private upload storage key");
   }
   return target;
+}
+
+export interface PrivateUploadRead {
+  body: ReadableStream<Uint8Array>;
+  contentLength?: number;
+  etag: string;
+}
+
+export async function readPrivateUploadObject(
+  storageMode: string,
+  storageKey: string,
+): Promise<PrivateUploadRead> {
+  if (storageMode === "s3") {
+    const bucket = process.env.S3_BUCKET;
+    if (!bucket) throw new Error("Private upload bucket is not configured");
+    const object = await getS3Client().send(
+      new GetObjectCommand({ Bucket: bucket, Key: storageKey }),
+    );
+    if (!object.Body) throw new Error("Private upload object body is missing");
+    return {
+      body: object.Body.transformToWebStream(),
+      contentLength: object.ContentLength,
+      etag: object.ETag || `W/\"${encodeURIComponent(storageKey)}\"`,
+    };
+  }
+
+  const localPath = getLocalPath(storageKey);
+  const metadata = await stat(localPath);
+  return {
+    body: Readable.toWeb(
+      createReadStream(localPath),
+    ) as ReadableStream<Uint8Array>,
+    contentLength: metadata.size,
+    etag: `W/\"${metadata.size.toString(16)}-${Math.trunc(metadata.mtimeMs).toString(16)}\"`,
+  };
 }
 
 export async function deletePrivateUploadObject(

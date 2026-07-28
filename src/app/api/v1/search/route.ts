@@ -50,7 +50,7 @@ async function hasSearchVectorColumn(): Promise<boolean> {
       { error },
       "Failed to detect searchVector column, falling back to ILIKE search",
     );
-    ftsAvailable = false;
+    return false;
   }
 
   return ftsAvailable;
@@ -72,12 +72,20 @@ export const GET = withAuth(async (request, session) => {
   }
 
   const query = rawQuery.trim();
+  if (query.length > 200) {
+    throw new BadRequestError("Search query must be at most 200 characters");
+  }
   const tags = tagsParam
     ? tagsParam
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean)
     : [];
+  if (tags.length > 10 || tags.some((tag) => tag.length > 50)) {
+    throw new BadRequestError(
+      "Search supports at most 10 tags of 50 characters each",
+    );
+  }
   const userId = session.user.id;
   const email = session.user.email?.toLowerCase() || "";
 
@@ -114,7 +122,8 @@ export const GET = withAuth(async (request, session) => {
 
   const useFts = await hasSearchVectorColumn();
 
-  const searchTerm = `%${query}%`;
+  const escapedQuery = query.replace(/[\\%_]/g, "\\$&");
+  const searchTerm = `%${escapedQuery}%`;
   const tsQuery = Prisma.sql`plainto_tsquery('english', ${query})`;
 
   // Use FTS with plainto_tsquery for proper word stemming and ranking
@@ -124,18 +133,18 @@ export const GET = withAuth(async (request, session) => {
     ? Prisma.sql`
         AND (
           i."searchVector" @@ ${tsQuery}
-          OR i."content"->>'text' ILIKE ${searchTerm}
-          OR i."content"->>'title' ILIKE ${searchTerm}
-          OR i."content"->>'description' ILIKE ${searchTerm}
-          OR i."content"->>'url' ILIKE ${searchTerm}
+          OR i."content"->>'text' ILIKE ${searchTerm} ESCAPE '\\'
+          OR i."content"->>'title' ILIKE ${searchTerm} ESCAPE '\\'
+          OR i."content"->>'description' ILIKE ${searchTerm} ESCAPE '\\'
+          OR i."content"->>'url' ILIKE ${searchTerm} ESCAPE '\\'
         )
       `
     : Prisma.sql`
         AND (
-          i."content"->>'text' ILIKE ${searchTerm}
-          OR i."content"->>'title' ILIKE ${searchTerm}
-          OR i."content"->>'description' ILIKE ${searchTerm}
-          OR i."content"->>'url' ILIKE ${searchTerm}
+          i."content"->>'text' ILIKE ${searchTerm} ESCAPE '\\'
+          OR i."content"->>'title' ILIKE ${searchTerm} ESCAPE '\\'
+          OR i."content"->>'description' ILIKE ${searchTerm} ESCAPE '\\'
+          OR i."content"->>'url' ILIKE ${searchTerm} ESCAPE '\\'
         )
       `;
 
@@ -161,6 +170,24 @@ export const GET = withAuth(async (request, session) => {
     `;
 
   const total = Number(countResult[0]?.count || 0);
+
+  const [typeFacetRows, tagFacetRows] = await Promise.all([
+    prisma.$queryRaw<Array<{ value: string; count: number }>>`
+      SELECT i."type"::text AS value, COUNT(*)::int AS count
+      FROM "CanvasItem" i JOIN "Canvas" c ON i."canvasId" = c."id"
+      WHERE ${accessFilter} AND i."deletedAt" IS NULL
+        ${canvasFilter} ${tagsFilter} ${searchFilter}
+      GROUP BY i."type" ORDER BY count DESC, value
+    `,
+    prisma.$queryRaw<Array<{ value: string; count: number }>>`
+      SELECT tag AS value, COUNT(*)::int AS count
+      FROM "CanvasItem" i JOIN "Canvas" c ON i."canvasId" = c."id",
+        LATERAL unnest(i."tags") AS tag
+      WHERE ${accessFilter} AND i."deletedAt" IS NULL
+        ${canvasFilter} ${tagsFilter} ${searchFilter}
+      GROUP BY tag ORDER BY count DESC, value LIMIT 100
+    `,
+  ]);
 
   // Main query with relevance ranking
   // ts_rank orders results by relevance to the query
@@ -194,7 +221,10 @@ export const GET = withAuth(async (request, session) => {
     let snippet = "";
 
     if (item.type === "NOTE") {
-      const plainText = stripHtmlTags((content.text as string) || "");
+      const plainText =
+        typeof content.plainText === "string"
+          ? content.plainText
+          : stripHtmlTags((content.text as string) || "");
       const index = plainText.toLowerCase().indexOf(queryLower);
       if (index !== -1) {
         const start = Math.max(0, index - 50);
@@ -211,6 +241,11 @@ export const GET = withAuth(async (request, session) => {
     } else if (item.type === "IMAGE") {
       snippet =
         (content.alt as string) || (content.filename as string) || "Image";
+    } else {
+      snippet =
+        ([content.title, content.text, content.description, content.url].find(
+          (value) => typeof value === "string",
+        ) as string | undefined) || item.type;
     }
 
     return {
@@ -236,6 +271,16 @@ export const GET = withAuth(async (request, session) => {
       limit,
       offset,
       hasMore: offset + results.length < total,
+    },
+    facets: {
+      types: typeFacetRows.map((row) => ({
+        value: row.value,
+        count: Number(row.count),
+      })),
+      tags: tagFacetRows.map((row) => ({
+        value: row.value,
+        count: Number(row.count),
+      })),
     },
   });
 });

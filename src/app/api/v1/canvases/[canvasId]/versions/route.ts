@@ -14,6 +14,7 @@ import {
   fromZodError,
 } from "@/lib/errors";
 import { parsePagination } from "@/lib/api/pagination";
+import { assertCanvasVersionCapacity } from "@/lib/policy/capacity";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
@@ -84,12 +85,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     const versionName = name || `Version ${new Date().toLocaleString()}`;
 
-    const version = await prisma.canvasVersion.create({
-      data: {
-        canvasId,
-        name: versionName,
-        snapshot,
-      },
+    const version = await prisma.$transaction(async (tx) => {
+      await assertCanvasVersionCapacity(tx, canvasId);
+      return tx.canvasVersion.create({
+        data: { canvasId, name: versionName, snapshot },
+      });
     });
 
     return NextResponse.json(version, { status: 201 });

@@ -32,6 +32,7 @@ interface ClientConnection {
   messageCount: number;
   rateLimitReset: number;
   lastAuthorizationCheck: number;
+  clientId: string;
 }
 
 // Heartbeat interval for detecting zombie connections (30 seconds)
@@ -41,6 +42,10 @@ const RATE_LIMIT_MAX = 600;
 const RATE_LIMIT_WINDOW = 60000;
 const MAX_WEBSOCKET_PAYLOAD = 64 * 1024;
 const MAX_COLLABORATORS_PER_CANVAS = 100;
+const MAX_CONNECTIONS_GLOBAL = 5_000;
+const MAX_CONNECTIONS_PER_PRINCIPAL = 10;
+const MAX_CONNECTIONS_PER_CLIENT = 30;
+const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
 const AUTHORIZATION_LEASE_MS = 30_000;
 const REDIS_CHANNEL_PREFIX = "collaboration:canvas:";
@@ -58,10 +63,10 @@ interface CursorPosition {
 }
 
 interface CollaborationBusMessage {
-  type: "presence" | "cursors";
+  type: "presence" | "cursors" | "message" | "event";
   canvasId: string;
   instanceId: string;
-  payload: any;
+  payload: unknown;
   timestamp: number;
 }
 
@@ -74,14 +79,72 @@ const collaborationMessageSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({ type: z.literal("awareness") }),
-  z.object({ type: z.literal("message"), payload: z.record(z.unknown()) }),
+  z.object({
+    type: z.literal("message"),
+    payload: z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("cursor_chat"),
+        message: z.string().trim().min(1).max(280),
+        position: z.object({ x: z.number().finite(), y: z.number().finite() }),
+      }),
+      z.object({
+        kind: z.literal("reaction"),
+        emoji: z.string().min(1).max(8),
+        position: z.object({ x: z.number().finite(), y: z.number().finite() }),
+      }),
+    ]),
+  }),
 ]);
+
+export function parseCollaborationMessage(value: unknown) {
+  return collaborationMessageSchema.safeParse(value);
+}
+
+export function canBroadcastSocial(
+  accessLevel: ClientConnection["accessLevel"],
+): boolean {
+  return accessLevel !== "VIEW";
+}
+
+export function isValidGuestShare(
+  canvas: { isPublic: boolean; shareToken: string | null },
+  suppliedToken: string | null,
+): boolean {
+  return Boolean(
+    canvas.isPublic && suppliedToken && suppliedToken === canvas.shareToken,
+  );
+}
 
 // Active connections per canvas
 const connections = new Map<string, Set<ClientConnection>>();
 const subscriptions = new Map<string, number>();
 const remotePresence = new Map<string, Map<string, CollaborationUser[]>>();
 const remoteCursors = new Map<string, Map<string, CursorPosition[]>>();
+const upgradeBudgets = new Map<string, { count: number; resetAt: number }>();
+
+export function isAllowedCollaborationOrigin(
+  origin: string | undefined,
+  configuredUrl: string | undefined,
+): boolean {
+  if (!origin || !configuredUrl) return false;
+  try {
+    return new URL(origin).origin === new URL(configuredUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+function consumeUpgradeBudget(clientId: string): boolean {
+  const now = Date.now();
+  const current = upgradeBudgets.get(clientId);
+  const budget =
+    !current || current.resetAt <= now
+      ? { count: 0, resetAt: now + 60_000 }
+      : current;
+  budget.count += 1;
+  upgradeBudgets.set(clientId, budget);
+  return budget.count <= MAX_UPGRADES_PER_CLIENT_PER_MINUTE;
+}
 
 const instanceId = nanoid(8);
 const redisPublisher = getRedisClient();
@@ -288,9 +351,8 @@ async function handleRedisMessage(
 
   switch (message.type) {
     case "presence": {
-      const users = Array.isArray(message.payload?.users)
-        ? message.payload.users
-        : [];
+      const payload = message.payload as { users?: CollaborationUser[] };
+      const users = Array.isArray(payload.users) ? payload.users : [];
       if (!remotePresence.has(canvasId)) {
         remotePresence.set(canvasId, new Map());
       }
@@ -299,9 +361,8 @@ async function handleRedisMessage(
       break;
     }
     case "cursors": {
-      const cursors = Array.isArray(message.payload?.cursors)
-        ? message.payload.cursors
-        : [];
+      const payload = message.payload as { cursors?: CursorPosition[] };
+      const cursors = Array.isArray(payload.cursors) ? payload.cursors : [];
       if (!remoteCursors.has(canvasId)) {
         remoteCursors.set(canvasId, new Map());
       }
@@ -309,6 +370,12 @@ async function handleRedisMessage(
       broadcastCursors(canvasId);
       break;
     }
+    case "message":
+      broadcastRemoteMessage(canvasId, message.payload);
+      break;
+    case "event":
+      broadcastCommittedEvent(canvasId, message.payload);
+      break;
   }
 }
 
@@ -330,6 +397,26 @@ export function createCollaborationServer(server: any): WebSocketServer {
       // Only handle collaboration WebSocket connections
       if (url.pathname.startsWith("/api/collaboration/")) {
         try {
+          const configuredUrl =
+            process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+          if (
+            !isAllowedCollaborationOrigin(request.headers.origin, configuredUrl)
+          ) {
+            socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+            socket.destroy();
+            return;
+          }
+          const clientId = String(
+            request.headers["x-memoria-client-ip"] || "unknown",
+          );
+          if (
+            !consumeUpgradeBudget(clientId) ||
+            getConnectionCount() >= MAX_CONNECTIONS_GLOBAL
+          ) {
+            socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+            socket.destroy();
+            return;
+          }
           const pathParts = url.pathname.split("/");
           const canvasId = pathParts[pathParts.length - 1];
 
@@ -348,6 +435,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             select: {
               id: true,
               isPublic: true,
+              shareToken: true,
             },
           });
 
@@ -358,7 +446,8 @@ export function createCollaborationServer(server: any): WebSocketServer {
           }
 
           if (!sessionCookie) {
-            if (!publicCanvas.isPublic) {
+            const shareToken = url.searchParams.get("shareToken");
+            if (!isValidGuestShare(publicCanvas, shareToken)) {
               logger.warn("WebSocket connection attempt without token");
               socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
               socket.destroy();
@@ -372,6 +461,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
               color: getNextUserColor(),
               accessLevel: "VIEW",
             };
+            (request as any).clientId = clientId;
 
             wss.handleUpgrade(request, socket, head, (ws) => {
               wss.emit("connection", ws, request);
@@ -454,6 +544,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             accessLevel,
             sessionVersion: user.sessionVersion,
           };
+          (request as any).clientId = clientId;
 
           wss.handleUpgrade(request, socket, head, (ws) => {
             wss.emit("connection", ws, request);
@@ -464,8 +555,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
           socket.destroy();
         }
       } else {
-        socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
-        socket.destroy();
+        return;
       }
     },
   );
@@ -530,6 +620,7 @@ async function handleConnection(
   const user = (request as any).user as CollaborationUser & {
     accessLevel?: ClientConnection["accessLevel"];
   };
+  const clientId = String((request as any).clientId || "unknown");
 
   if (!user || !canvasId) {
     ws.close(1008, "Internal Error");
@@ -545,6 +636,7 @@ async function handleConnection(
     messageCount: 0,
     rateLimitReset: Date.now() + RATE_LIMIT_WINDOW,
     lastAuthorizationCheck: Date.now(),
+    clientId,
   };
 
   if (!connections.has(canvasId)) {
@@ -552,6 +644,18 @@ async function handleConnection(
   }
   if (connections.get(canvasId)!.size >= MAX_COLLABORATORS_PER_CANVAS) {
     ws.close(1013, "Canvas connection limit reached");
+    return;
+  }
+  const activeConnections = Array.from(connections.values()).flatMap((set) =>
+    Array.from(set),
+  );
+  if (
+    activeConnections.filter((client) => client.user.userId === user.userId)
+      .length >= MAX_CONNECTIONS_PER_PRINCIPAL ||
+    activeConnections.filter((client) => client.clientId === clientId).length >=
+      MAX_CONNECTIONS_PER_CLIENT
+  ) {
+    ws.close(1013, "Connection admission limit reached");
     return;
   }
   connections.get(canvasId)!.add(connection);
@@ -689,6 +793,10 @@ async function handleMessage(
       break;
 
     case "message":
+      if (!canBroadcastSocial(connection.accessLevel)) {
+        connection.ws.close(1008, "Comment access is required");
+        return;
+      }
       if (
         Buffer.byteLength(JSON.stringify(message.payload), "utf8") >
         MAX_MESSAGE_PAYLOAD_BYTES
@@ -697,6 +805,17 @@ async function handleMessage(
         return;
       }
       broadcastMessagePayload(connection.canvasId, message.payload, connection);
+      publishMessage({
+        type: "message",
+        canvasId: connection.canvasId,
+        instanceId,
+        payload: {
+          ...message.payload,
+          userId: connection.user.userId,
+          timestamp: Date.now(),
+        },
+        timestamp: Date.now(),
+      });
       break;
   }
 }
@@ -737,7 +856,7 @@ function applyRateLimit(connection: ClientConnection): boolean {
  */
 function broadcastMessagePayload(
   canvasId: string,
-  payload: any,
+  payload: Record<string, unknown>,
   sender: ClientConnection,
 ): void {
   const clients = connections.get(canvasId);
@@ -758,6 +877,23 @@ function broadcastMessagePayload(
     if (client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(message);
     }
+  });
+}
+
+function broadcastRemoteMessage(canvasId: string, payload: unknown): void {
+  const clients = connections.get(canvasId);
+  if (!clients) return;
+  const message = JSON.stringify({ type: "message", payload });
+  clients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
+  });
+}
+function broadcastCommittedEvent(canvasId: string, event: unknown): void {
+  const clients = connections.get(canvasId);
+  if (!clients) return;
+  const message = JSON.stringify({ type: "committed-event", event });
+  clients.forEach((client) => {
+    if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
   });
 }
 function broadcastPresence(canvasId: string): void {

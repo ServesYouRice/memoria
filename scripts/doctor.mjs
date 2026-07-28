@@ -36,6 +36,15 @@ if (!existsSync(envFile)) {
 
 const envValues = readEnvFile(envFile).values;
 const emailProvider = envValues.get('EMAIL_PROVIDER') || 'console';
+const authUrl = envValues.get('AUTH_URL') || envValues.get('NEXTAUTH_URL');
+
+if (authUrl?.startsWith('https://') && !envValues.get('TRUSTED_PROXY_CIDRS')) {
+  addCheck(
+    'trusted-proxy',
+    'warn',
+    'HTTPS is configured without TRUSTED_PROXY_CIDRS; forwarded client addresses will be ignored.'
+  );
+}
 
 for (const key of ['DATABASE_URL', 'AUTH_URL', 'AUTH_SECRET']) {
   addCheck(key, envValues.get(key) ? 'pass' : 'fail', envValues.get(key) ? 'Configured' : 'Missing');
@@ -56,6 +65,16 @@ if ((envValues.get('NODE_ENV') || 'development') === 'production') {
     'APP_BOOTSTRAP_TOKEN',
     envValues.get('APP_BOOTSTRAP_TOKEN') ? 'pass' : 'fail',
     envValues.get('APP_BOOTSTRAP_TOKEN') ? 'Configured' : 'Missing'
+  );
+  const registrationMode = envValues.get('REGISTRATION_MODE');
+  addCheck(
+    'registration-mode',
+    !registrationMode ? 'fail' : registrationMode === 'open' ? 'warn' : 'pass',
+    !registrationMode
+      ? 'Missing explicit production choice (open, invite, or closed)'
+      : registrationMode === 'open'
+        ? 'Open public account creation is enabled by operator choice'
+        : registrationMode
   );
 }
 

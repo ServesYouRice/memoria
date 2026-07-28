@@ -6,6 +6,7 @@ import { runIdempotent, withApiHandler } from "@/lib/api/route-handler";
 import { parsePagination } from "@/lib/api/pagination";
 import { ValidationError } from "@/lib/errors";
 import { ActivityType, logActivity } from "@/lib/activity";
+import { assertCanvasCapacity } from "@/lib/policy/capacity";
 
 /**
  * GET /api/v1/canvases
@@ -28,7 +29,11 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     });
     if (!workspace) throw new ValidationError("Workspace not found.");
   }
-  const where = { userId, ...(workspaceId ? { workspaceId } : {}) };
+  const where = {
+    userId,
+    isTemplate: false,
+    ...(workspaceId ? { workspaceId } : {}),
+  };
 
   // Get total count
   const total = await prisma.canvas.count({ where });
@@ -85,12 +90,15 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     }
 
     // Create canvas
-    const canvas = await prisma.canvas.create({
-      data: {
-        name: validatedData.name,
-        userId,
-        workspaceId: validatedData.workspaceId,
-      },
+    const canvas = await prisma.$transaction(async (tx) => {
+      await assertCanvasCapacity(tx, userId);
+      return tx.canvas.create({
+        data: {
+          name: validatedData.name,
+          userId,
+          workspaceId: validatedData.workspaceId,
+        },
+      });
     });
 
     await logActivity({

@@ -19,11 +19,17 @@ import { prisma } from "@/lib/db";
 import { ApiError, UnprocessableEntityError } from "@/lib/errors";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getRedisClient } from "@/lib/cache/redis-client";
+import {
+  activateUploadAsset,
+  failUploadReservation,
+  reserveUploadAsset,
+} from "@/lib/uploads/lifecycle";
+import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 
 // Maximum file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const MAX_FILES_PER_USER = 500;
-const MAX_TOTAL_BYTES_PER_USER = 100 * 1024 * 1024;
+const MAX_FILES_PER_USER = LAUNCH_LIMITS.uploadsPerUser;
+const MAX_TOTAL_BYTES_PER_USER = LAUNCH_LIMITS.uploadBytesPerUser;
 
 // Allowed image MIME types
 // NOTE: SVG removed due to XSS security risk (SVG can contain embedded scripts)
@@ -354,34 +360,28 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     );
     const safeUserId = sanitizePathSegment(userId);
     const storageMode = getStorageMode();
+    if (storageMode === "local" && process.env.NODE_ENV === "production") {
+      throw new ApiError(
+        500,
+        "https://memoria.local/errors/upload-storage",
+        "Upload storage misconfigured",
+        "Local uploads are development-only. Configure S3-compatible storage in production.",
+      );
+    }
 
     return withUploadLock(userId, async () => {
-      const [fileCount, sizeAggregate] = await Promise.all([
-        prisma.uploadAsset.count({ where: { userId } }),
-        prisma.uploadAsset.aggregate({
-          where: { userId },
-          _sum: { size: true },
-        }),
-      ]);
-      const totalBytes = sizeAggregate._sum.size || 0;
-
-      if (fileCount >= MAX_FILES_PER_USER) {
-        throw new ApiError(
-          400,
-          "https://memoria.local/errors/upload",
-          "Bad Request",
-          "Upload limit reached for this account",
-        );
-      }
-
-      if (totalBytes + buffer.length > MAX_TOTAL_BYTES_PER_USER) {
-        throw new ApiError(
-          400,
-          "https://memoria.local/errors/upload",
-          "Bad Request",
-          "Storage quota exceeded for this account",
-        );
-      }
+      const storageKey = `uploads/${safeUserId}/${uniqueFilename}`;
+      const asset = await reserveUploadAsset(prisma, {
+        userId,
+        canvasId,
+        storageKey,
+        storageMode,
+        filename: file.name,
+        mimeType: detectedType.mime,
+        size: file.size,
+        maxFiles: MAX_FILES_PER_USER,
+        maxBytes: MAX_TOTAL_BYTES_PER_USER,
+      });
 
       if (storageMode === "s3") {
         const bucket = process.env.S3_BUCKET;
@@ -394,30 +394,22 @@ export const POST = withApiHandler(async (request: NextRequest) => {
           );
         }
 
-        const key = `uploads/${safeUserId}/${uniqueFilename}`;
         const client = getS3Client();
-
-        await client.send(
-          new PutObjectCommand({
-            Bucket: bucket,
-            Key: key,
-            Body: buffer,
-            ContentType: detectedType.mime,
-            CacheControl: "private, no-store",
-          }),
-        );
-
-        const asset = await prisma.uploadAsset.create({
-          data: {
-            userId,
-            canvasId,
-            storageKey: key,
-            storageMode,
-            filename: file.name,
-            mimeType: detectedType.mime,
-            size: file.size,
-          },
-        });
+        try {
+          await client.send(
+            new PutObjectCommand({
+              Bucket: bucket,
+              Key: storageKey,
+              Body: buffer,
+              ContentType: detectedType.mime,
+              CacheControl: "private, no-store",
+            }),
+          );
+          await activateUploadAsset(prisma, asset.id);
+        } catch (error) {
+          await failUploadReservation(prisma, asset.id, "object_write_failed");
+          throw error;
+        }
 
         return NextResponse.json({
           url: `/api/v1/uploads/${asset.id}`,
@@ -426,15 +418,6 @@ export const POST = withApiHandler(async (request: NextRequest) => {
           type: detectedType.mime,
           storage: "s3",
         });
-      }
-
-      if (process.env.NODE_ENV === "production") {
-        throw new ApiError(
-          500,
-          "https://memoria.local/errors/upload-storage",
-          "Upload storage misconfigured",
-          "Local uploads are development-only. Configure S3-compatible storage in production.",
-        );
       }
 
       const uploadRoot = resolve(join(process.cwd(), ".data", "uploads"));
@@ -453,22 +436,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         );
       }
 
-      await mkdir(uploadDir, { recursive: true });
-
-      await writeFile(filePath, buffer);
-
-      const storageKey = `uploads/${safeUserId}/${uniqueFilename}`;
-      const asset = await prisma.uploadAsset.create({
-        data: {
-          userId,
-          canvasId,
-          storageKey,
-          storageMode,
-          filename: file.name,
-          mimeType: detectedType.mime,
-          size: file.size,
-        },
-      });
+      try {
+        await mkdir(uploadDir, { recursive: true });
+        await writeFile(filePath, buffer);
+        await activateUploadAsset(prisma, asset.id);
+      } catch (error) {
+        await failUploadReservation(prisma, asset.id, "object_write_failed");
+        throw error;
+      }
 
       return NextResponse.json({
         url: `/api/v1/uploads/${asset.id}`,

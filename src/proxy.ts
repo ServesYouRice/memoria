@@ -16,6 +16,13 @@ import { shouldApplyStrictAuthRateLimit } from "./middleware/auth-rate-limit";
 import { getVersionHeaders, validateApiVersion } from "./lib/api/versioning";
 import { createRequestLogger } from "./lib/logger";
 
+export function isUploadWriteRequest(
+  pathname: string,
+  method: string,
+): boolean {
+  return method === "POST" && pathname === "/api/v1/upload";
+}
+
 export async function proxy(request: NextRequest) {
   // Generate or extract request ID for tracing (Issue #24)
   const requestId = request.headers.get("x-request-id") || nanoid(16);
@@ -91,7 +98,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Apply rate limiting for file uploads (stricter)
-  if (request.nextUrl.pathname.startsWith("/api/v1/upload")) {
+  if (isUploadWriteRequest(request.nextUrl.pathname, request.method)) {
     specificRateLimitApplied = true;
     const rateLimitResponse = await uploadRateLimit(request);
     if (rateLimitResponse) {

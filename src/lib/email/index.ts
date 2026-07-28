@@ -247,6 +247,7 @@ export async function sendPasswordResetEmail(
 export async function sendEmailVerification(
   to: EmailAddress,
   data: EmailVerificationData,
+  deliveryId?: string,
 ): Promise<void> {
   const template = emailVerificationTemplate(data);
 
@@ -255,6 +256,7 @@ export async function sendEmailVerification(
     subject: template.subject,
     text: template.text,
     html: template.html,
+    deliveryId,
   });
 
   logger.info({ email: to.email }, "Email verification sent");

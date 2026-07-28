@@ -47,6 +47,9 @@ const envSchema = z
     NEXTAUTH_SECRET: optionalString,
     REDIS_URL: optionalUrl,
     LOG_LEVEL: optionalString,
+    INTERNAL_OPERATIONS_TOKEN: optionalString,
+    TRUSTED_PROXY_CIDRS: optionalString,
+    REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
     NEXT_PUBLIC_SENTRY_DSN: optionalString,
     SENTRY_DSN: optionalString,
@@ -109,6 +112,19 @@ const envSchema = z
         path: ["APP_BOOTSTRAP_TOKEN"],
         message:
           "APP_BOOTSTRAP_TOKEN is required in production for first-run bootstrap.",
+      });
+    }
+
+    if (
+      validateProductionRuntime &&
+      (!data.INTERNAL_OPERATIONS_TOKEN ||
+        data.INTERNAL_OPERATIONS_TOKEN.length < 32)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["INTERNAL_OPERATIONS_TOKEN"],
+        message:
+          "INTERNAL_OPERATIONS_TOKEN of at least 32 characters is required in production.",
       });
     }
 

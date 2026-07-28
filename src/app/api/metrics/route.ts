@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { hasInternalOperationsAccess } from "@/lib/operations/internal-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,10 @@ function metric(name: string, value: number): string {
   return `${name} ${Number.isFinite(value) ? value : 0}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!hasInternalOperationsAccess(request)) {
+    return NextResponse.json({ status: "not_found" }, { status: 404 });
+  }
   const cpuUsage = process.cpuUsage();
   const memory = process.memoryUsage();
   const uptime = process.uptime();

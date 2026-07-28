@@ -1,0 +1,2 @@
+ALTER INDEX IF EXISTS "KnowledgeRelation_sourceEntityId_targetEntityId_relationType_ke"
+RENAME TO "KnowledgeRelation_source_target_type_key";

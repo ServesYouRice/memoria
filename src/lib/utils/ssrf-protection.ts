@@ -29,6 +29,9 @@ const BLOCKED_HOSTNAMES = ["localhost", "0.0.0.0"];
  * Check if a hostname is a private/internal IP or hostname
  */
 function isPrivateOrLocalHost(hostname: string): boolean {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    hostname = hostname.slice(1, -1);
+  }
   // Check for blocked hostnames
   if (BLOCKED_HOSTNAMES.includes(hostname.toLowerCase())) {
     return true;
@@ -90,7 +93,17 @@ function isPrivateIp(address: string): boolean {
     if (normalized.startsWith("fe80:")) return true; // link-local
     if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local
     if (normalized.startsWith("::ffff:")) {
-      const ipv4 = normalized.replace("::ffff:", "");
+      const mapped = normalized.replace("::ffff:", "");
+      const ipv4 = mapped.includes(".")
+        ? mapped
+        : (() => {
+            const [high, low] = mapped
+              .split(":")
+              .map((part) => parseInt(part, 16));
+            if (!Number.isFinite(high) || !Number.isFinite(low))
+              return "invalid";
+            return `${high! >> 8}.${high! & 255}.${low! >> 8}.${low! & 255}`;
+          })();
       return isPrivateIp(ipv4);
     }
     return false;

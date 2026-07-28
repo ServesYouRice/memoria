@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { parsePagination } from "@/lib/api/pagination";
+import { assertWorkspaceCapacity } from "@/lib/policy/capacity";
 
 /**
  * GET /api/v1/workspaces
@@ -67,11 +68,9 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   const body = await request.json();
   const { name } = createWorkspaceSchema.parse(body);
 
-  const workspace = await prisma.workspace.create({
-    data: {
-      name,
-      userId,
-    },
+  const workspace = await prisma.$transaction(async (tx) => {
+    await assertWorkspaceCapacity(tx, userId);
+    return tx.workspace.create({ data: { name, userId } });
   });
 
   return NextResponse.json(

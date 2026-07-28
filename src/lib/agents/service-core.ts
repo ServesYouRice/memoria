@@ -20,6 +20,7 @@ import {
 } from "@/lib/agents/constants";
 import { decryptSecret } from "@/lib/agents/crypto";
 import { deliverSignedWebhook } from "@/lib/agents/webhooks";
+import { requireExternalWebhookExecution } from "@/lib/agents/external-delivery-policy";
 import { sanitizeComment } from "@/lib/sanitization";
 import { validateUrlForSsrf } from "@/lib/utils/ssrf-protection";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
@@ -1067,6 +1068,7 @@ export async function executeExternalWebhook(input: {
   request: unknown;
   metadata?: unknown;
 }) {
+  requireExternalWebhookExecution();
   const requestData = externalWebhookRequestSchema.parse(input.request);
 
   const integrationAccount = await prisma.integrationAccount.findFirst({

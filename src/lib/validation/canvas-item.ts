@@ -5,10 +5,10 @@
 
 import { z } from "zod";
 import { ItemType } from "@/types/canvas";
-import { sanitizePlainText, sanitizeUrl } from "@/lib/sanitization";
+import { sanitizeUrl } from "@/lib/sanitization";
+import { normalizeNoteContent } from "@/lib/rich-text/note-format";
 import {
   MAX_URL_LENGTH,
-  MAX_NOTE_TEXT_LENGTH,
   MAX_ZINDEX,
   MAX_TAG_LENGTH,
   MAX_TAGS_PER_ITEM,
@@ -41,15 +41,16 @@ const urlSchema = z
  * Note content validation
  * Sanitizes text to prevent XSS attacks
  */
-export const noteContentSchema = z.object({
-  text: z
-    .string()
-    .min(1, "Note text cannot be empty")
-    .max(
-      MAX_NOTE_TEXT_LENGTH,
-      `Note text too long (max ${MAX_NOTE_TEXT_LENGTH} characters)`,
-    )
-    .transform((val) => sanitizePlainText(val)),
+export const noteContentSchema = z.unknown().transform((value, ctx) => {
+  try {
+    return normalizeNoteContent(value);
+  } catch (error) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: error instanceof Error ? error.message : "Invalid note content.",
+    });
+    return z.NEVER;
+  }
 });
 
 /**
@@ -244,26 +245,30 @@ export const createCanvasItemSchema = z.object({
  * Update canvas item payload
  * Following ADR-0009: Optimistic Concurrency Control
  */
-export const updateCanvasItemSchema = z.object({
-  version: z.number().int().positive(), // Required for optimistic locking
-  positionX: z.number().finite().optional(),
-  positionY: z.number().finite().optional(),
-  width: z.number().positive().finite().optional(),
-  height: z.number().positive().finite().optional(),
-  zIndex: z.number().int().min(0).max(MAX_ZINDEX).optional(),
-  content: z.unknown().optional(),
-  tags: z
-    .array(z.string().min(1).max(MAX_TAG_LENGTH))
-    .max(MAX_TAGS_PER_ITEM)
-    .optional(),
-});
+export const updateCanvasItemSchema = z
+  .object({
+    version: z.number().int().positive(), // Required for optimistic locking
+    positionX: z.number().finite().optional(),
+    positionY: z.number().finite().optional(),
+    width: z.number().positive().finite().optional(),
+    height: z.number().positive().finite().optional(),
+    zIndex: z.number().int().min(0).max(MAX_ZINDEX).optional(),
+    content: z.unknown().optional(),
+    tags: z
+      .array(z.string().min(1).max(MAX_TAG_LENGTH))
+      .max(MAX_TAGS_PER_ITEM)
+      .optional(),
+  })
+  .strict();
 
 /**
  * Delete canvas item payload
  */
-export const deleteCanvasItemSchema = z.object({
-  version: z.number().int().positive(), // Required for optimistic locking
-});
+export const deleteCanvasItemSchema = z
+  .object({
+    version: z.number().int().positive(), // Required for optimistic locking
+  })
+  .strict();
 
 /**
  * Query parameters for listing items

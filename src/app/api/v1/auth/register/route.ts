@@ -18,9 +18,15 @@ import {
   type ValidationErrorDetail,
 } from "@/lib/errors";
 import { withApiHandler } from "@/lib/api/route-handler";
-import { sendEmailVerification } from "@/lib/email";
 import { nanoid } from "nanoid";
 import { createHash } from "crypto";
+import { env } from "@/lib/env";
+import { encryptSecret } from "@/lib/agents/crypto";
+import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import {
+  consumeRegistrationAdmission,
+  prepareRegistrationAdmission,
+} from "@/lib/auth/registration";
 
 const VERIFICATION_EXPIRY_HOURS = 24;
 
@@ -28,6 +34,7 @@ const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(10, "Password must be at least 10 characters"),
   name: z.string().min(1, "Name is required").max(100),
+  inviteToken: z.string().min(16).max(256).optional(),
 });
 
 export const POST = withApiHandler(async (request: NextRequest) => {
@@ -46,7 +53,16 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     return problemToResponse(createValidationProblem(errors));
   }
 
-  const { email, password, name } = parseResult.data;
+  const { email, password, name, inviteToken } = parseResult.data;
+  const normalizedEmail = email.toLowerCase();
+
+  // Enforce the operator's admission policy before password analysis, hashing,
+  // or account provisioning. Invite failures deliberately share one response.
+  const admission = await prepareRegistrationAdmission(prisma, {
+    mode: env.REGISTRATION_MODE,
+    email: normalizedEmail,
+    inviteToken,
+  });
 
   // Check password strength with zxcvbn
   const passwordStrength = await validatePasswordStrength(password, [
@@ -83,7 +99,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
 
   // Check if user already exists
   const existingUser = await prisma.user.findUnique({
-    where: { email: email.toLowerCase() },
+    where: { email: normalizedEmail },
   });
 
   if (existingUser) {
@@ -103,9 +119,10 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   // Every normal account receives the same baseline resources used by the
   // bootstrap path, so integration ingest always has a scoped Inbox.
   const user = await prisma.$transaction(async (tx) => {
+    await consumeRegistrationAdmission(tx, admission);
     const createdUser = await tx.user.create({
       data: {
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         passwordHash,
         name,
       },
@@ -127,25 +144,21 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         workspaceId: workspace.id,
       },
     });
-    await tx.emailVerificationToken.create({
+    const verification = await tx.emailVerificationToken.create({
       data: {
         token: createHash("sha256").update(verificationToken).digest("hex"),
         email: createdUser.email,
         expiresAt,
+        deliverySecret: encryptSecret(verificationToken),
       },
+    });
+    await enqueueOutboxJob(tx, {
+      type: "email.verification",
+      payload: { verificationId: verification.id },
+      dedupeKey: `email-verification:${verification.id}`,
     });
     return createdUser;
   });
-
-  const baseUrl = process.env.AUTH_URL || request.nextUrl.origin;
-  await sendEmailVerification(
-    { email: user.email, name: user.name || undefined },
-    {
-      userName: user.name || "User",
-      verificationUrl: `${baseUrl}/auth/verify-email?token=${verificationToken}`,
-      expiresIn: `${VERIFICATION_EXPIRY_HOURS} hours`,
-    },
-  );
 
   return NextResponse.json(
     {
@@ -154,6 +167,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       name: user.name,
       createdAt: user.createdAt.toISOString(),
       verificationRequired: true,
+      verificationEmailQueued: true,
     },
     { status: 201 },
   );

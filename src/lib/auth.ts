@@ -6,9 +6,11 @@ import { prisma } from "@/lib/db";
 import * as argon2 from "argon2";
 import {
   clearFailedAttempts,
+  getLoginDelay,
   isAccountLocked,
   recordFailedAttempt,
 } from "@/lib/auth/account-lockout";
+import { safeAuthCallbackUrl } from "@/lib/auth/redirect";
 
 /**
  * Thrown when a sign-in attempt is rejected because the account is temporarily
@@ -18,6 +20,10 @@ import {
  */
 class AccountLockedError extends CredentialsSignin {
   code = "account_locked";
+}
+
+export class EmailNotVerifiedError extends CredentialsSignin {
+  code = "email_not_verified";
 }
 
 const dummyPasswordHash = argon2.hash("memoria-invalid-user-password", {
@@ -39,17 +45,17 @@ export const authConfig: NextAuthConfig = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
         const email = String(credentials.email).trim().toLowerCase();
-
-        // Check for lockout
-        const isLocked = await isAccountLocked(email);
-        if (isLocked) {
-          throw new AccountLockedError();
+        const clientId =
+          request.headers.get("x-memoria-client-ip") || "unknown";
+        const delayMs = await getLoginDelay(email);
+        if (delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
 
         const user = await prisma.user.findUnique({
@@ -63,12 +69,14 @@ export const authConfig: NextAuthConfig = {
             await dummyPasswordHash,
             credentials.password as string,
           );
-          await recordFailedAttempt(email);
+          if (await isAccountLocked(email, clientId))
+            throw new AccountLockedError();
+          await recordFailedAttempt(email, clientId);
           return null;
         }
 
         if (process.env.NODE_ENV === "production" && !user.emailVerified) {
-          throw new Error("Verify your email before signing in.");
+          throw new EmailNotVerifiedError();
         }
 
         const isValidPassword = await argon2.verify(
@@ -77,12 +85,14 @@ export const authConfig: NextAuthConfig = {
         );
 
         if (!isValidPassword) {
-          await recordFailedAttempt(email);
+          if (await isAccountLocked(email, clientId))
+            throw new AccountLockedError();
+          await recordFailedAttempt(email, clientId);
           return null;
         }
 
         // Login successful, clear attempts
-        await clearFailedAttempts(email);
+        await clearFailedAttempts(email, clientId);
 
         return {
           id: user.id,
@@ -95,6 +105,9 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      return safeAuthCallbackUrl(url, baseUrl);
+    },
     async jwt({ token, user }) {
       if (user) {
         token["id"] = user.id as string;

@@ -24,6 +24,8 @@ import {
   parseCanvasItemContent,
 } from "@/lib/validation/canvas-item";
 import { ActivityType, logActivity } from "@/lib/activity";
+import { requirePollsEnabled } from "@/lib/polls/availability";
+import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 
 interface RouteContext {
   params: Promise<{ itemId: string }>;
@@ -50,6 +52,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     if (!item || item.deletedAt) {
       throw new NotFoundError("Item not found");
     }
+    requirePollsEnabled(item.type);
 
     return NextResponse.json(item);
   } catch (error) {
@@ -76,62 +79,54 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     // Verify user has EDIT permission
     await requireItemAccess(itemId, userId, email, "EDIT");
 
-    // Get current item to check version
-    const currentItem = await prisma.canvasItem.findUnique({
-      where: { id: itemId },
-      select: { version: true, deletedAt: true, type: true, canvasId: true },
-    });
-
-    if (!currentItem || currentItem.deletedAt) {
-      throw new NotFoundError("Item not found");
-    }
-
-    const validatedContent =
-      data.content !== undefined
-        ? parseCanvasItemContent(currentItem.type, data.content)
-        : undefined;
-
-    const updateResult = await prisma.canvasItem.updateMany({
-      where: {
-        id: itemId,
-        version: data.version,
-        deletedAt: null,
-      },
-      data: {
-        ...(data.positionX !== undefined && { positionX: data.positionX }),
-        ...(data.positionY !== undefined && { positionY: data.positionY }),
-        ...(data.width !== undefined && { width: data.width }),
-        ...(data.height !== undefined && { height: data.height }),
-        ...(data.zIndex !== undefined && { zIndex: data.zIndex }),
-        ...(validatedContent !== undefined && {
-          content: validatedContent as Prisma.InputJsonValue,
-        }),
-        ...(data.tags !== undefined && { tags: data.tags }),
-        version: { increment: 1 },
-        updatedById: userId,
-      },
-    });
-
-    if (updateResult.count === 0) {
-      const latestItem = await prisma.canvasItem.findUnique({
+    const updatedItem = await prisma.$transaction(async (tx) => {
+      const currentItem = await tx.canvasItem.findUnique({
         where: { id: itemId },
-        select: { version: true, deletedAt: true },
+        select: { version: true, deletedAt: true, type: true, canvasId: true },
       });
-
-      if (!latestItem || latestItem.deletedAt) {
+      if (!currentItem || currentItem.deletedAt)
         throw new NotFoundError("Item not found");
+      requirePollsEnabled(currentItem.type);
+      const validatedContent =
+        data.content !== undefined
+          ? parseCanvasItemContent(currentItem.type, data.content)
+          : undefined;
+      const updateResult = await tx.canvasItem.updateMany({
+        where: { id: itemId, version: data.version, deletedAt: null },
+        data: {
+          ...(data.positionX !== undefined && { positionX: data.positionX }),
+          ...(data.positionY !== undefined && { positionY: data.positionY }),
+          ...(data.width !== undefined && { width: data.width }),
+          ...(data.height !== undefined && { height: data.height }),
+          ...(data.zIndex !== undefined && { zIndex: data.zIndex }),
+          ...(validatedContent !== undefined && {
+            content: validatedContent as Prisma.InputJsonValue,
+          }),
+          ...(data.tags !== undefined && { tags: data.tags }),
+          version: { increment: 1 },
+          updatedById: userId,
+        },
+      });
+      if (updateResult.count === 0) {
+        const latestItem = await tx.canvasItem.findUnique({
+          where: { id: itemId },
+          select: { version: true, deletedAt: true },
+        });
+        if (!latestItem || latestItem.deletedAt)
+          throw new NotFoundError("Item not found");
+        throw new VersionMismatchError(data.version, latestItem.version);
       }
-
-      throw new VersionMismatchError(data.version, latestItem.version);
-    }
-
-    const updatedItem = await prisma.canvasItem.findUnique({
-      where: { id: itemId },
+      const updated = await tx.canvasItem.findUnique({ where: { id: itemId } });
+      if (!updated) throw new NotFoundError("Item not found");
+      await recordCanvasItemEvent(tx, {
+        canvasId: updated.canvasId,
+        actorId: userId,
+        itemId: updated.id,
+        version: updated.version,
+        operation: "updated",
+      });
+      return updated;
     });
-
-    if (!updatedItem) {
-      throw new NotFoundError("Item not found");
-    }
 
     await invalidateCanvasCache(updatedItem.canvasId);
 
@@ -165,52 +160,48 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     // Verify user has EDIT permission
     await requireItemAccess(itemId, userId, email, "EDIT");
 
-    // Get current item to check version
-    const currentItem = await prisma.canvasItem.findUnique({
-      where: { id: itemId },
-      select: { version: true, deletedAt: true, canvasId: true },
-    });
-
-    if (!currentItem || currentItem.deletedAt) {
-      throw new NotFoundError("Item not found");
-    }
-
-    const deleteResult = await prisma.canvasItem.updateMany({
-      where: {
-        id: itemId,
-        version: data.version,
-        deletedAt: null,
-      },
-      data: {
-        deletedAt: new Date(),
-        deletedById: userId,
-        version: { increment: 1 },
-      },
-    });
-
-    if (deleteResult.count === 0) {
-      const latestItem = await prisma.canvasItem.findUnique({
+    const deletedItem = await prisma.$transaction(async (tx) => {
+      const currentItem = await tx.canvasItem.findUnique({
         where: { id: itemId },
-        select: { version: true, deletedAt: true },
+        select: { version: true, deletedAt: true, canvasId: true },
       });
-
-      if (!latestItem || latestItem.deletedAt) {
+      if (!currentItem || currentItem.deletedAt)
         throw new NotFoundError("Item not found");
+      const deleteResult = await tx.canvasItem.updateMany({
+        where: { id: itemId, version: data.version, deletedAt: null },
+        data: {
+          deletedAt: new Date(),
+          deletedById: userId,
+          version: { increment: 1 },
+        },
+      });
+      if (deleteResult.count === 0) {
+        const latestItem = await tx.canvasItem.findUnique({
+          where: { id: itemId },
+          select: { version: true, deletedAt: true },
+        });
+        if (!latestItem || latestItem.deletedAt)
+          throw new NotFoundError("Item not found");
+        throw new VersionMismatchError(data.version, latestItem.version);
       }
-
-      throw new VersionMismatchError(data.version, latestItem.version);
-    }
-
-    const deletedItem = await prisma.canvasItem.findUnique({
-      where: { id: itemId },
+      const deleted = await tx.canvasItem.findUnique({ where: { id: itemId } });
+      if (!deleted) throw new NotFoundError("Item not found");
+      await recordCanvasItemEvent(tx, {
+        canvasId: deleted.canvasId,
+        actorId: userId,
+        itemId: deleted.id,
+        version: deleted.version,
+        operation: "deleted",
+      });
+      return deleted;
     });
 
-    await invalidateCanvasCache(currentItem.canvasId);
+    await invalidateCanvasCache(deletedItem.canvasId);
 
     await logActivity({
       userId,
       type: ActivityType.ITEM_DELETED,
-      canvasId: currentItem.canvasId,
+      canvasId: deletedItem.canvasId,
       itemId,
     });
 

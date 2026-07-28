@@ -1,176 +1,175 @@
+import { createHash } from "crypto";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("account-lockout");
-
-const lockoutStore = new Map<
-  string,
-  { attempts: number; lockedUntil?: number }
->();
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 const ATTEMPT_WINDOW_MS = 60 * 60 * 1000;
+const MAX_ACCOUNT_DELAY_MS = 2_000;
+type AttemptState = {
+  attempts: number;
+  lockedUntil?: number;
+  expiresAt: number;
+};
+const pairStore = new Map<string, AttemptState>();
+const accountStore = new Map<string, AttemptState>();
 
-function getLockoutKey(email: string) {
-  return `auth:lockout:${email.trim().toLowerCase()}`;
+export class LockoutStoreUnavailableError extends Error {
+  constructor() {
+    super("Login safety service is temporarily unavailable");
+    this.name = "LockoutStoreUnavailableError";
+  }
 }
 
-/**
- * Check if an account is locked out
- */
-export async function isAccountLocked(email: string): Promise<boolean> {
-  const client = getRedisClient();
-  const key = getLockoutKey(email);
+function principal(email: string) {
+  return email.trim().toLowerCase();
+}
 
+function digest(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 32);
+}
+
+function keys(email: string, clientId: string) {
+  const account = `auth:attempts:account:${digest(principal(email))}`;
+  return {
+    account,
+    pair: `${account}:client:${digest(clientId || "unknown")}`,
+  };
+}
+
+function redisFailure(error: unknown, operation: string): never | void {
+  logger.warn({ error, operation }, "Login attempt store unavailable");
+  if (process.env.NODE_ENV === "production") {
+    throw new LockoutStoreUnavailableError();
+  }
+}
+
+function liveState(store: Map<string, AttemptState>, key: string) {
+  const state = store.get(key);
+  if (state && state.expiresAt <= Date.now()) {
+    store.delete(key);
+    return undefined;
+  }
+  return state;
+}
+
+export async function getLoginDelay(email: string): Promise<number> {
+  const { account } = keys(email, "account");
+  const client = getRedisClient();
   if (client) {
     try {
-      const lockData = await client.get(key);
-      if (lockData) {
-        const { lockedUntil } = JSON.parse(lockData);
-        if (lockedUntil && Date.now() < lockedUntil) {
-          return true;
-        }
-      }
-      return false;
+      const attempts = Number((await client.get(account)) || 0);
+      return Math.min(MAX_ACCOUNT_DELAY_MS, attempts * 100);
     } catch (error) {
-      logger.warn({ error, email }, "Failed to check lockout in Redis");
+      redisFailure(error, "read account delay");
     }
   }
-
-  // Fallback to in-memory
-  const data = lockoutStore.get(key);
-  if (data?.lockedUntil && Date.now() < data.lockedUntil) {
-    return true;
-  }
-  return false;
+  return Math.min(
+    MAX_ACCOUNT_DELAY_MS,
+    (liveState(accountStore, account)?.attempts || 0) * 100,
+  );
 }
 
-/**
- * Get remaining lockout time in seconds
- */
-export async function getLockoutRemaining(email: string): Promise<number> {
-  const client = getRedisClient();
-  const key = getLockoutKey(email);
-
-  let lockedUntil: number | undefined;
-
-  if (client) {
-    try {
-      const lockData = await client.get(key);
-      if (lockData) {
-        lockedUntil = JSON.parse(lockData).lockedUntil;
-      }
-    } catch (error) {
-      logger.warn({ error, email }, "Failed to get lockout remaining");
-    }
-  } else {
-    lockedUntil = lockoutStore.get(key)?.lockedUntil;
-  }
-
-  if (lockedUntil && Date.now() < lockedUntil) {
-    return Math.ceil((lockedUntil - Date.now()) / 1000);
-  }
-  return 0;
-}
-
-/**
- * Record a failed login attempt
- */
-export async function recordFailedAttempt(
+export async function isAccountLocked(
   email: string,
-): Promise<{ locked: boolean; attempts: number }> {
+  clientId: string,
+): Promise<boolean> {
+  const { pair } = keys(email, clientId);
   const client = getRedisClient();
-  const key = getLockoutKey(email);
-
-  let attempts = 1;
-  let locked = false;
-
   if (client) {
     try {
-      const [nextAttempts, lockedUntil] = (await client.eval(
+      const raw = await client.get(pair);
+      if (!raw) return false;
+      const state = JSON.parse(raw) as AttemptState;
+      return Boolean(state.lockedUntil && state.lockedUntil > Date.now());
+    } catch (error) {
+      redisFailure(error, "read client lockout");
+    }
+  }
+  const state = liveState(pairStore, pair);
+  return Boolean(state?.lockedUntil && state.lockedUntil > Date.now());
+}
+
+export async function recordFailedAttempt(email: string, clientId: string) {
+  const { pair, account } = keys(email, clientId);
+  const client = getRedisClient();
+  if (client) {
+    try {
+      const result = (await client.eval(
         `
+          local raw = redis.call('GET', KEYS[1])
           local attempts = 0
-          local existingLockedUntil = 0
-          local raw = redis.call("GET", KEYS[1])
           if raw then
-            local ok, data = pcall(cjson.decode, raw)
-            if ok and data then
-              attempts = tonumber(data.attempts) or 0
-              existingLockedUntil = tonumber(data.lockedUntil) or 0
-            end
+            local ok, state = pcall(cjson.decode, raw)
+            if ok and state then attempts = tonumber(state.attempts) or 0 end
           end
-
-          local now = tonumber(ARGV[1])
-          if existingLockedUntil > now then
-            return {attempts, existingLockedUntil}
-          end
-
           attempts = attempts + 1
           local lockedUntil = 0
-          if attempts >= tonumber(ARGV[2]) then
-            lockedUntil = now + tonumber(ARGV[3])
-          end
-
-          local data = {attempts = attempts}
-          if lockedUntil > 0 then data.lockedUntil = lockedUntil end
-          redis.call("SETEX", KEYS[1], ARGV[4], cjson.encode(data))
-          return {attempts, lockedUntil}
+          if attempts >= tonumber(ARGV[2]) then lockedUntil = tonumber(ARGV[1]) + tonumber(ARGV[3]) end
+          redis.call('SETEX', KEYS[1], ARGV[4], cjson.encode({attempts=attempts, lockedUntil=lockedUntil}))
+          local accountAttempts = redis.call('INCR', KEYS[2])
+          if accountAttempts == 1 then redis.call('EXPIRE', KEYS[2], ARGV[4]) end
+          return {attempts, lockedUntil, accountAttempts}
         `,
-        1,
-        key,
+        2,
+        pair,
+        account,
         Date.now(),
         LOCKOUT_THRESHOLD,
         LOCKOUT_DURATION_MS,
         Math.ceil(ATTEMPT_WINDOW_MS / 1000),
-      )) as [number, number];
-
-      attempts = nextAttempts;
-      locked = lockedUntil > Date.now();
-      if (locked) {
-        logger.warn(
-          { email, attempts },
-          "Account locked due to failed attempts",
-        );
-      }
+      )) as [number, number, number];
+      return {
+        attempts: result[0],
+        locked: result[1] > Date.now(),
+        delayMs: Math.min(MAX_ACCOUNT_DELAY_MS, result[2] * 100),
+      };
     } catch (error) {
-      logger.warn({ error, email }, "Failed to record attempt in Redis");
+      redisFailure(error, "record failed attempt");
     }
-  } else {
-    // Fallback to in-memory
-    const data = lockoutStore.get(key) || { attempts: 0 };
-    attempts = data.attempts + 1;
-
-    const newData: { attempts: number; lockedUntil?: number } = { attempts };
-
-    if (attempts >= LOCKOUT_THRESHOLD) {
-      newData.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
-      locked = true;
-      logger.warn({ email, attempts }, "Account locked due to failed attempts");
-    }
-
-    lockoutStore.set(key, newData);
-
-    // Cleanup in-memory store after window
-    setTimeout(() => lockoutStore.delete(key), ATTEMPT_WINDOW_MS);
   }
 
-  return { locked, attempts };
+  const now = Date.now();
+  const previous = liveState(pairStore, pair);
+  const attempts = (previous?.attempts || 0) + 1;
+  const lockedUntil =
+    attempts >= LOCKOUT_THRESHOLD ? now + LOCKOUT_DURATION_MS : undefined;
+  pairStore.set(pair, {
+    attempts,
+    lockedUntil,
+    expiresAt: now + ATTEMPT_WINDOW_MS,
+  });
+  const accountAttempts = (liveState(accountStore, account)?.attempts || 0) + 1;
+  accountStore.set(account, {
+    attempts: accountAttempts,
+    expiresAt: now + ATTEMPT_WINDOW_MS,
+  });
+  return {
+    attempts,
+    locked: Boolean(lockedUntil),
+    delayMs: Math.min(MAX_ACCOUNT_DELAY_MS, accountAttempts * 100),
+  };
 }
 
-/**
- * Clear failed attempts (call after successful login)
- */
-export async function clearFailedAttempts(email: string): Promise<void> {
+export async function clearFailedAttempts(
+  email: string,
+  clientId: string,
+): Promise<void> {
+  const { pair, account } = keys(email, clientId);
   const client = getRedisClient();
-  const key = getLockoutKey(email);
-
   if (client) {
     try {
-      await client.del(key);
+      await client.del(pair, account);
     } catch (error) {
-      logger.warn({ error, email }, "Failed to clear lockout in Redis");
+      redisFailure(error, "clear failed attempts");
     }
   }
+  pairStore.delete(pair);
+  accountStore.delete(account);
+}
 
-  lockoutStore.delete(key);
+export function resetInMemoryLockoutForTests() {
+  pairStore.clear();
+  accountStore.clear();
 }

@@ -4,15 +4,16 @@
  * GET /api/v1/canvases/[canvasId]/share - List all shares
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/api/auth';
-import { errorResponse, ForbiddenError } from '@/lib/errors';
-import { z } from 'zod';
+import { type NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { requireAuth } from "@/lib/api/auth";
+import { errorResponse, ForbiddenError } from "@/lib/errors";
+import { z } from "zod";
+import { assertCanvasShareCapacity } from "@/lib/policy/capacity";
 
 const shareCanvasSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  role: z.enum(['VIEW', 'COMMENT', 'EDIT']).default('VIEW'),
+  email: z.string().email("Invalid email address"),
+  role: z.enum(["VIEW", "COMMENT", "EDIT"]).default("VIEW"),
 });
 
 interface RouteContext {
@@ -37,7 +38,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas || canvas.userId !== userId) {
-      throw new ForbiddenError('You do not have permission to share this canvas');
+      throw new ForbiddenError(
+        "You do not have permission to share this canvas",
+      );
     }
 
     // Don't allow sharing with self
@@ -50,25 +53,21 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (targetUser && currentUser && targetUser.id === currentUser.id) {
-      throw new ForbiddenError('Cannot share canvas with yourself');
+      throw new ForbiddenError("Cannot share canvas with yourself");
     }
 
-    // Create or update share
-    const share = await prisma.canvasShare.upsert({
-      where: {
-        canvasId_email: {
-          canvasId,
-          email: data.email.toLowerCase(),
-        },
-      },
-      create: {
-        canvasId,
-        email: data.email.toLowerCase(),
-        role: data.role,
-      },
-      update: {
-        role: data.role,
-      },
+    const normalizedEmail = data.email.toLowerCase();
+    const share = await prisma.$transaction(async (tx) => {
+      const existing = await tx.canvasShare.findUnique({
+        where: { canvasId_email: { canvasId, email: normalizedEmail } },
+        select: { id: true },
+      });
+      if (!existing) await assertCanvasShareCapacity(tx, canvasId);
+      return tx.canvasShare.upsert({
+        where: { canvasId_email: { canvasId, email: normalizedEmail } },
+        create: { canvasId, email: normalizedEmail, role: data.role },
+        update: { role: data.role },
+      });
     });
 
     return NextResponse.json(share, { status: 201 });
@@ -91,13 +90,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!canvas || canvas.userId !== userId) {
-      throw new ForbiddenError('You do not have permission to view shares for this canvas');
+      throw new ForbiddenError(
+        "You do not have permission to view shares for this canvas",
+      );
     }
 
     // Get all shares
     const shares = await prisma.canvasShare.findMany({
       where: { canvasId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
 
     return NextResponse.json({ shares });
