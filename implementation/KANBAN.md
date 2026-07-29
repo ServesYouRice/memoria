@@ -12,12 +12,8 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-008](tasks/IMP-008.md) | One geometry/capability contract | UI scope excluded by user |
-| [IMP-009](tasks/IMP-009.md) | SSR/theme/shortcut/error baseline | UI scope excluded by user |
 | [IMP-021](tasks/IMP-021.md) | Proven backup and recovery | IMP-016 and DEC-010 resolved |
-| [IMP-022](tasks/IMP-022.md) | Accessible and responsive canvas | UI scope excluded by user |
 | [IMP-027](tasks/IMP-027.md) | Share invitations and recipient notifications | IMP-002, IMP-014, and DEC-001 resolved |
-| [IMP-032](tasks/IMP-032.md) | Optional product-surface semantics | UI scope excluded by user |
 
 ## WAITING
 
@@ -55,6 +51,10 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
+| [IMP-008](tasks/IMP-008.md) | One geometry/capability contract | One capability contract (`resolveCanvasCapabilities`) and one adapter contract drive every item type; all ten types commit move/resize through a single parent-owned serialized path, ending the per-item/board double write and the silent geometry loss on drawing, shape, arrow, text, frame, embed, and poll; poll client voting removed per DEC-005; capabilities gate items, resize handles, context menu, and dialogs; duplicate `Canvas.tsx` deleted. 60 focused tests parameterized over every type and role, type-check, lint, build pass. |
+| [IMP-009](tasks/IMP-009.md) | SSR/theme/shortcut/error baseline | Theme provider renders children during SSR and the first client pass with a nonce'd pre-paint reconciliation, so public pages have body content without JavaScript; global and canvas shortcuts ignore editors, form controls, and open dialogs; false "your work has been saved" copy replaced; `global-error`, canvas-scoped retry, and loading UI for 11 protected routes added. 16 focused tests, type-check, lint, build pass. |
+| [IMP-022](tasks/IMP-022.md) | Accessible and responsive canvas | DEC-009 met: a real DOM item list for owned, shared, and public canvases exposes type, heading, summary, tags, selection, and only permitted actions, with Tab traversal, Enter to edit, arrow-key nudge, Delete, focus-driven selection, and polite announcements; connections described by what they link, not coordinates; header collapses to a prioritized overflow menu below `md`; skeleton colors theme-driven and reduced motion honored. 32 focused tests including 320/375/768/1024 layouts, type-check, lint, build pass. Playwright axe automation and the manual NVDA/VoiceOver protocol remain outstanding. |
+| [IMP-032](tasks/IMP-032.md) | Optional product-surface semantics | DEC-011 through DEC-013 applied: embeds present as inert link previews with `frame-src 'none'` asserted, the meeting timer is labeled personal and unsynchronized, the AR layer is gated behind `NEXT_PUBLIC_ENABLE_AR_CANVAS` and labeled experimental with no camera mount when off, and help copy promises only implemented behavior. 10 focused tests, type-check, lint, build pass. |
 | [IMP-017](tasks/IMP-017.md) | Convergent item synchronization | Ordered committed-event envelopes and deletion tombstones are atomically outboxed, Redis/WebSocket fanout added, bounded cursor replay can demand snapshots; 14 focused tests and 8 real-PostgreSQL tests, type-check, lint pass. Client merge UI excluded by user. |
 | [IMP-015](tasks/IMP-015.md) | Durable email/webhook delivery | Registration/resend atomically queue encrypted verification delivery, worker uses stable delivery IDs and terminal retry policy, token-gated operator replay/cancel exists, v1 webhooks gated; 25 focused tests and 7 real-PostgreSQL tests, type-check, lint pass. |
 | [IMP-013](tasks/IMP-013.md) | Durable rich-text format | Versioned bounded Tiptap JSON with allowlisted nodes/marks/links, safe legacy HTML bridge, readable projections, and idempotent migration command; 28 focused tests, type-check, lint pass. Rich-text UI conversion excluded by user. |
