@@ -1,13 +1,20 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Menu, MenuItem, ListItemIcon, ListItemText, Divider } from '@mui/material';
+import React from "react";
+import {
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+} from "@mui/material";
 import {
   Delete as DeleteIcon,
   ContentCopy as CopyIcon,
   FileCopy as DuplicateIcon,
   Comment as CommentIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
+import type { CanvasCapabilities } from "@/types/canvas";
 
 export interface ContextMenuPosition {
   x: number;
@@ -16,6 +23,8 @@ export interface ContextMenuPosition {
 
 export interface CanvasContextMenuProps {
   position: ContextMenuPosition | null;
+  /** IMP-008: only offer the actions this role may actually perform. */
+  capabilities: CanvasCapabilities;
   onClose: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -25,6 +34,7 @@ export interface CanvasContextMenuProps {
 
 export function CanvasContextMenu({
   position,
+  capabilities,
   onClose,
   onDelete,
   onDuplicate,
@@ -53,25 +63,31 @@ export function CanvasContextMenu({
         </ListItemIcon>
         <ListItemText>Copy</ListItemText>
       </MenuItem>
-      <MenuItem onClick={() => handleAction(onDuplicate)}>
-        <ListItemIcon>
-          <DuplicateIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Duplicate</ListItemText>
-      </MenuItem>
-      <MenuItem onClick={() => handleAction(onComments)}>
-        <ListItemIcon>
-          <CommentIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Comments</ListItemText>
-      </MenuItem>
-      <Divider />
-      <MenuItem onClick={() => handleAction(onDelete)}>
-        <ListItemIcon>
-          <DeleteIcon fontSize="small" color="error" />
-        </ListItemIcon>
-        <ListItemText sx={{ color: 'error.main' }}>Delete</ListItemText>
-      </MenuItem>
+      {capabilities.canCreateItems && (
+        <MenuItem onClick={() => handleAction(onDuplicate)}>
+          <ListItemIcon>
+            <DuplicateIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Duplicate</ListItemText>
+        </MenuItem>
+      )}
+      {capabilities.canComment && (
+        <MenuItem onClick={() => handleAction(onComments)}>
+          <ListItemIcon>
+            <CommentIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Comments</ListItemText>
+        </MenuItem>
+      )}
+      {capabilities.canDeleteItems && [
+        <Divider key="delete-divider" />,
+        <MenuItem key="delete" onClick={() => handleAction(onDelete)}>
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText sx={{ color: "error.main" }}>Delete</ListItemText>
+        </MenuItem>,
+      ]}
     </Menu>
   );
 }

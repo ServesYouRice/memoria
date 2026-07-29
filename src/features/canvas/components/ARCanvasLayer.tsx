@@ -21,6 +21,7 @@ import {
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
 } from "@mui/icons-material";
+import { AR_EXPERIMENTAL_DISCLOSURE } from "@/lib/product-surfaces";
 
 interface ARCanvasLayerProps {
   open: boolean;
@@ -35,9 +36,12 @@ interface ARCanvasLayerProps {
 }
 
 /**
- * AR Canvas Layer - Experimental Feature
- * Overlays canvas notes on camera feed for "augmented reality" style viewing.
- * Uses WebRTC getUserMedia API for camera access.
+ * AR Canvas Layer — experimental (DEC-013).
+ *
+ * Overlays canvas items on a camera feed. Device and browser support has not
+ * been validated against a real-device matrix, so the surface is off unless a
+ * deployment opts in and it is labelled experimental wherever it appears. The
+ * camera stream never leaves the browser and is released on close.
  */
 export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -50,6 +54,12 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
   const startCamera = useCallback(async () => {
     try {
       setError(null);
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError(
+          "This browser does not expose a camera to web pages, so the experimental AR view cannot start.",
+        );
+        return;
+      }
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment", // Prefer back camera on mobile
@@ -168,6 +178,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexWrap: "wrap",
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -185,6 +196,12 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
               }}
             />
           </Box>
+          <Typography
+            variant="caption"
+            sx={{ color: "rgba(255,255,255,0.85)", flexBasis: "100%", mt: 0.5 }}
+          >
+            {AR_EXPERIMENTAL_DISCLOSURE}
+          </Typography>
           <Box sx={{ display: "flex", gap: 1 }}>
             <IconButton
               aria-label="Toggle fullscreen"

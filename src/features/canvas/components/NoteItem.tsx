@@ -10,20 +10,10 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Text, Circle } from "react-konva";
 import type Konva from "konva";
-import { type CanvasItem, isNoteContent } from "@/types/canvas";
-import { useAutosave } from "@/lib/hooks/use-autosave";
+import { isNoteContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
 
-interface NoteItemProps {
-  item: CanvasItem;
-  isSelected?: boolean;
-  onSelect?: () => void;
-  onDoubleClick?: () => void;
-  onContextMenu?: (e: any) => void;
-  onDragEnd?: (e: any) => void;
-  onChange?: (data: any) => void;
-  readOnly?: boolean;
-}
+type NoteItemProps = CanvasItemAdapterProps;
 
 const RESIZE_HANDLE_SIZE = 8;
 const MIN_WIDTH = 150;
@@ -32,10 +22,11 @@ const MIN_HEIGHT = 100;
 export function NoteItem({
   item,
   isSelected = false,
+  capabilities,
   onSelect,
-  onDoubleClick,
+  onActivate,
   onContextMenu,
-  readOnly = false,
+  onCommitGeometry,
 }: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -45,12 +36,6 @@ export function NoteItem({
   const [localSize, setLocalSize] = useState({
     width: item.width,
     height: item.height,
-  });
-
-  const { saveChanges, isSaving } = useAutosave({
-    itemId: item.id,
-    version: item.version,
-    debounceMs: 500,
   });
 
   const content = isNoteContent(item.content)
@@ -73,10 +58,7 @@ export function NoteItem({
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
-    saveChanges({
-      positionX: node.x(),
-      positionY: node.y(),
-    });
+    onCommitGeometry({ positionX: node.x(), positionY: node.y() });
   };
 
   const handleResize = (
@@ -134,7 +116,7 @@ export function NoteItem({
   };
 
   const handleResizeEnd = () => {
-    saveChanges({
+    onCommitGeometry({
       positionX: localPosition.x,
       positionY: localPosition.y,
       width: localSize.width,
@@ -147,13 +129,13 @@ export function NoteItem({
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable={!readOnly}
+      draggable={capabilities.canMoveItems}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
       onTap={onSelect}
-      onDblClick={onDoubleClick}
-      onDblTap={onDoubleClick}
+      onDblClick={onActivate}
+      onDblTap={onActivate}
       onContextMenu={onContextMenu}
     >
       <Rect
@@ -181,17 +163,7 @@ export function NoteItem({
         wrap="word"
       />
 
-      {isSaving && (
-        <Text
-          x={localSize.width - 80}
-          y={localSize.height - 25}
-          text="Saving..."
-          fontSize={10}
-          fill="#999"
-        />
-      )}
-
-      {isSelected && !readOnly && (
+      {isSelected && capabilities.canResizeItems && (
         <>
           {/* Resize handles */}
           <Circle

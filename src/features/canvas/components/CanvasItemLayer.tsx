@@ -1,6 +1,10 @@
 import React from "react";
 import { Layer } from "react-konva";
-import type { CanvasItem } from "@/types/canvas";
+import type {
+  CanvasCapabilities,
+  CanvasItem,
+  ItemGeometryCommit,
+} from "@/types/canvas";
 import {
   ItemType,
   isNoteContent,
@@ -31,154 +35,74 @@ interface CanvasItemLayerProps {
   selectedItemIds: Set<string>;
   isSelecting: boolean;
   selectionBox: SelectionBoxState | null;
+  /** One capability contract, applied identically to every item type. */
+  capabilities: CanvasCapabilities;
   onSelectItem: (id: string) => void;
   onContextMenu: (event: any, itemId: string) => void;
-  onNoteDoubleClick: (item: CanvasItem) => void;
-  onBookmarkDoubleClick: (item: CanvasItem) => void;
-  onImageDoubleClick: (item: CanvasItem) => void;
-  onDragEnd: (event: any, item: CanvasItem) => void;
-  onItemChange: (id: string, data: any) => void;
-  readOnly?: boolean;
+  /** Double-click / Enter activation; the parent decides what may be edited. */
+  onActivateItem: (item: CanvasItem) => void;
+  /** The single durable geometry write path (IMP-008). */
+  onCommitGeometry: (item: CanvasItem, geometry: ItemGeometryCommit) => void;
 }
 
+/**
+ * Renders every item type through the same adapter contract: capabilities in,
+ * one geometry commit out. No item component owns its own durable write.
+ */
 export function CanvasItemLayer({
   items,
   selectedItemIds,
   isSelecting,
   selectionBox,
+  capabilities,
   onSelectItem,
   onContextMenu,
-  onNoteDoubleClick,
-  onBookmarkDoubleClick,
-  onImageDoubleClick,
-  onDragEnd,
-  onItemChange,
-  readOnly = false,
+  onActivateItem,
+  onCommitGeometry,
 }: CanvasItemLayerProps) {
   return (
     <Layer>
       {items.map((item) => {
-        const isSelected = selectedItemIds.has(item.id);
+        const adapterProps = {
+          item,
+          isSelected: selectedItemIds.has(item.id),
+          capabilities,
+          onSelect: () => onSelectItem(item.id),
+          onContextMenu: (event: any) => onContextMenu(event, item.id),
+          onActivate: () => onActivateItem(item),
+          onCommitGeometry: (geometry: ItemGeometryCommit) =>
+            onCommitGeometry(item, geometry),
+        };
+
         if (item.type === ItemType.NOTE && isNoteContent(item.content)) {
-          return (
-            <NoteItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-              onDoubleClick={() => onNoteDoubleClick(item)}
-              onDragEnd={(event: any) => onDragEnd(event, item)}
-              readOnly={readOnly}
-            />
-          );
+          return <NoteItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.BOOKMARK) {
-          return (
-            <BookmarkItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-              onDoubleClick={() => onBookmarkDoubleClick(item)}
-              onDragEnd={(event: any) => onDragEnd(event, item)}
-              readOnly={readOnly}
-            />
-          );
+          return <BookmarkItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.IMAGE) {
-          return (
-            <ImageItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-              onDoubleClick={() => onImageDoubleClick(item)}
-              onDragEnd={(event: any) => onDragEnd(event, item)}
-              readOnly={readOnly}
-            />
-          );
+          return <ImageItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.DRAWING && isDrawingContent(item.content)) {
-          return (
-            <DrawingItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-            />
-          );
+          return <DrawingItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.SHAPE && isShapeContent(item.content)) {
-          return (
-            <ShapeItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-            />
-          );
+          return <ShapeItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.ARROW && isArrowContent(item.content)) {
-          return (
-            <ArrowItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-            />
-          );
+          return <ArrowItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.TEXT && isTextContent(item.content)) {
-          return (
-            <TextItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-              onChange={(data: any) => onItemChange(item.id, data)}
-              onDoubleClick={() => onNoteDoubleClick(item)}
-            />
-          );
+          return <TextItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.FRAME && isFrameContent(item.content)) {
-          return (
-            <FrameItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-            />
-          );
+          return <FrameItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.EMBED && isEmbedContent(item.content)) {
-          return (
-            <EmbedItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-            />
-          );
+          return <EmbedItem key={item.id} {...adapterProps} />;
         }
         if (item.type === ItemType.POLL && isPollContent(item.content)) {
-          return (
-            <PollItem
-              key={item.id}
-              item={item}
-              isSelected={isSelected}
-              onSelect={() => onSelectItem(item.id)}
-              onContextMenu={(event: any) => onContextMenu(event, item.id)}
-            />
-          );
+          return <PollItem key={item.id} {...adapterProps} />;
         }
         return null;
       })}
