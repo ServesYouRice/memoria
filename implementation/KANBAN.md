@@ -6,7 +6,6 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-018](tasks/IMP-018.md) | Enforced launch limits and retention | Backend implementation in progress; quota UI excluded by user |
 
 ## READY
 
@@ -14,21 +13,13 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 | ---- | ------- | ------- |
 | [IMP-008](tasks/IMP-008.md) | One geometry/capability contract | UI scope excluded by user |
 | [IMP-009](tasks/IMP-009.md) | SSR/theme/shortcut/error baseline | UI scope excluded by user |
-| [IMP-021](tasks/IMP-021.md) | Proven backup and recovery | IMP-016 and DEC-010 resolved |
 | [IMP-022](tasks/IMP-022.md) | Accessible and responsive canvas | UI scope excluded by user |
-| [IMP-027](tasks/IMP-027.md) | Share invitations and recipient notifications | IMP-002, IMP-014, and DEC-001 resolved |
 | [IMP-032](tasks/IMP-032.md) | Optional product-surface semantics | UI scope excluded by user |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-023](tasks/IMP-023.md) | Contract cleanup and decomposition | IMP-007, IMP-008, IMP-017 |
-| [IMP-024](tasks/IMP-024.md) | Viewport-first canvas loading | IMP-017, IMP-018 |
-| [IMP-025](tasks/IMP-025.md) | Durable maintenance and thumbnails | IMP-014, IMP-016, IMP-018 |
-| [IMP-026](tasks/IMP-026.md) | Bounded version history and restore | IMP-017, IMP-018 |
-| [IMP-030](tasks/IMP-030.md) | Atomic canvas commands and viewport state | IMP-007, IMP-008 |
-| [IMP-031](tasks/IMP-031.md) | Runtime collaboration efficiency | IMP-004, IMP-006, IMP-017 |
 
 ## USER DECISIONS
 
@@ -55,6 +46,15 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
+| [IMP-023](tasks/IMP-023.md) | Contract cleanup and decomposition | Request IDs now span proxy/server/problem/log boundaries, API responses are bounded and validated, the legacy serverless branch is removed, Redis configuration is shared, and external webhook delivery is isolated; 292 unit tests, 14 real-PostgreSQL tests, type-check, lint, build, and strict smoke pass. |
+| [IMP-031](tasks/IMP-031.md) | Runtime collaboration efficiency | Backend: declared 15-second session-version cache/invalidation, batched heartbeat authorization, 20 Hz cursor fanout with noise dropping, and shared Redis rate-limit client implemented; cache and rate-limit tests pass in the 292-test final suite. |
+| [IMP-030](tasks/IMP-030.md) | Atomic canvas commands and viewport state | Backend: idempotent mixed update/delete/create transaction with one authorization/lock, OCC rollback, deterministic z-index, and explicit published-default viewport contract implemented; atomic rollback and replay pass against PostgreSQL. |
+| [IMP-026](tasks/IMP-026.md) | Bounded version history and restore | Backend: bounded version bytes/items, shared mutation lock, set-based restore under timeouts, identity collision checks, retained post-restore revision, and durable reload-required fanout implemented; a 2,000-item PostgreSQL restore passes under the 15-second budget. |
+| [IMP-025](tasks/IMP-025.md) | Durable maintenance and thumbnails | Backend: outbox-backed bookmark refresh and cleanup, unchanged-content version stability, revision-checked thumbnail candidates/private objects, stale suppression, replacement deletion, explicit list projections, and queue metrics implemented; focused worker tests pass in the final suite. |
+| [IMP-024](tasks/IMP-024.md) | Viewport-first canvas loading | Backend: database spatial queries, bounded authenticated/public pagination, 512 KiB response budgets, and authorized canvas summary endpoint implemented; bounded public reads pass against PostgreSQL. |
+| [IMP-027](tasks/IMP-027.md) | Share invitations and recipient notifications | Backend: expiring single-use invitation tokens, encrypted delivery secrets, stable recipient identity, atomic pending-share caps, accept/decline/revoke state, notification preferences, durable email delivery, and recipient read-state API implemented; lifecycle and replay tests pass against PostgreSQL. |
+| [IMP-021](tasks/IMP-021.md) | Proven backup and recovery | Signed versioned manifests, fail-closed database/object checksums, isolated object inventory restore, freshness checks, separate recovery storage, and runbook implemented; script tests pass and an isolated PostgreSQL 17/MinIO drill restored matching row counts and object SHA-256 in about 8 seconds. |
+| [IMP-018](tasks/IMP-018.md) | Enforced launch limits and retention | Central launch limits, transaction-scoped quota locking, bounded trash/version retention jobs, safe usage endpoint, oversized input validation, and operator violation reporting implemented; final unit, PostgreSQL integration, build, and strict smoke gates pass. |
 | [IMP-017](tasks/IMP-017.md) | Convergent item synchronization | Ordered committed-event envelopes and deletion tombstones are atomically outboxed, Redis/WebSocket fanout added, bounded cursor replay can demand snapshots; 14 focused tests and 8 real-PostgreSQL tests, type-check, lint pass. Client merge UI excluded by user. |
 | [IMP-015](tasks/IMP-015.md) | Durable email/webhook delivery | Registration/resend atomically queue encrypted verification delivery, worker uses stable delivery IDs and terminal retry policy, token-gated operator replay/cancel exists, v1 webhooks gated; 25 focused tests and 7 real-PostgreSQL tests, type-check, lint pass. |
 | [IMP-013](tasks/IMP-013.md) | Durable rich-text format | Versioned bounded Tiptap JSON with allowlisted nodes/marks/links, safe legacy HTML bridge, readable projections, and idempotent migration command; 28 focused tests, type-check, lint pass. Rich-text UI conversion excluded by user. |

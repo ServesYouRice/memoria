@@ -21,6 +21,49 @@
 import { AsyncLocalStorage } from "async_hooks";
 import { auth } from "@/lib/auth";
 import type { Session } from "next-auth";
+import { prisma } from "@/lib/db";
+import { getRedisClient } from "@/lib/cache/redis-client";
+
+export const SESSION_VERSION_CACHE_SECONDS = 15;
+
+export async function getCachedSessionVersion(
+  userId: string,
+): Promise<number | null> {
+  const redis = getRedisClient();
+  const key = `session-version:${userId}`;
+  if (redis) {
+    try {
+      const cached = await redis.get(key);
+      if (cached !== null) {
+        const version = Number(cached);
+        if (Number.isSafeInteger(version) && version >= 0) return version;
+      }
+    } catch {
+      // Database remains the authority during a Redis reconnect.
+    }
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { sessionVersion: true },
+  });
+  if (!user) return null;
+  if (redis)
+    await redis
+      .set(
+        key,
+        String(user.sessionVersion),
+        "EX",
+        SESSION_VERSION_CACHE_SECONDS,
+      )
+      .catch(() => undefined);
+  return user.sessionVersion;
+}
+
+export async function invalidateSessionVersion(userId: string): Promise<void> {
+  const redis = getRedisClient();
+  if (redis)
+    await redis.del(`session-version:${userId}`).catch(() => undefined);
+}
 
 // AsyncLocalStorage for request-scoped session caching
 const sessionStorage = new AsyncLocalStorage<Map<string, Session | null>>();

@@ -1,0 +1,1 @@
+ALTER TABLE "Canvas" ADD COLUMN "restoreRevision" INTEGER NOT NULL DEFAULT 0;

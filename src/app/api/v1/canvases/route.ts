@@ -7,6 +7,8 @@ import { parsePagination } from "@/lib/api/pagination";
 import { ValidationError } from "@/lib/errors";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { assertCanvasCapacity } from "@/lib/policy/capacity";
+import { validatedJson } from "@/lib/api/response";
+import { canvasListResponseSchema } from "@/lib/api/response-schemas";
 
 /**
  * GET /api/v1/canvases
@@ -46,10 +48,27 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     },
     take: limit,
     skip: offset,
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+      workspaceId: true,
+      zoomLevel: true,
+      panX: true,
+      panY: true,
+      thumbnailKey: true,
+      thumbnailRevision: true,
+      isPublic: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
-  return NextResponse.json({
-    canvases,
+  return validatedJson(canvasListResponseSchema, {
+    canvases: canvases.map((canvas) => ({
+      ...canvas,
+      thumbnailRevision: canvas.thumbnailRevision.toString(),
+    })),
     pagination: {
       total,
       limit,

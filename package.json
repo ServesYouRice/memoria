@@ -37,6 +37,7 @@
     "db:migrate-notes": "tsx scripts/migrate-note-content.ts",
     "report:limit-violations": "tsx scripts/report-limit-violations.ts",
     "maintenance:enqueue-retention": "tsx scripts/enqueue-retention.ts",
+    "backup:check": "bash scripts/check-backup-freshness.sh",
     "audit": "pnpm audit --audit-level=moderate",
     "check-bundle": "node scripts/check-bundle-size.mjs",
     "check-schema-drift": "node scripts/check-schema-drift.mjs",

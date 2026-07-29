@@ -12,6 +12,7 @@ import { z } from "zod";
 import { hashPassword } from "@/lib/auth/password";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import { createHash } from "crypto";
+import { invalidateSessionVersion } from "@/lib/api/session-cache";
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
       });
       await tx.session.deleteMany({ where: { userId: user.id } });
     });
+    await invalidateSessionVersion(user.id);
 
     return NextResponse.json({
       message:

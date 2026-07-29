@@ -2,8 +2,12 @@ import { z } from "zod";
 import type { PrismaClient } from "@prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { decryptSecret } from "@/lib/agents/crypto";
-import { sendEmailVerification } from "@/lib/email";
+import { sendEmail, sendEmailVerification } from "@/lib/email";
 import { env } from "@/lib/env";
+import {
+  shareDecisionTemplate,
+  shareInvitationTemplate,
+} from "@/lib/email/templates";
 
 const payloadSchema = z.object({ verificationId: z.string().cuid() }).strict();
 
@@ -44,5 +48,85 @@ export function createVerificationEmailHandler(
       },
       job.id,
     );
+  };
+}
+
+const invitationPayloadSchema = z
+  .object({ invitationId: z.string().cuid() })
+  .strict();
+
+export function createShareInvitationEmailHandler(
+  prisma: PrismaClient,
+): OutboxHandler {
+  return async (job) => {
+    const { invitationId } = invitationPayloadSchema.parse(job.payload);
+    const invitation = await prisma.canvasShareInvitation.findUnique({
+      where: { id: invitationId },
+      include: {
+        canvas: { select: { name: true } },
+        invitedBy: { select: { name: true, email: true } },
+      },
+    });
+    if (
+      !invitation ||
+      invitation.respondedAt ||
+      invitation.expiresAt <= new Date()
+    )
+      return;
+    const rawToken = decryptSecret(invitation.deliverySecret);
+    const template = shareInvitationTemplate({
+      inviterName: invitation.invitedBy.name || invitation.invitedBy.email,
+      canvasName: invitation.canvas.name,
+      invitationUrl: `${env.AUTH_URL}/share-invitations/${rawToken}`,
+      expiresIn: "7 days",
+    });
+    await sendEmail({
+      to: { email: invitation.email },
+      ...template,
+      deliveryId: job.id,
+    });
+  };
+}
+
+export function createShareDecisionEmailHandler(
+  prisma: PrismaClient,
+): OutboxHandler {
+  return async (job) => {
+    const { invitationId } = invitationPayloadSchema.parse(job.payload);
+    const invitation = await prisma.canvasShareInvitation.findUnique({
+      where: { id: invitationId },
+      include: {
+        canvas: { select: { name: true } },
+        invitedBy: { select: { name: true, email: true } },
+      },
+    });
+    if (!invitation?.response || invitation.response === "REVOKED") return;
+    const preferenceType =
+      invitation.response === "ACCEPTED"
+        ? "SHARE_INVITATION_ACCEPTED"
+        : "SHARE_INVITATION_DECLINED";
+    const preference = await prisma.notificationPreference.findUnique({
+      where: {
+        userId_type: {
+          userId: invitation.invitedById,
+          type: preferenceType,
+        },
+      },
+      select: { emailEnabled: true },
+    });
+    if (preference?.emailEnabled === false) return;
+    const template = shareDecisionTemplate({
+      recipientEmail: invitation.email,
+      canvasName: invitation.canvas.name,
+      decision: invitation.response === "ACCEPTED" ? "accepted" : "declined",
+    });
+    await sendEmail({
+      to: {
+        email: invitation.invitedBy.email,
+        name: invitation.invitedBy.name || undefined,
+      },
+      ...template,
+      deliveryId: job.id,
+    });
   };
 }

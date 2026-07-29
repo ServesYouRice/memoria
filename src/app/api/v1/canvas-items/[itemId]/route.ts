@@ -26,6 +26,7 @@ import {
 import { ActivityType, logActivity } from "@/lib/activity";
 import { requirePollsEnabled } from "@/lib/polls/availability";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 
 interface RouteContext {
   params: Promise<{ itemId: string }>;
@@ -79,7 +80,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     // Verify user has EDIT permission
     await requireItemAccess(itemId, userId, email, "EDIT");
 
+    const itemScope = await prisma.canvasItem.findUnique({
+      where: { id: itemId },
+      select: { canvasId: true },
+    });
+    if (!itemScope) throw new NotFoundError("Item not found");
     const updatedItem = await prisma.$transaction(async (tx) => {
+      await lockCanvasForMutation(tx, itemScope.canvasId);
       const currentItem = await tx.canvasItem.findUnique({
         where: { id: itemId },
         select: { version: true, deletedAt: true, type: true, canvasId: true },
@@ -160,7 +167,13 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     // Verify user has EDIT permission
     await requireItemAccess(itemId, userId, email, "EDIT");
 
+    const itemScope = await prisma.canvasItem.findUnique({
+      where: { id: itemId },
+      select: { canvasId: true },
+    });
+    if (!itemScope) throw new NotFoundError("Item not found");
     const deletedItem = await prisma.$transaction(async (tx) => {
+      await lockCanvasForMutation(tx, itemScope.canvasId);
       const currentItem = await tx.canvasItem.findUnique({
         where: { id: itemId },
         select: { version: true, deletedAt: true, canvasId: true },

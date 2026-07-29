@@ -29,6 +29,8 @@ import { ActivityType, logActivity } from "@/lib/activity";
 import { requirePollsEnabled } from "@/lib/polls/availability";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
+import { boundedItemsResponse } from "@/lib/api/bounded-response";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 
 /**
  * POST /api/v1/canvas-items
@@ -51,6 +53,7 @@ export async function POST(request: NextRequest) {
 
       // Create item
       const item = await prisma.$transaction(async (tx) => {
+        await lockCanvasForMutation(tx, data.canvasId);
         await assertCanvasItemCapacity(tx, data.canvasId);
         const created = await tx.canvasItem.create({
           data: {
@@ -119,6 +122,7 @@ export async function PATCH(request: NextRequest) {
     await requireCanvasAccess(data.canvasId, userId, email, "EDIT");
 
     await prisma.$transaction(async (tx) => {
+      await lockCanvasForMutation(tx, data.canvasId);
       for (const item of data.items) {
         const updated = await tx.canvasItem.updateMany({
           where: {
@@ -299,7 +303,12 @@ export async function GET(request: NextRequest) {
       `;
 
       // Return with pagination metadata
-      return NextResponse.json({ items, total, offset, limit });
+      return boundedItemsResponse(items, {
+        total,
+        offset,
+        limit,
+        hasMore: offset + items.length < total,
+      });
     }
 
     const { limit, offset } = query;
@@ -312,8 +321,7 @@ export async function GET(request: NextRequest) {
       skip: offset,
     });
 
-    return NextResponse.json({
-      items,
+    return boundedItemsResponse(items, {
       total,
       offset,
       limit,

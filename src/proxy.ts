@@ -25,9 +25,13 @@ export function isUploadWriteRequest(
 
 export async function proxy(request: NextRequest) {
   // Generate or extract request ID for tracing (Issue #24)
-  const requestId = request.headers.get("x-request-id") || nanoid(16);
+  const suppliedRequestId = request.headers.get("x-request-id");
+  const requestId =
+    suppliedRequestId && /^[A-Za-z0-9_-]{8,64}$/.test(suppliedRequestId)
+      ? suppliedRequestId
+      : nanoid(16);
 
-  const logger = createRequestLogger();
+  const logger = createRequestLogger(requestId);
 
   // Handle CORS preflight requests (Issue #15)
   if (request.method === "OPTIONS") {
@@ -144,6 +148,7 @@ export async function proxy(request: NextRequest) {
   const nonce = generateNonce();
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("x-request-id", requestId);
 
   // Continue with request
   const response = NextResponse.next({

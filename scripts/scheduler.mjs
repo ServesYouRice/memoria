@@ -21,19 +21,21 @@ const wait = (milliseconds) =>
   new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 
 while (!stopping) {
-  try {
-    const response = await fetch(`${baseUrl}/api/cron/refresh-bookmarks`, {
-      headers: { authorization: `Bearer ${cronSecret}` },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) {
-      console.error(`Bookmark refresh failed with HTTP ${response.status}`);
+  for (const path of ['/api/cron/refresh-bookmarks', '/api/cron/maintenance']) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { authorization: `Bearer ${cronSecret}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        console.error(`${path} failed with HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error(
+        `${path} failed:`,
+        error instanceof Error ? error.message : 'unknown error',
+      );
     }
-  } catch (error) {
-    console.error(
-      'Bookmark refresh failed:',
-      error instanceof Error ? error.message : 'unknown error',
-    );
   }
   await wait(intervalMs);
 }

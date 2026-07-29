@@ -1,121 +1,122 @@
-/**
- * Canvas Thumbnail API
- * Update canvas thumbnail preview image
- */
-
 import { type NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api/auth";
 import { prisma } from "@/lib/db";
+import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import {
   NotFoundError,
   ForbiddenError,
   ValidationError,
   errorResponse,
 } from "@/lib/errors";
-import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { readPrivateUploadObject } from "@/lib/uploads/private-storage";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
 }
-
 const MAX_THUMBNAIL_BYTES = 200 * 1024;
-const THUMBNAIL_DATA_URL =
-  /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
+const DATA_URL = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
 
-/**
- * Update canvas thumbnail
- * POST /api/v1/canvases/:canvasId/thumbnail
- */
-export async function POST(request: NextRequest, { params }: RouteContext) {
+export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const { canvasId } = await params;
-
-    // Verify canvas exists and user has access
+    await requireCanvasAccess(canvasId, userId, email, "VIEW");
     const canvas = await prisma.canvas.findUnique({
       where: { id: canvasId },
-      select: { userId: true },
+      select: { thumbnailKey: true },
     });
-
-    if (!canvas) {
-      throw new NotFoundError("Canvas not found");
-    }
-
-    if (canvas.userId !== userId) {
-      throw new ForbiddenError(
-        "You can only update thumbnails for your own canvases",
-      );
-    }
-
-    const body = await request.json();
-    const { thumbnail } = body;
-
-    if (!thumbnail || typeof thumbnail !== "string") {
-      throw new ValidationError("Thumbnail data is required");
-    }
-
-    const match = THUMBNAIL_DATA_URL.exec(thumbnail);
-    if (!match?.[2]) {
-      throw new ValidationError(
-        "Thumbnail must be a PNG, JPEG, or WebP base64 data URL",
-      );
-    }
-    const thumbnailBytes = Buffer.from(match[2], "base64");
-    if (
-      thumbnailBytes.length === 0 ||
-      thumbnailBytes.length > MAX_THUMBNAIL_BYTES
-    ) {
-      throw new ValidationError("Thumbnail must not exceed 200 KB");
-    }
-
-    // Update canvas with thumbnail
-    const updatedCanvas = await prisma.canvas.update({
-      where: { id: canvasId },
-      data: { thumbnail },
+    if (!canvas?.thumbnailKey) throw new NotFoundError("Thumbnail not found");
+    const object = await readPrivateUploadObject(
+      process.env.UPLOAD_STORAGE || "local",
+      canvas.thumbnailKey,
+    );
+    return new NextResponse(object.body, {
+      headers: {
+        "Content-Type": object.contentType || "application/octet-stream",
+        "Cache-Control": "private, max-age=86400",
+        ETag: object.etag,
+        ...(object.contentLength
+          ? { "Content-Length": String(object.contentLength) }
+          : {}),
+      },
     });
-
-    await invalidateCanvasCache(canvasId);
-
-    return NextResponse.json(updatedCanvas, { status: 200 });
   } catch (error) {
     return errorResponse(error, request.url);
   }
 }
 
-/**
- * Delete canvas thumbnail
- * DELETE /api/v1/canvases/:canvasId/thumbnail
- */
-export async function DELETE(request: NextRequest, { params }: RouteContext) {
+export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId } = await requireAuth();
     const { canvasId } = await params;
-
-    // Verify canvas exists and user has access
     const canvas = await prisma.canvas.findUnique({
       where: { id: canvasId },
       select: { userId: true },
     });
-
-    if (!canvas) {
-      throw new NotFoundError("Canvas not found");
+    if (!canvas) throw new NotFoundError("Canvas not found");
+    if (canvas.userId !== userId)
+      throw new ForbiddenError("Only the owner can update thumbnails");
+    const body = await request.json();
+    const match =
+      typeof body.thumbnail === "string" ? DATA_URL.exec(body.thumbnail) : null;
+    if (!match?.[1] || !match[2])
+      throw new ValidationError("Invalid thumbnail data");
+    const bytes = Buffer.from(match[2], "base64");
+    if (bytes.length === 0 || bytes.length > MAX_THUMBNAIL_BYTES) {
+      throw new ValidationError("Thumbnail must not exceed 200 KB");
     }
-
-    if (canvas.userId !== userId) {
-      throw new ForbiddenError(
-        "You can only delete thumbnails for your own canvases",
-      );
-    }
-
-    // Remove thumbnail
-    const updatedCanvas = await prisma.canvas.update({
-      where: { id: canvasId },
-      data: { thumbnail: null },
+    const result = await prisma.$transaction(async (tx) => {
+      const revisionRows = await tx.$queryRaw<Array<{ revision: bigint }>>`
+        SELECT COALESCE(MAX("sequence"), 0) AS revision FROM "CanvasEvent" WHERE "canvasId" = ${canvasId}
+      `;
+      const revision = revisionRows[0]?.revision ?? 0n;
+      const candidate = await tx.canvasThumbnailCandidate.upsert({
+        where: { canvasId_revision: { canvasId, revision } },
+        create: { canvasId, revision, mimeType: `image/${match[1]}`, bytes },
+        update: { mimeType: `image/${match[1]}`, bytes, createdAt: new Date() },
+      });
+      await enqueueOutboxJob(tx, {
+        type: "thumbnail.store",
+        payload: { candidateId: candidate.id },
+        dedupeKey: `thumbnail.store:${canvasId}:${revision}`,
+      });
+      return revision;
     });
+    return NextResponse.json(
+      { queued: true, revision: result.toString() },
+      { status: 202 },
+    );
+  } catch (error) {
+    return errorResponse(error, request.url);
+  }
+}
 
-    await invalidateCanvasCache(canvasId);
-
-    return NextResponse.json(updatedCanvas, { status: 200 });
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  try {
+    const { userId } = await requireAuth();
+    const { canvasId } = await params;
+    await prisma.$transaction(async (tx) => {
+      const canvas = await tx.canvas.findUnique({
+        where: { id: canvasId },
+        select: { userId: true, thumbnailKey: true },
+      });
+      if (!canvas) throw new NotFoundError("Canvas not found");
+      if (canvas.userId !== userId)
+        throw new ForbiddenError("Only the owner can delete thumbnails");
+      await tx.canvas.update({
+        where: { id: canvasId },
+        data: { thumbnailKey: null, thumbnailRevision: 0 },
+      });
+      await tx.canvasThumbnailCandidate.deleteMany({ where: { canvasId } });
+      if (canvas.thumbnailKey) {
+        await enqueueOutboxJob(tx, {
+          type: "thumbnail.delete",
+          payload: { storageKey: canvas.thumbnailKey },
+          dedupeKey: `thumbnail.delete:${canvas.thumbnailKey}`,
+        });
+      }
+    });
+    return NextResponse.json({ success: true });
   } catch (error) {
     return errorResponse(error, request.url);
   }

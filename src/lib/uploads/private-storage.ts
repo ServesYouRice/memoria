@@ -1,11 +1,12 @@
 import { createReadStream } from "fs";
-import { unlink, stat } from "fs/promises";
-import { join, resolve, sep } from "path";
+import { mkdir, unlink, stat, writeFile } from "fs/promises";
+import { dirname, join, resolve, sep } from "path";
 import { Readable } from "stream";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 
@@ -39,9 +40,35 @@ function getLocalPath(storageKey: string) {
   return target;
 }
 
+export async function writePrivateUploadObject(
+  storageMode: string,
+  storageKey: string,
+  body: Uint8Array,
+  contentType: string,
+) {
+  if (storageMode === "s3") {
+    const bucket = process.env.S3_BUCKET;
+    if (!bucket) throw new Error("Private upload bucket is not configured");
+    await getS3Client().send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: storageKey,
+        Body: body,
+        ContentType: contentType,
+        CacheControl: "private, max-age=86400, immutable",
+      }),
+    );
+    return;
+  }
+  const localPath = getLocalPath(storageKey);
+  await mkdir(dirname(localPath), { recursive: true });
+  await writeFile(localPath, body);
+}
+
 export interface PrivateUploadRead {
   body: ReadableStream<Uint8Array>;
   contentLength?: number;
+  contentType?: string;
   etag: string;
 }
 
@@ -59,6 +86,7 @@ export async function readPrivateUploadObject(
     return {
       body: object.Body.transformToWebStream(),
       contentLength: object.ContentLength,
+      contentType: object.ContentType,
       etag: object.ETag || `W/\"${encodeURIComponent(storageKey)}\"`,
     };
   }
@@ -70,6 +98,13 @@ export async function readPrivateUploadObject(
       createReadStream(localPath),
     ) as ReadableStream<Uint8Array>,
     contentLength: metadata.size,
+    contentType: storageKey.endsWith(".png")
+      ? "image/png"
+      : storageKey.endsWith(".webp")
+        ? "image/webp"
+        : storageKey.endsWith(".jpg") || storageKey.endsWith(".jpeg")
+          ? "image/jpeg"
+          : undefined,
     etag: `W/\"${metadata.size.toString(16)}-${Math.trunc(metadata.mtimeMs).toString(16)}\"`,
   };
 }

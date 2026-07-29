@@ -87,7 +87,6 @@ export const GET = withAuth(async (request, session) => {
     );
   }
   const userId = session.user.id;
-  const email = session.user.email?.toLowerCase() || "";
 
   logger.info(
     { userId, queryLength: query.length, tagCount: tags.length },
@@ -108,7 +107,7 @@ export const GET = withAuth(async (request, session) => {
       OR EXISTS (
         SELECT 1 FROM "CanvasShare" s
         WHERE s."canvasId" = c."id"
-          AND LOWER(s."email") = ${email}
+          AND s."recipientId" = ${userId}
       )
     )
   `;

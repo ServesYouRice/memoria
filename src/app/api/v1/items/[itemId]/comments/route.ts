@@ -14,7 +14,6 @@ import {
 } from "@/lib/errors";
 import { sanitizeComment } from "@/lib/sanitization";
 import { errorResponse } from "@/lib/errors";
-import type { CanvasShare } from "@prisma/client";
 import { ActivityType, logActivity } from "@/lib/activity";
 
 interface RouteContext {
@@ -96,8 +95,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // Check if user has access to the canvas
     const isOwner = item.canvas.userId === session.user.id;
     const hasShare = item.canvas.shares.some(
-      (share: CanvasShare) =>
-        share.email === session.user.email?.toLowerCase() &&
+      (share) =>
+        share.recipientId === session.user.id &&
         ["COMMENT", "EDIT"].includes(share.role),
     );
 
@@ -110,8 +109,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // For shared users, check they have COMMENT or EDIT role
     if (!isOwner && hasShare) {
       const userShare = item.canvas.shares.find(
-        (share: CanvasShare) =>
-          share.email === session.user.email?.toLowerCase(),
+        (share) => share.recipientId === session.user.id,
       );
       if (userShare && userShare.role === "VIEW") {
         throw new UnauthorizedError(
@@ -186,12 +184,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     // Check if user has access (owner, shared, or public)
     const isOwner = session?.user?.id && item.canvas.userId === session.user.id;
-    const hasShare =
-      session?.user?.email &&
-      item.canvas.shares.some(
-        (share: CanvasShare) =>
-          share.email === session.user.email?.toLowerCase(),
-      );
+    const hasShare = Boolean(
+      session?.user?.id &&
+      item.canvas.shares.some((share) => share.recipientId === session.user.id),
+    );
     const isPublic = item.canvas.isPublic;
 
     if (!isOwner && !hasShare && !isPublic) {

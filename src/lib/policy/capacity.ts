@@ -36,20 +36,43 @@ export async function assertWorkspaceCapacity(tx: Store, userId: string) {
   )
     exceeded("workspaces", LAUNCH_LIMITS.workspacesPerUser);
 }
-export async function assertCanvasItemCapacity(tx: Store, canvasId: string) {
+export async function assertCanvasItemCapacity(
+  tx: Store,
+  canvasId: string,
+  additionalItems = 1,
+) {
   await lock(tx, "canvas-item", canvasId);
   if (
-    (await tx.canvasItem.count({ where: { canvasId, deletedAt: null } })) >=
+    (await tx.canvasItem.count({ where: { canvasId, deletedAt: null } })) +
+      additionalItems >
     LAUNCH_LIMITS.itemsPerCanvas
   )
     exceeded("canvas items", LAUNCH_LIMITS.itemsPerCanvas);
 }
-export async function assertCanvasShareCapacity(tx: Store, canvasId: string) {
+export async function assertCanvasShareCapacity(
+  tx: Store,
+  canvasId: string,
+  replacingEmail?: string,
+) {
   await lock(tx, "canvas-share", canvasId);
-  if (
-    (await tx.canvasShare.count({ where: { canvasId } })) >=
-    LAUNCH_LIMITS.sharesPerCanvas
-  )
+  const [accepted, pending] = await Promise.all([
+    tx.canvasShare.count({
+      where: {
+        canvasId,
+        recipientId: { not: null },
+        ...(replacingEmail ? { email: { not: replacingEmail } } : {}),
+      },
+    }),
+    tx.canvasShareInvitation.count({
+      where: {
+        canvasId,
+        respondedAt: null,
+        expiresAt: { gt: new Date() },
+        ...(replacingEmail ? { email: { not: replacingEmail } } : {}),
+      },
+    }),
+  ]);
+  if (accepted + pending >= LAUNCH_LIMITS.sharesPerCanvas)
     exceeded("canvas shares", LAUNCH_LIMITS.sharesPerCanvas);
 }
 export async function assertCanvasVersionCapacity(tx: Store, canvasId: string) {

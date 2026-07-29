@@ -13,6 +13,8 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { logger } from "@/lib/logger";
+import { getRequestId } from "@/lib/api/request-context";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * RFC 7807 Problem Details interface
@@ -436,6 +438,7 @@ export function errorResponse(
   instance?: string,
 ): NextResponse<ProblemDetail> {
   let safeInstance = instance;
+  const requestId = getRequestId();
   if (instance) {
     try {
       safeInstance = new URL(instance, "http://localhost").pathname;
@@ -443,25 +446,30 @@ export function errorResponse(
       safeInstance = undefined;
     }
   }
-  logger.error({ error, instance: safeInstance }, "API Error");
+  logger.error({ error, instance: safeInstance, requestId }, "API Error");
 
   if (error instanceof ApiError) {
-    const problemDetail = error.toProblemDetail(safeInstance);
+    const problemDetail = { ...error.toProblemDetail(safeInstance), requestId };
     return NextResponse.json(problemDetail, {
       status: error.status,
       headers: {
         "Content-Type": "application/problem+json",
+        ...(requestId ? { "x-request-id": requestId } : {}),
       },
     });
   }
 
   if (error instanceof ZodError) {
     const validationErr = fromZodError(error);
-    const problemDetail = validationErr.toProblemDetail(safeInstance);
+    const problemDetail = {
+      ...validationErr.toProblemDetail(safeInstance),
+      requestId,
+    };
     return NextResponse.json(problemDetail, {
       status: 400,
       headers: {
         "Content-Type": "application/problem+json",
+        ...(requestId ? { "x-request-id": requestId } : {}),
       },
     });
   }
@@ -476,12 +484,19 @@ export function errorResponse(
         ? (error as Error).message
         : "An unexpected error occurred.",
     instance: safeInstance,
+    requestId,
   };
+
+  Sentry.withScope((scope) => {
+    if (requestId) scope.setTag("request_id", requestId);
+    Sentry.captureException(error);
+  });
 
   return NextResponse.json(problemDetail, {
     status: 500,
     headers: {
       "Content-Type": "application/problem+json",
+      ...(requestId ? { "x-request-id": requestId } : {}),
     },
   });
 }

@@ -4,6 +4,7 @@ export const LAUNCH_LIMITS = {
   itemsPerCanvas: 2_000,
   sharesPerCanvas: 100,
   versionsPerCanvas: 50,
+  versionSnapshotBytes: 8 * 1024 * 1024,
   uploadsPerUser: 500,
   uploadBytesPerUser: 100 * 1024 * 1024,
   trashRetentionDays: 30,

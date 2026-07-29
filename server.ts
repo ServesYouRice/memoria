@@ -10,6 +10,8 @@ import next from "next";
 import { createCollaborationServer } from "./src/lib/collaboration/websocket-server";
 import { logger } from "./src/lib/logger";
 import { deriveClientIp } from "./src/lib/network/client-ip";
+import { nanoid } from "nanoid";
+import { runWithRequestContext } from "./src/lib/api/request-context";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
@@ -31,8 +33,17 @@ app
           req.headers["x-forwarded-for"],
           process.env.TRUSTED_PROXY_CIDRS,
         );
+        const suppliedRequestId = req.headers["x-request-id"];
+        const requestId =
+          typeof suppliedRequestId === "string" &&
+          /^[A-Za-z0-9_-]{8,64}$/.test(suppliedRequestId)
+            ? suppliedRequestId
+            : nanoid(16);
+        req.headers["x-request-id"] = requestId;
         const parsedUrl = parse(req.url!, true);
-        await handle(req, res, parsedUrl);
+        await runWithRequestContext(requestId, () =>
+          handle(req, res, parsedUrl),
+        );
       } catch (err) {
         const pathname = parse(req.url || "").pathname;
         logger.error(

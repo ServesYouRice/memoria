@@ -11,6 +11,7 @@ import {
 } from "@/lib/errors";
 import { getCachedSession, runWithSessionCache } from "@/lib/api/session-cache";
 import { createHash } from "crypto";
+import { getRequestId } from "@/lib/api/request-context";
 
 const logger = createLogger("api");
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -51,8 +52,8 @@ export function withApiHandler<T>(handler: RouteHandler<T>): RouteHandler<T> {
       try {
         return await handler(req, context);
       } catch (error) {
-        const correlationId = req.headers.get("x-correlation-id") || undefined;
-        logger.error({ error, correlationId }, "API Error");
+        const requestId = req.headers.get("x-request-id") || getRequestId();
+        logger.error({ error, requestId }, "API Error");
         return errorResponse(error, req.url) as any;
       }
     });
@@ -235,12 +236,6 @@ export async function runIdempotent<T>(
   let existing = await prisma.idempotencyKey.findUnique({
     where: { key_userId_method_path: scope },
   });
-
-  await prisma.idempotencyKey
-    .deleteMany({ where: { createdAt: { lt: expiryCutoff } } })
-    .catch((error) =>
-      logger.warn({ error }, "Unable to clean expired idempotency records"),
-    );
 
   if (existing && existing.createdAt < expiryCutoff) {
     await prisma.idempotencyKey

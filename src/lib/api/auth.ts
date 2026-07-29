@@ -46,14 +46,14 @@ export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW" | "NONE";
 export async function getCanvasAccess(
   canvasId: string,
   userId: string,
-  userEmail: string,
+  _userEmail: string,
 ): Promise<CanvasAccessLevel> {
   const canvas = await prisma.canvas.findUnique({
     where: { id: canvasId },
     select: {
       userId: true,
       shares: {
-        where: { email: userEmail.toLowerCase() },
+        where: { recipientId: userId },
         select: { role: true },
       },
     },

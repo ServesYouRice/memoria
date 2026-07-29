@@ -2,13 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RedisRateLimitStore } from "@/lib/rate-limit/stores/redis";
 
 const evalMock = vi.fn();
-const onMock = vi.fn();
+const getMock = vi.fn();
+const delMock = vi.fn();
+const pingMock = vi.fn();
 
-vi.mock("ioredis", () => ({
-  default: class RedisMock {
-    on = onMock;
-    eval = evalMock;
-  },
+vi.mock("@/lib/cache/redis-client", () => ({
+  getRedisClient: () => ({
+    eval: evalMock,
+    get: getMock,
+    del: delMock,
+    ping: pingMock,
+  }),
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -25,8 +29,6 @@ describe("RedisRateLimitStore", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     store = new RedisRateLimitStore({
-      host: "localhost",
-      port: 6379,
       keyPrefix: "rate-limit:",
     });
   });

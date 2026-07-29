@@ -36,7 +36,6 @@ async function getCommentWithAccess(
   commentId: string,
   itemId: string,
   userId: string,
-  userEmail?: string | null,
 ) {
   const comment = await prisma.comment.findUnique({
     where: { id: commentId },
@@ -62,11 +61,9 @@ async function getCommentWithAccess(
 
   const isOwner = comment.item.canvas.userId === userId;
   const isAuthor = comment.userId === userId;
-  const hasShare =
-    !!userEmail &&
-    comment.item.canvas.shares.some(
-      (share) => share.email === userEmail.toLowerCase(),
-    );
+  const hasShare = comment.item.canvas.shares.some(
+    (share) => share.recipientId === userId,
+  );
 
   if (!isOwner && !isAuthor && !hasShare && !comment.item.canvas.isPublic) {
     throw forbiddenError();
@@ -88,7 +85,6 @@ export const GET = withApiHandler(
       commentId,
       itemId,
       session.user.id,
-      session.user.email,
     );
 
     return NextResponse.json(comment);
@@ -115,7 +111,6 @@ export const PATCH = withApiHandler(
       commentId,
       itemId,
       session.user.id,
-      session.user.email,
     );
 
     if (!isAuthor) {
@@ -150,7 +145,6 @@ export const DELETE = withApiHandler(
       commentId,
       itemId,
       session.user.id,
-      session.user.email,
     );
 
     if (!isOwner && !isAuthor) {

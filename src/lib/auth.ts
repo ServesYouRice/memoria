@@ -11,6 +11,7 @@ import {
   recordFailedAttempt,
 } from "@/lib/auth/account-lockout";
 import { safeAuthCallbackUrl } from "@/lib/auth/redirect";
+import { getCachedSessionVersion } from "@/lib/api/session-cache";
 
 /**
  * Thrown when a sign-in attempt is rejected because the account is temporarily
@@ -116,15 +117,12 @@ export const authConfig: NextAuthConfig = {
       const userId = token["id"];
       if (typeof userId !== "string") return null;
 
-      const currentUser = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { sessionVersion: true },
-      });
-      if (!currentUser) return null;
+      const currentSessionVersion = await getCachedSessionVersion(userId);
+      if (currentSessionVersion === null) return null;
 
       if (user) {
-        token["sessionVersion"] = currentUser.sessionVersion;
-      } else if (token["sessionVersion"] !== currentUser.sessionVersion) {
+        token["sessionVersion"] = currentSessionVersion;
+      } else if (token["sessionVersion"] !== currentSessionVersion) {
         return null;
       }
 
