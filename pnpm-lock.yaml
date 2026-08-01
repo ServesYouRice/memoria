@@ -155,8 +155,8 @@ importers:
         specifier: 16.2.12
         version: 16.2.12
       '@percy/cli':
-        specifier: ^1.31.7
-        version: 1.32.4(typescript@7.0.2)
+        specifier: ^1.32.5
+        version: 1.32.5(typescript@7.0.2)
       '@percy/playwright':
         specifier: ^1.0.10
         version: 1.1.1(playwright-core@1.62.0)
@@ -174,7 +174,7 @@ importers:
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@types/node':
         specifier: ^26
-        version: 26.1.1
+        version: 26.1.2
       '@types/react':
         specifier: ^19
         version: 19.2.17
@@ -192,7 +192,7 @@ importers:
         version: 8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@7.0.2)
       '@vitejs/plugin-react':
         specifier: ^6.0.4
-        version: 6.0.4(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+        version: 6.0.4(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
       '@vitest/coverage-v8':
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
@@ -231,13 +231,13 @@ importers:
         version: 7.0.2
       vite:
         specifier: ^8.1.5
-        version: 8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+        version: 8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
       vite-tsconfig-paths:
         specifier: ^6.1.1
-        version: 6.1.1(typescript@7.0.2)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+        version: 6.1.1(typescript@7.0.2)(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.1)(jsdom@28.1.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.1)(jsdom@28.1.0)(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
 packages:
 
@@ -1217,69 +1217,69 @@ packages:
   '@panva/hkdf@1.2.1':
     resolution: {integrity: sha512-6oclG6Y3PiDFcoyk8srjLfVKyMfVCKJ27JwNPViuXziFpmdz+MZnZN/aKY0JGXgYuO/VghU0jcOAZgWXZ1Dmrw==}
 
-  '@percy/cli-app@1.32.4':
-    resolution: {integrity: sha512-9z59xE+IbCtEDm028465M8vkpnyPNkBI4yr/8V7yG6mYpr1gEo8xxZjno1KqQLSjEjZn/mqRAsaXfs8wd/3oHw==}
+  '@percy/cli-app@1.32.5':
+    resolution: {integrity: sha512-q2Ir0D9EBASb7hUW8f8Chz3mSfILlCZJgQZNsd9HsJzOMA6YBrx86hfGR6EHdEmF2LZGczAZo9b3KNTmonTZAg==}
     engines: {node: '>=14'}
 
-  '@percy/cli-build@1.32.4':
-    resolution: {integrity: sha512-f1dFYhjd7WlrI0NT+zl7i97dzuWMTP6zYI7RpZuS05GNZMhnGzCUYfhhW3NftsRGPHwY9N9kAxX9YLPYl0SmHQ==}
+  '@percy/cli-build@1.32.5':
+    resolution: {integrity: sha512-Z0Bdfx2ndQj4io9ploY6gUJxQ/sccPgwFpsax2qY70THqq0Cf5QxxIS3v14Jg1bAo8WXxo9LsI/a2T1/JmvNQA==}
     engines: {node: '>=14'}
 
-  '@percy/cli-command@1.32.4':
-    resolution: {integrity: sha512-zc6Vl8DoF6Bf6+ureM8FOyQoVOhwp6+hPpeOMrJY68XEjUd0yRzmkm/WFmQEdYvzTg2df7V4A2F1N66p7Xc+Rw==}
-    engines: {node: '>=14'}
-    hasBin: true
-
-  '@percy/cli-config@1.32.4':
-    resolution: {integrity: sha512-vcT/P7UN/F2c5UzTG3d+NIH1xeZ0ZvQG2/c1J6A0PBsmE1ePj/Ad5VjzxYH7lvT+ljeWpA6GFpzVm1IxCzcGkA==}
-    engines: {node: '>=14'}
-
-  '@percy/cli-doctor@1.32.4':
-    resolution: {integrity: sha512-I7RZeyVmRepwfcLc3j+Wjie54TvEC7C+HD8CEQ1+PxOUZfyrRa69OQSafRJA9vgyGOcnDr2fkDFI4czhKwvafQ==}
-    engines: {node: '>=14'}
-
-  '@percy/cli-exec@1.32.4':
-    resolution: {integrity: sha512-5SH/4bG8YuTLobJ36aExrR4HP+DwPWfHiKohBuTKeW+4VG1v87tdbBVSjMimA1Lj5Np2Ii9iVY+e282PZqj+pg==}
-    engines: {node: '>=14'}
-
-  '@percy/cli-snapshot@1.32.4':
-    resolution: {integrity: sha512-5bwwnOdc9LPuFZlwgnmRvPIWl3ROZceKEZw9zgGqkT5i3FllHkSZzu0KtRoP2AVIH5tEn4IxBfz0HKVglRrH+A==}
-    engines: {node: '>=14'}
-
-  '@percy/cli-upload@1.32.4':
-    resolution: {integrity: sha512-nyzkzSK16WvY6iQUgUEk5h7CH9SgESdXfsyPzqBYBz6gEfkluJrLsADtzRj0oVsao1XItBCNZW3rx/qR/hrcIA==}
-    engines: {node: '>=14'}
-
-  '@percy/cli@1.32.4':
-    resolution: {integrity: sha512-xBj2ksdzhyJkB4pZb8QvYu4h88T2mZHKuG2VyVYlbd9l1Fx0WwHWy4dYmw+38nXyqXTAUZCujJQ19jqHDDad6A==}
+  '@percy/cli-command@1.32.5':
+    resolution: {integrity: sha512-HUobOnUNKBrzrdWmZK10bOKpy9xr0oFkcxTjAl8TlRYRZhZrXtCoKB+X956wqcVksAF2CbpUGF6lQTikppgc5A==}
     engines: {node: '>=14'}
     hasBin: true
 
-  '@percy/client@1.32.4':
-    resolution: {integrity: sha512-PfMlG5c0gs9cDVXURmqYSgeNmDcyzrBKcLwTvm8XGrqwaKXmWJndmMq198SF0fwwvZOg/aUFETEcTh66igQeWg==}
+  '@percy/cli-config@1.32.5':
+    resolution: {integrity: sha512-J51Vj/6IWYfffZEauK3EXrdMtcKDfoaBYqcKhVGqhowkQTN9XAI6AomyWvNXiMAqpiSVg9j/cS4DKw899Hf+bQ==}
     engines: {node: '>=14'}
 
-  '@percy/config@1.32.4':
-    resolution: {integrity: sha512-vl2CYsBQVq/S8sqBzlugPbZPEFPqdrCtB9TpkHVuYDH/Xpey7pS5tFxGlqgKtmffFL8hSyVJcOn67t/SRwm+xQ==}
+  '@percy/cli-doctor@1.32.5':
+    resolution: {integrity: sha512-6jJyR2Msw+HVeuwF6xK9udeO4SJJyjmn2+M/n/I61m2HqS6EAHee4sjUmpYtKrkD/x5yAXsf6UF8vKNfdK4n6A==}
     engines: {node: '>=14'}
 
-  '@percy/core@1.32.4':
-    resolution: {integrity: sha512-fLu8Va2IHvzs1qJZaJvJnFGUrFBJio9Wyj7suwKPaLDwD7iwV9DwgJ2kYCpdmubwNwr0vJ9WOJjElxrm4b01BA==}
+  '@percy/cli-exec@1.32.5':
+    resolution: {integrity: sha512-D9PiUT5dGZUnol4FxbZ8Y+7WdBzwG8/K0tkFxjIFyd41JQrTpzjGcZlPFQMdQMbE84GxNF24Yw3uxxL9md5kNA==}
     engines: {node: '>=14'}
 
-  '@percy/dom@1.32.4':
-    resolution: {integrity: sha512-xyaZXETCJKBxSmh9j45B54S6IEFBlQ8sYU3AEGGexKlbeW0SneHhOAP+eoSEEf9w9mGo67umGjK728nr/CkpFw==}
-
-  '@percy/env@1.32.4':
-    resolution: {integrity: sha512-O1NPkzPWSYpG01YSgczns+B8ABfN/kEqNOaJyRfmWZUkIlhgiAVneh2U4c/dIin7XoN14s9hk6YmkwqR0Eb8dw==}
+  '@percy/cli-snapshot@1.32.5':
+    resolution: {integrity: sha512-AwyHcNvYdGYqs5Ll7HD9JjWd38bFquKM3CDXpUMKk3zQtL80KIFF6MGfKDdRMsPZzLCCpko4V9MtWHU9/Twahw==}
     engines: {node: '>=14'}
 
-  '@percy/logger@1.32.4':
-    resolution: {integrity: sha512-pDO93er9jPtjkhputKbO7CniXoVO0fuihj8fMiXP12QqO54k/DyRx4s6VQOL6p1rXZsUqaUYkUIBQeoO4s1AUw==}
+  '@percy/cli-upload@1.32.5':
+    resolution: {integrity: sha512-qJwOBvzlCjDT/DXVWT6rdW+l6yYimak+RuAVPMh9XSmdwGIGfLbsVXp0Ar8x+F0Zo7aelcXkryjlaFX98uXw4g==}
     engines: {node: '>=14'}
 
-  '@percy/monitoring@1.32.4':
-    resolution: {integrity: sha512-JYGqV1S1Sy49iQMmG6FIhdnRsJQ2D/55UZJffxvo8OYUDDUaVKFImzunkS6OewGtL49QlYaKd9cpIc+bL343fA==}
+  '@percy/cli@1.32.5':
+    resolution: {integrity: sha512-pqPKwEcRfpZfFmhWhDitzaja6Oi2i4nrqzm44NTnq3Wp5O+w23th/5OpgdA96MaY1NoNYVYhzOGwosiWv9A3ag==}
+    engines: {node: '>=14'}
+    hasBin: true
+
+  '@percy/client@1.32.5':
+    resolution: {integrity: sha512-7mZcA0e+aGaZNdqhMud6LlXBGacS/czlPzALSK1tiOeeWkSc/Q9aojc4vgdBEmKKPd/JAlSUK/P2O9DfffXTpw==}
+    engines: {node: '>=14'}
+
+  '@percy/config@1.32.5':
+    resolution: {integrity: sha512-Br2GXw8nwNFZ98X69+yw8tWamoo4JSaW7poDU/xtHt0r3s3Pq1tzMEfmZK+JTex2vPeuJfZYs4YLNwMWvOVflw==}
+    engines: {node: '>=14'}
+
+  '@percy/core@1.32.5':
+    resolution: {integrity: sha512-bMwYiCcF5ha0iylbLx1u0FVj9z4f3KpI8dYvM7iamxvzAlYKKLjNBe5czbEUmTKIICeS0Nr4LBBp2htbLkdRAA==}
+    engines: {node: '>=14'}
+
+  '@percy/dom@1.32.5':
+    resolution: {integrity: sha512-snlSyxq0qAJ1pw9Ra88hbAQ3/omHOaijlgU02t7qonClGbIYHSfiGobbWioaadDmpULR3VnA9AHgbN2U8fRuKg==}
+
+  '@percy/env@1.32.5':
+    resolution: {integrity: sha512-qiZJzLIqZHWBfbcqTnRYjtbezZvkX7U/+GSq0O/EAARqVDbyuhSgrO3Kd5rfJ+CVf8jBynL1sfOp30fp221oDQ==}
+    engines: {node: '>=14'}
+
+  '@percy/logger@1.32.5':
+    resolution: {integrity: sha512-JbO7iKUPZuYwcJVsMHJi40cM7cYLWikWeU2xv5EvuAH8j7ST+bhy0f0HvdoExDGUnf8GO0unyxP4JrCjuveh/Q==}
+    engines: {node: '>=14'}
+
+  '@percy/monitoring@1.32.5':
+    resolution: {integrity: sha512-BfA//KSBrijXqT2lBVnr5mqQ14QNVvyal1WerIbwD+x++fyYE7msDiKCBEPdRxlHM3L5Wq6QEIFu2kovZhj8/Q==}
     engines: {node: '>=14'}
 
   '@percy/playwright@1.1.1':
@@ -1288,12 +1288,12 @@ packages:
     peerDependencies:
       playwright-core: '>=1'
 
-  '@percy/sdk-utils@1.32.4':
-    resolution: {integrity: sha512-l0mFEsIff0nbA2XSctjAToFHL7DXJ6EPZdIWDCRLrsyATd/SdiPceVpyeV5gqR2AjVbcwdouKBJlJDdFZtUFDA==}
+  '@percy/sdk-utils@1.32.5':
+    resolution: {integrity: sha512-xdCmG2QiWKT8M5NtWQqLLkG9DiE/m4kHvbROqwAGbVk0hd+fgUYIq/O6AvkHXtVZVfBXr7CiNqqRTjGKakIY7g==}
     engines: {node: '>=14'}
 
-  '@percy/webdriver-utils@1.32.4':
-    resolution: {integrity: sha512-hntGKk/hnZ9n7UwLoz6Mwgo1nzoUgvgbugMWacL0mWuPSXeL87s+69EUf7jngAd/rYJVxsNTCIOqUl7/Q+Y9ug==}
+  '@percy/webdriver-utils@1.32.5':
+    resolution: {integrity: sha512-IVhCHOg8psSgfk64DyYBnJHXVRcmPxIsM6W+UhR2FL0oty+FZcNPx8gXpVKwcxJ4/zhSAvte3FqG4AxU2G9k5A==}
     engines: {node: '>=14'}
 
   '@phc/format@1.0.0':
@@ -2207,8 +2207,8 @@ packages:
   '@types/json5@0.0.29':
     resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
 
-  '@types/node@26.1.1':
-    resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
+  '@types/node@26.1.2':
+    resolution: {integrity: sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg==}
 
   '@types/pako@2.0.4':
     resolution: {integrity: sha512-VWDCbrLeVXJM9fihYodcLiIv0ku+AlOa/TQ1SvYOaBuyrSKgEcro95LJyIsJ4vSo6BXIxOKxiJAat04CmST9Fw==}
@@ -2256,9 +2256,6 @@ packages:
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
-
-  '@types/yauzl@2.10.3':
-    resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
 
   '@types/zxcvbn@4.4.5':
     resolution: {integrity: sha512-FZJgC5Bxuqg7Rhsm/bx6gAruHHhDQ55r+s0JhDh8CQ16fD7NsJJ+p8YMMQDhSQoIrSmjpqqYWA96oQVMNkjRyA==}
@@ -2718,6 +2715,10 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
+  adm-zip@0.6.0:
+    resolution: {integrity: sha512-XleryMhbuksdKtofnWZ9Sk+4CUTbms4Mb/EU32SZwToAyZ5RgVos/ki8n+yr0LWHOGKuakbXTuuYNHLQjhddgg==}
+    engines: {node: '>=14.0'}
+
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
     engines: {node: '>= 6.0.0'}
@@ -2886,8 +2887,8 @@ packages:
   brace-expansion@1.1.16:
     resolution: {integrity: sha512-IDw48K2/2kRkg9LdJxurvq3lV3aBgq0REY89duEqFRthjlPdXHKMj7EnQOXVckxzgisinf3nHfrcE2FufFLXMw==}
 
-  brace-expansion@2.1.2:
-    resolution: {integrity: sha512-w5JZcKgdhDOgOwm8H+KgbosopHMuGcl6qbulwjtz3SM7I7P3yW1eAjzMPLrIE+NQ9vjgANKHWeMHnrT0OXW1oA==}
+  brace-expansion@2.1.4:
+    resolution: {integrity: sha512-hGfVzPxthbf3+2yjg/RBs60cB0FhqBS/zvdV/4wn4/BmN0bNMMHPc4V/BbFieqf1TKAGGAHnY4eSjajCl0f2Xg==}
 
   brace-expansion@5.0.8:
     resolution: {integrity: sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==}
@@ -2901,9 +2902,6 @@ packages:
     resolution: {integrity: sha512-JxV13hNrFxqjOc8alRbq9dK1MM79NEXYpma2B2J4wAtpWS5zIEIKqWPGCl7N4o7Uc7B7itylh7SuDujATRyyTw==}
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
-
-  buffer-crc32@0.2.13:
-    resolution: {integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==}
 
   buffer-from@1.1.2:
     resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
@@ -3232,9 +3230,6 @@ packages:
   encoding-sniffer@0.2.1:
     resolution: {integrity: sha512-5gvq20T6vfpekVtqrYQsSCFZ1wEg5+wW0/QaZMWkFr6BqD3NfKs0rLCx4rrVlSWJeZb5NBJgVLswK/w2MWU+Gw==}
 
-  end-of-stream@1.4.5:
-    resolution: {integrity: sha512-ooEGc6HP26xXq/N+GCGOT0JKCLDGrq2bQUZrQ7gyrJiZANJ/8YDTxTpQBXGMn+WbIQXNVpyWymm7KYVICQnyOg==}
-
   enhanced-resolve@5.24.2:
     resolution: {integrity: sha512-rpsZEGT1jFuve6QlpyRp9ckQ+kN61hvF9BzCPyMdaKTm8UJce96KBn3sorXOFXlzjPrs3Vc4T1NsSroZ3PxlFw==}
     engines: {node: '>=10.13.0'}
@@ -3475,11 +3470,6 @@ packages:
   exsolve@1.1.0:
     resolution: {integrity: sha512-D+42+T12DdIlJM3uepa55qGiL3sYdLBOxIl2ifQCzCHz4c7eiolaHsi3BIqEr7JxBzxv2pYZQX9kw16ziMcEmw==}
 
-  extract-zip@2.0.1:
-    resolution: {integrity: sha512-GDhU9ntwuKyGXdZBUgTIe+vXnWj0fppUEtMDL0+idd5Sta8TGpHssn/eusA9mrPr9qNDym6SxAYZjNvCn/9RBg==}
-    engines: {node: '>= 10.17.0'}
-    hasBin: true
-
   fast-check@3.23.2:
     resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
     engines: {node: '>=8.0.0'}
@@ -3517,9 +3507,6 @@ packages:
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
-
-  fd-slicer@1.1.0:
-    resolution: {integrity: sha512-cE1qsB/VwyQozZ+q1dGxR8LBYNZeofhEdUNGSMbQD3Gw2lAzX9Zb3uIU6Ebc/Fmyjo9AWWfnn0AUCHqtevs/8g==}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -3605,10 +3592,6 @@ packages:
   get-proto@1.0.1:
     resolution: {integrity: sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==}
     engines: {node: '>= 0.4'}
-
-  get-stream@5.2.0:
-    resolution: {integrity: sha512-nBF+F1rAZVCu/p7rjzgA+Yb4lfYXrpl7a6VmJrU8wF9I1CKvP/QwPNZHnOlwbTkY6dvtFIzFMSyQXbLoTQPRpA==}
-    engines: {node: '>=8'}
 
   get-symbol-description@1.1.0:
     resolution: {integrity: sha512-w9UMqWwJxHNOvoNzSJ2oPF5wvYcvP7jUvYzhp67yEhTi17ZDBBC1z9pTdGuzjD+EFIqLSYRweZjqfiPzQ06Ebg==}
@@ -3789,8 +3772,8 @@ packages:
     resolution: {integrity: sha512-ehuGcf94bQXhfagULNXrJdfnWO38v070jxSx/qE87Kjzmu2fU7ro5EFAb+OPituLqgfyuQaym5DlrNydW2sJ9A==}
     engines: {node: '>=12.22.0'}
 
-  ip-address@10.2.0:
-    resolution: {integrity: sha512-/+S6j4E9AHvW9SWMSEY9Xfy66O5PWvVEJ08O0y5JGyEKQpojb0K0GKpz/v5HJ/G0vi3D2sjGK78119oXZeE0qA==}
+  ip-address@10.4.0:
+    resolution: {integrity: sha512-oSK96Grm3aP6OrS263xVxbNDGVL7rzBtYdpGqlDG8iQdoenDoTs/nkki+DflYbAEE8Xl6o5YxhxlrKvI3nqKXQ==}
     engines: {node: '>= 12'}
 
   is-array-buffer@3.0.5:
@@ -3967,6 +3950,10 @@ packages:
 
   js-yaml@4.3.0:
     resolution: {integrity: sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q==}
+    hasBin: true
+
+  js-yaml@4.3.1:
+    resolution: {integrity: sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==}
     hasBin: true
 
   jsdom@28.1.0:
@@ -4517,9 +4504,6 @@ packages:
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
-  pend@1.2.0:
-    resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}
-
   perfect-debounce@1.0.0:
     resolution: {integrity: sha512-xCy9V055GLEqoFaHoC1SoLIaLmWctgCUaBaWxDZ7/Zx4CTyX7cJQLJOok/orfjZAh9kEYpjJa4d0KcJmCbctZA==}
 
@@ -4658,9 +4642,6 @@ packages:
 
   proxy-from-env@1.1.0:
     resolution: {integrity: sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==}
-
-  pump@3.0.4:
-    resolution: {integrity: sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA==}
 
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
@@ -5091,9 +5072,9 @@ packages:
   symbol-tree@3.2.4:
     resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
 
-  systeminformation@5.31.17:
-    resolution: {integrity: sha512-TvFA9iwDWlMjqZVlKIJ0Cy+Zgm9ttlMx0SMRwJDMNKyhlEKWBMb3+WRwDi/3dvHdWbexpos4Osp4U49p5WjB5g==}
-    engines: {node: '>=8.0.0'}
+  systeminformation@5.33.1:
+    resolution: {integrity: sha512-DEN6ICHk3Tk0Uf/hrAHh7xlt7iL5CJFBtPZinA0H62DrGG/KPKqq/Nzj6lCXPS4Ay/sf/14zNnk9LpqKzBIc+w==}
+    engines: {node: '>=10.0.0'}
     os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
     hasBin: true
 
@@ -5515,9 +5496,6 @@ packages:
   yargs@17.7.3:
     resolution: {integrity: sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g==}
     engines: {node: '>=12'}
-
-  yauzl@2.10.0:
-    resolution: {integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==}
 
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
@@ -6541,54 +6519,54 @@ snapshots:
 
   '@panva/hkdf@1.2.1': {}
 
-  '@percy/cli-app@1.32.4(typescript@7.0.2)':
+  '@percy/cli-app@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
-      '@percy/cli-exec': 1.32.4(typescript@7.0.2)
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
+      '@percy/cli-exec': 1.32.5(typescript@7.0.2)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - typescript
       - utf-8-validate
 
-  '@percy/cli-build@1.32.4(typescript@7.0.2)':
+  '@percy/cli-build@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - typescript
       - utf-8-validate
 
-  '@percy/cli-command@1.32.4(typescript@7.0.2)':
+  '@percy/cli-command@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/config': 1.32.4(typescript@7.0.2)
-      '@percy/core': 1.32.4(typescript@7.0.2)
-      '@percy/logger': 1.32.4
+      '@percy/config': 1.32.5(typescript@7.0.2)
+      '@percy/core': 1.32.5(typescript@7.0.2)
+      '@percy/logger': 1.32.5
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - typescript
       - utf-8-validate
 
-  '@percy/cli-config@1.32.4(typescript@7.0.2)':
+  '@percy/cli-config@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - typescript
       - utf-8-validate
 
-  '@percy/cli-doctor@1.32.4(typescript@7.0.2)':
+  '@percy/cli-doctor@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
-      '@percy/client': 1.32.4(typescript@7.0.2)
-      '@percy/config': 1.32.4(typescript@7.0.2)
-      '@percy/core': 1.32.4(typescript@7.0.2)
-      '@percy/env': 1.32.4
-      '@percy/logger': 1.32.4
-      '@percy/monitoring': 1.32.4(typescript@7.0.2)
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
+      '@percy/client': 1.32.5(typescript@7.0.2)
+      '@percy/config': 1.32.5(typescript@7.0.2)
+      '@percy/core': 1.32.5(typescript@7.0.2)
+      '@percy/env': 1.32.5
+      '@percy/logger': 1.32.5
+      '@percy/monitoring': 1.32.5(typescript@7.0.2)
       minimatch: 9.0.9
       ws: 8.21.1
     transitivePeerDependencies:
@@ -6597,10 +6575,10 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@percy/cli-exec@1.32.4(typescript@7.0.2)':
+  '@percy/cli-exec@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
-      '@percy/logger': 1.32.4
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
+      '@percy/logger': 1.32.5
       cross-spawn: 7.0.6
       which: 2.0.2
     transitivePeerDependencies:
@@ -6609,9 +6587,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@percy/cli-snapshot@1.32.4(typescript@7.0.2)':
+  '@percy/cli-snapshot@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
       yaml: 2.9.0
     transitivePeerDependencies:
       - bufferutil
@@ -6619,9 +6597,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@percy/cli-upload@1.32.4(typescript@7.0.2)':
+  '@percy/cli-upload@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
       fast-glob: 3.3.3
       image-size: 1.0.2
     transitivePeerDependencies:
@@ -6630,58 +6608,58 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@percy/cli@1.32.4(typescript@7.0.2)':
+  '@percy/cli@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/cli-app': 1.32.4(typescript@7.0.2)
-      '@percy/cli-build': 1.32.4(typescript@7.0.2)
-      '@percy/cli-command': 1.32.4(typescript@7.0.2)
-      '@percy/cli-config': 1.32.4(typescript@7.0.2)
-      '@percy/cli-doctor': 1.32.4(typescript@7.0.2)
-      '@percy/cli-exec': 1.32.4(typescript@7.0.2)
-      '@percy/cli-snapshot': 1.32.4(typescript@7.0.2)
-      '@percy/cli-upload': 1.32.4(typescript@7.0.2)
-      '@percy/client': 1.32.4(typescript@7.0.2)
-      '@percy/logger': 1.32.4
+      '@percy/cli-app': 1.32.5(typescript@7.0.2)
+      '@percy/cli-build': 1.32.5(typescript@7.0.2)
+      '@percy/cli-command': 1.32.5(typescript@7.0.2)
+      '@percy/cli-config': 1.32.5(typescript@7.0.2)
+      '@percy/cli-doctor': 1.32.5(typescript@7.0.2)
+      '@percy/cli-exec': 1.32.5(typescript@7.0.2)
+      '@percy/cli-snapshot': 1.32.5(typescript@7.0.2)
+      '@percy/cli-upload': 1.32.5(typescript@7.0.2)
+      '@percy/client': 1.32.5(typescript@7.0.2)
+      '@percy/logger': 1.32.5
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - typescript
       - utf-8-validate
 
-  '@percy/client@1.32.4(typescript@7.0.2)':
+  '@percy/client@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/config': 1.32.4(typescript@7.0.2)
-      '@percy/env': 1.32.4
-      '@percy/logger': 1.32.4
+      '@percy/config': 1.32.5(typescript@7.0.2)
+      '@percy/env': 1.32.5
+      '@percy/logger': 1.32.5
       pac-proxy-agent: 7.2.0
       pako: 2.2.0
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  '@percy/config@1.32.4(typescript@7.0.2)':
+  '@percy/config@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/logger': 1.32.4
+      '@percy/logger': 1.32.5
       ajv: 8.20.0
       cosmiconfig: 8.3.6(typescript@7.0.2)
       yaml: 2.9.0
     transitivePeerDependencies:
       - typescript
 
-  '@percy/core@1.32.4(typescript@7.0.2)':
+  '@percy/core@1.32.5(typescript@7.0.2)':
     dependencies:
       '@grpc/grpc-js': 1.14.4
       '@grpc/proto-loader': 0.8.1
-      '@percy/client': 1.32.4(typescript@7.0.2)
-      '@percy/config': 1.32.4(typescript@7.0.2)
-      '@percy/dom': 1.32.4
-      '@percy/logger': 1.32.4
-      '@percy/monitoring': 1.32.4(typescript@7.0.2)
-      '@percy/webdriver-utils': 1.32.4(typescript@7.0.2)
+      '@percy/client': 1.32.5(typescript@7.0.2)
+      '@percy/config': 1.32.5(typescript@7.0.2)
+      '@percy/dom': 1.32.5
+      '@percy/logger': 1.32.5
+      '@percy/monitoring': 1.32.5(typescript@7.0.2)
+      '@percy/webdriver-utils': 1.32.5(typescript@7.0.2)
+      adm-zip: 0.6.0
       busboy: 1.6.0
       content-disposition: 0.5.4
       cross-spawn: 7.0.6
-      extract-zip: 2.0.1
       fast-glob: 3.3.3
       fast-xml-parser: 4.5.7
       micromatch: 4.0.8
@@ -6692,27 +6670,27 @@ snapshots:
       ws: 8.21.1
       yaml: 2.9.0
     optionalDependencies:
-      '@percy/cli-doctor': 1.32.4(typescript@7.0.2)
+      '@percy/cli-doctor': 1.32.5(typescript@7.0.2)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - typescript
       - utf-8-validate
 
-  '@percy/dom@1.32.4': {}
+  '@percy/dom@1.32.5': {}
 
-  '@percy/env@1.32.4':
+  '@percy/env@1.32.5':
     dependencies:
-      '@percy/logger': 1.32.4
+      '@percy/logger': 1.32.5
 
-  '@percy/logger@1.32.4': {}
+  '@percy/logger@1.32.5': {}
 
-  '@percy/monitoring@1.32.4(typescript@7.0.2)':
+  '@percy/monitoring@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/config': 1.32.4(typescript@7.0.2)
-      '@percy/logger': 1.32.4
-      '@percy/sdk-utils': 1.32.4
-      systeminformation: 5.31.17
+      '@percy/config': 1.32.5(typescript@7.0.2)
+      '@percy/logger': 1.32.5
+      '@percy/sdk-utils': 1.32.5
+      systeminformation: 5.33.1
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -6721,16 +6699,16 @@ snapshots:
     dependencies:
       playwright-core: 1.62.0
 
-  '@percy/sdk-utils@1.32.4':
+  '@percy/sdk-utils@1.32.5':
     dependencies:
       pac-proxy-agent: 7.2.0
     transitivePeerDependencies:
       - supports-color
 
-  '@percy/webdriver-utils@1.32.4(typescript@7.0.2)':
+  '@percy/webdriver-utils@1.32.5(typescript@7.0.2)':
     dependencies:
-      '@percy/config': 1.32.4(typescript@7.0.2)
-      '@percy/sdk-utils': 1.32.4
+      '@percy/config': 1.32.5(typescript@7.0.2)
+      '@percy/sdk-utils': 1.32.5
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -7579,7 +7557,7 @@ snapshots:
 
   '@types/json5@0.0.29': {}
 
-  '@types/node@26.1.1':
+  '@types/node@26.1.2':
     dependencies:
       undici-types: 8.3.0
 
@@ -7621,12 +7599,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 26.1.1
-
-  '@types/yauzl@2.10.3':
-    dependencies:
-      '@types/node': 26.1.1
-    optional: true
+      '@types/node': 26.1.2
 
   '@types/zxcvbn@4.4.5': {}
 
@@ -7863,10 +7836,10 @@ snapshots:
       next: 16.2.10(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react: 19.2.7
 
-  '@vitejs/plugin-react@6.0.4(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))':
+  '@vitejs/plugin-react@6.0.4(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+      vite: 8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
 
   '@vitest/coverage-v8@4.1.10(vitest@4.1.10)':
     dependencies:
@@ -7880,7 +7853,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.1)(jsdom@28.1.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.1)(jsdom@28.1.0)(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -7891,13 +7864,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.10(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.10(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+      vite: 8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.10':
     dependencies:
@@ -8016,6 +7989,8 @@ snapshots:
       acorn: 8.17.0
 
   acorn@8.17.0: {}
+
+  adm-zip@0.6.0: {}
 
   agent-base@6.0.2:
     dependencies:
@@ -8201,7 +8176,7 @@ snapshots:
       balanced-match: 1.0.2
       concat-map: 0.0.1
 
-  brace-expansion@2.1.2:
+  brace-expansion@2.1.4:
     dependencies:
       balanced-match: 1.0.2
 
@@ -8221,13 +8196,11 @@ snapshots:
       node-releases: 2.0.51
       update-browserslist-db: 1.2.3(browserslist@4.28.7)
 
-  buffer-crc32@0.2.13: {}
-
   buffer-from@1.1.2: {}
 
   buffer-image-size@0.6.4:
     dependencies:
-      '@types/node': 26.1.1
+      '@types/node': 26.1.2
 
   busboy@1.6.0:
     dependencies:
@@ -8388,7 +8361,7 @@ snapshots:
   cosmiconfig@8.3.6(typescript@7.0.2):
     dependencies:
       import-fresh: 3.3.1
-      js-yaml: 4.3.0
+      js-yaml: 4.3.1
       parse-json: 5.2.0
       path-type: 4.0.0
     optionalDependencies:
@@ -8572,10 +8545,6 @@ snapshots:
     dependencies:
       iconv-lite: 0.6.3
       whatwg-encoding: 3.1.1
-
-  end-of-stream@1.4.5:
-    dependencies:
-      once: 1.4.0
 
   enhanced-resolve@5.24.2:
     dependencies:
@@ -8982,16 +8951,6 @@ snapshots:
 
   exsolve@1.1.0: {}
 
-  extract-zip@2.0.1:
-    dependencies:
-      debug: 4.4.3
-      get-stream: 5.2.0
-      yauzl: 2.10.0
-    optionalDependencies:
-      '@types/yauzl': 2.10.3
-    transitivePeerDependencies:
-      - supports-color
-
   fast-check@3.23.2:
     dependencies:
       pure-rand: 6.1.0
@@ -9035,10 +8994,6 @@ snapshots:
   fastq@1.20.1:
     dependencies:
       reusify: 1.1.0
-
-  fd-slicer@1.1.0:
-    dependencies:
-      pend: 1.2.0
 
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
@@ -9122,10 +9077,6 @@ snapshots:
       dunder-proto: 1.0.1
       es-object-atoms: 1.1.2
 
-  get-stream@5.2.0:
-    dependencies:
-      pump: 3.0.4
-
   get-symbol-description@1.1.0:
     dependencies:
       call-bound: 1.0.4
@@ -9197,7 +9148,7 @@ snapshots:
 
   happy-dom@20.11.1:
     dependencies:
-      '@types/node': 26.1.1
+      '@types/node': 26.1.2
       '@types/whatwg-mimetype': 3.0.2
       '@types/ws': 8.18.1
       buffer-image-size: 0.6.4
@@ -9338,7 +9289,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  ip-address@10.2.0: {}
+  ip-address@10.4.0: {}
 
   is-array-buffer@3.0.5:
     dependencies:
@@ -9512,7 +9463,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 26.1.1
+      '@types/node': 26.1.2
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -9525,6 +9476,10 @@ snapshots:
   js-tokens@4.0.0: {}
 
   js-yaml@4.3.0:
+    dependencies:
+      argparse: 2.0.1
+
+  js-yaml@4.3.1:
     dependencies:
       argparse: 2.0.1
 
@@ -9747,7 +9702,7 @@ snapshots:
 
   minimatch@9.0.9:
     dependencies:
-      brace-expansion: 2.1.2
+      brace-expansion: 2.1.4
 
   minimist@1.2.8: {}
 
@@ -9997,8 +9952,6 @@ snapshots:
 
   pathe@2.0.3: {}
 
-  pend@1.2.0: {}
-
   perfect-debounce@1.0.0: {}
 
   performance-now@2.1.0:
@@ -10178,15 +10131,10 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 26.1.1
+      '@types/node': 26.1.2
       long: 5.3.2
 
   proxy-from-env@1.1.0: {}
-
-  pump@3.0.4:
-    dependencies:
-      end-of-stream: 1.4.5
-      once: 1.4.0
 
   punycode@2.3.1: {}
 
@@ -10568,7 +10516,7 @@ snapshots:
 
   socks@2.8.9:
     dependencies:
-      ip-address: 10.2.0
+      ip-address: 10.4.0
       smart-buffer: 4.2.0
 
   sonic-boom@4.2.1:
@@ -10712,7 +10660,7 @@ snapshots:
 
   symbol-tree@3.2.4: {}
 
-  systeminformation@5.31.17: {}
+  systeminformation@5.33.1: {}
 
   tapable@2.3.3: {}
 
@@ -10938,17 +10886,17 @@ snapshots:
       base64-arraybuffer: 1.0.2
     optional: true
 
-  vite-tsconfig-paths@6.1.1(typescript@7.0.2)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)):
+  vite-tsconfig-paths@6.1.1(typescript@7.0.2)(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)):
     dependencies:
       debug: 4.4.3
       globrex: 0.1.2
       tsconfck: 3.1.6(typescript@7.0.2)
-      vite: 8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+      vite: 8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0):
+  vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5
@@ -10956,7 +10904,7 @@ snapshots:
       rolldown: 1.1.5
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 26.1.1
+      '@types/node': 26.1.2
       esbuild: 0.28.1
       fsevents: 2.3.3
       jiti: 2.7.0
@@ -10964,10 +10912,10 @@ snapshots:
       tsx: 4.23.1
       yaml: 2.9.0
 
-  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.1)(jsdom@28.1.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)):
+  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.1)(jsdom@28.1.0)(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.10(vite@8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -10984,11 +10932,11 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+      vite: 8.1.5(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
-      '@types/node': 26.1.1
+      '@types/node': 26.1.2
       '@vitest/coverage-v8': 4.1.10(vitest@4.1.10)
       happy-dom: 20.11.1
       jsdom: 28.1.0
@@ -11178,11 +11126,6 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
-
-  yauzl@2.10.0:
-    dependencies:
-      buffer-crc32: 0.2.13
-      fd-slicer: 1.1.0
 
   yocto-queue@0.1.0: {}
 
