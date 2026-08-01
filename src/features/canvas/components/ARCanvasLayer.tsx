@@ -21,6 +21,10 @@ import {
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
 } from "@mui/icons-material";
+import {
+  AR_EXPERIMENTAL_DISCLOSURE,
+  isArCanvasEnabled,
+} from "@/lib/product-surfaces";
 
 interface ARCanvasLayerProps {
   open: boolean;
@@ -40,6 +44,7 @@ interface ARCanvasLayerProps {
  * Uses WebRTC getUserMedia API for camera access.
  */
 export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
+  const enabled = isArCanvasEnabled();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +83,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
 
   // Start camera when dialog opens
   useEffect(() => {
-    if (open) {
+    if (open && enabled) {
       startCamera();
     } else {
       stopCamera();
@@ -87,7 +92,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
     return () => {
       stopCamera();
     };
-  }, [open, startCamera, stopCamera]);
+  }, [enabled, open, startCamera, stopCamera]);
 
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
@@ -138,182 +143,190 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
   );
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      fullScreen
-      TransitionComponent={SlideTransition}
-    >
-      <Box
-        ref={containerRef}
-        sx={{
-          position: "relative",
-          width: "100%",
-          height: "100%",
-          bgcolor: "black",
-          overflow: "hidden",
-        }}
+    enabled && (
+      <Dialog
+        open={open}
+        onClose={onClose}
+        fullScreen
+        TransitionComponent={SlideTransition}
       >
-        {/* Header */}
         <Box
+          ref={containerRef}
           sx={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 10,
-            background:
-              "linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)",
-            p: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            bgcolor: "black",
+            overflow: "hidden",
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <CameraIcon sx={{ color: "white" }} />
-            <Typography variant="h6" sx={{ color: "white" }}>
-              AR Canvas Layer
-            </Typography>
-            <Chip
-              label="EXPERIMENTAL"
-              size="small"
-              sx={{
-                bgcolor: "warning.main",
-                color: "warning.contrastText",
-                fontWeight: "bold",
-              }}
-            />
-          </Box>
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <IconButton
-              aria-label="Toggle fullscreen"
-              onClick={toggleFullscreen}
-              sx={{ color: "white" }}
-            >
-              {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
-            </IconButton>
-            <IconButton
-              aria-label="Close augmented reality view"
-              onClick={onClose}
-              sx={{ color: "white" }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </Box>
-
-        {/* Camera Feed */}
-        {error ? (
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "100%",
-              p: 4,
-            }}
-          >
-            <Alert severity="error" sx={{ maxWidth: 400 }}>
-              {error}
-            </Alert>
-          </Box>
-        ) : (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-        )}
-
-        {/* AR Overlay - Canvas Items */}
-        {showOverlay && !error && (
+          {/* Header */}
           <Box
             sx={{
               position: "absolute",
               top: 0,
               left: 0,
               right: 0,
-              bottom: 0,
-              pointerEvents: "none",
+              zIndex: 10,
+              background:
+                "linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)",
+              p: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
-            {items.slice(0, 5).map((item, index) => (
-              <Paper
-                key={item.id}
-                elevation={8}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CameraIcon sx={{ color: "white" }} />
+              <Typography variant="h6" sx={{ color: "white" }}>
+                AR Canvas Layer
+              </Typography>
+              <Chip
+                label="EXPERIMENTAL"
+                size="small"
                 sx={{
-                  position: "absolute",
-                  // Distribute items across screen based on their canvas position
-                  top: `${15 + ((index * 15) % 60)}%`,
-                  left: `${10 + (item.positionX % 500) / 6}%`,
-                  maxWidth: 280,
-                  p: 2,
-                  bgcolor: "rgba(255, 255, 255, 0.92)",
-                  backdropFilter: "blur(10px)",
-                  borderRadius: 2,
-                  border: "2px solid",
-                  borderColor:
-                    item.type === "NOTE" ? "primary.main" : "secondary.main",
-                  transform: `rotate(${(index - 2) * 3}deg)`,
-                  animation: "float 3s ease-in-out infinite",
-                  animationDelay: `${index * 0.5}s`,
-                  pointerEvents: "auto",
-                  "@keyframes float": {
-                    "0%, 100%": {
-                      transform: `rotate(${(index - 2) * 3}deg) translateY(0)`,
-                    },
-                    "50%": {
-                      transform: `rotate(${(index - 2) * 3}deg) translateY(-10px)`,
-                    },
-                  },
+                  bgcolor: "warning.main",
+                  color: "warning.contrastText",
+                  fontWeight: "bold",
                 }}
+              />
+            </Box>
+            <Typography
+              variant="caption"
+              sx={{ color: "white", maxWidth: 420, textAlign: "right" }}
+            >
+              {AR_EXPERIMENTAL_DISCLOSURE}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <IconButton
+                aria-label="Toggle fullscreen"
+                onClick={toggleFullscreen}
+                sx={{ color: "white" }}
               >
-                <Chip
-                  label={item.type}
-                  size="small"
-                  color={item.type === "NOTE" ? "primary" : "secondary"}
-                  sx={{ mb: 1 }}
-                />
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {getPreviewText(item)}
-                </Typography>
-              </Paper>
-            ))}
+                {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+              </IconButton>
+              <IconButton
+                aria-label="Close augmented reality view"
+                onClick={onClose}
+                sx={{ color: "white" }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
           </Box>
-        )}
 
-        {/* Toggle Overlay FAB */}
-        <Fab
-          color={showOverlay ? "primary" : "default"}
-          onClick={() => setShowOverlay(!showOverlay)}
-          sx={{
-            position: "absolute",
-            bottom: 24,
-            right: 24,
-          }}
-        >
-          {showOverlay ? <VisibilityIcon /> : <VisibilityOffIcon />}
-        </Fab>
+          {/* Camera Feed */}
+          {error ? (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                p: 4,
+              }}
+            >
+              <Alert severity="error" sx={{ maxWidth: 400 }}>
+                {error}
+              </Alert>
+            </Box>
+          ) : (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          )}
 
-        {/* Item Count Indicator */}
-        <Chip
-          label={`${items.length} items on canvas`}
-          sx={{
-            position: "absolute",
-            bottom: 24,
-            left: 24,
-            bgcolor: "rgba(0, 0, 0, 0.7)",
-            color: "white",
-          }}
-        />
-      </Box>
-    </Dialog>
+          {/* AR Overlay - Canvas Items */}
+          {showOverlay && !error && (
+            <Box
+              sx={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                pointerEvents: "none",
+              }}
+            >
+              {items.slice(0, 5).map((item, index) => (
+                <Paper
+                  key={item.id}
+                  elevation={8}
+                  sx={{
+                    position: "absolute",
+                    // Distribute items across screen based on their canvas position
+                    top: `${15 + ((index * 15) % 60)}%`,
+                    left: `${10 + (item.positionX % 500) / 6}%`,
+                    maxWidth: 280,
+                    p: 2,
+                    bgcolor: "rgba(255, 255, 255, 0.92)",
+                    backdropFilter: "blur(10px)",
+                    borderRadius: 2,
+                    border: "2px solid",
+                    borderColor:
+                      item.type === "NOTE" ? "primary.main" : "secondary.main",
+                    transform: `rotate(${(index - 2) * 3}deg)`,
+                    animation: "float 3s ease-in-out infinite",
+                    animationDelay: `${index * 0.5}s`,
+                    pointerEvents: "auto",
+                    "@keyframes float": {
+                      "0%, 100%": {
+                        transform: `rotate(${(index - 2) * 3}deg) translateY(0)`,
+                      },
+                      "50%": {
+                        transform: `rotate(${(index - 2) * 3}deg) translateY(-10px)`,
+                      },
+                    },
+                  }}
+                >
+                  <Chip
+                    label={item.type}
+                    size="small"
+                    color={item.type === "NOTE" ? "primary" : "secondary"}
+                    sx={{ mb: 1 }}
+                  />
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {getPreviewText(item)}
+                  </Typography>
+                </Paper>
+              ))}
+            </Box>
+          )}
+
+          {/* Toggle Overlay FAB */}
+          <Fab
+            color={showOverlay ? "primary" : "default"}
+            onClick={() => setShowOverlay(!showOverlay)}
+            sx={{
+              position: "absolute",
+              bottom: 24,
+              right: 24,
+            }}
+          >
+            {showOverlay ? <VisibilityIcon /> : <VisibilityOffIcon />}
+          </Fab>
+
+          {/* Item Count Indicator */}
+          <Chip
+            label={`${items.length} items on canvas`}
+            sx={{
+              position: "absolute",
+              bottom: 24,
+              left: 24,
+              bgcolor: "rgba(0, 0, 0, 0.7)",
+              color: "white",
+            }}
+          />
+        </Box>
+      </Dialog>
+    )
   );
 }

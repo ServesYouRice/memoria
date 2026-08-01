@@ -47,7 +47,11 @@ import type Konva from "konva";
 import { toast } from "sonner";
 
 import type { CanvasItem } from "@/types/canvas";
-import { ItemType, isNoteContent } from "@/types/canvas";
+import {
+  ItemType,
+  isNoteContent,
+  resolveCanvasCapabilities,
+} from "@/types/canvas";
 
 // Components
 import { CanvasItemLayer } from "@/features/canvas/components/CanvasItemLayer";
@@ -62,7 +66,10 @@ import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
 import { MainToolbar } from "@/features/canvas/components/MainToolbar";
 import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
+import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
+import { isArCanvasEnabled } from "@/lib/product-surfaces";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -105,8 +112,15 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     refreshMetadata,
     accessLevel,
   } = useCanvasData({ canvasId });
-  const canEdit = accessLevel === "OWNER" || accessLevel === "EDIT";
-  const isOwner = accessLevel === "OWNER";
+  const capabilities = resolveCanvasCapabilities(accessLevel);
+  const canEdit = capabilities.canEditItems;
+  const isOwner = capabilities.canManageCanvas;
+
+  const { commitGeometry } = useItemGeometry({
+    capabilities,
+    onError: (error) =>
+      toast.error(`Canvas item could not be saved: ${error.message}`),
+  });
 
   // Store state
   const {
@@ -626,20 +640,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     setWhisperOpen(false);
   };
 
-  const handleDragEnd = (
-    e: Konva.KonvaEventObject<DragEvent>,
-    item: CanvasItem,
-  ) => {
-    updateItem({
-      itemId: item.id,
-      data: {
-        positionX: e.target.x(),
-        positionY: e.target.y(),
-        version: item.version,
-      },
-    });
-  };
-
   const generateThumbnail = useCallback(() => {
     if (!stageRef.current || !isOwner) return;
     try {
@@ -671,6 +671,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     e: React.MouseEvent | Konva.KonvaEventObject<MouseEvent>,
     itemId: string,
   ) => {
+    if (!capabilities.canCopyItems && !capabilities.canComment) return;
     if ("evt" in e) {
       e.evt.preventDefault();
       setContextMenuPosition({ x: e.evt.clientX, y: e.evt.clientY });
@@ -682,7 +683,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   };
 
   const handleNoteDoubleClick = (item: CanvasItem) => {
-    if (!canEdit) return;
+    if (!capabilities.canEditItems) return;
     if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
       setEditingNoteItem(item);
       setEditNoteDialogOpen(true);
@@ -703,6 +704,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     }
   };
   const handleOpenComments = () => {
+    if (!capabilities.canComment) return;
     if (!selectedItemId) return;
     setCommentsItemId(selectedItemId);
     setCommentsPanelOpen(true);
@@ -982,7 +984,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             : undefined
         }
         onWhisper={() => setWhisperOpen(true)}
-        onAR={() => setAROpen(true)}
+        onAR={isArCanvasEnabled() ? () => setAROpen(true) : undefined}
       />
 
       {canvasLoadError && (
@@ -1004,6 +1006,33 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           </Alert>
         </Box>
       )}
+
+      <CanvasAccessiblePanel
+        items={allItems}
+        capabilities={capabilities}
+        selectedItemIds={selectedItemIds}
+        onSelectItem={(itemId) => handleSelectItem(itemId, false)}
+        onActivateItem={(item) => {
+          if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
+            handleNoteDoubleClick(item);
+          } else if (item.type === ItemType.BOOKMARK) {
+            handleBookmarkDoubleClick(item);
+          } else if (item.type === ItemType.IMAGE) {
+            handleImageDoubleClick(item);
+          }
+        }}
+        onNudgeItem={(item, deltaX, deltaY) => {
+          commitGeometry(item, {
+            positionX: item.positionX + deltaX,
+            positionY: item.positionY + deltaY,
+          });
+        }}
+        onDeleteItem={(item) => {
+          void deleteItem({ itemId: item.id, version: item.version });
+        }}
+        onCreateItem={() => setNoteDialogOpen(true)}
+        canvasName={canvasName}
+      />
 
       {viewMode === "manual" && !isPresentationMode && canEdit && (
         <MainToolbar />
@@ -1122,9 +1151,12 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               onNoteDoubleClick={handleNoteDoubleClick}
               onBookmarkDoubleClick={handleBookmarkDoubleClick}
               onImageDoubleClick={handleImageDoubleClick}
-              onDragEnd={handleDragEnd}
+              capabilities={capabilities}
+              onCommitGeometry={(item, geometry) => {
+                commitGeometry(item, geometry);
+              }}
               onItemChange={handleItemChange}
-              readOnly={!canEdit}
+              readOnly={!capabilities.canMoveItems}
             />
           </Stage>
 
@@ -1248,6 +1280,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       )}
 
       <CanvasDialogs
+        capabilities={capabilities}
         canvasId={canvasId}
         canvasName={canvasName}
         items={allItems}

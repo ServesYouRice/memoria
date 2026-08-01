@@ -29,6 +29,10 @@ import {
   isTextContent,
 } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
+import {
+  EMBED_PREVIEW_LABEL,
+  describeEmbedTarget,
+} from "@/lib/product-surfaces";
 
 function ReadonlyBookmarkImage({
   src,
@@ -470,7 +474,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           x={0}
           y={item.height / 2 - 12}
           width={item.width}
-          text={item.content.embedType.toUpperCase()}
+          text={`${EMBED_PREVIEW_LABEL} · ${describeEmbedTarget(item.content.url)}`}
           align="center"
           fontSize={16}
           fill="#475569"
@@ -479,7 +483,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           x={10}
           y={item.height / 2 + 12}
           width={item.width - 20}
-          text={item.content.url}
+          text="Opens as a link; no live content is loaded in the canvas."
           align="center"
           fontSize={10}
           fill="#94a3b8"

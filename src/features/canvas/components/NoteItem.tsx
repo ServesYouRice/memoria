@@ -10,8 +10,13 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Text, Circle } from "react-konva";
 import type Konva from "konva";
-import { type CanvasItem, isNoteContent } from "@/types/canvas";
-import { useAutosave } from "@/lib/hooks/use-autosave";
+import {
+  type CanvasCapabilities,
+  type CanvasItem,
+  type CommitItemGeometry,
+  isNoteContent,
+} from "@/types/canvas";
+import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 import { stripHtmlTags } from "@/lib/utils/html";
 
 interface NoteItemProps {
@@ -20,7 +25,8 @@ interface NoteItemProps {
   onSelect?: () => void;
   onDoubleClick?: () => void;
   onContextMenu?: (e: any) => void;
-  onDragEnd?: (e: any) => void;
+  capabilities: CanvasCapabilities;
+  onCommitGeometry: CommitItemGeometry;
   onChange?: (data: any) => void;
   readOnly?: boolean;
 }
@@ -35,6 +41,8 @@ export function NoteItem({
   onSelect,
   onDoubleClick,
   onContextMenu,
+  capabilities,
+  onCommitGeometry,
   readOnly = false,
 }: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
@@ -45,12 +53,6 @@ export function NoteItem({
   const [localSize, setLocalSize] = useState({
     width: item.width,
     height: item.height,
-  });
-
-  const { saveChanges, isSaving } = useAutosave({
-    itemId: item.id,
-    version: item.version,
-    debounceMs: 500,
   });
 
   const content = isNoteContent(item.content)
@@ -72,11 +74,7 @@ export function NoteItem({
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-    const node = e.target;
-    saveChanges({
-      positionX: node.x(),
-      positionY: node.y(),
-    });
+    commitGroupDragEnd(e, (geometry) => onCommitGeometry(item, geometry));
   };
 
   const handleResize = (
@@ -134,7 +132,7 @@ export function NoteItem({
   };
 
   const handleResizeEnd = () => {
-    saveChanges({
+    onCommitGeometry(item, {
       positionX: localPosition.x,
       positionY: localPosition.y,
       width: localSize.width,
@@ -147,7 +145,7 @@ export function NoteItem({
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable={!readOnly}
+      draggable={!readOnly && capabilities.canMoveItems}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
@@ -181,92 +179,85 @@ export function NoteItem({
         wrap="word"
       />
 
-      {isSaving && (
-        <Text
-          x={localSize.width - 80}
-          y={localSize.height - 25}
-          text="Saving..."
-          fontSize={10}
-          fill="#999"
-        />
-      )}
+      {isSelected &&
+        !readOnly &&
+        capabilities.canMoveItems &&
+        capabilities.canResizeItems && (
+          <>
+            {/* Resize handles */}
+            <Circle
+              x={localSize.width}
+              y={localSize.height}
+              radius={RESIZE_HANDLE_SIZE}
+              fill="#2196F3"
+              draggable
+              onDragMove={(e) => handleResize("se", e)}
+              onDragEnd={handleResizeEnd}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "nwse-resize";
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "default";
+              }}
+            />
 
-      {isSelected && !readOnly && (
-        <>
-          {/* Resize handles */}
-          <Circle
-            x={localSize.width}
-            y={localSize.height}
-            radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
-            draggable
-            onDragMove={(e) => handleResize("se", e)}
-            onDragEnd={handleResizeEnd}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "nwse-resize";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-          />
+            <Circle
+              x={0}
+              y={localSize.height}
+              radius={RESIZE_HANDLE_SIZE}
+              fill="#2196F3"
+              draggable
+              onDragMove={(e) => handleResize("sw", e)}
+              onDragEnd={handleResizeEnd}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "nesw-resize";
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "default";
+              }}
+            />
 
-          <Circle
-            x={0}
-            y={localSize.height}
-            radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
-            draggable
-            onDragMove={(e) => handleResize("sw", e)}
-            onDragEnd={handleResizeEnd}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "nesw-resize";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-          />
+            <Circle
+              x={localSize.width}
+              y={0}
+              radius={RESIZE_HANDLE_SIZE}
+              fill="#2196F3"
+              draggable
+              onDragMove={(e) => handleResize("ne", e)}
+              onDragEnd={handleResizeEnd}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "nesw-resize";
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "default";
+              }}
+            />
 
-          <Circle
-            x={localSize.width}
-            y={0}
-            radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
-            draggable
-            onDragMove={(e) => handleResize("ne", e)}
-            onDragEnd={handleResizeEnd}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "nesw-resize";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-          />
-
-          <Circle
-            x={0}
-            y={0}
-            radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
-            draggable
-            onDragMove={(e) => handleResize("nw", e)}
-            onDragEnd={handleResizeEnd}
-            onMouseEnter={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "nwse-resize";
-            }}
-            onMouseLeave={(e) => {
-              const stage = e.target.getStage();
-              if (stage) stage.container().style.cursor = "default";
-            }}
-          />
-        </>
-      )}
+            <Circle
+              x={0}
+              y={0}
+              radius={RESIZE_HANDLE_SIZE}
+              fill="#2196F3"
+              draggable
+              onDragMove={(e) => handleResize("nw", e)}
+              onDragEnd={handleResizeEnd}
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "nwse-resize";
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = "default";
+              }}
+            />
+          </>
+        )}
     </Group>
   );
 }

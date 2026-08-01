@@ -1,68 +1,108 @@
-'use client';
+"use client";
 
-import React from 'react';
-import dynamic from 'next/dynamic';
-import type Konva from 'konva';
-import { type CanvasItem } from '@/types/canvas';
-import { CanvasContextMenu, type ContextMenuPosition } from '@/features/canvas/components/CanvasContextMenu';
-import { CommentsPanel } from '@/features/canvas/components/CommentsPanel';
-import { TagFilterPanel } from '@/features/canvas/components/TagFilterPanel';
-import { SerendipityDialog } from '@/features/canvas/components/SerendipityDialog';
-import { TemplatesGallery } from '@/features/canvas/components/TemplatesGallery';
-import { WhisperMode } from '@/features/canvas/components/WhisperMode';
-import { ARCanvasLayer } from '@/features/canvas/components/ARCanvasLayer';
+import React from "react";
+import dynamic from "next/dynamic";
+import type Konva from "konva";
+import { type CanvasCapabilities, type CanvasItem } from "@/types/canvas";
+import {
+  CanvasContextMenu,
+  type ContextMenuPosition,
+} from "@/features/canvas/components/CanvasContextMenu";
+import { CommentsPanel } from "@/features/canvas/components/CommentsPanel";
+import { TagFilterPanel } from "@/features/canvas/components/TagFilterPanel";
+import { SerendipityDialog } from "@/features/canvas/components/SerendipityDialog";
+import { TemplatesGallery } from "@/features/canvas/components/TemplatesGallery";
+import { WhisperMode } from "@/features/canvas/components/WhisperMode";
+import { ARCanvasLayer } from "@/features/canvas/components/ARCanvasLayer";
 
 const EditNoteDialog = dynamic(
-  () => import('@/features/canvas/components/EditNoteDialog').then((mod) => mod.EditNoteDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/EditNoteDialog").then(
+      (mod) => mod.EditNoteDialog,
+    ),
+  { ssr: false },
 );
 const EditBookmarkDialog = dynamic(
-  () => import('@/features/canvas/components/EditBookmarkDialog').then((mod) => mod.EditBookmarkDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/EditBookmarkDialog").then(
+      (mod) => mod.EditBookmarkDialog,
+    ),
+  { ssr: false },
 );
 const EditImageDialog = dynamic(
-  () => import('@/features/canvas/components/EditImageDialog').then((mod) => mod.EditImageDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/EditImageDialog").then(
+      (mod) => mod.EditImageDialog,
+    ),
+  { ssr: false },
 );
 const CreateNoteDialog = dynamic(
-  () => import('@/features/canvas/components/CreateNoteDialog').then((mod) => mod.CreateNoteDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/CreateNoteDialog").then(
+      (mod) => mod.CreateNoteDialog,
+    ),
+  { ssr: false },
 );
 const CreateBookmarkDialog = dynamic(
-  () => import('@/features/canvas/components/CreateBookmarkDialog').then((mod) => mod.CreateBookmarkDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/CreateBookmarkDialog").then(
+      (mod) => mod.CreateBookmarkDialog,
+    ),
+  { ssr: false },
 );
 const CreateImageDialog = dynamic(
-  () => import('@/features/canvas/components/CreateImageDialog').then((mod) => mod.CreateImageDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/CreateImageDialog").then(
+      (mod) => mod.CreateImageDialog,
+    ),
+  { ssr: false },
 );
 const CreatePollDialog = dynamic(
-  () => import('@/features/canvas/components/CreatePollDialog').then((mod) => mod.CreatePollDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/CreatePollDialog").then(
+      (mod) => mod.CreatePollDialog,
+    ),
+  { ssr: false },
 );
 const SaveAsTemplateDialog = dynamic(
-  () => import('@/features/canvas/components/SaveAsTemplateDialog').then((mod) => mod.SaveAsTemplateDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/SaveAsTemplateDialog").then(
+      (mod) => mod.SaveAsTemplateDialog,
+    ),
+  { ssr: false },
 );
 const VersionHistoryDialog = dynamic(
-  () => import('@/features/canvas/components/VersionHistoryDialog').then((mod) => mod.VersionHistoryDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/VersionHistoryDialog").then(
+      (mod) => mod.VersionHistoryDialog,
+    ),
+  { ssr: false },
 );
 const ExportDialog = dynamic(
-  () => import('@/features/canvas/components/ExportDialog').then((mod) => mod.ExportDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/ExportDialog").then(
+      (mod) => mod.ExportDialog,
+    ),
+  { ssr: false },
 );
 const AIDialog = dynamic(
-  () => import('@/features/canvas/components/AIDialog').then((mod) => mod.AIDialog),
-  { ssr: false }
+  () =>
+    import("@/features/canvas/components/AIDialog").then((mod) => mod.AIDialog),
+  { ssr: false },
 );
 
 interface CanvasDialogsProps {
+  capabilities: CanvasCapabilities;
   canvasId: string;
   canvasName: string;
   items: CanvasItem[];
   stageRef: React.RefObject<Konva.Stage>;
-  collaborators: { userId: string; name?: string; email: string; color: string }[];
+  collaborators: {
+    userId: string;
+    name?: string;
+    email: string;
+    color: string;
+  }[];
 
   noteDialogOpen: boolean;
   setNoteDialogOpen: (open: boolean) => void;
@@ -134,6 +174,7 @@ interface CanvasDialogsProps {
 }
 
 export function CanvasDialogs({
+  capabilities,
   canvasId,
   canvasName,
   items,
@@ -199,17 +240,79 @@ export function CanvasDialogs({
 }: CanvasDialogsProps) {
   return (
     <>
-      <CreateNoteDialog open={noteDialogOpen} onClose={() => setNoteDialogOpen(false)} canvasId={canvasId} initialPosition={{ x: 100, y: 100 }} />
-      <CreateBookmarkDialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} canvasId={canvasId} initialPosition={{ x: 100, y: 100 }} />
-      <CreateImageDialog open={imageDialogOpen} onClose={() => setImageDialogOpen(false)} canvasId={canvasId} initialPosition={{ x: 100, y: 100 }} />
-      <CreatePollDialog open={pollDialogOpen} onClose={() => setPollDialogOpen(false)} canvasId={canvasId} initialPosition={{ x: 100, y: 100 }} />
+      {capabilities.canCreateItems && (
+        <>
+          <CreateNoteDialog
+            open={noteDialogOpen}
+            onClose={() => setNoteDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+          <CreateBookmarkDialog
+            open={bookmarkDialogOpen}
+            onClose={() => setBookmarkDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+          <CreateImageDialog
+            open={imageDialogOpen}
+            onClose={() => setImageDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+          <CreatePollDialog
+            open={pollDialogOpen}
+            onClose={() => setPollDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+        </>
+      )}
 
-      <EditNoteDialog open={editNoteDialogOpen} onClose={() => { setEditNoteDialogOpen(false); setEditingNoteItem(null); }} item={editingNoteItem} />
-      <EditBookmarkDialog open={editBookmarkDialogOpen} onClose={() => { setEditBookmarkDialogOpen(false); setEditingBookmarkItem(null); }} item={editingBookmarkItem} />
-      <EditImageDialog open={editImageDialogOpen} onClose={() => { setEditImageDialogOpen(false); setEditingImageItem(null); }} item={editingImageItem} />
+      {capabilities.canEditItems && (
+        <>
+          <EditNoteDialog
+            open={editNoteDialogOpen}
+            onClose={() => {
+              setEditNoteDialogOpen(false);
+              setEditingNoteItem(null);
+            }}
+            item={editingNoteItem}
+          />
+          <EditBookmarkDialog
+            open={editBookmarkDialogOpen}
+            onClose={() => {
+              setEditBookmarkDialogOpen(false);
+              setEditingBookmarkItem(null);
+            }}
+            item={editingBookmarkItem}
+          />
+          <EditImageDialog
+            open={editImageDialogOpen}
+            onClose={() => {
+              setEditImageDialogOpen(false);
+              setEditingImageItem(null);
+            }}
+            item={editingImageItem}
+          />
+        </>
+      )}
 
-      <SaveAsTemplateDialog open={templateDialogOpen} onClose={() => setTemplateDialogOpen(false)} canvasId={canvasId} canvasName={canvasName} />
-      <VersionHistoryDialog open={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} canvasId={canvasId} />
+      {capabilities.canManageCanvas && (
+        <>
+          <SaveAsTemplateDialog
+            open={templateDialogOpen}
+            onClose={() => setTemplateDialogOpen(false)}
+            canvasId={canvasId}
+            canvasName={canvasName}
+          />
+          <VersionHistoryDialog
+            open={versionHistoryOpen}
+            onClose={() => setVersionHistoryOpen(false)}
+            canvasId={canvasId}
+          />
+        </>
+      )}
 
       <ExportDialog
         open={exportDialogOpen}
@@ -236,9 +339,10 @@ export function CanvasDialogs({
         onDuplicate={onDuplicate}
         onCopy={onCopy}
         onComments={onOpenComments}
+        capabilities={capabilities}
       />
 
-      {commentsItemId && (
+      {capabilities.canComment && commentsItemId && (
         <CommentsPanel
           open={commentsPanelOpen}
           onClose={() => {
@@ -246,12 +350,14 @@ export function CanvasDialogs({
             setCommentsItemId(null);
           }}
           itemId={commentsItemId}
-          itemType={items.find((item) => item.id === commentsItemId)?.type || 'NOTE'}
+          itemType={
+            items.find((item) => item.id === commentsItemId)?.type || "NOTE"
+          }
           collaborators={collaborators}
         />
       )}
 
-      {aiDialogOpen && (
+      {capabilities.canEditItems && aiDialogOpen && (
         <AIDialog
           open={aiDialogOpen}
           onClose={() => setAiDialogOpen(false)}
@@ -290,10 +396,14 @@ export function CanvasDialogs({
         <ARCanvasLayer
           open={arOpen}
           onClose={() => setAROpen(false)}
-          items={items.map(item => ({
+          items={items.map((item) => ({
             id: item.id,
             type: item.type,
-            content: item.content as { text?: string; title?: string; url?: string },
+            content: item.content as {
+              text?: string;
+              title?: string;
+              url?: string;
+            },
             positionX: item.positionX,
             positionY: item.positionY,
           }))}

@@ -10,6 +10,7 @@
 import { prisma } from "@/lib/db";
 import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 import { getCachedSession } from "@/lib/api/session-cache";
+import type { CanvasAccessLevel } from "@/types/canvas";
 
 /**
  * Get authenticated user from session
@@ -37,7 +38,7 @@ export async function requireAuth() {
 /**
  * Canvas access levels based on ownership and shares
  */
-export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW" | "NONE";
+export type { CanvasAccessLevel } from "@/types/canvas";
 
 /**
  * Get user's access level for a canvas

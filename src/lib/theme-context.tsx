@@ -7,10 +7,22 @@
  * Persists user preference in localStorage
  */
 
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { type PaletteMode } from '@mui/material';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+} from "react";
+import { type PaletteMode } from "@mui/material";
+import {
+  DEFAULT_THEME_MODE,
+  THEME_STORAGE_KEY,
+  applyThemeModeToDocument,
+  resolvePreferredThemeMode,
+} from "@/lib/theme-preference";
 
 interface ThemeContextType {
   mode: PaletteMode;
@@ -18,14 +30,14 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  mode: 'light',
+  mode: "light",
   toggleTheme: () => {},
 });
 
 export function useThemeMode() {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error('useThemeMode must be used within ThemeModeProvider');
+    throw new Error("useThemeMode must be used within ThemeModeProvider");
   }
   return context;
 }
@@ -36,41 +48,34 @@ interface ThemeModeProviderProps {
 
 export function ThemeModeProvider({ children }: ThemeModeProviderProps) {
   // Initialize theme from localStorage or system preference
-  const [mode, setMode] = useState<PaletteMode>('light');
-  const [mounted, setMounted] = useState(false);
+  const [mode, setMode] = useState<PaletteMode>(DEFAULT_THEME_MODE);
 
   useEffect(() => {
-    setMounted(true);
+    setMode(resolvePreferredThemeMode());
 
-    // Check localStorage first
-    const savedMode = localStorage.getItem('theme-mode') as PaletteMode | null;
-    if (savedMode === 'light' || savedMode === 'dark') {
-      setMode(savedMode);
-      return;
-    }
-
-    // Fall back to system preference
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const systemMode = prefersDark ? 'dark' : 'light';
-    setMode(systemMode);
-
-    // Listen for system preference changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      // Only update if user hasn't set a preference
-      if (!localStorage.getItem('theme-mode')) {
-        setMode(e.matches ? 'dark' : 'light');
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      if (!window.localStorage.getItem(THEME_STORAGE_KEY)) {
+        setMode(event.matches ? "dark" : "light");
       }
     };
 
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
+
+  useEffect(() => {
+    applyThemeModeToDocument(mode);
+  }, [mode]);
 
   const toggleTheme = () => {
     setMode((prevMode) => {
-      const newMode = prevMode === 'light' ? 'dark' : 'light';
-      localStorage.setItem('theme-mode', newMode);
+      const newMode = prevMode === "light" ? "dark" : "light";
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, newMode);
+      } catch {
+        // The preference is still useful for this session when storage is blocked.
+      }
       return newMode;
     });
   };
@@ -80,13 +85,10 @@ export function ThemeModeProvider({ children }: ThemeModeProviderProps) {
       mode,
       toggleTheme,
     }),
-    [mode]
+    [mode],
   );
 
-  // Prevent flash of incorrect theme on mount
-  if (!mounted) {
-    return null;
-  }
-
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  );
 }

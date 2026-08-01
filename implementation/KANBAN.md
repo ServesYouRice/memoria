@@ -11,10 +11,6 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-008](tasks/IMP-008.md) | One geometry/capability contract | UI scope excluded by user |
-| [IMP-009](tasks/IMP-009.md) | SSR/theme/shortcut/error baseline | UI scope excluded by user |
-| [IMP-022](tasks/IMP-022.md) | Accessible and responsive canvas | UI scope excluded by user |
-| [IMP-032](tasks/IMP-032.md) | Optional product-surface semantics | UI scope excluded by user |
 
 ## WAITING
 
@@ -46,6 +42,10 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
+| [IMP-008](tasks/IMP-008.md) | One geometry/capability contract | Parent-owned serialized geometry commits cover all item types; role gates prevent unsupported local mutations; focused geometry suite (60 tests) and type-check pass. |
+| [IMP-009](tasks/IMP-009.md) | SSR/theme/shortcut/error baseline | Server HTML/theme reconciliation, editable shortcut suppression, neutral error recovery, and loading skeletons; focused UI suite (16 tests), type-check, and lint pass. |
+| [IMP-022](tasks/IMP-022.md) | Accessible and responsive canvas | DOM item list is wired into authenticated and public canvases with keyboard actions/capability gates; responsive overflow actions and mobile-safe controls added; type-check and lint pass. |
+| [IMP-032](tasks/IMP-032.md) | Optional product-surface semantics | Embeds are labelled inert link previews, timer is explicitly personal, AR is opt-in experimental and device-gated, and help copy matches; focused product suite (10 tests), type-check, and lint pass. |
 | [IMP-023](tasks/IMP-023.md) | Contract cleanup and decomposition | Request IDs now span proxy/server/problem/log boundaries, API responses are bounded and validated, the legacy serverless branch is removed, Redis configuration is shared, and external webhook delivery is isolated; 292 unit tests, 14 real-PostgreSQL tests, type-check, lint, build, and strict smoke pass. |
 | [IMP-031](tasks/IMP-031.md) | Runtime collaboration efficiency | Backend: declared 15-second session-version cache/invalidation, batched heartbeat authorization, 20 Hz cursor fanout with noise dropping, and shared Redis rate-limit client implemented; cache and rate-limit tests pass in the 292-test final suite. |
 | [IMP-030](tasks/IMP-030.md) | Atomic canvas commands and viewport state | Backend: idempotent mixed update/delete/create transaction with one authorization/lock, OCC rollback, deterministic z-index, and explicit published-default viewport contract implemented; atomic rollback and replay pass against PostgreSQL. |

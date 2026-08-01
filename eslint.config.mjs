@@ -44,6 +44,7 @@ export default defineConfig([
   },
   globalIgnores([
     ".next/**",
+    ".claude/worktrees/**",
     "coverage/**",
     "dist/**",
     "node_modules/**",

@@ -20,9 +20,10 @@ import {
 import { ZoomIn, ZoomOut, FitScreen } from "@mui/icons-material";
 import { Stage } from "react-konva";
 import Link from "next/link";
-import { type CanvasItem } from "@/types/canvas";
+import { resolveCanvasCapabilities, type CanvasItem } from "@/types/canvas";
 import type Konva from "konva";
 import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
+import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
 
 interface SharePageProps {
   params: Promise<{
@@ -215,7 +216,7 @@ export default function SharePage({ params }: SharePageProps) {
       }}
     >
       <AppBar position="static" color="default" elevation={1}>
-        <Toolbar>
+        <Toolbar sx={{ overflowX: "auto", minWidth: 0 }}>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             {canvas?.name || "Shared Canvas"}{" "}
             <Typography
@@ -267,6 +268,12 @@ export default function SharePage({ params }: SharePageProps) {
           </Button>
         </Toolbar>
       </AppBar>
+
+      <CanvasAccessiblePanel
+        items={items}
+        capabilities={resolveCanvasCapabilities("VIEW")}
+        canvasName={canvas?.name || "Shared canvas"}
+      />
 
       {/* Canvas */}
       <Box ref={containerRef} sx={{ flex: 1, overflow: "hidden" }}>

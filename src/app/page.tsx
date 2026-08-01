@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import {
   Box,
@@ -10,7 +9,6 @@ import {
   CardContent,
   Stack,
   Divider,
-  alpha,
 } from "@mui/material";
 import {
   Dashboard as MultiCanvasIcon,
@@ -22,7 +20,6 @@ import {
   BookmarkBorder as BookmarkIcon,
 } from "@mui/icons-material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
-import { brand, gradients } from "@/lib/theme";
 
 const FEATURES = [
   {
@@ -63,6 +60,17 @@ const FEATURES = [
   },
 ];
 
+// Keep public-page tokens server-safe: this page must render before the client
+// theme provider exists, so it cannot import the client-only theme module.
+const PAGE_GRADIENTS = {
+  brand: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+  brandSoft:
+    "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.12) 100%)",
+  hero: "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(99,102,241,0.25), transparent), radial-gradient(ellipse 60% 50% at 80% 40%, rgba(139,92,246,0.15), transparent)",
+};
+const HERO_BORDER_COLOR = "rgba(99,102,241,0.3)";
+const PREVIEW_SHADOW = "0 24px 64px rgba(99,102,241,0.12)";
+
 export default async function Home() {
   const session = await auth();
 
@@ -89,10 +97,10 @@ export default async function Home() {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1.5}>
-            <Button component={Link} href="/auth/login" color="inherit">
+            <Button href="/auth/login" color="inherit">
               Sign in
             </Button>
-            <Button component={Link} href="/auth/register" variant="contained">
+            <Button href="/auth/register" variant="contained">
               Get started
             </Button>
           </Stack>
@@ -106,7 +114,7 @@ export default async function Home() {
           sx={{
             position: "absolute",
             inset: 0,
-            background: gradients.hero,
+            background: PAGE_GRADIENTS.hero,
             pointerEvents: "none",
           }}
         />
@@ -127,7 +135,7 @@ export default async function Home() {
               mb: 3,
               borderRadius: 99,
               border: "1px solid",
-              borderColor: (theme) => alpha(theme.palette.primary.main, 0.3),
+              borderColor: HERO_BORDER_COLOR,
               color: "primary.main",
               fontWeight: 600,
             }}
@@ -146,7 +154,7 @@ export default async function Home() {
             <Box
               component="span"
               sx={{
-                background: gradients.brand,
+                background: PAGE_GRADIENTS.brand,
                 backgroundClip: "text",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
@@ -175,20 +183,10 @@ export default async function Home() {
             spacing={2}
             justifyContent="center"
           >
-            <Button
-              component={Link}
-              href="/auth/register"
-              variant="contained"
-              size="large"
-            >
+            <Button href="/auth/register" variant="contained" size="large">
               Get started free
             </Button>
-            <Button
-              component={Link}
-              href="/auth/login"
-              variant="outlined"
-              size="large"
-            >
+            <Button href="/auth/login" variant="outlined" size="large">
               Sign in
             </Button>
           </Stack>
@@ -207,8 +205,7 @@ export default async function Home() {
               border: "1px solid",
               borderColor: "divider",
               bgcolor: "background.paper",
-              boxShadow: (theme) =>
-                `0 24px 64px ${alpha(brand.primary.main, theme.palette.mode === "light" ? 0.12 : 0.25)}`,
+              boxShadow: PREVIEW_SHADOW,
               animation: "fadeIn 0.8s ease-out 0.2s both",
             }}
           >
@@ -225,7 +222,7 @@ export default async function Home() {
                     width: 64,
                     height: 64,
                     borderRadius: 3,
-                    background: gradients.brandSoft,
+                    background: PAGE_GRADIENTS.brandSoft,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -288,7 +285,7 @@ export default async function Home() {
                     width: 52,
                     height: 52,
                     borderRadius: 2.5,
-                    background: gradients.brandSoft,
+                    background: PAGE_GRADIENTS.brandSoft,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -321,7 +318,7 @@ export default async function Home() {
             px: { xs: 3, md: 8 },
             py: { xs: 6, md: 8 },
             borderRadius: 5,
-            background: gradients.brand,
+            background: PAGE_GRADIENTS.brand,
             color: "#fff",
           }}
         >
@@ -337,7 +334,6 @@ export default async function Home() {
             organize your ideas.
           </Typography>
           <Button
-            component={Link}
             href="/auth/register"
             size="large"
             variant="contained"
@@ -380,16 +376,16 @@ export default async function Home() {
             flexWrap="wrap"
             alignItems="center"
           >
-            <Button component={Link} href="/help" size="small">
+            <Button href="/help" size="small">
               Help
             </Button>
-            <Button component={Link} href="/status" size="small">
+            <Button href="/status" size="small">
               Status
             </Button>
-            <Button component={Link} href="/privacy" size="small">
+            <Button href="/privacy" size="small">
               Privacy
             </Button>
-            <Button component={Link} href="/terms" size="small">
+            <Button href="/terms" size="small">
               Terms
             </Button>
             <Typography variant="body2" color="text.secondary">

@@ -1,75 +1,94 @@
-
-import React from 'react';
-import { Group, Line, Rect } from 'react-konva';
-import { type CanvasItem, isDrawingContent } from '@/types/canvas';
+import React from "react";
+import { Group, Line, Rect } from "react-konva";
+import {
+  type CanvasCapabilities,
+  type CanvasItem,
+  type CommitItemGeometry,
+  isDrawingContent,
+} from "@/types/canvas";
+import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 
 interface DrawingItemProps {
-    item: CanvasItem;
-    isSelected: boolean;
-    onSelect?: () => void;
-    onContextMenu?: (e: any) => void;
+  item: CanvasItem;
+  isSelected: boolean;
+  onSelect?: () => void;
+  onContextMenu?: (e: any) => void;
+  capabilities: CanvasCapabilities;
+  onCommitGeometry: CommitItemGeometry;
 }
 
-export const DrawingItem: React.FC<DrawingItemProps> = ({ item, isSelected, onSelect, onContextMenu }) => {
-    if (!isDrawingContent(item.content)) {
-        return null;
-    }
+export const DrawingItem: React.FC<DrawingItemProps> = ({
+  item,
+  isSelected,
+  onSelect,
+  onContextMenu,
+  capabilities,
+  onCommitGeometry,
+}) => {
+  if (!isDrawingContent(item.content)) {
+    return null;
+  }
 
-    const { paths } = item.content;
-    const { positionX, positionY, width, height, zIndex } = item;
+  const { paths } = item.content;
+  const { positionX, positionY, width, height, zIndex } = item;
 
-    return (
-        <Group
-            id={item.id}
-            x={positionX}
-            y={positionY}
-            width={width}
-            height={height}
-            zIndex={zIndex}
-            onClick={(e) => {
-                e.cancelBubble = true;
-                onSelect?.();
-            }}
-            onTap={(e) => {
-                e.cancelBubble = true;
-                onSelect?.();
-            }}
-            onContextMenu={onContextMenu}
-            draggable={isSelected}
-        >
-            {/* Invisible hit area to make selecting easier */}
-            <Rect
-                width={width}
-                height={height}
-                fill="transparent"
-            // stroke={isSelected ? '#0096ff' : 'transparent'}
-            // strokeWidth={1}
-            />
+  return (
+    <Group
+      id={item.id}
+      x={positionX}
+      y={positionY}
+      width={width}
+      height={height}
+      zIndex={zIndex}
+      onClick={(e) => {
+        e.cancelBubble = true;
+        onSelect?.();
+      }}
+      onTap={(e) => {
+        e.cancelBubble = true;
+        onSelect?.();
+      }}
+      onContextMenu={onContextMenu}
+      draggable={isSelected && capabilities.canMoveItems}
+      onDragEnd={(event) =>
+        commitGroupDragEnd(event, (geometry) =>
+          onCommitGeometry(item, geometry),
+        )
+      }
+    >
+      {/* Invisible hit area to make selecting easier */}
+      <Rect
+        width={width}
+        height={height}
+        fill="transparent"
+        // stroke={isSelected ? '#0096ff' : 'transparent'}
+        // strokeWidth={1}
+      />
 
-            {paths.map((path, index) => (
-                <Line
-                    key={index}
-                    points={path.points}
-                    stroke={path.stroke}
-                    strokeWidth={path.strokeWidth}
-                    opacity={path.opacity ?? 1}
-                    tension={path.tension ?? 0.5}
-                    lineCap="round"
-                    lineJoin="round"
-                />
-            ))}
+      {paths.map((path, index) => (
+        <Line
+          key={index}
+          points={path.points}
+          stroke={path.stroke}
+          strokeWidth={path.strokeWidth}
+          opacity={path.opacity ?? 1}
+          tension={path.tension ?? 0.5}
+          lineCap="round"
+          lineJoin="round"
+        />
+      ))}
 
-            {/* Selection indicator only renders when needed by parent, or we can render it here */}
-            {isSelected && (
-                <Rect
-                    width={width}
-                    height={height}
-                    stroke="#2196f3"
-                    strokeWidth={1}
-                    dash={[5, 5]}
-                    listening={false}
-                />
-            )}
-        </Group>
-    );
+      {/* Selection indicator only renders when needed by parent, or we can render it here */}
+      {isSelected && (
+        <Rect
+          width={width}
+          height={height}
+          stroke="#2196f3"
+          strokeWidth={1}
+          dash={[5, 5]}
+          listening={false}
+        />
+      )}
+    </Group>
+  );
 };

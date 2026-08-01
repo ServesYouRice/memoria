@@ -1,12 +1,17 @@
-'use client';
+"use client";
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer } from 'react-konva';
-import { Box, Button, CircularProgress, Alert } from '@mui/material';
-import { ItemType } from '@/types/canvas';
-import { NoteItem } from './NoteItem';
-import { useCanvasItems, useCreateCanvasItem, useDeleteCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard';
+import React, { useState, useRef, useEffect } from "react";
+import { Stage, Layer } from "react-konva";
+import { Box, Button, CircularProgress, Alert } from "@mui/material";
+import { ItemType, resolveCanvasCapabilities } from "@/types/canvas";
+import { NoteItem } from "./NoteItem";
+import {
+  useCanvasItems,
+  useCreateCanvasItem,
+  useDeleteCanvasItem,
+} from "@/lib/hooks/use-canvas-items";
+import { useKeyboardShortcuts } from "@/lib/hooks/use-keyboard";
+import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
 interface CanvasProps {
   canvasId: string;
@@ -22,27 +27,32 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
 
   const createMutation = useCreateCanvasItem();
   const deleteMutation = useDeleteCanvasItem();
+  const capabilities = resolveCanvasCapabilities("OWNER");
+  const { commitGeometry } = useItemGeometry({ capabilities });
 
   // Keyboard navigation
   useKeyboardShortcuts([
     {
-      key: 'Delete',
+      key: "Delete",
       handler: () => {
         if (selectedItemId) {
           const item = items?.find((i) => i.id === selectedItemId);
           if (item) {
-            deleteMutation.mutate({ itemId: selectedItemId, version: item.version });
+            deleteMutation.mutate({
+              itemId: selectedItemId,
+              version: item.version,
+            });
             setSelectedItemId(null);
           }
         }
       },
     },
     {
-      key: 'Escape',
+      key: "Escape",
       handler: () => setSelectedItemId(null),
     },
     {
-      key: 'n',
+      key: "n",
       ctrl: true,
       preventDefault: true,
       handler: () => {
@@ -55,12 +65,12 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
           height: 150,
           tags: [],
           zIndex: 1,
-          content: { text: 'New Note' },
+          content: { text: "New Note" },
         });
       },
     },
     {
-      key: 'd',
+      key: "d",
       ctrl: true,
       preventDefault: true,
       handler: () => {
@@ -96,8 +106,8 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
     };
 
     updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
   }, []);
 
   const handleCreateNote = () => {
@@ -112,7 +122,7 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
       tags: [],
       zIndex: 1,
       content: {
-        text: 'New Note',
+        text: "New Note",
       },
     });
   };
@@ -126,7 +136,12 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
 
   if (isLoading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
         <CircularProgress />
       </Box>
     );
@@ -150,21 +165,38 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
   }
 
   return (
-    <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      sx={{
+        width: "100%",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {/* Toolbar */}
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
+      <Box
+        sx={{
+          p: 2,
+          borderBottom: 1,
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
+      >
         <Button
           variant="contained"
           color="primary"
           onClick={handleCreateNote}
           disabled={createMutation.isPending}
         >
-          {createMutation.isPending ? 'Creating...' : 'Add Note'}
+          {createMutation.isPending ? "Creating..." : "Add Note"}
         </Button>
       </Box>
 
       {/* Canvas */}
-      <Box ref={containerRef} sx={{ flex: 1, bgcolor: '#f5f5f5', overflow: 'hidden' }}>
+      <Box
+        ref={containerRef}
+        sx={{ flex: 1, bgcolor: "#f5f5f5", overflow: "hidden" }}
+      >
         <Stage
           width={stageSize.width}
           height={stageSize.height}
@@ -184,6 +216,8 @@ export const Canvas: React.FC<CanvasProps> = ({ canvasId }) => {
                     // I will remove canvasId from here, assuming it uses context or item data
                     isSelected={item.id === selectedItemId}
                     onSelect={() => setSelectedItemId(item.id)}
+                    capabilities={capabilities}
+                    onCommitGeometry={commitGeometry}
                   />
                 );
               }

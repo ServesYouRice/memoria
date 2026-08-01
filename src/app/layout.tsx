@@ -11,6 +11,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "./providers";
 import { PWARegister } from "@/components/PWARegister";
 import { getNonce } from "@/lib/nonce";
+import { THEME_INIT_SCRIPT } from "@/lib/theme-preference";
 import "./tiptap.css";
 
 export const viewport: Viewport = {
@@ -42,6 +43,10 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+        />
         <PWARegister />
         <Providers nonce={nonce}>{children}</Providers>
         <Analytics />

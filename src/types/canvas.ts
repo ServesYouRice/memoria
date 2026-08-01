@@ -16,6 +16,71 @@ export enum ItemType {
   POLL = "POLL",
 }
 
+/** Access level used by both the server authorization layer and the canvas UI. */
+export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW" | "NONE";
+
+/** Client-side capabilities. These are affordance hints, never an auth boundary. */
+export interface CanvasCapabilities {
+  canCreateItems: boolean;
+  canEditItems: boolean;
+  canMoveItems: boolean;
+  canResizeItems: boolean;
+  canDeleteItems: boolean;
+  canCopyItems: boolean;
+  canComment: boolean;
+  canVote: boolean;
+  canManageCanvas: boolean;
+}
+
+/** The fields a single move or resize gesture may commit. */
+export interface ItemGeometryCommit {
+  positionX: number;
+  positionY: number;
+  width?: number;
+  height?: number;
+}
+
+/** Adapter contract shared by every interactive item renderer. */
+export type CommitItemGeometry = (
+  item: CanvasItem,
+  geometry: ItemGeometryCommit,
+) => void;
+
+/** Only item renderers with resize handles belong in this set. */
+export const RESIZABLE_ITEM_TYPES: ReadonlySet<ItemType> = new Set([
+  ItemType.NOTE,
+  ItemType.BOOKMARK,
+  ItemType.IMAGE,
+]);
+
+export function isItemResizable(type: ItemType): boolean {
+  return RESIZABLE_ITEM_TYPES.has(type);
+}
+
+/** Resolve the UI affordances for a server-provided canvas access level. */
+export function resolveCanvasCapabilities(
+  accessLevel: CanvasAccessLevel,
+): CanvasCapabilities {
+  const canEditItems = accessLevel === "OWNER" || accessLevel === "EDIT";
+  const canComment =
+    accessLevel === "OWNER" ||
+    accessLevel === "EDIT" ||
+    accessLevel === "COMMENT";
+
+  return {
+    canCreateItems: canEditItems,
+    canEditItems,
+    canMoveItems: canEditItems,
+    canResizeItems: canEditItems,
+    canDeleteItems: canEditItems,
+    canCopyItems: accessLevel !== "NONE",
+    canComment,
+    // Voting remains disabled until server-authoritative voting is shipped.
+    canVote: false,
+    canManageCanvas: accessLevel === "OWNER",
+  };
+}
+
 /**
  * Base geometry for all canvas items
  */

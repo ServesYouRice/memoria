@@ -1,6 +1,10 @@
 import React from "react";
 import { Layer } from "react-konva";
-import type { CanvasItem } from "@/types/canvas";
+import type {
+  CanvasCapabilities,
+  CanvasItem,
+  CommitItemGeometry,
+} from "@/types/canvas";
 import {
   ItemType,
   isNoteContent,
@@ -36,7 +40,8 @@ interface CanvasItemLayerProps {
   onNoteDoubleClick: (item: CanvasItem) => void;
   onBookmarkDoubleClick: (item: CanvasItem) => void;
   onImageDoubleClick: (item: CanvasItem) => void;
-  onDragEnd: (event: any, item: CanvasItem) => void;
+  capabilities: CanvasCapabilities;
+  onCommitGeometry: CommitItemGeometry;
   onItemChange: (id: string, data: any) => void;
   readOnly?: boolean;
 }
@@ -51,7 +56,8 @@ export function CanvasItemLayer({
   onNoteDoubleClick,
   onBookmarkDoubleClick,
   onImageDoubleClick,
-  onDragEnd,
+  capabilities,
+  onCommitGeometry,
   onItemChange,
   readOnly = false,
 }: CanvasItemLayerProps) {
@@ -68,7 +74,8 @@ export function CanvasItemLayer({
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
               onDoubleClick={() => onNoteDoubleClick(item)}
-              onDragEnd={(event: any) => onDragEnd(event, item)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
               readOnly={readOnly}
             />
           );
@@ -82,7 +89,8 @@ export function CanvasItemLayer({
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
               onDoubleClick={() => onBookmarkDoubleClick(item)}
-              onDragEnd={(event: any) => onDragEnd(event, item)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
               readOnly={readOnly}
             />
           );
@@ -96,7 +104,8 @@ export function CanvasItemLayer({
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
               onDoubleClick={() => onImageDoubleClick(item)}
-              onDragEnd={(event: any) => onDragEnd(event, item)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
               readOnly={readOnly}
             />
           );
@@ -109,6 +118,8 @@ export function CanvasItemLayer({
               isSelected={isSelected}
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
             />
           );
         }
@@ -120,6 +131,8 @@ export function CanvasItemLayer({
               isSelected={isSelected}
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
             />
           );
         }
@@ -131,6 +144,8 @@ export function CanvasItemLayer({
               isSelected={isSelected}
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
             />
           );
         }
@@ -144,6 +159,8 @@ export function CanvasItemLayer({
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
               onChange={(data: any) => onItemChange(item.id, data)}
               onDoubleClick={() => onNoteDoubleClick(item)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
             />
           );
         }
@@ -155,6 +172,8 @@ export function CanvasItemLayer({
               isSelected={isSelected}
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
             />
           );
         }
@@ -166,6 +185,8 @@ export function CanvasItemLayer({
               isSelected={isSelected}
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
             />
           );
         }
@@ -177,6 +198,8 @@ export function CanvasItemLayer({
               isSelected={isSelected}
               onSelect={() => onSelectItem(item.id)}
               onContextMenu={(event: any) => onContextMenu(event, item.id)}
+              capabilities={capabilities}
+              onCommitGeometry={onCommitGeometry}
             />
           );
         }

@@ -32,6 +32,13 @@ export default function HelpPage() {
         requires a configured production email provider. Account and credential
         controls are available in Settings.
       </InfoSection>
+      <InfoSection title="Optional surfaces">
+        Embeds are link previews: Memoria does not execute third-party content
+        inside the canvas. The meeting timer is personal to this browser tab and
+        is not shared with collaborators. AR is experimental and only appears
+        when the deployment explicitly opts in after its device matrix has
+        passed.
+      </InfoSection>
       <InfoSection title="Troubleshooting">
         Retry a failed canvas load from its error banner. Check the Status page
         for database, cache, and process readiness. If the problem persists,
