@@ -14,7 +14,6 @@ import {
   Tooltip,
   Menu,
   MenuItem,
-  Badge,
   ToggleButton,
   ToggleButtonGroup,
   Avatar,
@@ -49,6 +48,11 @@ import { ShareDialog } from "./ShareDialog";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MeetingTimer } from "./MeetingTimer";
+import { isArCanvasEnabled } from "@/lib/product-surfaces";
+import {
+  CanvasSecondaryActions,
+  type CanvasSecondaryAction,
+} from "./CanvasSecondaryActions";
 import { PresentToAll } from "@mui/icons-material";
 
 export interface CollaboratorInfo {
@@ -247,6 +251,75 @@ export function CanvasHeader({
 
   const statusDisplay = statusConfig[collaborationStatus];
   const showStatus = collaborationStatus !== "idle" || collaborationConnected;
+
+  // IMP-022: secondary actions are declared once and laid out responsively —
+  // inline from md up, one overflow menu below it. Only actions the caller
+  // supplied appear, so capability gating upstream still holds.
+  const secondaryActions: CanvasSecondaryAction[] = [
+    onAI && {
+      key: "ai",
+      label: "AI assistant",
+      icon: <AIIcon />,
+      onClick: onAI,
+      color: "primary" as const,
+    },
+    onSerendipity && {
+      key: "serendipity",
+      label: "Surprise me",
+      icon: <SerendipityIcon />,
+      onClick: onSerendipity,
+      color: "secondary" as const,
+    },
+    onTemplates && {
+      key: "templates",
+      label: "Templates and rituals",
+      icon: <TemplatesIcon />,
+      onClick: onTemplates,
+    },
+    onAutopilot && {
+      key: "autopilot",
+      label: "Auto-organize canvas",
+      icon: <AutopilotIcon />,
+      onClick: onAutopilot,
+      color: "primary" as const,
+    },
+    onWhisper && {
+      key: "whisper",
+      label: "Quick capture",
+      icon: <WhisperIcon />,
+      onClick: onWhisper,
+    },
+    onTimeMachine && {
+      key: "time-machine",
+      label: "Visual history",
+      icon: <HistoryIcon />,
+      onClick: onTimeMachine,
+      color: "secondary" as const,
+    },
+    // DEC-013: hidden unless a deployment opts in explicitly.
+    onAR &&
+      isArCanvasEnabled() && {
+        key: "ar",
+        label: "Augmented reality view (experimental)",
+        icon: <ARIcon />,
+        onClick: onAR,
+        color: "warning" as const,
+      },
+    onTagFilter && {
+      key: "tags",
+      label: "Filter canvas by tags",
+      icon: <TagIcon />,
+      onClick: onTagFilter,
+      badgeCount: activeTagCount,
+    },
+    onSearchChange &&
+      !showSearch && {
+        key: "search",
+        label: "Search canvas",
+        icon: <SearchIcon />,
+        onClick: () => setShowSearch(true),
+      },
+  ].filter(Boolean) as CanvasSecondaryAction[];
 
   return (
     <AppBar position="static" color="default" elevation={1}>
@@ -499,128 +572,9 @@ export function CanvasHeader({
           <ThemeToggle />
         </Box>
 
-        {/* AI Assistant */}
-        {onAI && (
-          <Tooltip title="AI Assistant">
-            <IconButton
-              aria-label="Open AI assistant"
-              onClick={onAI}
-              color="primary"
-              sx={{ mr: 1 }}
-            >
-              <AIIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Serendipity */}
-        {onSerendipity && (
-          <Tooltip title="Serendipity / Surprise Me">
-            <IconButton
-              aria-label="Surprise me"
-              onClick={onSerendipity}
-              color="secondary"
-              sx={{ mr: 1 }}
-            >
-              <SerendipityIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Templates / Rituals */}
-        {onTemplates && (
-          <Tooltip title="Templates & Rituals">
-            <IconButton
-              aria-label="Open templates and rituals"
-              onClick={onTemplates}
-              sx={{ mr: 1 }}
-            >
-              <TemplatesIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Autopilot */}
-        {onAutopilot && (
-          <Tooltip title="Autopilot (Auto-organize)">
-            <IconButton
-              aria-label="Auto-organize canvas"
-              onClick={onAutopilot}
-              color="primary"
-              sx={{ mr: 1 }}
-            >
-              <AutopilotIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Quick capture */}
-        {onWhisper && (
-          <Tooltip title="Quick capture">
-            <IconButton
-              aria-label="Open quick capture"
-              onClick={onWhisper}
-              sx={{ mr: 1, opacity: 0.7 }}
-            >
-              <WhisperIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Time Machine */}
-        {onTimeMachine && (
-          <Tooltip title="Time Machine (Visual History)">
-            <IconButton
-              aria-label="Open visual history"
-              onClick={onTimeMachine}
-              color="secondary"
-              sx={{ mr: 1 }}
-            >
-              <HistoryIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* AR Mode */}
-        {onAR && (
-          <Tooltip title="AR Canvas Layer (Experimental)">
-            <IconButton
-              aria-label="Open augmented reality view"
-              onClick={onAR}
-              sx={{ mr: 1, color: "warning.main" }}
-            >
-              <ARIcon />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Tag Filter */}
-        {onTagFilter && (
-          <Tooltip title="Filter by Tags">
-            <IconButton
-              aria-label="Filter canvas by tags"
-              onClick={onTagFilter}
-              sx={{ mr: 1 }}
-            >
-              <Badge badgeContent={activeTagCount} color="primary">
-                <TagIcon />
-              </Badge>
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Search Toggle */}
-        {onSearchChange && !showSearch && (
-          <Tooltip title="Search">
-            <IconButton
-              aria-label="Search canvas"
-              onClick={() => setShowSearch(true)}
-              sx={{ mr: 1 }}
-            >
-              <SearchIcon />
-            </IconButton>
-          </Tooltip>
-        )}
+        {/* Secondary actions: inline on wide viewports, collapsed into
+            one overflow menu below md so 320-768px stays usable. */}
+        <CanvasSecondaryActions actions={secondaryActions} />
 
         {/* Zoom Controls */}
         <ButtonGroup size="small" sx={{ mr: 2 }}>

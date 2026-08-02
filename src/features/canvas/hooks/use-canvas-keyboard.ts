@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type Konva from "konva";
 import { type CanvasItem } from "@/types/canvas";
+import { shouldIgnoreGlobalShortcut } from "@/lib/keyboard/shortcuts";
 
 interface UseCanvasKeyboardProps {
   onDelete: () => void;
@@ -56,12 +57,9 @@ export function useCanvasKeyboard({
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input or textarea
-      if (
-        document.activeElement?.tagName === "INPUT" ||
-        document.activeElement?.tagName === "TEXTAREA" ||
-        (document.activeElement as HTMLElement)?.isContentEditable
-      ) {
+      // Never intercept keystrokes owned by an editor, form control, or an open
+      // dialog — those surfaces handle their own keys, including Escape.
+      if (shouldIgnoreGlobalShortcut(e)) {
         return;
       }
 

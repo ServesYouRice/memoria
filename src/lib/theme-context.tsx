@@ -3,14 +3,34 @@
  *
  * ENHANCED: Issue #42 - Dark mode support
  *
- * Provides theme mode state and toggle functionality
- * Persists user preference in localStorage
+ * Provides theme mode state and toggle functionality.
+ * Persists user preference in localStorage.
+ *
+ * The provider always renders its children — including during server rendering
+ * and the first client pass — so pages keep meaningful HTML without JavaScript.
+ * The stored preference is reconciled in a layout effect (before paint) rather
+ * than by withholding the tree.
  */
 
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { type PaletteMode } from '@mui/material';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
+import { type PaletteMode } from "@mui/material";
+import {
+  DEFAULT_THEME_MODE,
+  THEME_STORAGE_KEY,
+  applyThemeModeToDocument,
+  readStoredThemeMode,
+  resolvePreferredThemeMode,
+} from "./theme-preference";
 
 interface ThemeContextType {
   mode: PaletteMode;
@@ -18,75 +38,67 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  mode: 'light',
+  mode: DEFAULT_THEME_MODE,
   toggleTheme: () => {},
 });
 
 export function useThemeMode() {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error('useThemeMode must be used within ThemeModeProvider');
+    throw new Error("useThemeMode must be used within ThemeModeProvider");
   }
   return context;
 }
+
+// useLayoutEffect warns during server rendering; useEffect is the server-safe
+// equivalent there because effects never run on the server anyway.
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 interface ThemeModeProviderProps {
   children: React.ReactNode;
 }
 
 export function ThemeModeProvider({ children }: ThemeModeProviderProps) {
-  // Initialize theme from localStorage or system preference
-  const [mode, setMode] = useState<PaletteMode>('light');
-  const [mounted, setMounted] = useState(false);
+  // Deterministic on the server; reconciled below before the browser paints.
+  const [mode, setMode] = useState<PaletteMode>(DEFAULT_THEME_MODE);
 
-  useEffect(() => {
-    setMounted(true);
-
-    // Check localStorage first
-    const savedMode = localStorage.getItem('theme-mode') as PaletteMode | null;
-    if (savedMode === 'light' || savedMode === 'dark') {
-      setMode(savedMode);
-      return;
-    }
-
-    // Fall back to system preference
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const systemMode = prefersDark ? 'dark' : 'light';
-    setMode(systemMode);
-
-    // Listen for system preference changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      // Only update if user hasn't set a preference
-      if (!localStorage.getItem('theme-mode')) {
-        setMode(e.matches ? 'dark' : 'light');
-      }
-    };
-
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+  useIsomorphicLayoutEffect(() => {
+    const preferred = resolvePreferredThemeMode();
+    setMode(preferred);
+    applyThemeModeToDocument(preferred);
   }, []);
 
-  const toggleTheme = () => {
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      // Only follow the system when the user has not chosen explicitly.
+      if (readStoredThemeMode() !== null) return;
+      const systemMode = event.matches ? "dark" : "light";
+      setMode(systemMode);
+      applyThemeModeToDocument(systemMode);
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
     setMode((prevMode) => {
-      const newMode = prevMode === 'light' ? 'dark' : 'light';
-      localStorage.setItem('theme-mode', newMode);
+      const newMode = prevMode === "light" ? "dark" : "light";
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, newMode);
+      } catch {
+        // A failed write only costs persistence, not the in-session switch.
+      }
+      applyThemeModeToDocument(newMode);
       return newMode;
     });
-  };
+  }, []);
 
-  const value = useMemo(
-    () => ({
-      mode,
-      toggleTheme,
-    }),
-    [mode]
+  const value = useMemo(() => ({ mode, toggleTheme }), [mode, toggleTheme]);
+
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
   );
-
-  // Prevent flash of incorrect theme on mount
-  if (!mounted) {
-    return null;
-  }
-
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

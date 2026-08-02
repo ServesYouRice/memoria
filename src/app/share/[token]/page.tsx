@@ -23,6 +23,8 @@ import Link from "next/link";
 import { type CanvasItem } from "@/types/canvas";
 import type Konva from "konva";
 import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
+import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
+import { NO_CANVAS_CAPABILITIES } from "@/types/canvas";
 
 interface SharePageProps {
   params: Promise<{
@@ -215,8 +217,13 @@ export default function SharePage({ params }: SharePageProps) {
       }}
     >
       <AppBar position="static" color="default" elevation={1}>
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+        {/* Wraps rather than overflowing at 320/375px. */}
+        <Toolbar sx={{ flexWrap: "wrap", rowGap: 1, py: { xs: 1, sm: 0 } }}>
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ flexGrow: 1, minWidth: 0, mr: 1 }}
+          >
             {canvas?.name || "Shared Canvas"}{" "}
             <Typography
               component="span"
@@ -248,7 +255,11 @@ export default function SharePage({ params }: SharePageProps) {
             </ButtonGroup>
             <Typography
               variant="body2"
-              sx={{ minWidth: 50, textAlign: "center" }}
+              sx={{
+                minWidth: 50,
+                textAlign: "center",
+                display: { xs: "none", sm: "block" },
+              }}
             >
               {Math.round(zoom * 100)}%
             </Typography>
@@ -269,7 +280,19 @@ export default function SharePage({ params }: SharePageProps) {
       </AppBar>
 
       {/* Canvas */}
-      <Box ref={containerRef} sx={{ flex: 1, overflow: "hidden" }}>
+      <Box
+        ref={containerRef}
+        sx={{ flex: 1, overflow: "hidden", position: "relative" }}
+        role="region"
+        aria-label="Shared canvas. An equivalent keyboard- and screen-reader-accessible item list follows."
+      >
+        {/* IMP-022: public canvases get the same DOM item list as owned ones. */}
+        <CanvasAccessiblePanel
+          items={items}
+          capabilities={NO_CANVAS_CAPABILITIES}
+          canvasName={canvas?.name || "this shared canvas"}
+        />
+
         {items.length === 0 ? (
           <Box
             sx={{

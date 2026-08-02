@@ -37,6 +37,7 @@ import { useRestoreVersion } from "@/lib/hooks/use-canvas-versions"; // Only res
 import { useCanvasData } from "@/features/canvas/hooks/use-canvas-data";
 import { useCanvasInteraction } from "@/features/canvas/hooks/use-canvas-interaction";
 import { useCanvasKeyboard } from "@/features/canvas/hooks/use-canvas-keyboard";
+import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
@@ -46,11 +47,20 @@ import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
 import { toast } from "sonner";
 
-import type { CanvasItem } from "@/types/canvas";
-import { ItemType, isNoteContent } from "@/types/canvas";
+import type {
+  CanvasAccessLevel,
+  CanvasItem,
+  ItemGeometryCommit,
+} from "@/types/canvas";
+import {
+  ItemType,
+  isNoteContent,
+  resolveCanvasCapabilities,
+} from "@/types/canvas";
 
 // Components
 import { CanvasItemLayer } from "@/features/canvas/components/CanvasItemLayer";
+import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
 import type { ContextMenuPosition } from "@/features/canvas/components/CanvasContextMenu";
 import { DrawingToolbar } from "@/features/canvas/components/DrawingToolbar";
 import { CanvasHeader } from "@/features/canvas/components/CanvasHeader";
@@ -105,8 +115,16 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     refreshMetadata,
     accessLevel,
   } = useCanvasData({ canvasId });
-  const canEdit = accessLevel === "OWNER" || accessLevel === "EDIT";
-  const isOwner = accessLevel === "OWNER";
+  // IMP-008: one capability contract, derived once and passed down. Every
+  // surface reads these flags instead of re-deriving a role comparison.
+  const capabilities = React.useMemo(
+    () => resolveCanvasCapabilities(accessLevel as CanvasAccessLevel),
+    [accessLevel],
+  );
+  const canEdit = capabilities.canEditItems;
+  const isOwner = capabilities.canManageCanvas;
+
+  const { commitGeometry } = useItemGeometry({ capabilities });
 
   // Store state
   const {
@@ -626,18 +644,49 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     setWhisperOpen(false);
   };
 
-  const handleDragEnd = (
-    e: Konva.KonvaEventObject<DragEvent>,
+  /**
+   * IMP-008: the one durable geometry write. Every item type routes its move
+   * and resize here, the capability contract decides whether it is permitted,
+   * and the serialized queue guarantees one write per gesture.
+   */
+  const handleCommitGeometry = (
     item: CanvasItem,
+    geometry: ItemGeometryCommit,
   ) => {
-    updateItem({
-      itemId: item.id,
-      data: {
-        positionX: e.target.x(),
-        positionY: e.target.y(),
-        version: item.version,
-      },
+    commitGeometry(item, geometry);
+  };
+
+  /** Double-click / Enter activation, gated by the same contract. */
+  const handleActivateItem = (item: CanvasItem) => {
+    if (!capabilities.canEditItems) return;
+    if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
+      handleNoteDoubleClick(item);
+      return;
+    }
+    if (item.type === ItemType.BOOKMARK) {
+      handleBookmarkDoubleClick(item);
+      return;
+    }
+    if (item.type === ItemType.IMAGE) {
+      handleImageDoubleClick(item);
+    }
+  };
+
+  /** Keyboard nudge from the accessible item list, on the same commit path. */
+  const handleNudgeItem = (
+    item: CanvasItem,
+    deltaX: number,
+    deltaY: number,
+  ) => {
+    commitGeometry(item, {
+      positionX: item.positionX + deltaX,
+      positionY: item.positionY + deltaY,
     });
+  };
+
+  const handleDeleteItem = (item: CanvasItem) => {
+    if (!capabilities.canDeleteItems) return;
+    deleteItem({ itemId: item.id, version: item.version });
   };
 
   const generateThumbnail = useCallback(() => {
@@ -764,27 +813,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     } else {
       setSelectedItemId(id);
       setSelectedItemIds(new Set([id]));
-    }
-  };
-
-  const handleItemChange = (
-    id: string,
-    data: Partial<
-      Pick<
-        CanvasItem,
-        "positionX" | "positionY" | "width" | "height" | "content" | "zIndex"
-      >
-    >,
-  ) => {
-    const item = allItems.find((i) => i.id === id);
-    if (item) {
-      updateItem({
-        itemId: id,
-        data: {
-          ...data,
-          version: item.version,
-        },
-      });
     }
   };
 
@@ -1019,7 +1047,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         <Box
           ref={stageContainerRef}
           role="region"
-          aria-label="Infinite canvas. Switch to Organizer view for an accessible item list."
+          aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list follows."
           sx={{
             flexGrow: 1,
             position: "relative",
@@ -1029,6 +1057,20 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
           }}
         >
+          {/* IMP-022 / DEC-009: the canvas content as real DOM, always present
+              in the accessibility tree and operable without pointer or pixels. */}
+          <CanvasAccessiblePanel
+            items={allItems}
+            capabilities={capabilities}
+            canvasName={canvasName}
+            selectedItemIds={selectedItemIds}
+            onSelectItem={(id) => handleSelectItem(id, false)}
+            onActivateItem={handleActivateItem}
+            onNudgeItem={handleNudgeItem}
+            onDeleteItem={handleDeleteItem}
+            onCreateItem={() => setNoteDialogOpen(true)}
+          />
+
           {!isDrawing && !isPresentationMode && canEdit && (
             <SpeedDial
               ariaLabel="Add Item"
@@ -1117,14 +1159,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               selectedItemIds={selectedItemIds}
               isSelecting={isSelecting}
               selectionBox={selectionBox}
+              capabilities={capabilities}
               onSelectItem={(id) => handleSelectItem(id, false)}
               onContextMenu={handleContextMenu}
-              onNoteDoubleClick={handleNoteDoubleClick}
-              onBookmarkDoubleClick={handleBookmarkDoubleClick}
-              onImageDoubleClick={handleImageDoubleClick}
-              onDragEnd={handleDragEnd}
-              onItemChange={handleItemChange}
-              readOnly={!canEdit}
+              onActivateItem={handleActivateItem}
+              onCommitGeometry={handleCommitGeometry}
             />
           </Stage>
 
@@ -1285,6 +1324,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         selectedTags={selectedTags}
         setSelectedTags={setSelectedTags}
         tagCounts={tagCounts || {}}
+        capabilities={capabilities}
         contextMenuPosition={contextMenuPosition}
         setContextMenuPosition={setContextMenuPosition}
         onDeleteFromMenu={handleDeleteFromMenu}

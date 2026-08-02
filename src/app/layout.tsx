@@ -11,6 +11,11 @@ import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "./providers";
 import { PWARegister } from "@/components/PWARegister";
 import { getNonce } from "@/lib/nonce";
+import {
+  DEFAULT_THEME_MODE,
+  THEME_ATTRIBUTE,
+  THEME_INIT_SCRIPT,
+} from "@/lib/theme-preference";
 import "./tiptap.css";
 
 export const viewport: Viewport = {
@@ -40,8 +45,19 @@ export default async function RootLayout({
   const nonce = await getNonce();
 
   return (
-    <html lang="en">
+    // The init script below rewrites the theme attribute before hydration, so
+    // a server/client attribute difference on <html> is expected.
+    <html
+      lang="en"
+      suppressHydrationWarning
+      {...{ [THEME_ATTRIBUTE]: DEFAULT_THEME_MODE }}
+      style={{ colorScheme: DEFAULT_THEME_MODE }}
+    >
       <body>
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+        />
         <PWARegister />
         <Providers nonce={nonce}>{children}</Providers>
         <Analytics />

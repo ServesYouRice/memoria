@@ -19,19 +19,9 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Text, Circle, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import { type CanvasItem, isBookmarkContent } from "@/types/canvas";
-import { useAutosave } from "@/lib/hooks/use-autosave";
+import { isBookmarkContent, type CanvasItemAdapterProps } from "@/types/canvas";
 
-interface BookmarkItemProps {
-  item: CanvasItem;
-  isSelected?: boolean;
-  onSelect?: () => void;
-  onDeselect?: () => void;
-  onDoubleClick?: () => void;
-  onContextMenu?: (e: any) => void;
-  onDragEnd?: (e: any) => void;
-  readOnly?: boolean;
-}
+type BookmarkItemProps = CanvasItemAdapterProps;
 
 const RESIZE_HANDLE_SIZE = 8;
 const MIN_WIDTH = 200;
@@ -40,12 +30,11 @@ const MIN_HEIGHT = 80;
 function BookmarkItemComponent({
   item,
   isSelected = false,
+  capabilities,
   onSelect,
-
-  onDoubleClick,
+  onActivate,
   onContextMenu,
-  onDragEnd,
-  readOnly = false,
+  onCommitGeometry,
 }: BookmarkItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -57,12 +46,6 @@ function BookmarkItemComponent({
     height: item.height,
   });
   const [favicon, setFavicon] = useState<HTMLImageElement | null>(null);
-
-  const { saveChanges, isSaving } = useAutosave({
-    itemId: item.id,
-    version: item.version,
-    debounceMs: 500,
-  });
 
   // Extract bookmark content
   const content = isBookmarkContent(item.content)
@@ -107,14 +90,7 @@ function BookmarkItemComponent({
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
-    saveChanges({
-      positionX: node.x(),
-      positionY: node.y(),
-    });
-
-    if (onDragEnd) {
-      onDragEnd(e);
-    }
+    onCommitGeometry({ positionX: node.x(), positionY: node.y() });
   };
 
   // Handle resize
@@ -173,7 +149,7 @@ function BookmarkItemComponent({
   };
 
   const handleResizeEnd = () => {
-    saveChanges({
+    onCommitGeometry({
       positionX: localPosition.x,
       positionY: localPosition.y,
       width: localSize.width,
@@ -192,13 +168,13 @@ function BookmarkItemComponent({
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable={!readOnly}
+      draggable={capabilities.canMoveItems}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
       onTap={onSelect}
-      onDblClick={onDoubleClick}
-      onDblTap={onDoubleClick}
+      onDblClick={onActivate}
+      onDblTap={onActivate}
       onContextMenu={onContextMenu}
     >
       {/* Main bookmark rectangle */}
@@ -306,19 +282,8 @@ function BookmarkItemComponent({
         </>
       )}
 
-      {/* Saving indicator */}
-      {isSaving && (
-        <Text
-          x={localSize.width - 80}
-          y={localSize.height - 30}
-          text="Saving..."
-          fontSize={10}
-          fill="#999"
-        />
-      )}
-
       {/* Resize handles (only when selected) */}
-      {isSelected && !readOnly && (
+      {isSelected && capabilities.canResizeItems && (
         <>
           {/* Bottom-right */}
           <Circle

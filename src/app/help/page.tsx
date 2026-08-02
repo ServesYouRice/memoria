@@ -27,6 +27,15 @@ export default function HelpPage() {
         change items, and owners manage sharing, versions, templates,
         thumbnails, and deletion.
       </InfoSection>
+      <InfoSection title="Embeds, timer, and AR">
+        Embedded links are shown as previews: Memoria displays where the link
+        points and opens it in a new tab, and never loads or runs third-party
+        content inside the canvas. The meeting timer is personal — it runs in
+        your own browser only and is not shared with collaborators or restored
+        after a reload. The augmented-reality layer is experimental, is off
+        unless the operator of this installation enables it, and its camera feed
+        stays on your device.
+      </InfoSection>
       <InfoSection title="Recovery">
         Use version history to restore a canvas snapshot. Password recovery
         requires a configured production email provider. Account and credential

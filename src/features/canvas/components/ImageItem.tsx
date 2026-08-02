@@ -9,18 +9,9 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Circle, Text, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
-import { type CanvasItem, isImageContent } from "@/types/canvas";
-import { useAutosave } from "@/lib/hooks/use-autosave";
+import { isImageContent, type CanvasItemAdapterProps } from "@/types/canvas";
 
-interface ImageItemProps {
-  item: CanvasItem;
-  isSelected?: boolean;
-  onSelect?: () => void;
-  onDoubleClick?: () => void;
-  onContextMenu?: (e: any) => void;
-  onDragEnd?: (e: any) => void;
-  readOnly?: boolean;
-}
+type ImageItemProps = CanvasItemAdapterProps;
 
 const RESIZE_HANDLE_SIZE = 8;
 const MIN_WIDTH = 100;
@@ -29,11 +20,11 @@ const MIN_HEIGHT = 100;
 export function ImageItem({
   item,
   isSelected = false,
+  capabilities,
   onSelect,
-  onDoubleClick,
+  onActivate,
   onContextMenu,
-  onDragEnd,
-  readOnly = false,
+  onCommitGeometry,
 }: ImageItemProps) {
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
@@ -45,12 +36,6 @@ export function ImageItem({
     height: item.height,
   });
   const [image, setImage] = useState<HTMLImageElement | null>(null);
-
-  const { saveChanges, isSaving } = useAutosave({
-    itemId: item.id,
-    version: item.version,
-    debounceMs: 500,
-  });
 
   const content = isImageContent(item.content)
     ? item.content
@@ -87,14 +72,7 @@ export function ImageItem({
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
-    saveChanges({
-      positionX: node.x(),
-      positionY: node.y(),
-    });
-
-    if (onDragEnd) {
-      onDragEnd(e);
-    }
+    onCommitGeometry({ positionX: node.x(), positionY: node.y() });
   };
 
   const handleResize = (
@@ -152,7 +130,7 @@ export function ImageItem({
   };
 
   const handleResizeEnd = () => {
-    saveChanges({
+    onCommitGeometry({
       positionX: localPosition.x,
       positionY: localPosition.y,
       width: localSize.width,
@@ -165,13 +143,13 @@ export function ImageItem({
       ref={groupRef}
       x={localPosition.x}
       y={localPosition.y}
-      draggable={!readOnly}
+      draggable={capabilities.canMoveItems}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onClick={onSelect}
       onTap={onSelect}
-      onDblClick={onDoubleClick}
-      onDblTap={onDoubleClick}
+      onDblClick={onActivate}
+      onDblTap={onActivate}
       onContextMenu={onContextMenu}
     >
       {/* Border/Background */}
@@ -239,19 +217,8 @@ export function ImageItem({
         />
       )}
 
-      {/* Saving indicator */}
-      {isSaving && (
-        <Text
-          x={localSize.width - 80}
-          y={localSize.height - 25}
-          text="Saving..."
-          fontSize={10}
-          fill="#999"
-        />
-      )}
-
       {/* Resize handles and delete button */}
-      {isSelected && !readOnly && (
+      {isSelected && capabilities.canResizeItems && (
         <>
           {/* Resize handles */}
           <Circle

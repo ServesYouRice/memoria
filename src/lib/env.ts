@@ -51,6 +51,9 @@ const envSchema = z
     TRUSTED_PROXY_CIDRS: optionalString,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
+    // DEC-013: the AR canvas layer stays off until the real-device matrix
+    // passes. Deployments opt in explicitly.
+    NEXT_PUBLIC_ENABLE_AR_CANVAS: z.enum(["true", "false"]).optional(),
     NEXT_PUBLIC_SENTRY_DSN: optionalString,
     SENTRY_DSN: optionalString,
     SENTRY_AUTH_TOKEN: optionalString,
