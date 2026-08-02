@@ -8,16 +8,32 @@ import type {
   PasswordResetEmailData,
   EmailVerificationData,
   WelcomeEmailData,
-} from './types';
+} from "./types";
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character]!,
+  );
+}
 
 /**
  * Password reset email template
  */
-export function passwordResetTemplate(data: PasswordResetEmailData): EmailTemplate {
+export function passwordResetTemplate(
+  data: PasswordResetEmailData,
+): EmailTemplate {
   const { userName, resetUrl, expiresIn } = data;
 
   return {
-    subject: 'Reset Your Password - Memoria',
+    subject: "Reset Your Password - Memoria",
     text: `
 Hi ${userName},
 
@@ -72,11 +88,13 @@ The Memoria Team
 /**
  * Email verification template
  */
-export function emailVerificationTemplate(data: EmailVerificationData): EmailTemplate {
+export function emailVerificationTemplate(
+  data: EmailVerificationData,
+): EmailTemplate {
   const { userName, verificationUrl, expiresIn } = data;
 
   return {
-    subject: 'Verify Your Email - Memoria',
+    subject: "Verify Your Email - Memoria",
     text: `
 Hi ${userName},
 
@@ -135,7 +153,7 @@ export function welcomeEmailTemplate(data: WelcomeEmailData): EmailTemplate {
   const { userName, loginUrl } = data;
 
   return {
-    subject: 'Welcome to Memoria!',
+    subject: "Welcome to Memoria!",
     text: `
 Hi ${userName},
 
@@ -196,5 +214,35 @@ The Memoria Team
 </body>
 </html>
     `.trim(),
+  };
+}
+
+export function shareInvitationTemplate(data: {
+  inviterName: string;
+  canvasName: string;
+  invitationUrl: string;
+  expiresIn: string;
+}): EmailTemplate {
+  const text = `${data.inviterName} invited you to "${data.canvasName}" in Memoria.\n\nReview the invitation: ${data.invitationUrl}\n\nThis single-use link expires in ${data.expiresIn}.`;
+  const inviterName = escapeHtml(data.inviterName);
+  const canvasName = escapeHtml(data.canvasName);
+  const invitationUrl = escapeHtml(data.invitationUrl);
+  return {
+    subject: `${data.inviterName} invited you to a Memoria canvas`,
+    text,
+    html: `<p>${inviterName} invited you to <strong>${canvasName}</strong> in Memoria.</p><p><a href="${invitationUrl}">Review invitation</a></p><p>This single-use link expires in ${escapeHtml(data.expiresIn)}.</p>`,
+  };
+}
+
+export function shareDecisionTemplate(data: {
+  recipientEmail: string;
+  canvasName: string;
+  decision: "accepted" | "declined";
+}): EmailTemplate {
+  const text = `${data.recipientEmail} ${data.decision} your invitation to "${data.canvasName}".`;
+  return {
+    subject: `Canvas invitation ${data.decision}`,
+    text,
+    html: `<p>${escapeHtml(data.recipientEmail)} ${data.decision} your invitation to <strong>${escapeHtml(data.canvasName)}</strong>.</p>`,
   };
 }

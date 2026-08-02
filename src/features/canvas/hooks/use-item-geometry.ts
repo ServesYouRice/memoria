@@ -10,8 +10,9 @@
  * @module features/canvas/hooks/use-item-geometry
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SerializedDeltaQueue } from "@/lib/autosave/serialized-delta-queue";
+import type { AutosaveStatus } from "@/lib/autosave/serialized-delta-queue";
 import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
 import type { UpdateCanvasItemInput } from "@/lib/validation/canvas-item";
 import {
@@ -32,6 +33,8 @@ export interface ItemGeometryController {
    * it, so callers can tell "not permitted" from "queued".
    */
   commitGeometry: (item: CanvasItem, geometry: ItemGeometryCommit) => boolean;
+  status: AutosaveStatus;
+  error: Error | null;
 }
 
 export function useItemGeometry({
@@ -47,6 +50,8 @@ export function useItemGeometry({
 
   const capabilitiesRef = useRef(capabilities);
   capabilitiesRef.current = capabilities;
+  const [status, setStatus] = useState<AutosaveStatus>("saved");
+  const [error, setError] = useState<Error | null>(null);
 
   const queuesRef = useRef(
     new Map<string, SerializedDeltaQueue<UpdateCanvasItemInput>>(),
@@ -83,8 +88,10 @@ export function useItemGeometry({
           item.version,
           async (delta) =>
             mutationRef.current.mutateAsync({ itemId: item.id, data: delta }),
-          (_status, error) => {
-            if (error) onErrorRef.current?.(error);
+          (nextStatus, nextError) => {
+            setStatus(nextStatus);
+            setError(nextError || null);
+            if (nextError) onErrorRef.current?.(nextError);
           },
         );
         queuesRef.current.set(item.id, queue);
@@ -103,5 +110,5 @@ export function useItemGeometry({
     [],
   );
 
-  return { commitGeometry };
+  return { commitGeometry, status, error };
 }

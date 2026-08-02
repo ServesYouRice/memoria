@@ -1,36 +1,13 @@
-import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { createCanvas, registerAndVerify, uniqueEmail } from "./helpers";
 
 test.describe("production-critical smoke flow", () => {
   test("registers, signs in with a real session, and opens an owned canvas", async ({
     page,
   }) => {
-    const suffix = randomUUID();
-    const email = `e2e-${suffix}@example.com`;
-    const password = "Correct-Horse-Battery-Staple-42!";
-
-    await page.goto("/auth/register");
-    await page.getByLabel("Full name").fill("E2E User");
-    await page.getByLabel("Email address").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Create account" }).click();
-
-    await expect(page.getByRole("alert")).toContainText("Account created");
-    await expect(page).toHaveURL(/\/auth\/login\?registered=true/, {
-      timeout: 10_000,
-    });
-
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10_000 });
-
-    const createResponse = await page.request.post("/api/v1/canvases", {
-      data: { name: "E2E Canvas" },
-      headers: { "x-idempotency-key": randomUUID() },
-    });
-    expect(createResponse.status()).toBe(201);
-    const canvas = (await createResponse.json()) as { id: string };
+    const email = uniqueEmail("smoke");
+    await registerAndVerify(page, email);
+    const canvas = await createCanvas(page, "E2E Canvas");
 
     await page.goto(`/canvas/${canvas.id}`);
     await expect(

@@ -36,3 +36,26 @@ export function createVersionRetentionHandler(
     `;
   };
 }
+
+export function createMaintenanceRetentionHandler(
+  prisma: PrismaClient,
+): OutboxHandler {
+  return async () => {
+    const idempotencyCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const candidateCutoff = new Date(Date.now() - 60 * 60 * 1000);
+    await prisma.$transaction([
+      prisma.$executeRaw`
+        DELETE FROM "IdempotencyKey" WHERE "id" IN (
+          SELECT "id" FROM "IdempotencyKey" WHERE "createdAt" < ${idempotencyCutoff}
+          ORDER BY "createdAt" ASC LIMIT 500
+        )
+      `,
+      prisma.$executeRaw`
+        DELETE FROM "CanvasThumbnailCandidate" WHERE "id" IN (
+          SELECT "id" FROM "CanvasThumbnailCandidate" WHERE "createdAt" < ${candidateCutoff}
+          ORDER BY "createdAt" ASC LIMIT 500
+        )
+      `,
+    ]);
+  };
+}

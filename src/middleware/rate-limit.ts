@@ -21,6 +21,11 @@ function toSeconds(windowMs: number): number {
   return Math.ceil(windowMs / 1000);
 }
 
+function configuredMaxRequests(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
 function getClientIdentifier(request: NextRequest): string {
   // server.ts overwrites this header from req.socket.remoteAddress. Do not
   // fall back to caller-controlled forwarding headers.
@@ -82,7 +87,10 @@ export function rateLimit(config: RateLimitConfig) {
  * Endpoint-specific rate limits
  */
 export const authRateLimit = rateLimit({
-  maxRequests: AUTH_RATE_LIMIT_MAX_REQUESTS,
+  maxRequests: configuredMaxRequests(
+    "AUTH_RATE_LIMIT_MAX_REQUESTS",
+    AUTH_RATE_LIMIT_MAX_REQUESTS,
+  ),
   windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
   keyPrefix: "auth",
 });

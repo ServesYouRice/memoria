@@ -6,6 +6,12 @@ import { describe, it, expect, vi } from "vitest";
 
 // Mock logger
 vi.mock("@/lib/logger", () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
   logger: {
     info: vi.fn(),
     warn: vi.fn(),

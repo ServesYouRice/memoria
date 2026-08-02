@@ -40,7 +40,7 @@
 #
 ################################################################################
 
-set -o pipefail
+set -euo pipefail
 
 # Script constants
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,6 +69,10 @@ SOURCE_PGPORT="${SOURCE_PGPORT:-5432}"
 # AWS configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
 BACKUP_BUCKET="${BACKUP_BUCKET:-backups-${ENVIRONMENT}-${AWS_REGION}}"
+BACKUP_S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"
+BACKUP_MANIFEST_HMAC_KEY="${BACKUP_MANIFEST_HMAC_KEY:-}"
+S3_BUCKET="${S3_BUCKET:-}"
+S3_ENDPOINT="${S3_ENDPOINT:-}"
 
 # Restore options
 VERIFY_CHECKSUM=true
@@ -81,6 +85,14 @@ readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m'
+
+backup_aws() {
+    if [[ -n "$BACKUP_S3_ENDPOINT" ]]; then
+        aws --endpoint-url "$BACKUP_S3_ENDPOINT" "$@"
+    else
+        aws "$@"
+    fi
+}
 
 ################################################################################
 # Utility Functions
@@ -98,18 +110,18 @@ log() {
             echo -e "${RED}[ERROR]${NC} $timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
         WARN)
-            echo -e "${YELLOW}[WARN]${NC} $timestamp: $message" | tee -a "$LOG_FILE"
+            echo -e "${YELLOW}[WARN]${NC} $timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
         INFO)
-            echo -e "${GREEN}[INFO]${NC} $timestamp: $message" | tee -a "$LOG_FILE"
+            echo -e "${GREEN}[INFO]${NC} $timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
         DEBUG)
             if [[ "$VERBOSE" == "true" ]]; then
-                echo -e "${BLUE}[DEBUG]${NC} $timestamp: $message" | tee -a "$LOG_FILE"
+                echo -e "${BLUE}[DEBUG]${NC} $timestamp: $message" | tee -a "$LOG_FILE" >&2
             fi
             ;;
         *)
-            echo "$timestamp: $message" | tee -a "$LOG_FILE"
+            echo "$timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
     esac
 }
@@ -217,6 +229,11 @@ parse_args() {
         log ERROR "Invalid backup date format: $BACKUP_DATE (use YYYY-MM-DD)"
         exit 2
     fi
+
+    if [[ ! "$TARGET_DATABASE" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        log ERROR "Invalid target database name"
+        exit 2
+    fi
 }
 
 # Validate prerequisites
@@ -226,7 +243,7 @@ validate_prerequisites() {
     local missing_tools=()
 
     # Check required commands
-    for cmd in psql pg_restore aws tar gzip sha256sum; do
+    for cmd in psql pg_restore aws tar gzip sha256sum openssl; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_tools+=("$cmd")
         fi
@@ -238,6 +255,11 @@ validate_prerequisites() {
         return 1
     fi
 
+    if [[ -z "$BACKUP_MANIFEST_HMAC_KEY" || -z "$S3_BUCKET" ]]; then
+        log ERROR "BACKUP_MANIFEST_HMAC_KEY and S3_BUCKET are required"
+        return 1
+    fi
+
     # Check PostgreSQL connectivity to target
     if ! PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" \
         -c "SELECT version();" &>/dev/null; then
@@ -246,16 +268,20 @@ validate_prerequisites() {
     fi
 
     # Check AWS credentials
-    if ! aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
+    if [[ -z "$BACKUP_S3_ENDPOINT" ]] && ! aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
         log ERROR "AWS credentials not configured or invalid"
         return 1
     fi
 
-    # Check S3 bucket access
-    if ! aws s3 ls "s3://${BACKUP_BUCKET}/daily/${BACKUP_DATE}" --region "$AWS_REGION" &>/dev/null; then
+    # Check that the dated prefix contains at least one object.
+    local backup_key_count
+    backup_key_count=$(backup_aws s3api list-objects-v2 \
+        --bucket "$BACKUP_BUCKET" --prefix "daily/${BACKUP_DATE}/" \
+        --query 'length(Contents)' --output text --region "$AWS_REGION" 2>/dev/null) || backup_key_count=0
+    if [[ ! "$backup_key_count" =~ ^[0-9]+$ || "$backup_key_count" -eq 0 ]]; then
         log ERROR "Backup not found in S3 for date: $BACKUP_DATE"
         log INFO "Available backups:"
-        aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | tail -10
+        backup_aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | tail -10
         return 1
     fi
 
@@ -266,6 +292,11 @@ validate_prerequisites() {
 # Setup restore environment
 setup_environment() {
     log INFO "Setting up restore environment..."
+
+    if [[ -z "$OUTPUT_DIR" || "$OUTPUT_DIR" == "/" ]]; then
+        log ERROR "OUTPUT_DIR must be a dedicated non-root path"
+        return 1
+    fi
 
     if [[ "$DRY_RUN" != "true" ]]; then
         # Create output directory
@@ -283,13 +314,14 @@ setup_environment() {
 # List available backups
 list_backups() {
     log INFO "Available backups:"
-    aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | grep "\.sql\.gz\|\.tar\.gz" | tail -20
+    backup_aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | grep "\.sql\.gz\|\.tar\.gz" | tail -20
 }
 
 # Download backup from S3
 download_backup() {
     local backup_date="$1"
     local output_file="$2"
+    local manifest_file="$3"
 
     log INFO "Downloading backup from S3..."
 
@@ -298,9 +330,9 @@ download_backup() {
         return 0
     fi
 
-    # Find backup file for the date
-    local backup_file=$(aws s3 ls "s3://${BACKUP_BUCKET}/daily/${backup_date}" \
-        --region "$AWS_REGION" | grep -E "\.sql\.gz|\.tar\.gz" | awk '{print $NF}' | head -1)
+    # Select the exact database artifact named by the authenticated manifest.
+    local backup_file
+    backup_file=$(sed -n 's/.*"database": {"file": "\([^"]*\)".*/\1/p' "$manifest_file")
 
     if [[ -z "$backup_file" ]]; then
         log ERROR "No backup file found for date: $backup_date"
@@ -310,7 +342,7 @@ download_backup() {
     log DEBUG "Found backup: $backup_file"
 
     # Download backup
-    if ! aws s3 cp "s3://${BACKUP_BUCKET}/daily/${backup_date}/${backup_file}" "$output_file" \
+    if ! backup_aws s3 cp "s3://${BACKUP_BUCKET}/daily/${backup_date}/${backup_file}" "$output_file" \
         --region "$AWS_REGION" 2>>"$LOG_FILE"; then
         log ERROR "Failed to download backup from S3"
         return 1
@@ -324,6 +356,7 @@ download_backup() {
 # Verify backup checksum
 verify_backup_checksum() {
     local backup_file="$1"
+    local manifest_file="$2"
 
     log INFO "Verifying backup checksum..."
 
@@ -332,15 +365,10 @@ verify_backup_checksum() {
         return 0
     fi
 
-    # Check if checksum file exists
-    if ! aws s3 cp "s3://${BACKUP_BUCKET}/daily/${BACKUP_DATE}/$(basename "$backup_file").sha256" \
-        "${backup_file}.sha256" --region "$AWS_REGION" 2>>"$LOG_FILE"; then
-        log WARN "Checksum file not found, skipping verification"
-        return 0
-    fi
-
-    # Verify checksum
-    if ! sha256sum -c "${backup_file}.sha256" >>"$LOG_FILE" 2>&1; then
+    local expected actual
+    expected=$(sed -n 's/.*"database": {"file": "[^"]*", "sha256": "\([a-f0-9]*\)".*/\1/p' "$manifest_file")
+    actual=$(sha256sum "$backup_file" | awk '{print $1}')
+    if [[ -z "$expected" || "$expected" != "$actual" ]]; then
         log ERROR "Backup checksum verification failed - possible corruption"
         return 1
     fi
@@ -421,7 +449,7 @@ restore_logical_backup() {
     log INFO "Restoring SQL dump to database..."
     if gunzip -c "$backup_file" | PGPASSWORD="$PGPASSWORD" psql \
         -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" \
-        -d "$TARGET_DATABASE" 2>>"$LOG_FILE"; then
+            -v ON_ERROR_STOP=1 -d "$TARGET_DATABASE" 2>>"$LOG_FILE"; then
 
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
@@ -435,6 +463,53 @@ restore_logical_backup() {
     fi
 
     return 0
+}
+
+download_and_verify_manifest() {
+    local prefix="daily/${BACKUP_DATE}"
+    local manifest_name
+    manifest_name=$(backup_aws s3 ls "s3://${BACKUP_BUCKET}/${prefix}/" --region "$AWS_REGION" | awk '/manifest-.*\.json$/ {print $NF}' | tail -1)
+    [[ -n "$manifest_name" ]] || { log ERROR "Backup manifest not found"; return 1; }
+
+    for suffix in "" ".sha256" ".hmac"; do
+        backup_aws s3 cp "s3://${BACKUP_BUCKET}/${prefix}/${manifest_name}${suffix}" \
+            "${OUTPUT_DIR}/${manifest_name}${suffix}" --region "$AWS_REGION" --only-show-errors
+    done
+    (cd "$OUTPUT_DIR" && sha256sum -c "${manifest_name}.sha256") >>"$LOG_FILE" 2>&1
+
+    local expected actual
+    expected=$(tr -d '\r\n' < "${OUTPUT_DIR}/${manifest_name}.hmac")
+    actual=$(openssl dgst -sha256 -hmac "$BACKUP_MANIFEST_HMAC_KEY" -binary \
+        "${OUTPUT_DIR}/${manifest_name}" | base64 | tr -d '\r\n')
+    [[ -n "$expected" && "$expected" == "$actual" ]] || {
+        log ERROR "Backup manifest authentication failed"
+        return 1
+    }
+    printf '%s\n' "${OUTPUT_DIR}/${manifest_name}"
+}
+
+restore_object_storage() {
+    local manifest_file="$1"
+    local archive_name inventory_name expected_archive expected_inventory
+    archive_name=$(sed -n 's/.*"archive": "\([^"]*\)".*/\1/p' "$manifest_file")
+    inventory_name=$(sed -n 's/.*"inventory": "\([^"]*\)".*/\1/p' "$manifest_file")
+    expected_archive=$(sed -n 's/.*"objects":.*"sha256": "\([a-f0-9]*\)".*/\1/p' "$manifest_file")
+    expected_inventory=$(sed -n 's/.*"inventory_sha256": "\([a-f0-9]*\)".*/\1/p' "$manifest_file")
+    [[ -n "$archive_name" && -n "$inventory_name" && -n "$expected_archive" && -n "$expected_inventory" ]] || return 1
+
+    backup_aws s3 cp "s3://${BACKUP_BUCKET}/daily/${BACKUP_DATE}/${archive_name}" "${OUTPUT_DIR}/${archive_name}" --region "$AWS_REGION" --only-show-errors
+    backup_aws s3 cp "s3://${BACKUP_BUCKET}/daily/${BACKUP_DATE}/${inventory_name}" "${OUTPUT_DIR}/${inventory_name}" --region "$AWS_REGION" --only-show-errors
+    [[ "$(sha256sum "${OUTPUT_DIR}/${archive_name}" | awk '{print $1}')" == "$expected_archive" ]]
+    [[ "$(sha256sum "${OUTPUT_DIR}/${inventory_name}" | awk '{print $1}')" == "$expected_inventory" ]]
+
+    local object_dir="${OUTPUT_DIR}/objects"
+    mkdir -p "$object_dir"
+    tar -xzf "${OUTPUT_DIR}/${archive_name}" -C "$object_dir"
+    (cd "$object_dir" && sha256sum -c "${OUTPUT_DIR}/${inventory_name}") >>"$LOG_FILE" 2>&1
+    local endpoint_args=()
+    [[ -n "$S3_ENDPOINT" ]] && endpoint_args+=(--endpoint-url "$S3_ENDPOINT")
+    aws "${endpoint_args[@]}" s3 rm "s3://${S3_BUCKET}/" --recursive --only-show-errors
+    aws "${endpoint_args[@]}" s3 sync "$object_dir/" "s3://${S3_BUCKET}/" --delete --only-show-errors
 }
 
 # Restore physical backup with PITR
@@ -651,10 +726,13 @@ main() {
         return 2
     fi
 
+    local manifest_file
+    manifest_file=$(download_and_verify_manifest) || return 1
+
     # Download backup
     local backup_file="${OUTPUT_DIR}/backup-$(date +%s).sql.gz"
-    local downloaded_filename=$(download_backup "$BACKUP_DATE" "$backup_file")
-    if [[ $? -ne 0 ]]; then
+    local downloaded_filename
+    if ! downloaded_filename=$(download_backup "$BACKUP_DATE" "$backup_file" "$manifest_file"); then
         log ERROR "Failed to download backup"
         list_backups
         return 1
@@ -662,7 +740,7 @@ main() {
 
     # Verify checksum
     if [[ "$VERIFY_CHECKSUM" == "true" ]]; then
-        if ! verify_backup_checksum "$backup_file"; then
+        if ! verify_backup_checksum "$backup_file" "$manifest_file"; then
             log ERROR "Backup verification failed"
             return 1
         fi
@@ -679,6 +757,11 @@ main() {
             log ERROR "Logical backup restore failed"
             return 1
         fi
+    fi
+
+    if ! restore_object_storage "$manifest_file"; then
+        log ERROR "Object-storage restore or inventory verification failed"
+        return 1
     fi
 
     # Apply WAL files if PITR requested

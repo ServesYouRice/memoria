@@ -48,6 +48,7 @@ const MAX_CONNECTIONS_PER_CLIENT = 30;
 const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
 const AUTHORIZATION_LEASE_MS = 30_000;
+const CURSOR_TICK_MS = 50;
 const REDIS_CHANNEL_PREFIX = "collaboration:canvas:";
 const SESSION_COOKIE_NAMES = [
   "__Secure-authjs.session-token",
@@ -55,6 +56,7 @@ const SESSION_COOKIE_NAMES = [
   "__Secure-next-auth.session-token",
   "next-auth.session-token",
 ] as const;
+const dirtyCursorCanvases = new Set<string>();
 
 interface CursorPosition {
   userId: string;
@@ -509,7 +511,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             where: { id: canvasId },
             include: {
               shares: {
-                where: { email: user.email.toLowerCase() },
+                where: { recipientId: user.id },
                 select: { role: true },
               },
             },
@@ -578,18 +580,18 @@ export function createCollaborationServer(server: any): WebSocketServer {
           clients.delete(client);
           return;
         }
-        // Re-check authorization even when a client is idle. Share revocation,
-        // role changes, public-link removal, and session invalidation must not
-        // depend on the client sending another application message.
-        void revalidateConnectionAccess(client, true).catch((error) => {
-          logger.error(
-            { error, userId: client.user.userId, canvasId },
-            "WebSocket authorization refresh failed",
-          );
-          client.ws.close(1011, "Authorization refresh failed");
-        });
         client.isAlive = false;
         client.ws.ping();
+      });
+
+      void revalidateCanvasConnections(canvasId, clients).catch((error) => {
+        logger.error(
+          { error, canvasId },
+          "Batched WebSocket authorization refresh failed",
+        );
+        clients.forEach((client) =>
+          client.ws.close(1011, "Authorization refresh failed"),
+        );
       });
 
       if (clients.size === 0) {
@@ -598,8 +600,17 @@ export function createCollaborationServer(server: any): WebSocketServer {
     });
   }, HEARTBEAT_INTERVAL);
 
+  const cursorInterval = setInterval(() => {
+    for (const canvasId of dirtyCursorCanvases) {
+      dirtyCursorCanvases.delete(canvasId);
+      broadcastCursors(canvasId);
+      publishCursors(canvasId);
+    }
+  }, CURSOR_TICK_MS);
+
   wss.on("close", () => {
     clearInterval(heartbeatInterval);
+    clearInterval(cursorInterval);
   });
 
   return wss;
@@ -708,6 +719,65 @@ async function handleConnection(
   });
 }
 
+async function revalidateCanvasConnections(
+  canvasId: string,
+  clients: Set<ClientConnection>,
+): Promise<void> {
+  const authenticatedIds = Array.from(
+    new Set(
+      Array.from(clients)
+        .map((client) => client.user.userId)
+        .filter((userId) => !userId.startsWith("guest:")),
+    ),
+  );
+  const [canvas, users] = await Promise.all([
+    prisma.canvas.findUnique({
+      where: { id: canvasId },
+      select: {
+        userId: true,
+        isPublic: true,
+        shares: {
+          where: { recipientId: { in: authenticatedIds } },
+          select: { recipientId: true, role: true },
+        },
+      },
+    }),
+    prisma.user.findMany({
+      where: { id: { in: authenticatedIds } },
+      select: { id: true, sessionVersion: true },
+    }),
+  ]);
+  const versions = new Map(users.map((user) => [user.id, user.sessionVersion]));
+  const roles = new Map(
+    canvas?.shares
+      .filter((share) => share.recipientId)
+      .map((share) => [share.recipientId!, share.role]) ?? [],
+  );
+  const checkedAt = Date.now();
+  for (const client of clients) {
+    client.lastAuthorizationCheck = checkedAt;
+    const userId = client.user.userId;
+    if (userId.startsWith("guest:")) {
+      if (!canvas?.isPublic) client.ws.close(1008, "Canvas access was revoked");
+      continue;
+    }
+    const accessLevel =
+      canvas?.userId === userId
+        ? "OWNER"
+        : roles.get(userId) || (canvas?.isPublic ? "VIEW" : null);
+    if (
+      !canvas ||
+      versions.get(userId) !== client.user.sessionVersion ||
+      !accessLevel
+    ) {
+      client.ws.close(1008, "Session or canvas access was revoked");
+      continue;
+    }
+    client.accessLevel = accessLevel;
+    client.user.accessLevel = accessLevel;
+  }
+}
+
 async function revalidateConnectionAccess(
   connection: ClientConnection,
   force = false,
@@ -730,7 +800,7 @@ async function revalidateConnectionAccess(
         shares: isGuest
           ? false
           : {
-              where: { email: connection.user.email.toLowerCase() },
+              where: { recipientId: connection.user.userId },
               select: { role: true },
             },
       },
@@ -776,15 +846,14 @@ async function handleMessage(
   connection: ClientConnection,
   message: z.infer<typeof collaborationMessageSchema>,
 ): Promise<void> {
-  if (!applyRateLimit(connection)) {
+  if (!applyRateLimit(connection, message.type)) {
     return;
   }
 
   switch (message.type) {
     case "cursor":
       connection.cursorPosition = message.position;
-      broadcastCursors(connection.canvasId);
-      publishCursors(connection.canvasId);
+      dirtyCursorCanvases.add(connection.canvasId);
       break;
 
     case "awareness":
@@ -821,7 +890,7 @@ async function handleMessage(
 }
 
 function handleBinaryUpdate(connection: ClientConnection): void {
-  if (!applyRateLimit(connection)) {
+  if (!applyRateLimit(connection, "message")) {
     return;
   }
 
@@ -831,7 +900,10 @@ function handleBinaryUpdate(connection: ClientConnection): void {
   connection.ws.close(1003, "Binary collaboration updates are disabled");
 }
 
-function applyRateLimit(connection: ClientConnection): boolean {
+function applyRateLimit(
+  connection: ClientConnection,
+  messageType: z.infer<typeof collaborationMessageSchema>["type"],
+): boolean {
   const now = Date.now();
   if (now > connection.rateLimitReset) {
     connection.messageCount = 0;
@@ -840,6 +912,7 @@ function applyRateLimit(connection: ClientConnection): boolean {
 
   connection.messageCount++;
   if (connection.messageCount > RATE_LIMIT_MAX) {
+    if (messageType === "cursor") return false;
     logger.warn(
       { userId: connection.user.userId },
       "Rate limit exceeded. Terminating connection.",

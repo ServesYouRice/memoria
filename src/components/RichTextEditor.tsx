@@ -6,6 +6,11 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import {
+  normalizeNoteContent,
+  type TiptapNode,
+  type VersionedNoteContent,
+} from "@/lib/rich-text/note-format";
+import {
   Box,
   Button,
   Dialog,
@@ -28,13 +33,54 @@ import {
   FormatListBulleted,
   FormatListNumbered,
   Link as LinkIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
 } from "@mui/icons-material";
 
+export const EMPTY_TIPTAP_DOCUMENT: TiptapNode = {
+  type: "doc",
+  content: [{ type: "paragraph", content: [] }],
+};
+
+export const EMPTY_VERSIONED_NOTE_CONTENT: VersionedNoteContent = {
+  formatVersion: 1,
+  document: EMPTY_TIPTAP_DOCUMENT,
+  plainText: "",
+  text: "<p></p>",
+};
+
+type EditorContentValue =
+  VersionedNoteContent | { text?: string } | string | null;
+
+function documentForEditor(content: EditorContentValue): TiptapNode {
+  if (content && typeof content === "object" && "formatVersion" in content) {
+    return content.document;
+  }
+
+  if (typeof content === "string") {
+    try {
+      return normalizeNoteContent({ text: content }).document;
+    } catch {
+      return EMPTY_TIPTAP_DOCUMENT;
+    }
+  }
+
+  if (
+    content &&
+    typeof content === "object" &&
+    typeof content.text === "string"
+  ) {
+    try {
+      return normalizeNoteContent(content).document;
+    } catch {
+      return EMPTY_TIPTAP_DOCUMENT;
+    }
+  }
+
+  return EMPTY_TIPTAP_DOCUMENT;
+}
+
 export interface RichTextEditorProps {
-  content: string;
-  onChange: (content: string) => void;
+  content: EditorContentValue;
+  onChange: (content: VersionedNoteContent) => void;
   placeholder?: string;
   minHeight?: number;
   editable?: boolean;
@@ -49,6 +95,10 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
   const [linkDialogOpen, setLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState("");
+  const initialDocument = React.useMemo(
+    () => documentForEditor(content),
+    [content],
+  );
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -67,16 +117,31 @@ export function RichTextEditor({
         },
       }),
     ],
-    content,
+    content: initialDocument,
     editable,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      const document = editor.getJSON() as TiptapNode;
+      try {
+        onChange(normalizeNoteContent({ formatVersion: 1, document }));
+      } catch {
+        // Keep the draft versioned while it is temporarily empty. Submit
+        // validation still runs normalizeNoteContent and visibly rejects it.
+        onChange({
+          formatVersion: 1,
+          document,
+          plainText: editor.getText(),
+          text: editor.getHTML(),
+        });
+      }
     },
   });
 
   React.useEffect(() => {
-    if (editor && editor.getHTML() !== content) {
-      editor.commands.setContent(content);
+    if (editor) {
+      const nextDocument = documentForEditor(content);
+      if (JSON.stringify(editor.getJSON()) !== JSON.stringify(nextDocument)) {
+        editor.commands.setContent(nextDocument, { emitUpdate: false });
+      }
     }
   }, [editor, content]);
 
@@ -262,30 +327,6 @@ export function RichTextEditor({
           >
             <Tooltip title="Add Link">
               <LinkIcon fontSize="small" />
-            </Tooltip>
-          </IconButton>
-
-          <Divider orientation="vertical" flexItem />
-
-          {/* Undo/Redo */}
-          <IconButton
-            size="small"
-            onClick={() => editor.chain().focus().undo().run()}
-            disabled={!editor.can().undo()}
-            aria-label="Undo"
-          >
-            <Tooltip title="Undo (Ctrl+Z)">
-              <UndoIcon fontSize="small" />
-            </Tooltip>
-          </IconButton>
-          <IconButton
-            size="small"
-            onClick={() => editor.chain().focus().redo().run()}
-            disabled={!editor.can().redo()}
-            aria-label="Redo"
-          >
-            <Tooltip title="Redo (Ctrl+Y)">
-              <RedoIcon fontSize="small" />
             </Tooltip>
           </IconButton>
         </Box>

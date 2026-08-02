@@ -21,9 +21,16 @@ import {
   Email as EmailIcon,
   Lock as LockIcon,
 } from "@mui/icons-material";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { PasswordStrengthIndicator } from "./PasswordStrengthIndicator";
 import { AuthLayout } from "./AuthLayout";
+import { VerificationResendForm } from "./VerificationResendForm";
+
+export type RegistrationMode = "open" | "invite" | "closed";
+
+interface RegisterFormProps {
+  mode?: RegistrationMode;
+}
 
 const registerSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -33,12 +40,16 @@ const registerSchema = z.object({
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
-export function RegisterForm() {
-  const router = useRouter();
+export function RegisterForm({ mode = "open" }: RegisterFormProps) {
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("inviteToken") || "";
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [registration, setRegistration] = useState<{
+    email: string;
+    deliveryAccepted: boolean;
+  } | null>(null);
 
   const {
     register,
@@ -54,6 +65,8 @@ export function RegisterForm() {
   const name = watch("name", "");
 
   const onSubmit = async (data: RegisterFormData) => {
+    if (mode === "closed" || (mode === "invite" && !inviteToken)) return;
+
     try {
       setIsLoading(true);
       setError(null);
@@ -63,31 +76,39 @@ export function RegisterForm() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          inviteToken: inviteToken || undefined,
+        }),
       });
 
-      const result = await response.json();
+      const result = (await response.json().catch(() => null)) as {
+        type?: string;
+        title?: string;
+        detail?: string;
+        errors?: Array<{ message?: string }>;
+        email?: string;
+        verificationEmailQueued?: boolean;
+      } | null;
 
       if (!response.ok) {
-        if (result.type && result.title) {
-          if (result.errors && Array.isArray(result.errors)) {
-            const errorMessages = result.errors
-              .map((err: { message: string }) => err.message)
-              .join(". ");
-            setError(errorMessages);
-          } else {
-            setError(result.detail || result.title);
-          }
-        } else {
-          setError("Registration failed. Please try again.");
-        }
+        const errorMessages = result?.errors
+          ?.map((item) => item.message)
+          .filter((message): message is string => Boolean(message))
+          .join(". ");
+        setError(
+          errorMessages ||
+            result?.detail ||
+            result?.title ||
+            "Registration failed. Please try again.",
+        );
         return;
       }
 
-      setSuccess(true);
-      setTimeout(() => {
-        router.push("/auth/login?registered=true");
-      }, 1500);
+      setRegistration({
+        email: result?.email || data.email,
+        deliveryAccepted: result?.verificationEmailQueued !== false,
+      });
     } catch (err) {
       console.error("Registration error:", err);
       setError("An unexpected error occurred. Please try again.");
@@ -108,13 +129,31 @@ export function RegisterForm() {
         Sign up to start using Memoria
       </Typography>
 
-      {success && (
-        <Alert
-          severity="success"
-          sx={{ mb: 3, animation: "fadeIn 0.4s ease-out" }}
-        >
-          Account created! Redirecting you to sign in…
+      {mode === "closed" && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Registration is currently closed. Ask an administrator for access.
         </Alert>
+      )}
+
+      {mode === "invite" && !inviteToken && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          An invitation link is required to create an account.
+        </Alert>
+      )}
+
+      {registration && (
+        <Box sx={{ mb: 3 }}>
+          <Alert
+            severity={registration.deliveryAccepted ? "success" : "warning"}
+          >
+            {registration.deliveryAccepted
+              ? "Account created. Check your inbox for the verification link before signing in."
+              : "Account created, but delivery could not be confirmed. Request another verification email below."}
+          </Alert>
+          <Box sx={{ mt: 2 }}>
+            <VerificationResendForm initialEmail={registration.email} compact />
+          </Box>
+        </Box>
       )}
 
       {error && (
@@ -126,7 +165,19 @@ export function RegisterForm() {
         </Alert>
       )}
 
-      <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
+      <Box
+        component="form"
+        onSubmit={handleSubmit(onSubmit)}
+        noValidate
+        sx={{
+          display:
+            registration ||
+            mode === "closed" ||
+            (mode === "invite" && !inviteToken)
+              ? "none"
+              : undefined,
+        }}
+      >
         <TextField
           {...register("name")}
           label="Full name"
@@ -215,7 +266,7 @@ export function RegisterForm() {
           variant="contained"
           fullWidth
           size="large"
-          disabled={isLoading || success}
+          disabled={isLoading || Boolean(registration)}
           sx={{ mt: 3 }}
         >
           {isLoading ? "Creating account…" : "Create account"}
@@ -241,6 +292,18 @@ export function RegisterForm() {
           </Link>
         </Typography>
       </Box>
+      {(registration ||
+        mode === "closed" ||
+        (mode === "invite" && !inviteToken)) && (
+        <Typography
+          variant="body2"
+          align="center"
+          color="text.secondary"
+          sx={{ mt: 3 }}
+        >
+          Already have an account? <Link href="/auth/login">Sign in</Link>
+        </Typography>
+      )}
     </AuthLayout>
   );
 }

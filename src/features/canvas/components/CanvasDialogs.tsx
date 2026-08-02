@@ -3,7 +3,7 @@
 import React from "react";
 import dynamic from "next/dynamic";
 import type Konva from "konva";
-import { type CanvasItem } from "@/types/canvas";
+import { type CanvasCapabilities, type CanvasItem } from "@/types/canvas";
 import {
   CanvasContextMenu,
   type ContextMenuPosition,
@@ -11,11 +11,8 @@ import {
 import { CommentsPanel } from "@/features/canvas/components/CommentsPanel";
 import { TagFilterPanel } from "@/features/canvas/components/TagFilterPanel";
 import { SerendipityDialog } from "@/features/canvas/components/SerendipityDialog";
-import { TemplatesGallery } from "@/features/canvas/components/TemplatesGallery";
 import { WhisperMode } from "@/features/canvas/components/WhisperMode";
 import { ARCanvasLayer } from "@/features/canvas/components/ARCanvasLayer";
-import { isArCanvasEnabled } from "@/lib/product-surfaces";
-import type { CanvasCapabilities } from "@/types/canvas";
 
 const EditNoteDialog = dynamic(
   () =>
@@ -59,20 +56,6 @@ const CreateImageDialog = dynamic(
     ),
   { ssr: false },
 );
-const CreatePollDialog = dynamic(
-  () =>
-    import("@/features/canvas/components/CreatePollDialog").then(
-      (mod) => mod.CreatePollDialog,
-    ),
-  { ssr: false },
-);
-const SaveAsTemplateDialog = dynamic(
-  () =>
-    import("@/features/canvas/components/SaveAsTemplateDialog").then(
-      (mod) => mod.SaveAsTemplateDialog,
-    ),
-  { ssr: false },
-);
 const VersionHistoryDialog = dynamic(
   () =>
     import("@/features/canvas/components/VersionHistoryDialog").then(
@@ -94,6 +77,7 @@ const AIDialog = dynamic(
 );
 
 interface CanvasDialogsProps {
+  capabilities: CanvasCapabilities;
   canvasId: string;
   canvasName: string;
   items: CanvasItem[];
@@ -111,8 +95,6 @@ interface CanvasDialogsProps {
   setBookmarkDialogOpen: (open: boolean) => void;
   imageDialogOpen: boolean;
   setImageDialogOpen: (open: boolean) => void;
-  pollDialogOpen: boolean;
-  setPollDialogOpen: (open: boolean) => void;
 
   editNoteDialogOpen: boolean;
   setEditNoteDialogOpen: (open: boolean) => void;
@@ -127,8 +109,6 @@ interface CanvasDialogsProps {
   editingImageItem: CanvasItem | null;
   setEditingImageItem: (item: CanvasItem | null) => void;
 
-  templateDialogOpen: boolean;
-  setTemplateDialogOpen: (open: boolean) => void;
   versionHistoryOpen: boolean;
   setVersionHistoryOpen: (open: boolean) => void;
   exportDialogOpen: boolean;
@@ -140,9 +120,6 @@ interface CanvasDialogsProps {
   selectedTags: string[];
   setSelectedTags: (tags: string[]) => void;
   tagCounts: Record<string, number>;
-
-  /** IMP-008: the capability contract that gates menu and dialog actions. */
-  capabilities: CanvasCapabilities;
 
   contextMenuPosition: ContextMenuPosition | null;
   setContextMenuPosition: (position: ContextMenuPosition | null) => void;
@@ -165,10 +142,6 @@ interface CanvasDialogsProps {
   setSerendipityOpen: (open: boolean) => void;
   onAddSerendipityItems: (items: any[]) => Promise<void>;
 
-  templatesOpen: boolean;
-  setTemplatesOpen: (open: boolean) => void;
-  onSelectTemplate: (items: any[]) => Promise<void>;
-
   whisperOpen: boolean;
   setWhisperOpen: (open: boolean) => void;
   onWhisperSend: (text: string) => Promise<void>;
@@ -178,6 +151,7 @@ interface CanvasDialogsProps {
 }
 
 export function CanvasDialogs({
+  capabilities,
   canvasId,
   canvasName,
   items,
@@ -189,8 +163,6 @@ export function CanvasDialogs({
   setBookmarkDialogOpen,
   imageDialogOpen,
   setImageDialogOpen,
-  pollDialogOpen,
-  setPollDialogOpen,
   editNoteDialogOpen,
   setEditNoteDialogOpen,
   editingNoteItem,
@@ -203,8 +175,6 @@ export function CanvasDialogs({
   setEditImageDialogOpen,
   editingImageItem,
   setEditingImageItem,
-  templateDialogOpen,
-  setTemplateDialogOpen,
   versionHistoryOpen,
   setVersionHistoryOpen,
   exportDialogOpen,
@@ -215,7 +185,6 @@ export function CanvasDialogs({
   selectedTags,
   setSelectedTags,
   tagCounts,
-  capabilities,
   contextMenuPosition,
   setContextMenuPosition,
   onDeleteFromMenu,
@@ -233,9 +202,6 @@ export function CanvasDialogs({
   serendipityOpen,
   setSerendipityOpen,
   onAddSerendipityItems,
-  templatesOpen,
-  setTemplatesOpen,
-  onSelectTemplate,
   whisperOpen,
   setWhisperOpen,
   onWhisperSend,
@@ -244,67 +210,67 @@ export function CanvasDialogs({
 }: CanvasDialogsProps) {
   return (
     <>
-      <CreateNoteDialog
-        open={noteDialogOpen}
-        onClose={() => setNoteDialogOpen(false)}
-        canvasId={canvasId}
-        initialPosition={{ x: 100, y: 100 }}
-      />
-      <CreateBookmarkDialog
-        open={bookmarkDialogOpen}
-        onClose={() => setBookmarkDialogOpen(false)}
-        canvasId={canvasId}
-        initialPosition={{ x: 100, y: 100 }}
-      />
-      <CreateImageDialog
-        open={imageDialogOpen}
-        onClose={() => setImageDialogOpen(false)}
-        canvasId={canvasId}
-        initialPosition={{ x: 100, y: 100 }}
-      />
-      <CreatePollDialog
-        open={pollDialogOpen}
-        onClose={() => setPollDialogOpen(false)}
-        canvasId={canvasId}
-        initialPosition={{ x: 100, y: 100 }}
-      />
+      {capabilities.canCreateItems && (
+        <>
+          <CreateNoteDialog
+            open={noteDialogOpen}
+            onClose={() => setNoteDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+          <CreateBookmarkDialog
+            open={bookmarkDialogOpen}
+            onClose={() => setBookmarkDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+          <CreateImageDialog
+            open={imageDialogOpen}
+            onClose={() => setImageDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+        </>
+      )}
 
-      <EditNoteDialog
-        open={editNoteDialogOpen}
-        onClose={() => {
-          setEditNoteDialogOpen(false);
-          setEditingNoteItem(null);
-        }}
-        item={editingNoteItem}
-      />
-      <EditBookmarkDialog
-        open={editBookmarkDialogOpen}
-        onClose={() => {
-          setEditBookmarkDialogOpen(false);
-          setEditingBookmarkItem(null);
-        }}
-        item={editingBookmarkItem}
-      />
-      <EditImageDialog
-        open={editImageDialogOpen}
-        onClose={() => {
-          setEditImageDialogOpen(false);
-          setEditingImageItem(null);
-        }}
-        item={editingImageItem}
-      />
+      {capabilities.canEditItems && (
+        <>
+          <EditNoteDialog
+            open={editNoteDialogOpen}
+            onClose={() => {
+              setEditNoteDialogOpen(false);
+              setEditingNoteItem(null);
+            }}
+            item={editingNoteItem}
+          />
+          <EditBookmarkDialog
+            open={editBookmarkDialogOpen}
+            onClose={() => {
+              setEditBookmarkDialogOpen(false);
+              setEditingBookmarkItem(null);
+            }}
+            item={editingBookmarkItem}
+          />
+          <EditImageDialog
+            open={editImageDialogOpen}
+            onClose={() => {
+              setEditImageDialogOpen(false);
+              setEditingImageItem(null);
+            }}
+            item={editingImageItem}
+          />
+        </>
+      )}
 
-      <SaveAsTemplateDialog
-        open={templateDialogOpen}
-        onClose={() => setTemplateDialogOpen(false)}
-        canvasId={canvasId}
-        canvasName={canvasName}
-      />
-      <VersionHistoryDialog
-        open={versionHistoryOpen}
-        onClose={() => setVersionHistoryOpen(false)}
-        canvasId={canvasId}
-      />
+      {capabilities.canManageCanvas && (
+        <>
+          <VersionHistoryDialog
+            open={versionHistoryOpen}
+            onClose={() => setVersionHistoryOpen(false)}
+            canvasId={canvasId}
+          />
+        </>
+      )}
 
       <ExportDialog
         open={exportDialogOpen}
@@ -326,15 +292,15 @@ export function CanvasDialogs({
 
       <CanvasContextMenu
         position={contextMenuPosition}
-        capabilities={capabilities}
         onClose={() => setContextMenuPosition(null)}
         onDelete={onDeleteFromMenu}
         onDuplicate={onDuplicate}
         onCopy={onCopy}
         onComments={onOpenComments}
+        capabilities={capabilities}
       />
 
-      {commentsItemId && (
+      {capabilities.canComment && commentsItemId && (
         <CommentsPanel
           open={commentsPanelOpen}
           onClose={() => {
@@ -349,7 +315,7 @@ export function CanvasDialogs({
         />
       )}
 
-      {aiDialogOpen && (
+      {capabilities.canEditItems && aiDialogOpen && (
         <AIDialog
           open={aiDialogOpen}
           onClose={() => setAiDialogOpen(false)}
@@ -368,14 +334,6 @@ export function CanvasDialogs({
         />
       )}
 
-      {templatesOpen && (
-        <TemplatesGallery
-          open={templatesOpen}
-          onClose={() => setTemplatesOpen(false)}
-          onSelectTemplate={onSelectTemplate}
-        />
-      )}
-
       {whisperOpen && (
         <WhisperMode
           open={whisperOpen}
@@ -384,8 +342,7 @@ export function CanvasDialogs({
         />
       )}
 
-      {/* DEC-013: never mount the camera surface unless AR is enabled. */}
-      {arOpen && isArCanvasEnabled() && (
+      {arOpen && (
         <ARCanvasLayer
           open={arOpen}
           onClose={() => setAROpen(false)}

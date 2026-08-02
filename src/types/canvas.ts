@@ -17,6 +17,88 @@ export enum ItemType {
 }
 
 /**
+ * Access level a viewer holds on a canvas, as returned by the canvas API and
+ * by the server authorization layer.
+ */
+export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW" | "NONE";
+
+/**
+ * IMP-008 — the one capability contract every canvas surface reads.
+ *
+ * These flags decide which interactions are offered *and* which optimistic
+ * mutations may be created locally. They are a usability boundary, not a
+ * security boundary: HTTP authorization remains the final word on every write.
+ */
+export interface CanvasCapabilities {
+  canMoveItems: boolean;
+  canResizeItems: boolean;
+  canEditItems: boolean;
+  canCreateItems: boolean;
+  canDeleteItems: boolean;
+  canCopyItems: boolean;
+  canComment: boolean;
+  /**
+   * Poll voting. Held at `false` for every role until server-authoritative
+   * voting ships (DEC-005) — no role may write a vote from the client.
+   */
+  canVote: boolean;
+  canManageCanvas: boolean;
+}
+
+/**
+ * Derive capabilities from an access level. This is the only place a role is
+ * turned into permitted interactions.
+ */
+export function resolveCanvasCapabilities(
+  accessLevel: CanvasAccessLevel,
+): CanvasCapabilities {
+  const canEdit = accessLevel === "OWNER" || accessLevel === "EDIT";
+  const canComment = canEdit || accessLevel === "COMMENT";
+
+  return {
+    canMoveItems: canEdit,
+    canResizeItems: canEdit,
+    canEditItems: canEdit,
+    canCreateItems: canEdit,
+    canDeleteItems: canEdit,
+    canCopyItems: accessLevel !== "NONE",
+    canComment,
+    // DEC-005: client-side voting is gated off until the server owns it.
+    canVote: false,
+    canManageCanvas: accessLevel === "OWNER",
+  };
+}
+
+/** Capabilities granting nothing — the safe default before data loads. */
+export const NO_CANVAS_CAPABILITIES: CanvasCapabilities =
+  resolveCanvasCapabilities("NONE");
+
+/**
+ * The geometry an item commits after one gesture. Position is always present;
+ * size is present only for a resize.
+ */
+export interface ItemGeometryCommit {
+  positionX: number;
+  positionY: number;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Item types that expose resize handles. Everything else derives its size from
+ * its content and is explicitly non-resizable.
+ */
+export const RESIZABLE_ITEM_TYPES: ReadonlySet<ItemType> = new Set([
+  ItemType.NOTE,
+  ItemType.BOOKMARK,
+  ItemType.IMAGE,
+]);
+
+export function isItemResizable(type: ItemType): boolean {
+  return RESIZABLE_ITEM_TYPES.has(type);
+}
+
+/**
  * Base geometry for all canvas items
  */
 export interface ItemGeometry {
@@ -277,85 +359,6 @@ export function isEmbedContent(content: ItemContent): content is EmbedContent {
 
 export function isPollContent(content: ItemContent): content is PollContent {
   return "question" in content && "options" in content;
-}
-
-/**
- * Access level a viewer holds on a canvas, as returned by the canvas API.
- */
-export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW";
-
-/**
- * IMP-008 — the one capability contract every canvas surface reads.
- *
- * These flags decide which interactions are offered *and* which optimistic
- * mutations may be created locally. They are a usability boundary, not a
- * security boundary: HTTP authorization remains the final word on every write.
- */
-export interface CanvasCapabilities {
-  canMoveItems: boolean;
-  canResizeItems: boolean;
-  canEditItems: boolean;
-  canCreateItems: boolean;
-  canDeleteItems: boolean;
-  canComment: boolean;
-  /**
-   * Poll voting. Held at `false` for every role until server-authoritative
-   * voting ships (DEC-005) — no role may write a vote from the client.
-   */
-  canVote: boolean;
-  canManageCanvas: boolean;
-}
-
-/**
- * Derive capabilities from an access level. This is the only place a role is
- * turned into permitted interactions.
- */
-export function resolveCanvasCapabilities(
-  accessLevel: CanvasAccessLevel,
-): CanvasCapabilities {
-  const canEdit = accessLevel === "OWNER" || accessLevel === "EDIT";
-  const canComment = canEdit || accessLevel === "COMMENT";
-
-  return {
-    canMoveItems: canEdit,
-    canResizeItems: canEdit,
-    canEditItems: canEdit,
-    canCreateItems: canEdit,
-    canDeleteItems: canEdit,
-    canComment,
-    // DEC-005: client-side voting is gated off until the server owns it.
-    canVote: false,
-    canManageCanvas: accessLevel === "OWNER",
-  };
-}
-
-/** Capabilities granting nothing — the safe default before data loads. */
-export const NO_CANVAS_CAPABILITIES: CanvasCapabilities =
-  resolveCanvasCapabilities("VIEW");
-
-/**
- * The geometry an item commits after one gesture. Position is always present;
- * size is present only for a resize.
- */
-export interface ItemGeometryCommit {
-  positionX: number;
-  positionY: number;
-  width?: number;
-  height?: number;
-}
-
-/**
- * Item types that expose resize handles. Everything else derives its size from
- * its content and is explicitly non-resizable.
- */
-export const RESIZABLE_ITEM_TYPES: ReadonlySet<ItemType> = new Set([
-  ItemType.NOTE,
-  ItemType.BOOKMARK,
-  ItemType.IMAGE,
-]);
-
-export function isItemResizable(type: ItemType): boolean {
-  return RESIZABLE_ITEM_TYPES.has(type);
 }
 
 /**

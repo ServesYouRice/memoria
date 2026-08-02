@@ -13,12 +13,12 @@ import { errorResponse } from "@/lib/errors";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { email } = await requireAuth();
+    const { userId } = await requireAuth();
 
     // Find all shares for this user's email
     const shares = await prisma.canvasShare.findMany({
       where: {
-        email: email.toLowerCase(),
+        recipientId: userId,
       },
       include: {
         canvas: {

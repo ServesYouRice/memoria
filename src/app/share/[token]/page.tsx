@@ -20,7 +20,7 @@ import {
 import { ZoomIn, ZoomOut, FitScreen } from "@mui/icons-material";
 import { Stage } from "react-konva";
 import Link from "next/link";
-import { type CanvasItem } from "@/types/canvas";
+import { resolveCanvasCapabilities, type CanvasItem } from "@/types/canvas";
 import type Konva from "konva";
 import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
 import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
@@ -278,6 +278,12 @@ export default function SharePage({ params }: SharePageProps) {
           </Button>
         </Toolbar>
       </AppBar>
+
+      <CanvasAccessiblePanel
+        items={items}
+        capabilities={resolveCanvasCapabilities("VIEW")}
+        canvasName={canvas?.name || "Shared canvas"}
+      />
 
       {/* Canvas */}
       <Box

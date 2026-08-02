@@ -30,6 +30,7 @@ import {
   InputAdornment,
 } from "@mui/material";
 import { Close, ContentCopy, Delete } from "@mui/icons-material";
+import { ApiError, apiFetch } from "@/lib/api/fetch-client";
 
 export interface ShareDialogProps {
   open: boolean;
@@ -45,21 +46,15 @@ interface Share {
   createdAt: string;
 }
 
-function getErrorMessage(payload: unknown, fallback: string) {
-  if (payload && typeof payload === "object") {
-    const details = payload as Record<string, unknown>;
-    if (typeof details.detail === "string") {
-      return details.detail;
-    }
-    if (typeof details.error === "string") {
-      return details.error;
-    }
-    if (typeof details.message === "string") {
-      return details.message;
-    }
+function formatShareError(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    const retry = error.retryAfterSeconds
+      ? ` Try again in ${error.retryAfterSeconds} seconds.`
+      : "";
+    const request = error.requestId ? ` (Request ID: ${error.requestId})` : "";
+    return `${error.message || fallback}${retry}${request}`;
   }
-
-  return fallback;
+  return error instanceof Error ? error.message : fallback;
 }
 
 export function ShareDialog({
@@ -75,29 +70,31 @@ export function ShareDialog({
   const [isPublic, setIsPublic] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [rotatingLink, setRotatingLink] = useState(false);
 
   // Individual sharing
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
   const [shares, setShares] = useState<Share[]>([]);
   const [sharingWithUser, setSharingWithUser] = useState(false);
+  const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
 
   // Load existing shares
   const loadShares = useCallback(async () => {
     try {
-      const response = await fetch(`/api/v1/canvases/${canvasId}/share`);
+      const response = await apiFetch(`/api/v1/canvases/${canvasId}/share`);
       if (response.ok) {
         const data = await response.json();
         setShares(data.shares || []);
       }
     } catch (err) {
-      console.error("Failed to load shares:", err);
+      setError(formatShareError(err, "Failed to load shares"));
     }
   }, [canvasId]);
 
   const checkPublicStatus = useCallback(async () => {
     try {
-      const response = await fetch(`/api/v1/canvases/${canvasId}`);
+      const response = await apiFetch(`/api/v1/canvases/${canvasId}`);
       if (response.ok) {
         const canvas = await response.json();
         setIsPublic(canvas.isPublic || false);
@@ -107,7 +104,7 @@ export function ShareDialog({
         }
       }
     } catch (err) {
-      console.error("Failed to check public status:", err);
+      setError(formatShareError(err, "Failed to check public status"));
     }
   }, [canvasId]);
 
@@ -119,38 +116,32 @@ export function ShareDialog({
   }, [open, loadShares, checkPublicStatus]);
 
   const handleTogglePublic = async () => {
+    if (
+      isPublic &&
+      !window.confirm(
+        "Disable this public link? The current URL will be permanently invalidated and cannot be restored.",
+      )
+    ) {
+      return;
+    }
     setGeneratingLink(true);
     setError(null);
 
     try {
       if (isPublic) {
         // Make private
-        const response = await fetch(`/api/v1/canvases/${canvasId}/public`, {
+        await apiFetch(`/api/v1/canvases/${canvasId}/public`, {
           method: "DELETE",
         });
-
-        if (!response.ok) {
-          const data = await response.json().catch(() => null);
-          throw new Error(
-            getErrorMessage(data, "Failed to make canvas private"),
-          );
-        }
 
         setIsPublic(false);
         setShareUrl(null);
         setSuccess("Canvas is now private");
       } else {
         // Make public
-        const response = await fetch(`/api/v1/canvases/${canvasId}/public`, {
+        const response = await apiFetch(`/api/v1/canvases/${canvasId}/public`, {
           method: "POST",
         });
-
-        if (!response.ok) {
-          const data = await response.json().catch(() => null);
-          throw new Error(
-            getErrorMessage(data, "Failed to generate share link"),
-          );
-        }
 
         const data = await response.json();
         setIsPublic(true);
@@ -158,20 +149,50 @@ export function ShareDialog({
         setSuccess("Public link generated!");
       }
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to update sharing settings",
-      );
+      setError(formatShareError(err, "Failed to update sharing settings"));
     } finally {
       setGeneratingLink(false);
     }
   };
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     if (shareUrl) {
-      navigator.clipboard.writeText(shareUrl);
-      setSuccess("Link copied to clipboard!");
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setSuccess("Link copied to clipboard!");
+        setError(null);
+      } catch (err) {
+        setError(formatShareError(err, "Clipboard access was denied"));
+      }
+    }
+  };
+
+  const handleRotateLink = async () => {
+    if (
+      !window.confirm(
+        "Rotate this public link? The previous URL will be permanently invalidated.",
+      )
+    ) {
+      return;
+    }
+    setRotatingLink(true);
+    setError(null);
+    try {
+      const response = await apiFetch(`/api/v1/canvases/${canvasId}/public`, {
+        method: "PUT",
+      });
+      const data = (await response.json()) as { shareUrl?: string };
+      if (!data.shareUrl)
+        throw new Error("The server did not return a share URL");
+      setIsPublic(true);
+      setShareUrl(data.shareUrl);
+      setSuccess(
+        "Public link rotated. The previous URL is permanently invalid.",
+      );
+    } catch (err) {
+      setError(formatShareError(err, "Failed to rotate public link"));
+    } finally {
+      setRotatingLink(false);
     }
   };
 
@@ -185,45 +206,43 @@ export function ShareDialog({
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/canvases/${canvasId}/share`, {
+      const response = await apiFetch(`/api/v1/canvases/${canvasId}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), role }),
       });
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(getErrorMessage(data, "Failed to share canvas"));
-      }
-
-      setSuccess(`Canvas shared with ${email}`);
+      const data = (await response.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      setSuccess(
+        data?.message ||
+          "If the address can receive invitations, delivery has been queued.",
+      );
       setEmail("");
       loadShares();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to share canvas");
+      setError(formatShareError(err, "Failed to share canvas"));
     } finally {
       setSharingWithUser(false);
     }
   };
 
   const handleRevokeShare = async (shareId: string, shareEmail: string) => {
+    if (!window.confirm(`Revoke access for ${shareEmail}?`)) return;
+    setRevokingShareId(shareId);
+    setError(null);
     try {
-      const response = await fetch(
-        `/api/v1/canvases/${canvasId}/share/${shareId}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(getErrorMessage(data, "Failed to revoke share"));
-      }
+      await apiFetch(`/api/v1/canvases/${canvasId}/share/${shareId}`, {
+        method: "DELETE",
+      });
 
       setSuccess(`Access revoked for ${shareEmail}`);
       loadShares();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to revoke share");
+      setError(formatShareError(err, "Failed to revoke share"));
+    } finally {
+      setRevokingShareId(null);
     }
   };
 
@@ -259,8 +278,8 @@ export function ShareDialog({
               control={
                 <Switch
                   checked={isPublic}
-                  onChange={handleTogglePublic}
-                  disabled={generatingLink}
+                  onChange={() => void handleTogglePublic()}
+                  disabled={generatingLink || rotatingLink}
                 />
               }
               label="Anyone with the link can view"
@@ -273,6 +292,11 @@ export function ShareDialog({
             >
               Public links are view-only
             </Typography>
+
+            <Alert severity="info" sx={{ mt: 1 }}>
+              Disabling sharing or rotating this link permanently invalidates
+              the old URL.
+            </Alert>
 
             {isPublic && shareUrl && (
               <TextField
@@ -291,6 +315,16 @@ export function ShareDialog({
                   ),
                 }}
               />
+            )}
+            {isPublic && (
+              <Button
+                variant="outlined"
+                onClick={() => void handleRotateLink()}
+                disabled={rotatingLink || generatingLink}
+                sx={{ mt: 1 }}
+              >
+                {rotatingLink ? "Rotating…" : "Rotate public link"}
+              </Button>
             )}
           </Box>
 
@@ -343,7 +377,10 @@ export function ShareDialog({
                     <ListItemSecondaryAction>
                       <IconButton
                         edge="end"
-                        onClick={() => handleRevokeShare(share.id, share.email)}
+                        onClick={() =>
+                          void handleRevokeShare(share.id, share.email)
+                        }
+                        disabled={revokingShareId !== null}
                       >
                         <Delete />
                       </IconButton>

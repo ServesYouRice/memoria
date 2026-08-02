@@ -10,3 +10,8 @@ their original root locations.
 `2026-07-26/fe-roundtable/` contains the embeddable-canvases design discussion
 and its two source proposals. Its successor is
 `../future-expansion/embeddable-canvases.md`.
+
+`2026-08-01/` contains the completed `IMP-001` through `IMP-033` task cards in
+`tasks/` and the board snapshot recording their decisions and verification
+evidence. The live successor consolidates only their explicitly excluded UI,
+browser, and production-smoke scope.

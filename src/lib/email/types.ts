@@ -53,6 +53,7 @@ export interface EmailServiceConfig {
   };
   sendgrid?: {
     apiKey: string;
+    apiUrl?: string;
   };
   resend?: {
     apiKey: string;

@@ -84,7 +84,15 @@ export const bookmarkContentSchema = z.object({
  * Image content validation
  */
 export const imageContentSchema = z.object({
-  url: z.string().url(),
+  url: z.string().refine((value) => {
+    if (/^\/api\/v1\/uploads\/c[a-z0-9]{20,}$/i.test(value)) return true;
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Image URL must be an HTTP URL or a private upload URL"),
   filename: z.string().min(1),
   alt: z.string().optional(),
   width: z.number().positive().optional(),

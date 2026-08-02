@@ -24,8 +24,8 @@ export default function HelpPage() {
       </InfoSection>
       <InfoSection title="Sharing roles">
         Viewers can read, commenters can participate in comments, editors can
-        change items, and owners manage sharing, versions, templates,
-        thumbnails, and deletion.
+        change items, and owners manage sharing, versions, thumbnails, and
+        deletion.
       </InfoSection>
       <InfoSection title="Embeds, timer, and AR">
         Embedded links are shown as previews: Memoria displays where the link
@@ -40,6 +40,13 @@ export default function HelpPage() {
         Use version history to restore a canvas snapshot. Password recovery
         requires a configured production email provider. Account and credential
         controls are available in Settings.
+      </InfoSection>
+      <InfoSection title="Optional surfaces">
+        Embeds are link previews: Memoria does not execute third-party content
+        inside the canvas. The meeting timer is personal to this browser tab and
+        is not shared with collaborators. AR is experimental and only appears
+        when the deployment explicitly opts in after its device matrix has
+        passed.
       </InfoSection>
       <InfoSection title="Troubleshooting">
         Retry a failed canvas load from its error banner. Check the Status page

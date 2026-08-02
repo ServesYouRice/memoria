@@ -42,6 +42,11 @@ model User {
   agentJobs     AgentJob[]
   uploadAssets  UploadAsset[]
   uploadQuota   UploadQuota?
+  receivedShares CanvasShare[] @relation("ShareRecipient")
+  sentShareInvitations CanvasShareInvitation[] @relation("InvitationSender")
+  notifications Notification[] @relation("NotificationRecipient")
+  notificationActions Notification[] @relation("NotificationActor")
+  notificationPreferences NotificationPreference[]
 }
 
 model Activity {
@@ -79,6 +84,8 @@ model Canvas {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items       CanvasItem[]
   shares      CanvasShare[]
+  shareInvitations CanvasShareInvitation[]
+  notifications Notification[]
   versions    CanvasVersion[]
 
   zoomLevel   Float       @default(1.0)
@@ -87,6 +94,10 @@ model Canvas {
 
   // Thumbnail for preview (base64 encoded PNG)
   thumbnail   String?     @db.Text
+  thumbnailKey String?
+  thumbnailRevision BigInt @default(0)
+  restoreRevision Int @default(0)
+  thumbnailCandidates CanvasThumbnailCandidate[]
 
   // Sharing settings
   isPublic    Boolean     @default(false)
@@ -156,6 +167,7 @@ model CanvasItem {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  bookmarkRefreshedAt DateTime?
 
   @@index([canvasId, deletedAt])
   @@index([canvasId, type])
@@ -171,6 +183,19 @@ model CanvasItem {
   connectionsTo   ItemConnection[] @relation("ConnectionTo")
   entityLinks   ItemEntityLink[]
   embeddings    ItemEmbedding[]
+}
+
+model CanvasThumbnailCandidate {
+  id        String   @id @default(cuid())
+  canvasId  String
+  canvas    Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  revision  BigInt
+  mimeType  String
+  bytes     Bytes
+  createdAt DateTime @default(now())
+
+  @@unique([canvasId, revision])
+  @@index([createdAt])
 }
 
 model Comment {
@@ -214,6 +239,8 @@ model CanvasShare {
   canvasId  String
   canvas    Canvas    @relation(fields: [canvasId], references: [id], onDelete: Cascade)
   email     String    // Email of person shared with
+  recipientId String?
+  recipient User? @relation("ShareRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
   role      ShareRole @default(VIEW)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -221,6 +248,68 @@ model CanvasShare {
   @@unique([canvasId, email])
   @@index([canvasId])
   @@index([email])
+}
+
+enum ShareInvitationResponse {
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+model CanvasShareInvitation {
+  id             String    @id @default(cuid())
+  canvasId       String
+  canvas         Canvas    @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  invitedById    String
+  invitedBy      User      @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  email          String
+  role           ShareRole @default(VIEW)
+  tokenHash      String    @unique
+  deliverySecret String
+  expiresAt      DateTime
+  respondedAt    DateTime?
+  response       ShareInvitationResponse?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([canvasId, email, respondedAt])
+  @@index([expiresAt, respondedAt])
+}
+
+enum NotificationType {
+  SHARE_INVITATION_ACCEPTED
+  SHARE_INVITATION_DECLINED
+  CANVAS_SHARED
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  recipientId String
+  recipient   User             @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actorId     String
+  actor       User             @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  canvasId    String?
+  canvas      Canvas?          @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  subject     String
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  @@index([recipientId, readAt, createdAt])
+}
+
+model NotificationPreference {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  inAppEnabled   Boolean          @default(true)
+  emailEnabled   Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([userId, type])
+  @@index([userId])
 }
 
 model Session {

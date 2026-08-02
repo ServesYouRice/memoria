@@ -206,43 +206,10 @@ jobs:
           upload-artifact: true
 
   e2e:
-    name: E2E Tests
+    name: Production E2E & Operations Gate
     runs-on: ubuntu-latest
     needs: [build]
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      minio:
-        image: minio/minio:RELEASE.2025-02-03T21-03-04Z
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin-test-password
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd "curl --fail http://localhost:9000/minio/health/live"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -263,37 +230,19 @@ jobs:
       - name: Generate Prisma client
         run: pnpm db:generate
 
-      - name: Run database migrations
-        run: pnpm db:migrate
-        env:
-          DATABASE_URL: 'postgresql://postgres:test@localhost:5432/test'
-
-      - name: Create test upload bucket
-        run: >-
-          docker run --rm --network host minio/mc
-          sh -c "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin-test-password && mc mb --ignore-existing local/memoria-test"
-
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
 
-      - name: Run E2E tests
+      - name: Run production image E2E and operations smoke
         run: pnpm test:e2e
-        env:
-          DATABASE_URL: 'postgresql://postgres:test@localhost:5432/test'
-          AUTH_SECRET: 'e2e-test-secret-0123456789abcdef-placeholder'
-          AUTH_URL: 'http://localhost:3000'
-          NEXTAUTH_SECRET: 'e2e-test-secret-0123456789abcdef-placeholder'
-          NEXTAUTH_URL: 'http://localhost:3000'
-          REDIS_URL: 'redis://localhost:6379'
-          UPLOAD_STORAGE: 's3'
-          S3_BUCKET: 'memoria-test'
-          S3_REGION: 'us-east-1'
-          S3_ENDPOINT: 'http://127.0.0.1:9000'
-          S3_ACCESS_KEY_ID: 'minioadmin'
-          S3_SECRET_ACCESS_KEY: 'minioadmin-test-password'
-          APP_BOOTSTRAP_TOKEN: 'ci-placeholder-bootstrap-token'
-          INTERNAL_OPERATIONS_TOKEN: 'e2e-operations-token-0123456789abcdef'
-          MODEL_CREDENTIAL_ENCRYPTION_KEY: 'e2e-model-credential-key-0123456789abcdef'
-          EMAIL_PROVIDER: 'sendgrid'
-          SENDGRID_API_KEY: 'e2e-placeholder-sendgrid-key'
+
+      - name: Retain browser traces, screenshots, and service logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-e2e-evidence
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
 

@@ -12,13 +12,20 @@ import { withApiHandler } from "@/lib/api/route-handler";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 
-const updateCanvasSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  zoomLevel: z.number().min(0.1).max(5).optional(),
-  panX: z.number().optional(),
-  panY: z.number().optional(),
-  workspaceId: z.string().cuid().nullable().optional(),
-});
+const updateCanvasSchema = z
+  .object({
+    name: z.string().min(1).max(255).optional(),
+    defaultViewport: z
+      .object({
+        zoomLevel: z.number().min(0.1).max(5),
+        panX: z.number().finite(),
+        panY: z.number().finite(),
+      })
+      .strict()
+      .optional(),
+    workspaceId: z.string().cuid().nullable().optional(),
+  })
+  .strict();
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
@@ -45,7 +52,7 @@ export const GET = withApiHandler(
     const shares = await prisma.canvasShare.findMany({
       where: {
         canvasId,
-        email,
+        recipientId: userId,
       },
       select: {
         id: true,
@@ -57,6 +64,7 @@ export const GET = withApiHandler(
     // 5. Return combined response
     return NextResponse.json({
       ...canvasData,
+      thumbnailRevision: canvasData.thumbnailRevision.toString(),
       shares,
       accessLevel:
         canvasData.userId === userId ? "OWNER" : shares[0]?.role || "VIEW",
@@ -75,6 +83,7 @@ export const PATCH = withApiHandler(
     // Parse and validate request body
     const body = await request.json();
     const validatedData = updateCanvasSchema.parse(body);
+    const { defaultViewport, ...canvasFields } = validatedData;
 
     if (validatedData.workspaceId) {
       const workspace = await prisma.workspace.findFirst({
@@ -93,7 +102,10 @@ export const PATCH = withApiHandler(
     // Update canvas
     const updatedCanvas = await prisma.canvas.update({
       where: { id: canvasId },
-      data: validatedData,
+      data: {
+        ...canvasFields,
+        ...(defaultViewport || {}),
+      },
     });
 
     // Invalidate cache
@@ -106,7 +118,10 @@ export const PATCH = withApiHandler(
       canvasName: updatedCanvas.name,
     });
 
-    return NextResponse.json(updatedCanvas);
+    return NextResponse.json({
+      ...updatedCanvas,
+      thumbnailRevision: updatedCanvas.thumbnailRevision.toString(),
+    });
   },
 );
 

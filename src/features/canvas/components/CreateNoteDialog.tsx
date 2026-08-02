@@ -4,28 +4,32 @@
  * MUI dialog for creating new notes on the canvas
  */
 
-'use client';
+"use client";
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
-
   Alert,
   CircularProgress,
   Box,
   Typography,
-} from '@mui/material';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { ItemType } from '@/types/canvas';
-import { TagInput } from './TagInput';
-import { RichTextEditor } from '@/components/RichTextEditor';
+} from "@mui/material";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { ItemType } from "@/types/canvas";
+import { TagInput } from "./TagInput";
+import { RichTextEditor } from "@/components/RichTextEditor";
+import { EMPTY_VERSIONED_NOTE_CONTENT } from "@/components/RichTextEditor";
+import {
+  normalizeNoteContent,
+  type VersionedNoteContent,
+} from "@/lib/rich-text/note-format";
 
 interface CreateNoteDialogProps {
   open: boolean;
@@ -35,7 +39,7 @@ interface CreateNoteDialogProps {
 }
 
 const formSchema = z.object({
-  text: z.string().min(1, 'Note text is required').max(5000, 'Note text too long'),
+  content: z.custom<VersionedNoteContent>(),
   tags: z.array(z.string()).default([]),
 });
 
@@ -58,7 +62,7 @@ export function CreateNoteDialog({
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      text: '',
+      content: EMPTY_VERSIONED_NOTE_CONTENT,
       tags: [],
     },
   });
@@ -81,15 +85,13 @@ export function CreateNoteDialog({
         width: 200,
         height: 200,
         zIndex: 0,
-        content: {
-          text: data.text,
-        },
+        content: normalizeNoteContent(data.content),
         tags: data.tags || [],
       });
 
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create note');
+      setError(err instanceof Error ? err.message : "Failed to create note");
     }
   };
 
@@ -98,7 +100,7 @@ export function CreateNoteDialog({
       <DialogTitle>Add Note</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Typography variant="body2" color="text.secondary">
               Create a sticky note on your canvas.
             </Typography>
@@ -108,7 +110,7 @@ export function CreateNoteDialog({
                 Note Content
               </Typography>
               <Controller
-                name="text"
+                name="content"
                 control={control}
                 render={({ field }) => (
                   <RichTextEditor
@@ -120,9 +122,13 @@ export function CreateNoteDialog({
                   />
                 )}
               />
-              {errors.text && (
-                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
-                  {errors.text.message}
+              {errors.content && (
+                <Typography
+                  variant="caption"
+                  color="error"
+                  sx={{ mt: 0.5, display: "block" }}
+                >
+                  Unsupported or empty rich-text content.
                 </Typography>
               )}
             </Box>
@@ -157,7 +163,7 @@ export function CreateNoteDialog({
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? 'Creating...' : 'Create Note'}
+            {isSubmitting ? "Creating..." : "Create Note"}
           </Button>
         </DialogActions>
       </form>

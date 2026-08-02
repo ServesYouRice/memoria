@@ -20,6 +20,7 @@ export default defineConfig({
       "tests/e2e/**",
       "tests/e2e/visual/**",
       "tests/integration/**",
+      "**/.claude/worktrees/**",
     ],
     coverage: {
       provider: "v8",

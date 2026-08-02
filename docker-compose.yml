@@ -166,10 +166,26 @@ services:
     volumes:
       - minio_data:/data
 
+  backup-minio:
+    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
+    profiles: ['recovery']
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${BACKUP_MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${BACKUP_MINIO_ROOT_PASSWORD}
+    ports:
+      - '127.0.0.1:9100:9000'
+      - '127.0.0.1:9101:9001'
+    volumes:
+      - backup_minio_data:/data
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
   minio_data:
+    driver: local
+  backup_minio_data:
     driver: local

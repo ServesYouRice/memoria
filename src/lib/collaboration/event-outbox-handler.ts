@@ -36,3 +36,37 @@ export function createCanvasEventHandler(
     );
   };
 }
+
+export function createCanvasRestoreEventHandler(
+  prisma: PrismaClient,
+  publish: (channel: string, message: string) => Promise<unknown> = async (
+    channel,
+    message,
+  ) => {
+    const redis = getRedisClient();
+    if (!redis) throw new Error("Redis is unavailable for restore fanout.");
+    return redis.publish(channel, message);
+  },
+): OutboxHandler {
+  return async (job) => {
+    const { eventId } = payloadSchema.parse(job.payload);
+    const event = await prisma.canvasEvent.findUnique({
+      where: { id: eventId },
+    });
+    if (!event || event.operation !== "restored") return;
+    await publish(
+      `collaboration:canvas:${event.canvasId}`,
+      JSON.stringify({
+        type: "message",
+        canvasId: event.canvasId,
+        payload: {
+          type: "canvas-restore-required",
+          restoreRevision: event.entityVersion,
+          cursor: event.sequence.toString(),
+        },
+        instanceId: `outbox:${job.id}`,
+        timestamp: Date.now(),
+      }),
+    );
+  };
+}

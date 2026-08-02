@@ -10,7 +10,7 @@
 #
 # Options:
 #   --environment prod|staging|dev   Target environment (default: prod)
-#   --backup-type full|incremental   Backup type (default: full)
+#   --backup-type full|physical      Backup type (default: full)
 #   --dry-run                        Preview without executing
 #   --verbose                        Enable verbose output
 #   --help                           Display this help message
@@ -30,7 +30,7 @@
 #
 ################################################################################
 
-set -o pipefail
+set -euo pipefail
 
 # Script constants
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,19 +59,33 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 BACKUP_BUCKET="${BACKUP_BUCKET:-backups-${ENVIRONMENT}-${AWS_REGION}}"
 BACKUP_PATH="daily/${BACKUP_DATE}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
+BACKUP_MANIFEST_HMAC_KEY="${BACKUP_MANIFEST_HMAC_KEY:-}"
+BACKUP_S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"
+BACKUP_S3_SSE="${BACKUP_S3_SSE:-AES256}"
+S3_BUCKET="${S3_BUCKET:-}"
+S3_ENDPOINT="${S3_ENDPOINT:-}"
 
 # Backup options
 COMPRESSION="${COMPRESSION:-gzip}"
-COMPRESSION_LEVEL="-z -9"  # Maximum compression
+COMPRESSION_LEVEL="-9"  # Maximum gzip compression
 PARALLEL_JOBS="${PARALLEL_JOBS:-4}"
 VERIFY_BACKUP=true
-SEND_NOTIFICATIONS=true
+SEND_NOTIFICATIONS="${SEND_NOTIFICATIONS:-true}"
+SNS_TOPIC_ARN="${SNS_TOPIC_ARN:-}"
 
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly NC='\033[0m' # No Color
+
+backup_aws() {
+    if [[ -n "$BACKUP_S3_ENDPOINT" ]]; then
+        aws --endpoint-url "$BACKUP_S3_ENDPOINT" "$@"
+    else
+        aws "$@"
+    fi
+}
 
 ################################################################################
 # Utility Functions
@@ -89,18 +103,18 @@ log() {
             echo -e "${RED}[ERROR]${NC} $timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
         WARN)
-            echo -e "${YELLOW}[WARN]${NC} $timestamp: $message" | tee -a "$LOG_FILE"
+            echo -e "${YELLOW}[WARN]${NC} $timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
         INFO)
-            echo -e "${GREEN}[INFO]${NC} $timestamp: $message" | tee -a "$LOG_FILE"
+            echo -e "${GREEN}[INFO]${NC} $timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
         DEBUG)
             if [[ "$VERBOSE" == "true" ]]; then
-                echo "[DEBUG] $timestamp: $message" | tee -a "$LOG_FILE"
+                echo "[DEBUG] $timestamp: $message" | tee -a "$LOG_FILE" >&2
             fi
             ;;
         *)
-            echo "$timestamp: $message" | tee -a "$LOG_FILE"
+            echo "$timestamp: $message" | tee -a "$LOG_FILE" >&2
             ;;
     esac
 }
@@ -112,7 +126,7 @@ Usage: $SCRIPT_NAME [OPTIONS]
 
 Options:
     --environment prod|staging|dev   Target environment (default: prod)
-    --backup-type full|incremental   Backup type (default: full)
+    --backup-type full|physical      Backup type (default: full)
     --dry-run                        Preview without executing
     --verbose                        Enable verbose output
     --help                           Display this help message
@@ -186,7 +200,7 @@ validate_prerequisites() {
     local missing_tools=()
 
     # Check required commands
-    for cmd in pg_dump pg_basebackup psql aws gzip sha256sum; do
+    for cmd in pg_dump pg_basebackup psql aws gzip sha256sum openssl; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_tools+=("$cmd")
         fi
@@ -198,6 +212,21 @@ validate_prerequisites() {
         return 1
     fi
 
+    if [[ "$ENVIRONMENT" == "prod" && -z "$BACKUP_MANIFEST_HMAC_KEY" ]]; then
+        log ERROR "BACKUP_MANIFEST_HMAC_KEY is required for authenticated production manifests"
+        return 1
+    fi
+
+    if [[ "$ENVIRONMENT" == "prod" && "$BACKUP_S3_SSE" == "none" ]]; then
+        log ERROR "BACKUP_S3_SSE is required for production backup uploads"
+        return 1
+    fi
+
+    if [[ -z "$S3_BUCKET" ]]; then
+        log ERROR "S3_BUCKET is required so uploaded assets are included"
+        return 1
+    fi
+
     # Check PostgreSQL connectivity
     if ! PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" \
         -d "$PGDATABASE" -c "SELECT version();" &>/dev/null; then
@@ -206,16 +235,16 @@ validate_prerequisites() {
     fi
 
     # Check AWS credentials
-    if ! aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
+    if [[ -z "$BACKUP_S3_ENDPOINT" ]] && ! aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
         log ERROR "AWS credentials not configured or invalid"
         return 1
     fi
 
     # Check S3 bucket access
-    if ! aws s3 ls "s3://${BACKUP_BUCKET}" --region "$AWS_REGION" &>/dev/null; then
+    if ! backup_aws s3 ls "s3://${BACKUP_BUCKET}" --region "$AWS_REGION" &>/dev/null; then
         log WARN "S3 bucket does not exist or is not accessible: s3://${BACKUP_BUCKET}"
         log INFO "Attempting to create bucket..."
-        if ! aws s3 mb "s3://${BACKUP_BUCKET}" --region "$AWS_REGION" 2>/dev/null; then
+        if ! backup_aws s3 mb "s3://${BACKUP_BUCKET}" --region "$AWS_REGION" 2>/dev/null; then
             log ERROR "Cannot create S3 bucket: s3://${BACKUP_BUCKET}"
             return 1
         fi
@@ -228,6 +257,11 @@ validate_prerequisites() {
 # Setup backup environment
 setup_environment() {
     log INFO "Setting up backup environment..."
+
+    if [[ -z "$TEMP_DIR" || "$TEMP_DIR" == "/" ]]; then
+        log ERROR "TEMP_DIR must be a dedicated non-root path"
+        return 1
+    fi
 
     # Create temporary directory
     if [[ "$DRY_RUN" != "true" ]]; then
@@ -371,6 +405,57 @@ EOF
     echo "$metadata_file"
 }
 
+backup_object_storage() {
+    local object_dir="${TEMP_DIR}/objects"
+    local archive_file="${TEMP_DIR}/objects-${BACKUP_TIMESTAMP}.tar.gz"
+    local inventory_file="${TEMP_DIR}/objects-${BACKUP_TIMESTAMP}.inventory.sha256"
+    local endpoint_args=()
+    [[ -n "$S3_ENDPOINT" ]] && endpoint_args+=(--endpoint-url "$S3_ENDPOINT")
+
+    mkdir -p "$object_dir"
+    aws "${endpoint_args[@]}" s3 sync "s3://${S3_BUCKET}/" "$object_dir/" --only-show-errors
+    (
+        cd "$object_dir"
+        find . -type f -print0 | sort -z | xargs -0 -r sha256sum > "$inventory_file"
+    )
+    tar -czf "$archive_file" -C "$object_dir" .
+    printf '%s\n%s\n' "$archive_file" "$inventory_file"
+}
+
+generate_manifest() {
+    local database_file="$1"
+    local object_archive="$2"
+    local inventory_file="$3"
+    local manifest_file="${TEMP_DIR}/manifest-${BACKUP_TIMESTAMP}.json"
+    local database_sha256 object_sha256 inventory_sha256
+    database_sha256=$(sha256sum "$database_file" | awk '{print $1}')
+    object_sha256=$(sha256sum "$object_archive" | awk '{print $1}')
+    inventory_sha256=$(sha256sum "$inventory_file" | awk '{print $1}')
+
+    cat > "$manifest_file" << EOF
+{
+  "schema_version": 1,
+  "created_at": "$(date -u -Is)",
+  "environment": "$ENVIRONMENT",
+  "database": {"file": "$(basename "$database_file")", "sha256": "$database_sha256"},
+  "objects": {"archive": "$(basename "$object_archive")", "sha256": "$object_sha256", "inventory": "$(basename "$inventory_file")", "inventory_sha256": "$inventory_sha256"},
+  "consistency_marker": "$BACKUP_TIMESTAMP",
+  "rpo_seconds": 3600,
+  "retention_days": $BACKUP_RETENTION_DAYS
+}
+EOF
+    (
+        cd "$TEMP_DIR"
+        sha256sum "$(basename "$manifest_file")" > "$(basename "$manifest_file").sha256"
+    )
+    if [[ -n "$BACKUP_MANIFEST_HMAC_KEY" ]]; then
+        openssl dgst -sha256 -hmac "$BACKUP_MANIFEST_HMAC_KEY" -binary "$manifest_file" | base64 > "${manifest_file}.hmac"
+    else
+        : > "${manifest_file}.hmac"
+    fi
+    printf '%s\n' "$manifest_file"
+}
+
 # Verify backup integrity
 verify_backup() {
     local backup_file="$1"
@@ -409,7 +494,9 @@ verify_backup() {
 # Upload backup to S3
 upload_to_s3() {
     local backup_file="$1"
-    local metadata_file="$2"
+    local manifest_file="$2"
+    local object_archive="$3"
+    local inventory_file="$4"
 
     log INFO "Uploading backup to S3..."
 
@@ -421,24 +508,23 @@ upload_to_s3() {
     local start_time=$(date +%s)
     local retry_count=0
     local max_retries=3
+    local sse_args=()
+    [[ "$BACKUP_S3_SSE" != "none" ]] && sse_args+=(--sse "$BACKUP_S3_SSE")
 
     # Upload backup with retry logic
     while [[ $retry_count -lt $max_retries ]]; do
-        if aws s3 cp "$backup_file" "s3://${BACKUP_BUCKET}/${BACKUP_PATH}/" \
+        if backup_aws s3 cp "$backup_file" "s3://${BACKUP_BUCKET}/${BACKUP_PATH}/" \
             --region "$AWS_REGION" \
-            --sse AES256 \
+            "${sse_args[@]}" \
             --metadata "timestamp=$(date -u -Is),environment=$ENVIRONMENT,type=$BACKUP_TYPE" \
             2>>"$LOG_FILE"; then
 
             log DEBUG "Backup file uploaded successfully"
 
-            # Upload metadata
-            if ! aws s3 cp "$metadata_file" "s3://${BACKUP_BUCKET}/${BACKUP_PATH}/" \
-                --region "$AWS_REGION" \
-                --sse AES256 \
-                2>>"$LOG_FILE"; then
-                log WARN "Failed to upload metadata file"
-            fi
+            for artifact in "$object_archive" "$inventory_file" "$manifest_file" "${manifest_file}.sha256" "${manifest_file}.hmac"; do
+                backup_aws s3 cp "$artifact" "s3://${BACKUP_BUCKET}/${BACKUP_PATH}/" \
+                    --region "$AWS_REGION" "${sse_args[@]}" 2>>"$LOG_FILE"
+            done
 
             local end_time=$(date +%s)
             local duration=$((end_time - start_time))
@@ -465,7 +551,7 @@ calculate_s3_checksum() {
     log DEBUG "Verifying S3 checksum..."
 
     # Get object metadata from S3
-    if aws s3api head-object \
+    if backup_aws s3api head-object \
         --bucket "${BACKUP_BUCKET}" \
         --key "$s3_path" \
         --region "$AWS_REGION" 2>>"$LOG_FILE" | grep -q "ContentLength"; then
@@ -489,11 +575,11 @@ cleanup_old_backups() {
     local cutoff_date=$(date -u -d "$BACKUP_RETENTION_DAYS days ago" +"%Y-%m-%d" 2>/dev/null || date -u -v-${BACKUP_RETENTION_DAYS}d +"%Y-%m-%d")
 
     # List and delete old backups
-    aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | while read -r date time size file; do
+    backup_aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | while read -r date time size file; do
         if [[ -n "$file" ]]; then
             if [[ "$date" < "$cutoff_date" ]]; then
                 log DEBUG "Deleting old backup: s3://${BACKUP_BUCKET}/daily/$file"
-                aws s3 rm "s3://${BACKUP_BUCKET}/daily/$file" \
+                backup_aws s3 rm "s3://${BACKUP_BUCKET}/daily/$file" \
                     --region "$AWS_REGION" 2>>"$LOG_FILE" || {
                     log WARN "Failed to delete old backup: $file"
                 }
@@ -611,8 +697,14 @@ main() {
         fi
     fi
 
-    # Upload to S3
-    if ! upload_to_s3 "$backup_file" "$metadata_file"; then
+    local object_files object_archive inventory_file manifest_file
+    object_files=$(backup_object_storage)
+    object_archive=$(printf '%s\n' "$object_files" | sed -n '1p')
+    inventory_file=$(printf '%s\n' "$object_files" | sed -n '2p')
+    manifest_file=$(generate_manifest "$backup_file" "$object_archive" "$inventory_file")
+
+    # Upload the database and object snapshot, then the authenticated manifest.
+    if ! upload_to_s3 "$backup_file" "$manifest_file" "$object_archive" "$inventory_file"; then
         log ERROR "S3 upload failed"
         send_notification "FAILED" "Backup failed: S3 upload error"
         cleanup_temp_files

@@ -12,12 +12,7 @@ import {
   SpeedDialIcon,
   useTheme,
 } from "@mui/material";
-import {
-  NoteAdd,
-  Bookmark,
-  Image as ImageIcon,
-  Poll,
-} from "@mui/icons-material";
+import { NoteAdd, Bookmark, Image as ImageIcon } from "@mui/icons-material";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -25,10 +20,10 @@ import {
   useCreateCanvasItem,
   useUpdateCanvasItem,
   canvasItemKeys,
+  mergeCommittedCanvasItemEvent,
+  type CommittedCanvasItemEvent,
 } from "@/lib/hooks/use-canvas-items";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCanvasHistory } from "@/lib/hooks/use-canvas-history";
-import type { Command } from "@/lib/hooks/use-canvas-history";
 import { useSelectionBox } from "@/lib/hooks/use-selection-box";
 import { useUpdateCanvasThumbnail } from "@/lib/hooks/use-canvases";
 import { useCollaboration } from "@/lib/hooks/use-collaboration";
@@ -73,6 +68,8 @@ import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar"
 import { MainToolbar } from "@/features/canvas/components/MainToolbar";
 import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { isArCanvasEnabled } from "@/lib/product-surfaces";
+import { isVersionConflict } from "@/lib/api/fetch-client";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -124,7 +121,15 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const canEdit = capabilities.canEditItems;
   const isOwner = capabilities.canManageCanvas;
 
-  const { commitGeometry } = useItemGeometry({ capabilities });
+  const {
+    commitGeometry,
+    status: geometrySaveStatus,
+    error: geometrySaveError,
+  } = useItemGeometry({
+    capabilities,
+    onError: (error) =>
+      toast.error(`Canvas item could not be saved: ${error.message}`),
+  });
 
   // Store state
   const {
@@ -138,12 +143,12 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   // Mutations
   const { mutateAsync: deleteItem } = useDeleteCanvasItem();
   const { mutateAsync: createItem } = useCreateCanvasItem();
-  const { mutate: updateItem } = useUpdateCanvasItem();
+  const updateItemMutation = useUpdateCanvasItem();
+  const { mutate: updateItem } = updateItemMutation;
   const updateThumbnail = useUpdateCanvasThumbnail();
   const { mutateAsync: restoreVersion } = useRestoreVersion();
 
   // History
-  const { addCommand, undo, redo, canUndo, canRedo } = useCanvasHistory();
 
   // Selection Hook
   const {
@@ -159,10 +164,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [serendipityOpen, setSerendipityOpen] = useState(false);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [whisperOpen, setWhisperOpen] = useState(false);
   const [pendingAutopilotActions, setPendingAutopilotActions] = useState<
     Awaited<ReturnType<typeof calculateAutopilotLayout>>
@@ -176,7 +179,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
-  const [pollDialogOpen, setPollDialogOpen] = useState(false);
 
   // Edit Dialogs
   const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false);
@@ -240,42 +242,16 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   useCanvasKeyboard({
     onDelete: async () => {
       if (!canEdit) return;
-      // Delete Logic
       if (selectedItemIds.size > 0) {
         try {
           const itemsToDelete = allItems.filter((item) =>
             selectedItemIds.has(item.id),
           );
-          const deleteCommand: Command = {
-            type: "delete",
-            description: `Delete ${itemsToDelete.length} items`,
-            execute: async () => {
-              await Promise.all(
-                itemsToDelete.map((item) =>
-                  deleteItem({ itemId: item.id, version: item.version }),
-                ),
-              );
-            },
-            undo: async () => {
-              await Promise.all(
-                itemsToDelete.map((item) =>
-                  createItem({
-                    canvasId,
-                    type: item.type,
-                    positionX: item.positionX,
-                    positionY: item.positionY,
-                    width: item.width,
-                    height: item.height,
-                    zIndex: item.zIndex,
-                    content: item.content,
-                    tags: item.tags || [],
-                  }),
-                ),
-              );
-            },
-          };
-          await deleteCommand.execute();
-          addCommand(deleteCommand);
+          await Promise.all(
+            itemsToDelete.map((item) =>
+              deleteItem({ itemId: item.id, version: item.version }),
+            ),
+          );
           setSelectedItemIds(new Set());
         } catch (err) {
           console.error("Failed to bulk delete items:", err);
@@ -286,31 +262,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         );
         if (selectedItem) {
           try {
-            const deleteCommand: Command = {
-              type: "delete",
-              description: `Delete ${selectedItem.type}`,
-              execute: async () => {
-                await deleteItem({
-                  itemId: selectedItem.id,
-                  version: selectedItem.version,
-                });
-              },
-              undo: async () => {
-                await createItem({
-                  canvasId,
-                  type: selectedItem.type,
-                  positionX: selectedItem.positionX,
-                  positionY: selectedItem.positionY,
-                  width: selectedItem.width,
-                  height: selectedItem.height,
-                  zIndex: selectedItem.zIndex,
-                  content: selectedItem.content,
-                  tags: selectedItem.tags || [],
-                });
-              },
-            };
-            await deleteCommand.execute();
-            addCommand(deleteCommand);
+            await deleteItem({
+              itemId: selectedItem.id,
+              version: selectedItem.version,
+            });
             setSelectedItemId(null);
           } catch (err) {
             console.error("Failed to delete item:", err);
@@ -318,8 +273,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         }
       }
     },
-    onUndo: undo,
-    onRedo: redo,
     onCopy: () => {
       if (!selectedItemId) return;
       const selectedItem = allItems.find((item) => item.id === selectedItemId);
@@ -505,6 +458,19 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     }
   }, []);
 
+  const handleCommittedEvent = useCallback(
+    async (event: CommittedCanvasItemEvent) => {
+      await mergeCommittedCanvasItemEvent(queryClient, event);
+    },
+    [queryClient],
+  );
+
+  const handleCommittedSnapshotRequired = useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: canvasItemKeys.list(canvasId),
+    });
+  }, [canvasId, queryClient]);
+
   const {
     users: collaborators,
     cursors,
@@ -518,6 +484,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     userId: session?.user?.id || "anon",
     email: session?.user?.email || "anon@example.com",
     onMessage: handleRemoteMessage,
+    onCommittedEvent: handleCommittedEvent,
+    onSnapshotRequired: handleCommittedSnapshotRequired,
   });
 
   // Server-assigned presence color, so chat bubbles match the cursor color
@@ -606,22 +574,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         positionY: -position.y + stageSize.height / 2 + Math.random() * 100,
         width: 300,
         height: 200,
-        canvasId: canvasId,
-        zIndex: allItems.length + 1,
-        tags: [],
-      });
-    }
-  };
-
-  const handleSelectTemplate = async (items: any[]) => {
-    for (const item of items) {
-      await createItem({
-        content: item.content,
-        type: item.type,
-        positionX: item.positionX - position.x + stageSize.width / 2,
-        positionY: item.positionY - position.y + stageSize.height / 2,
-        width: item.width,
-        height: item.height,
         canvasId: canvasId,
         zIndex: allItems.length + 1,
         tags: [],
@@ -720,6 +672,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     e: React.MouseEvent | Konva.KonvaEventObject<MouseEvent>,
     itemId: string,
   ) => {
+    if (!capabilities.canCopyItems && !capabilities.canComment) return;
     if ("evt" in e) {
       e.evt.preventDefault();
       setContextMenuPosition({ x: e.evt.clientX, y: e.evt.clientY });
@@ -731,7 +684,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   };
 
   const handleNoteDoubleClick = (item: CanvasItem) => {
-    if (!canEdit) return;
+    if (!capabilities.canEditItems) return;
     if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
       setEditingNoteItem(item);
       setEditNoteDialogOpen(true);
@@ -752,6 +705,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     }
   };
   const handleOpenComments = () => {
+    if (!capabilities.canComment) return;
     if (!selectedItemId) return;
     setCommentsItemId(selectedItemId);
     setCommentsPanelOpen(true);
@@ -962,9 +916,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           setPosition({ x: 0, y: 0 });
         }}
         onExport={() => setExportDialogOpen(true)}
-        onSaveAsTemplate={
-          isOwner ? () => setTemplateDialogOpen(true) : undefined
-        }
         onVersionHistory={
           isOwner ? () => setVersionHistoryOpen(true) : undefined
         }
@@ -977,10 +928,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         onSnapToggle={() => setSnapToGridEnabled(!snapToGridEnabled)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onUndo={undo}
-        onRedo={redo}
         collaborators={collaborators}
         collaborationConnected={collaborationConnected}
         collaborationStatus={collaborationStatus}
@@ -993,6 +940,27 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         onPresentationMode={() => setPresentationMode((active) => !active)}
         isPresentationMode={isPresentationMode}
         canManageCanvas={isOwner}
+        saveStatus={
+          updateItemMutation.isPending
+            ? "saving"
+            : updateItemMutation.isError
+              ? updateItemMutation.error instanceof TypeError
+                ? "offline/retrying"
+                : isVersionConflict(updateItemMutation.error)
+                  ? "conflict"
+                  : "failed"
+              : geometrySaveStatus !== "saved"
+                ? geometrySaveStatus
+                : updateItemMutation.isSuccess
+                  ? "saved"
+                  : undefined
+        }
+        saveError={
+          updateItemMutation.isError &&
+          updateItemMutation.error instanceof Error
+            ? updateItemMutation.error.message
+            : geometrySaveError?.message || null
+        }
         onTimeMachine={() => {
           setTimeMachineActive(!isTimeMachineActive);
           if (!isTimeMachineActive && versions.length > 0) {
@@ -1000,7 +968,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           }
         }}
         onSerendipity={() => setSerendipityOpen(true)}
-        onTemplates={() => setTemplatesOpen(true)}
         onAutopilot={
           canEdit
             ? async () => {
@@ -1010,7 +977,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             : undefined
         }
         onWhisper={() => setWhisperOpen(true)}
-        onAR={() => setAROpen(true)}
+        onAR={isArCanvasEnabled() ? () => setAROpen(true) : undefined}
       />
 
       {canvasLoadError && (
@@ -1032,6 +999,33 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           </Alert>
         </Box>
       )}
+
+      <CanvasAccessiblePanel
+        items={allItems}
+        capabilities={capabilities}
+        selectedItemIds={selectedItemIds}
+        onSelectItem={(itemId) => handleSelectItem(itemId, false)}
+        onActivateItem={(item) => {
+          if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
+            handleNoteDoubleClick(item);
+          } else if (item.type === ItemType.BOOKMARK) {
+            handleBookmarkDoubleClick(item);
+          } else if (item.type === ItemType.IMAGE) {
+            handleImageDoubleClick(item);
+          }
+        }}
+        onNudgeItem={(item, deltaX, deltaY) => {
+          commitGeometry(item, {
+            positionX: item.positionX + deltaX,
+            positionY: item.positionY + deltaY,
+          });
+        }}
+        onDeleteItem={(item) => {
+          void deleteItem({ itemId: item.id, version: item.version });
+        }}
+        onCreateItem={() => setNoteDialogOpen(true)}
+        canvasName={canvasName}
+      />
 
       {viewMode === "manual" && !isPresentationMode && canEdit && (
         <MainToolbar />
@@ -1091,11 +1085,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                 icon={<ImageIcon />}
                 tooltipTitle="Image"
                 onClick={() => setImageDialogOpen(true)}
-              />
-              <SpeedDialAction
-                icon={<Poll />}
-                tooltipTitle="Poll"
-                onClick={() => setPollDialogOpen(true)}
               />
             </SpeedDial>
           )}
@@ -1287,6 +1276,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       )}
 
       <CanvasDialogs
+        capabilities={capabilities}
         canvasId={canvasId}
         canvasName={canvasName}
         items={allItems}
@@ -1298,8 +1288,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         setBookmarkDialogOpen={setBookmarkDialogOpen}
         imageDialogOpen={imageDialogOpen}
         setImageDialogOpen={setImageDialogOpen}
-        pollDialogOpen={pollDialogOpen}
-        setPollDialogOpen={setPollDialogOpen}
         editNoteDialogOpen={editNoteDialogOpen}
         setEditNoteDialogOpen={setEditNoteDialogOpen}
         editingNoteItem={editingNoteItem}
@@ -1312,8 +1300,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         setEditImageDialogOpen={setEditImageDialogOpen}
         editingImageItem={editingImageItem}
         setEditingImageItem={setEditingImageItem}
-        templateDialogOpen={templateDialogOpen}
-        setTemplateDialogOpen={setTemplateDialogOpen}
         versionHistoryOpen={versionHistoryOpen}
         setVersionHistoryOpen={setVersionHistoryOpen}
         exportDialogOpen={exportDialogOpen}
@@ -1324,7 +1310,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         selectedTags={selectedTags}
         setSelectedTags={setSelectedTags}
         tagCounts={tagCounts || {}}
-        capabilities={capabilities}
         contextMenuPosition={contextMenuPosition}
         setContextMenuPosition={setContextMenuPosition}
         onDeleteFromMenu={handleDeleteFromMenu}
@@ -1342,9 +1327,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         serendipityOpen={serendipityOpen}
         setSerendipityOpen={setSerendipityOpen}
         onAddSerendipityItems={handleAddSerendipityItems}
-        templatesOpen={templatesOpen}
-        setTemplatesOpen={setTemplatesOpen}
-        onSelectTemplate={handleSelectTemplate}
         whisperOpen={whisperOpen}
         setWhisperOpen={setWhisperOpen}
         onWhisperSend={handleWhisperSend}

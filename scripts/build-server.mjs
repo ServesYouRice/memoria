@@ -35,16 +35,21 @@ if (!esbuildBinary) {
 
 mkdirSync(distDir, { recursive: true });
 
-await run(
-  esbuildBinary,
-  [
-    join(projectRoot, 'server.ts'),
-    '--bundle',
-    '--platform=node',
-    '--format=esm',
-    '--packages=external',
-    `--outfile=${join(distDir, 'server.mjs')}`,
-    `--tsconfig=${join(projectRoot, 'tsconfig.json')}`,
-  ],
-  { cwd: projectRoot }
-);
+for (const [entrypoint, output] of [
+  ['server.ts', 'server.mjs'],
+  [join('scripts', 'outbox-worker.ts'), 'outbox-worker.mjs'],
+]) {
+  await run(
+    esbuildBinary,
+    [
+      join(projectRoot, entrypoint),
+      '--bundle',
+      '--platform=node',
+      '--format=esm',
+      '--packages=external',
+      `--outfile=${join(distDir, output)}`,
+      `--tsconfig=${join(projectRoot, 'tsconfig.json')}`,
+    ],
+    { cwd: projectRoot }
+  );
+}

@@ -8,6 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { hasInternalOperationsAccess } from "@/lib/operations/internal-auth";
+import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,25 @@ export async function GET(request: Request) {
   const cpuUsage = process.cpuUsage();
   const memory = process.memoryUsage();
   const uptime = process.uptime();
+  let oldestPending: { nextRunAt: Date } | null = null;
+  let deadJobs = 0;
+  let outboxMetricsAvailable = 1;
+  try {
+    [oldestPending, deadJobs] = await Promise.all([
+      prisma.outboxJob.findFirst({
+        where: { status: "PENDING" },
+        orderBy: { nextRunAt: "asc" },
+        select: { nextRunAt: true },
+      }),
+      prisma.outboxJob.count({ where: { status: "DEAD" } }),
+    ]);
+  } catch {
+    // Process metrics must remain scrapeable during a database outage.
+    outboxMetricsAvailable = 0;
+  }
+  const queueAge = oldestPending
+    ? Math.max(0, (Date.now() - oldestPending.nextRunAt.getTime()) / 1000)
+    : 0;
 
   const lines = [
     metricHelp(
@@ -79,6 +99,27 @@ export async function GET(request: Request) {
     ),
     metricType("nodejs_external_memory_bytes", "gauge"),
     metric("nodejs_external_memory_bytes", memory.external),
+    "",
+    metricHelp(
+      "memoria_outbox_oldest_pending_seconds",
+      "Age of the oldest runnable outbox job.",
+    ),
+    metricType("memoria_outbox_oldest_pending_seconds", "gauge"),
+    metric("memoria_outbox_oldest_pending_seconds", queueAge),
+    "",
+    metricHelp(
+      "memoria_outbox_dead_jobs",
+      "Number of outbox jobs requiring operator action.",
+    ),
+    metricType("memoria_outbox_dead_jobs", "gauge"),
+    metric("memoria_outbox_dead_jobs", deadJobs),
+    "",
+    metricHelp(
+      "memoria_outbox_metrics_available",
+      "Whether outbox metrics were collected successfully.",
+    ),
+    metricType("memoria_outbox_metrics_available", "gauge"),
+    metric("memoria_outbox_metrics_available", outboxMetricsAvailable),
   ];
 
   return new NextResponse(`${lines.join("\n")}\n`, {

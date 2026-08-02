@@ -23,10 +23,8 @@
  * Example DATABASE_URL:
  * postgresql://user:pass@host:5432/db?connection_limit=5&pool_timeout=10&connect_timeout=5
  *
- * Serverless Recommendations:
- * - Vercel/AWS Lambda: connection_limit=5, pool_timeout=10
- * - Traditional server: connection_limit=20, pool_timeout=30
- * - Use PgBouncer for additional connection pooling
+ * Production runs through the supervised Node server in `server.ts`.
+ * Set the pool size explicitly in DATABASE_URL for that deployment.
  *
  * ## Usage
  * ```typescript
@@ -51,24 +49,6 @@ const globalForPrisma = globalThis as unknown as {
   prismaConnected: boolean;
 };
 
-// Determine optimal pool size based on environment
-const getConnectionPoolConfig = () => {
-  // In serverless environments, use smaller pool
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return {
-      recommended: 5,
-      environment: "serverless",
-    };
-  }
-
-  // In traditional servers, allow larger pool
-  return {
-    recommended: 20,
-    environment: "server",
-  };
-};
-
-const poolConfig = getConnectionPoolConfig();
 const skipEagerConnect =
   process.env.MEMORIA_SKIP_DB_EAGER_CONNECT === "true" ||
   process.env.NEXT_PHASE === "phase-production-build";
@@ -85,9 +65,7 @@ export const prisma =
           ]
         : [{ emit: "stdout", level: "error" }],
 
-    // Connection pool configuration (Issues #13, #22)
-    // Helps manage connections in serverless environments
-    // Note: Connection pooling is primarily controlled via DATABASE_URL query params
+    // Connection pooling is controlled via DATABASE_URL query parameters.
     // Example: postgresql://user:pass@host:5432/db?connection_limit=5&pool_timeout=10
     datasources: {
       db: {
@@ -117,14 +95,7 @@ if (process.env.NODE_ENV === "development") {
 
 // Graceful shutdown handling (Issue #22)
 if (process.env.NODE_ENV === "production") {
-  // Log connection pool configuration
-  logger.info(
-    {
-      environment: poolConfig.environment,
-      recommended_pool_size: poolConfig.recommended,
-    },
-    "Database connection pool initialized",
-  );
+  logger.info("Database connection pool initialized for supervised server");
 
   // Connect eagerly in production to fail fast
   if (!skipEagerConnect && !globalForPrisma.prismaConnected) {

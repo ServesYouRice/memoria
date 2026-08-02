@@ -57,12 +57,14 @@ export function CanvasContextMenu({
         position ? { top: position.y, left: position.x } : undefined
       }
     >
-      <MenuItem onClick={() => handleAction(onCopy)}>
-        <ListItemIcon>
-          <CopyIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText>Copy</ListItemText>
-      </MenuItem>
+      {capabilities.canCopyItems && (
+        <MenuItem onClick={() => handleAction(onCopy)}>
+          <ListItemIcon>
+            <CopyIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Copy</ListItemText>
+        </MenuItem>
+      )}
       {capabilities.canCreateItems && (
         <MenuItem onClick={() => handleAction(onDuplicate)}>
           <ListItemIcon>

@@ -36,6 +36,8 @@ export function ImageItem({
     height: item.height,
   });
   const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   const content = isImageContent(item.content)
     ? item.content
@@ -46,6 +48,11 @@ export function ImageItem({
     setLocalSize({ width: item.width, height: item.height });
   }, [item.positionX, item.positionY, item.width, item.height]);
 
+  useEffect(() => {
+    setImage(null);
+    setImageFailed(false);
+  }, [content.url]);
+
   // Load the image
   useEffect(() => {
     if (content.url) {
@@ -53,13 +60,23 @@ export function ImageItem({
       img.crossOrigin = "anonymous";
       img.onload = () => {
         setImage(img);
+        setImageFailed(false);
       };
       img.onerror = () => {
         console.error("Failed to load image:", content.url);
+        setImage(null);
+        setImageFailed(true);
       };
       img.src = content.url;
+    } else {
+      setImageFailed(true);
     }
-  }, [content.url]);
+  }, [content.url, loadAttempt]);
+
+  // A failed load is recoverable: the placeholder doubles as a retry target.
+  const handleRetryImage = () => {
+    setLoadAttempt((attempt) => attempt + 1);
+  };
 
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target;
@@ -184,11 +201,31 @@ export function ImageItem({
           x={10}
           y={localSize.height / 2 - 10}
           width={localSize.width - 20}
-          text="Loading image..."
+          text={
+            imageFailed
+              ? `🖼 ${content.filename || "Image"}\nImage unavailable · click to retry`
+              : "Loading image…"
+          }
           fontSize={14}
           fontFamily="Arial"
-          fill="#999"
+          fill={imageFailed ? "#b3261e" : "#999"}
           align="center"
+          onClick={
+            imageFailed
+              ? (event) => {
+                  event.cancelBubble = true;
+                  handleRetryImage();
+                }
+              : undefined
+          }
+          onTap={
+            imageFailed
+              ? (event) => {
+                  event.cancelBubble = true;
+                  handleRetryImage();
+                }
+              : undefined
+          }
         />
       )}
 

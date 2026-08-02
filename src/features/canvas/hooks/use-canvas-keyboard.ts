@@ -5,8 +5,6 @@ import { shouldIgnoreGlobalShortcut } from "@/lib/keyboard/shortcuts";
 
 interface UseCanvasKeyboardProps {
   onDelete: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
   onCopy: () => void;
   onPaste: () => void;
   onSelectAll: () => void;
@@ -33,8 +31,6 @@ interface UseCanvasKeyboardProps {
  */
 export function useCanvasKeyboard({
   onDelete,
-  onUndo,
-  onRedo,
   onCopy,
   onPaste,
   onSelectAll,
@@ -155,23 +151,6 @@ export function useCanvasKeyboard({
         return;
       }
 
-      // Undo (Ctrl+Z)
-      if (isCtrlOrCmd && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        onUndo();
-        return;
-      }
-
-      // Redo (Ctrl+Shift+Z or Ctrl+Y)
-      if (
-        (isCtrlOrCmd && e.key === "z" && e.shiftKey) ||
-        (isCtrlOrCmd && e.key === "y")
-      ) {
-        e.preventDefault();
-        onRedo();
-        return;
-      }
-
       // Copy (Ctrl+C)
       if (isCtrlOrCmd && e.key === "c") {
         e.preventDefault();
@@ -209,8 +188,6 @@ export function useCanvasKeyboard({
     enabled,
     canEdit,
     onDelete,
-    onUndo,
-    onRedo,
     onCopy,
     onPaste,
     onSelectAll,

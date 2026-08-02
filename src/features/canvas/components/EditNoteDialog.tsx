@@ -4,9 +4,9 @@
  * MUI dialog for editing existing notes on the canvas
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -17,14 +17,19 @@ import {
   CircularProgress,
   Box,
   Typography,
-} from '@mui/material';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useUpdateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { type CanvasItem, isNoteContent } from '@/types/canvas';
-import { TagInput } from './TagInput';
-import { RichTextEditor } from '@/components/RichTextEditor';
+} from "@mui/material";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { type CanvasItem, isNoteContent } from "@/types/canvas";
+import { TagInput } from "./TagInput";
+import { RichTextEditor } from "@/components/RichTextEditor";
+import { EMPTY_VERSIONED_NOTE_CONTENT } from "@/components/RichTextEditor";
+import {
+  normalizeNoteContent,
+  type VersionedNoteContent,
+} from "@/lib/rich-text/note-format";
 
 interface EditNoteDialogProps {
   open: boolean;
@@ -33,7 +38,7 @@ interface EditNoteDialogProps {
 }
 
 const formSchema = z.object({
-  text: z.string().min(1, 'Note text is required').max(10000, 'Note text too long'),
+  content: z.custom<VersionedNoteContent>(),
   tags: z.array(z.string()).default([]),
 });
 
@@ -41,6 +46,7 @@ type FormData = z.infer<typeof formSchema>;
 
 export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   const [error, setError] = useState<string | null>(null);
+  const [legacyNormalized, setLegacyNormalized] = useState(false);
   const updateItem = useUpdateCanvasItem();
 
   const {
@@ -51,23 +57,35 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      text: '',
+      content: EMPTY_VERSIONED_NOTE_CONTENT,
       tags: [],
     },
   });
 
   useEffect(() => {
     if (item && isNoteContent(item.content)) {
-      reset({
-        text: item.content.text || '',
-        tags: item.tags || [],
-      });
+      try {
+        const normalized = normalizeNoteContent(item.content);
+        reset({
+          content: normalized,
+          tags: item.tags || [],
+        });
+        setLegacyNormalized(item.content.formatVersion !== 1);
+        setError(null);
+      } catch (normalizationError) {
+        setError(
+          normalizationError instanceof Error
+            ? normalizationError.message
+            : "This note contains unsupported content and cannot be edited.",
+        );
+      }
     }
   }, [item, reset]);
 
   const handleClose = () => {
     reset();
     setError(null);
+    setLegacyNormalized(false);
     onClose();
   };
 
@@ -81,16 +99,14 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
         itemId: item.id,
         data: {
           version: item.version,
-          content: {
-            text: data.text,
-          },
+          content: normalizeNoteContent(data.content),
           tags: data.tags || [],
         },
       });
 
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update note');
+      setError(err instanceof Error ? err.message : "Failed to update note");
     }
   };
 
@@ -103,7 +119,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
       <DialogTitle>Edit Note</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <Typography variant="body2" color="text.secondary">
               Update your note content and tags.
             </Typography>
@@ -113,7 +129,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
                 Note Content
               </Typography>
               <Controller
-                name="text"
+                name="content"
                 control={control}
                 render={({ field }) => (
                   <RichTextEditor
@@ -125,9 +141,19 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
                   />
                 )}
               />
-              {errors.text && (
-                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
-                  {errors.text.message}
+              {legacyNormalized && (
+                <Alert severity="info">
+                  Legacy note content was normalized to the supported versioned
+                  rich-text format. Review it before saving.
+                </Alert>
+              )}
+              {errors.content && (
+                <Typography
+                  variant="caption"
+                  color="error"
+                  sx={{ mt: 0.5, display: "block" }}
+                >
+                  Unsupported or empty rich-text content.
                 </Typography>
               )}
             </Box>
@@ -162,7 +188,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? 'Saving...' : 'Save Changes'}
+            {isSubmitting ? "Saving..." : "Save Changes"}
           </Button>
         </DialogActions>
       </form>

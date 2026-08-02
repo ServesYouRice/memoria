@@ -14,6 +14,7 @@
  */
 // import { env } from './src/lib/env.ts';
 import bundleAnalyzer from '@next/bundle-analyzer';
+import path from 'node:path';
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -39,6 +40,7 @@ const nextConfig = {
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
+      '@': path.resolve(process.cwd(), 'src'),
       canvas: false,
     };
 

@@ -21,7 +21,10 @@ import {
   Fullscreen as FullscreenIcon,
   FullscreenExit as FullscreenExitIcon,
 } from "@mui/icons-material";
-import { AR_EXPERIMENTAL_DISCLOSURE } from "@/lib/product-surfaces";
+import {
+  AR_EXPERIMENTAL_DISCLOSURE,
+  isArCanvasEnabled,
+} from "@/lib/product-surfaces";
 
 interface ARCanvasLayerProps {
   open: boolean;
@@ -44,6 +47,9 @@ interface ARCanvasLayerProps {
  * camera stream never leaves the browser and is released on close.
  */
 export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
+  // Call sites already gate on the deployment flag; re-check here so the camera
+  // can never start from a surface that forgot to.
+  const enabled = isArCanvasEnabled();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +94,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
 
   // Start camera when dialog opens
   useEffect(() => {
-    if (open) {
+    if (open && enabled) {
       startCamera();
     } else {
       stopCamera();
@@ -97,7 +103,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
     return () => {
       stopCamera();
     };
-  }, [open, startCamera, stopCamera]);
+  }, [enabled, open, startCamera, stopCamera]);
 
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
@@ -146,6 +152,8 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
   const SlideTransition = (props: SlideProps) => (
     <Slide {...props} direction="up" />
   );
+
+  if (!enabled) return null;
 
   return (
     <Dialog

@@ -19,6 +19,10 @@ const emptyToUndefined = (value) => {
 
 const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
 const optionalUrl = z.preprocess(emptyToUndefined, z.string().url().optional());
+const optionalPositiveInt = z.preprocess(
+  emptyToUndefined,
+  z.coerce.number().int().positive().optional(),
+);
 
 const rawEnv = {
   ...process.env,
@@ -34,12 +38,15 @@ const envSchema = z
     AUTH_URL: z.string().url(),
     AUTH_SECRET: z.string().min(32),
     REDIS_URL: optionalUrl,
+    MEMORIA_E2E_MODE: z.enum(['true']).optional(),
+    AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     EMAIL_PROVIDER: z.enum(['console', 'smtp', 'sendgrid', 'resend']).default('console'),
     SMTP_HOST: optionalString,
     SMTP_PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().optional()),
     SMTP_USER: optionalString,
     SMTP_PASS: optionalString,
     SENDGRID_API_KEY: optionalString,
+    SENDGRID_API_URL: optionalUrl,
     RESEND_API_KEY: optionalString,
     UPLOAD_STORAGE: z.enum(['local', 's3']).default('local'),
     S3_BUCKET: optionalString,
@@ -124,6 +131,18 @@ const envSchema = z
           });
         }
       }
+    }
+
+    if (
+      data.SENDGRID_API_URL &&
+      data.SENDGRID_API_URL !== 'https://api.sendgrid.com/v3/mail/send' &&
+      data.MEMORIA_E2E_MODE !== 'true'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SENDGRID_API_URL'],
+        message: 'A custom SENDGRID_API_URL is allowed only in the isolated E2E runtime.',
+      });
     }
   });
 

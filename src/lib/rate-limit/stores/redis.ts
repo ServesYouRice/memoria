@@ -6,15 +6,12 @@
  * Falls back to throwing helpful errors if Redis is misconfigured.
  */
 
-import Redis from "ioredis";
+import type Redis from "ioredis";
 import { logger } from "@/lib/logger";
 import type { RateLimitStore } from "../types";
+import { getRedisClient } from "@/lib/cache/redis-client";
 
-export interface RedisConfig {
-  host: string;
-  port: number;
-  password?: string;
-  db?: number;
+export interface RedisRateLimitStoreConfig {
   keyPrefix?: string;
 }
 
@@ -22,34 +19,13 @@ export class RedisRateLimitStore implements RateLimitStore {
   private client: Redis;
   private keyPrefix: string;
 
-  constructor(config: RedisConfig) {
+  constructor(config: RedisRateLimitStoreConfig = {}) {
     this.keyPrefix = config.keyPrefix || "ratelimit:";
 
-    // Support REDIS_URL or individual config
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
-      this.client = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        lazyConnect: true,
-      });
-    } else {
-      this.client = new Redis({
-        host: config.host,
-        port: config.port,
-        password: config.password,
-        db: config.db || 0,
-        maxRetriesPerRequest: 3,
-        lazyConnect: true,
-      });
-    }
-
-    this.client.on("error", (err) => {
-      logger.error({ error: err }, "Redis rate limit store error");
-    });
-
-    this.client.on("connect", () => {
-      logger.info("Redis rate limit store connected");
-    });
+    const client = getRedisClient();
+    if (!client)
+      throw new Error("REDIS_URL is required for Redis rate limiting");
+    this.client = client;
   }
 
   async increment(
@@ -108,7 +84,7 @@ export class RedisRateLimitStore implements RateLimitStore {
   }
 
   async close(): Promise<void> {
-    await this.client.quit();
+    // The process-wide Redis client is owned by redis-client.ts.
   }
 
   async ping(): Promise<boolean> {

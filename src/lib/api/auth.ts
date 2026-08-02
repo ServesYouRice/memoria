@@ -10,6 +10,7 @@
 import { prisma } from "@/lib/db";
 import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 import { getCachedSession } from "@/lib/api/session-cache";
+import type { CanvasAccessLevel } from "@/types/canvas";
 
 /**
  * Get authenticated user from session
@@ -37,7 +38,7 @@ export async function requireAuth() {
 /**
  * Canvas access levels based on ownership and shares
  */
-export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW" | "NONE";
+export type { CanvasAccessLevel } from "@/types/canvas";
 
 /**
  * Get user's access level for a canvas
@@ -46,14 +47,14 @@ export type CanvasAccessLevel = "OWNER" | "EDIT" | "COMMENT" | "VIEW" | "NONE";
 export async function getCanvasAccess(
   canvasId: string,
   userId: string,
-  userEmail: string,
+  _userEmail: string,
 ): Promise<CanvasAccessLevel> {
   const canvas = await prisma.canvas.findUnique({
     where: { id: canvasId },
     select: {
       userId: true,
       shares: {
-        where: { email: userEmail.toLowerCase() },
+        where: { recipientId: userId },
         select: { role: true },
       },
     },

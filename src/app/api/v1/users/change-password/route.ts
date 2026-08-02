@@ -16,6 +16,7 @@ import {
   validatePasswordStrength,
 } from "@/lib/validation/password";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { invalidateSessionVersion } from "@/lib/api/session-cache";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
       });
       await tx.session.deleteMany({ where: { userId } });
     });
+    await invalidateSessionVersion(userId);
 
     return NextResponse.json({ message: "Password changed successfully" });
   } catch (error) {

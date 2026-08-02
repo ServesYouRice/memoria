@@ -13,6 +13,11 @@ await prisma.$transaction(async (tx) => {
     payload: {},
     dedupeKey: `retention.versions:${day}`,
   });
+  await enqueueOutboxJob(tx, {
+    type: "retention.maintenance",
+    payload: {},
+    dedupeKey: `retention.maintenance:${day}`,
+  });
 });
 console.warn(`Queued bounded retention jobs for ${day}.`);
 await prisma.$disconnect();

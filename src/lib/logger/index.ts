@@ -35,7 +35,7 @@
  * logger.error({ error, userId }, 'Failed to save canvas');
  *
  * // With correlation ID (for request tracing)
- * const requestLogger = createRequestLogger(req.headers['x-correlation-id']);
+ * const requestLogger = createRequestLogger(req.headers['x-request-id']);
  * requestLogger.info({ userId }, 'Processing request');
  *
  * // Module-specific logger
@@ -48,6 +48,11 @@
 
 import pino from "pino";
 import { nanoid } from "nanoid";
+
+const REQUEST_ID_PROVIDER_KEY = "__memoriaRequestIdProvider";
+type RequestIdGlobal = typeof globalThis & {
+  [REQUEST_ID_PROVIDER_KEY]?: () => string | undefined;
+};
 
 const SECRET_FIELD =
   /^(password|passwordhash|token|accesstoken|refreshtoken|secret|apikey|authorization|cookie)$/i;
@@ -127,42 +132,39 @@ const logger = pino({
 });
 
 /**
- * Generate a unique correlation ID for request tracing
+ * Generate a unique request ID for request tracing.
  *
- * Correlation IDs enable tracing a single request across multiple
- * services and log entries. Pass the ID to child loggers to link all
- * related log entries.
+ * Request IDs link a request across logs, problem details, and Sentry.
  *
  * @returns A unique 21-character nanoid
  *
  * @example
  * ```typescript
- * const correlationId = generateCorrelationId();
- * const requestLogger = createRequestLogger(correlationId);
- * // All logs from this request will include the same correlationId
+ * const requestId = generateRequestId();
+ * const requestLogger = createRequestLogger(requestId);
  * ```
  */
-export function generateCorrelationId(): string {
+export function generateRequestId(): string {
   return nanoid();
 }
 
 /**
- * Create a child logger with correlation ID and user context
+ * Create a child logger with request ID and user context.
  *
  * Child loggers inherit all parent logger configuration and add
  * additional context fields. All log entries from this logger will
- * include the correlation ID and user ID (if provided).
+ * include the request ID and user ID (if provided).
  *
- * @param correlationId - Optional correlation ID (generates one if not provided)
+ * @param requestId - Optional request ID (generates one if not provided)
  * @param userId - Optional user ID for user-specific context
  * @returns Child logger with request context
  *
  * @example
  * ```typescript
  * export async function POST(request: Request) {
- *   const correlationId = request.headers.get('x-correlation-id') || generateCorrelationId();
+ *   const requestId = request.headers.get('x-request-id') || generateRequestId();
  *   const session = await getServerSession();
- *   const logger = createRequestLogger(correlationId, session?.user?.id);
+ *   const logger = createRequestLogger(requestId, session?.user?.id);
  *
  *   logger.info({ method: 'POST', path: request.url }, 'Request received');
  *   // ... handle request
@@ -170,9 +172,12 @@ export function generateCorrelationId(): string {
  * }
  * ```
  */
-export function createRequestLogger(correlationId?: string, userId?: string) {
+export function createRequestLogger(requestId?: string, userId?: string) {
   return logger.child({
-    correlationId: correlationId || generateCorrelationId(),
+    requestId:
+      requestId ||
+      (globalThis as RequestIdGlobal)[REQUEST_ID_PROVIDER_KEY]?.() ||
+      generateRequestId(),
     ...(userId && { userId }),
   });
 }

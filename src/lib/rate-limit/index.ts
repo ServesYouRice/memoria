@@ -32,11 +32,9 @@
  *
  * ## Configuration
  *
- * Set environment variables to use Redis (otherwise uses memory store):
- * - `REDIS_HOST`: Redis server host (default: 'localhost')
- * - `REDIS_PORT`: Redis server port (default: 6379)
- * - `REDIS_PASSWORD`: Redis password (optional)
- * - `REDIS_DB`: Redis database number (default: 0)
+ * Set `REDIS_URL` to use the process-wide Redis client. Development without
+ * Redis uses the in-memory store; production configuration validation requires
+ * Redis.
  *
  * ## Preset Rate Limits
  *
@@ -180,23 +178,15 @@ export function createRateLimiter(config: RateLimitConfig): RateLimiter {
     return existingLimiter;
   }
 
-  const useRedis = process.env.REDIS_URL || process.env.REDIS_HOST;
+  const useRedis = process.env.REDIS_URL;
 
   let store = sharedStore;
 
   if (!store && useRedis) {
     logger.info("Using Redis for rate limiting");
 
-    const redisConfig = {
-      host: process.env.REDIS_HOST || "localhost",
-      port: parseInt(process.env.REDIS_PORT || "6379", 10),
-      password: process.env.REDIS_PASSWORD,
-      db: parseInt(process.env.REDIS_DB || "0", 10),
-      keyPrefix: "ratelimit:",
-    };
-
     try {
-      store = new RedisRateLimitStore(redisConfig);
+      store = new RedisRateLimitStore({ keyPrefix: "ratelimit:" });
     } catch (error) {
       logger.warn(
         { error },
