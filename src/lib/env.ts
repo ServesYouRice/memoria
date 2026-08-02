@@ -25,6 +25,9 @@ const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
 const optionalString = emptyToUndefined(z.string());
 const optionalUrl = emptyToUndefined(z.string().url());
 const optionalInt = emptyToUndefined(z.coerce.number().int());
+const optionalPositiveInt = emptyToUndefined(
+  z.coerce.number().int().positive(),
+);
 
 const rawEnv = {
   ...process.env,
@@ -48,7 +51,9 @@ const envSchema = z
     REDIS_URL: optionalUrl,
     LOG_LEVEL: optionalString,
     INTERNAL_OPERATIONS_TOKEN: optionalString,
+    MEMORIA_E2E_MODE: z.enum(["true"]).optional(),
     TRUSTED_PROXY_CIDRS: optionalString,
+    AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
     // DEC-013: the AR canvas layer stays off until the real-device matrix
@@ -69,6 +74,7 @@ const envSchema = z
     SMTP_USER: optionalString,
     SMTP_PASS: optionalString,
     SENDGRID_API_KEY: optionalString,
+    SENDGRID_API_URL: optionalUrl,
     RESEND_API_KEY: optionalString,
     MODEL_CREDENTIAL_ENCRYPTION_KEY: optionalString,
     UPLOAD_STORAGE: z.enum(["local", "s3"]).default("local"),
@@ -208,6 +214,19 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ["SENDGRID_API_KEY"],
         message: "SENDGRID_API_KEY is required when EMAIL_PROVIDER=sendgrid.",
+      });
+    }
+
+    if (
+      data.SENDGRID_API_URL &&
+      data.SENDGRID_API_URL !== "https://api.sendgrid.com/v3/mail/send" &&
+      data.MEMORIA_E2E_MODE !== "true"
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SENDGRID_API_URL"],
+        message:
+          "A custom SENDGRID_API_URL is allowed only in the isolated E2E runtime.",
       });
     }
 

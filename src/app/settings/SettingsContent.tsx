@@ -54,8 +54,6 @@ interface SettingsContentProps {
 // Keyboard shortcuts data
 const keyboardShortcuts = [
   { keys: ["Ctrl", "K"], description: "Open Command Palette" },
-  { keys: ["Ctrl", "Z"], description: "Undo" },
-  { keys: ["Ctrl", "Y"], description: "Redo" },
   { keys: ["Ctrl", "S"], description: "Save (auto-saved)" },
   { keys: ["Delete"], description: "Delete selected item" },
   { keys: ["Escape"], description: "Deselect / Close dialog" },

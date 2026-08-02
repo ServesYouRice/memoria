@@ -1,0 +1,156 @@
+x-runtime-environment: &runtime-environment
+  NODE_ENV: production
+  MEMORIA_SKIP_ENV_FILE_LOAD: 'true'
+  MEMORIA_E2E_MODE: 'true'
+  PORT: '3000'
+  DATABASE_URL: postgresql://memoria_e2e:memoria-e2e-db-password@postgres:5432/memoria_e2e
+  REDIS_URL: redis://:memoria-e2e-redis-password@redis:6379
+  AUTH_URL: http://127.0.0.1:3300
+  AUTH_SECRET: memoria-e2e-auth-secret-0123456789abcdef
+  NEXTAUTH_URL: http://127.0.0.1:3300
+  NEXTAUTH_SECRET: memoria-e2e-auth-secret-0123456789abcdef
+  REGISTRATION_MODE: open
+  AUTH_RATE_LIMIT_MAX_REQUESTS: '100'
+  APP_BOOTSTRAP_TOKEN: memoria-e2e-bootstrap-token-0123456789
+  INTERNAL_OPERATIONS_TOKEN: memoria-e2e-operations-token-0123456789abcdef
+  MODEL_CREDENTIAL_ENCRYPTION_KEY: memoria-e2e-model-key-0123456789abcdef
+  EMAIL_PROVIDER: sendgrid
+  EMAIL_FROM: e2e@memoria.local
+  EMAIL_FROM_NAME: Memoria E2E
+  SENDGRID_API_KEY: memoria-e2e-email-capture-key
+  SENDGRID_API_URL: http://email-capture:8025/v3/mail/send
+  E2E_EMAIL_CAPTURE_TOKEN: memoria-e2e-email-capture-token
+  UPLOAD_STORAGE: s3
+  S3_BUCKET: memoria-e2e
+  S3_REGION: us-east-1
+  S3_ENDPOINT: http://minio:9000
+  S3_ACCESS_KEY_ID: memoriae2e
+  S3_SECRET_ACCESS_KEY: memoria-e2e-minio-password
+  UPLOAD_SCAN_REQUIRED: 'false'
+  CRON_SECRET: memoria-e2e-cron-secret-0123456789
+  CORS_ALLOWED_ORIGINS: http://127.0.0.1:3300
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: memoria_e2e
+      POSTGRES_PASSWORD: memoria-e2e-db-password
+      POSTGRES_DB: memoria_e2e
+    ports:
+      - '127.0.0.1:35432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U memoria_e2e -d memoria_e2e']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres_e2e:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--requirepass', 'memoria-e2e-redis-password']
+    ports:
+      - '127.0.0.1:36379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'memoria-e2e-redis-password', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: memoriae2e
+      MINIO_ROOT_PASSWORD: memoria-e2e-minio-password
+    ports:
+      - '127.0.0.1:39000:9000'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://127.0.0.1:9000/minio/health/live']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - minio_e2e:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-02-08T19-14-21Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >-
+        mc alias set local http://minio:9000 memoriae2e memoria-e2e-minio-password &&
+        mc mb --ignore-existing local/memoria-e2e
+    restart: 'no'
+
+  email-capture:
+    image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}
+    command: ['node', 'scripts/e2e/email-capture.mjs']
+    environment:
+      PORT: '8025'
+      E2E_EMAIL_CAPTURE_TOKEN: memoria-e2e-email-capture-token
+      SENDGRID_API_KEY: memoria-e2e-email-capture-key
+    ports:
+      - '127.0.0.1:38025:8025'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8025/health']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    read_only: true
+
+  migrate:
+    image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}
+    command: ['pnpm', 'db:migrate']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *runtime-environment
+    restart: 'no'
+
+  app:
+    image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      email-capture:
+        condition: service_healthy
+    environment: *runtime-environment
+    ports:
+      - '127.0.0.1:3300:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health']
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+
+  outbox-worker:
+    image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}
+    command: ['pnpm', 'worker:outbox']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      email-capture:
+        condition: service_healthy
+    environment: *runtime-environment
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  postgres_e2e:
+  minio_e2e:

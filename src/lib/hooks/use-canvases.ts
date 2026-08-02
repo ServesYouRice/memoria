@@ -52,9 +52,11 @@ export interface CreateCanvasInput {
 
 export interface UpdateCanvasInput {
   name?: string;
-  zoomLevel?: number;
-  panX?: number;
-  panY?: number;
+  defaultViewport?: {
+    zoomLevel: number;
+    panX: number;
+    panY: number;
+  };
   workspaceId?: string | null;
 }
 
@@ -299,9 +301,9 @@ export function useUpdateCanvas() {
       data: UpdateCanvasInput;
     }) => api.updateCanvas(canvasId, data),
     onSuccess: (updatedCanvas) => {
-      queryClient.setQueryData(
+      queryClient.setQueryData<Canvas>(
         canvasKeys.detail(updatedCanvas.id),
-        updatedCanvas,
+        (currentCanvas) => ({ ...currentCanvas, ...updatedCanvas }),
       );
       queryClient.invalidateQueries({ queryKey: canvasKeys.list() });
     },

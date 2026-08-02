@@ -2,6 +2,7 @@
 **/*.log
 **/*.tsbuildinfo
 .agents
+.claude
 .codex
 .data
 .env*
@@ -16,3 +17,4 @@ node_modules
 out
 playwright-report
 test-results
+tests

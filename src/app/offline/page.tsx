@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Box, Button, Container, Paper, Typography } from "@mui/material";
 
 export const metadata = {
@@ -18,7 +17,7 @@ export default function OfflinePage() {
             Memoria keeps private canvases on the network path, so personal data
             is never served from a shared browser cache. Reconnect to continue.
           </Typography>
-          <Button component={Link} href="/" variant="contained">
+          <Button href="/" variant="contained">
             Try again
           </Button>
         </Paper>

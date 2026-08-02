@@ -59,6 +59,11 @@ export function useAutosave({
 
   const saveChanges = useCallback(
     (changes: Partial<UpdateCanvasItemInput>) => {
+      // A queued delta is not durable yet. Move out of the initial `saved`
+      // state immediately so navigation and status UI cannot claim success
+      // during the debounce window.
+      setStatus("saving");
+      setError(null);
       queueRef.current?.enqueue(changes);
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
@@ -66,7 +71,7 @@ export function useAutosave({
         void flush().catch(() => {});
       }, debounceMs);
     },
-    [debounceMs, flush],
+    [debounceMs, flush, setError, setStatus],
   );
 
   useEffect(

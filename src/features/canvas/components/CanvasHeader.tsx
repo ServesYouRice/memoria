@@ -29,8 +29,6 @@ import {
   MoreVert,
   Search as SearchIcon,
   Clear as ClearIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
   Share as ShareIcon,
   LocalOffer as TagIcon,
   GridOn as GridOnIcon,
@@ -39,13 +37,13 @@ import {
   AutoAwesome as AIIcon,
   History as HistoryIcon,
   Shuffle as SerendipityIcon,
-  Dashboard as TemplatesIcon,
   AutoFixHigh as AutopilotIcon,
   Edit as EditIcon,
   EditNote as WhisperIcon,
   ViewInAr as ARIcon,
 } from "@mui/icons-material";
 import { ShareDialog } from "./ShareDialog";
+import type { AutosaveStatus } from "@/lib/autosave/serialized-delta-queue";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MeetingTimer } from "./MeetingTimer";
@@ -70,7 +68,6 @@ export interface CanvasHeaderProps {
   onZoomChange: (zoom: number) => void;
   onFitToScreen: () => void;
   onExport?: () => void;
-  onSaveAsTemplate?: () => void;
   onVersionHistory?: () => void;
   onTagFilter?: () => void;
   gridVisible?: boolean;
@@ -79,10 +76,6 @@ export interface CanvasHeaderProps {
   onSnapToggle?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
-  onUndo?: () => void;
-  onRedo?: () => void;
   activeTagCount?: number;
   collaborators?: CollaboratorInfo[];
   collaborationConnected?: boolean;
@@ -102,13 +95,14 @@ export interface CanvasHeaderProps {
   onTimeMachine?: () => void;
 
   onSerendipity?: () => void;
-  onTemplates?: () => void;
   onAutopilot?: () => void;
   onWhisper?: () => void;
   onAR?: () => void;
   onPresentationMode?: () => void;
   isPresentationMode?: boolean;
   canManageCanvas?: boolean;
+  saveStatus?: AutosaveStatus;
+  saveError?: string | null;
 }
 
 const ZOOM_STEP = 0.1;
@@ -123,7 +117,6 @@ export function CanvasHeader({
   onZoomChange,
   onFitToScreen,
   onExport,
-  onSaveAsTemplate,
   onVersionHistory,
   onTagFilter,
   gridVisible = false,
@@ -132,10 +125,6 @@ export function CanvasHeader({
   onSnapToggle,
   searchQuery = "",
   onSearchChange,
-  canUndo = false,
-  canRedo = false,
-  onUndo,
-  onRedo,
   activeTagCount = 0,
   collaborators = [],
   collaborationConnected = false,
@@ -149,13 +138,14 @@ export function CanvasHeader({
   onTimeMachine,
 
   onSerendipity,
-  onTemplates,
   onAutopilot,
   onWhisper,
   onAR,
   onPresentationMode,
   isPresentationMode = false,
   canManageCanvas = true,
+  saveStatus,
+  saveError,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -267,13 +257,6 @@ export function CanvasHeader({
       icon: <SerendipityIcon />,
       onClick: onSerendipity,
       color: "secondary",
-    });
-  if (onTemplates)
-    secondaryActions.push({
-      key: "templates",
-      label: "Open templates and rituals",
-      icon: <TemplatesIcon />,
-      onClick: onTemplates,
     });
   if (onAutopilot)
     secondaryActions.push({
@@ -434,36 +417,6 @@ export function CanvasHeader({
           )}
         </Box>
 
-        {/* Undo/Redo Controls */}
-        {(onUndo || onRedo) && (
-          <Box sx={{ mr: 1 }}>
-            <Tooltip title="Undo (Ctrl+Z)">
-              <span>
-                <IconButton
-                  aria-label="Undo"
-                  onClick={onUndo}
-                  disabled={!canUndo}
-                  size="small"
-                >
-                  <UndoIcon />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Redo (Ctrl+Y)">
-              <span>
-                <IconButton
-                  aria-label="Redo"
-                  onClick={onRedo}
-                  disabled={!canRedo}
-                  size="small"
-                >
-                  <RedoIcon />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Box>
-        )}
-
         {/* Share Button */}
         {canManageCanvas && (
           <Tooltip title="Share Canvas">
@@ -544,6 +497,50 @@ export function CanvasHeader({
               </Tooltip>
             )}
           </Box>
+        )}
+
+        {saveStatus && (
+          <Tooltip
+            title={
+              saveError ||
+              (
+                {
+                  saving: "Changes are being saved",
+                  saved: "Changes saved",
+                  "offline/retrying": "Offline; changes will retry",
+                  conflict: "This change conflicts with a newer server version",
+                  failed: "Changes were not saved",
+                } satisfies Record<AutosaveStatus, string>
+              )[saveStatus]
+            }
+          >
+            <Chip
+              label={
+                (
+                  {
+                    saving: "Saving…",
+                    saved: "Saved",
+                    "offline/retrying": "Offline · retrying",
+                    conflict: "Conflict",
+                    failed: "Not saved",
+                  } satisfies Record<AutosaveStatus, string>
+                )[saveStatus]
+              }
+              size="small"
+              color={
+                saveStatus === "saved"
+                  ? "success"
+                  : saveStatus === "saving"
+                    ? "info"
+                    : saveStatus === "offline/retrying"
+                      ? "warning"
+                      : "error"
+              }
+              variant={saveStatus === "saved" ? "outlined" : "filled"}
+              aria-label="Save status"
+              sx={{ mr: 1, height: 24, fontSize: 11 }}
+            />
+          </Tooltip>
         )}
 
         {/* Meeting Timer */}
@@ -655,16 +652,6 @@ export function CanvasHeader({
               }}
             >
               Export Canvas
-            </MenuItem>
-          )}
-          {onSaveAsTemplate && (
-            <MenuItem
-              onClick={() => {
-                onSaveAsTemplate();
-                handleMenuClose();
-              }}
-            >
-              Save as Template
             </MenuItem>
           )}
           {onVersionHistory && (

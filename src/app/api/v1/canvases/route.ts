@@ -127,6 +127,12 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       canvasName: canvas.name,
     });
 
-    return NextResponse.json(canvas, { status: 201 });
+    return NextResponse.json(
+      {
+        ...canvas,
+        thumbnailRevision: canvas.thumbnailRevision.toString(),
+      },
+      { status: 201 },
+    );
   });
 });

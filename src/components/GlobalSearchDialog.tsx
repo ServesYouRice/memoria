@@ -25,8 +25,10 @@ import {
   Close as CloseIcon,
   Note as NoteIcon,
   Bookmark as BookmarkIcon,
+  Description as GenericItemIcon,
 } from "@mui/icons-material";
 import { useDebounce } from "@/lib/hooks/use-debounce";
+import { ApiError, apiFetch } from "@/lib/api/fetch-client";
 
 export interface GlobalSearchDialogProps {
   open: boolean;
@@ -45,12 +47,24 @@ interface SearchResult {
   updatedAt: string;
 }
 
+interface SearchFacet {
+  value: string;
+  count: number;
+}
+
 export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [totalResults, setTotalResults] = useState(0);
+  const [facets, setFacets] = useState<{
+    types: SearchFacet[];
+    tags: SearchFacet[];
+  }>({
+    types: [],
+    tags: [],
+  });
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const debouncedQuery = useDebounce(query, 300);
@@ -60,12 +74,14 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
       setQuery("");
       setResults([]);
       setTotalResults(0);
+      setFacets({ types: [], tags: [] });
       return;
     }
 
     if (debouncedQuery.length < 2) {
       setResults([]);
       setTotalResults(0);
+      setFacets({ types: [], tags: [] });
       return;
     }
 
@@ -74,17 +90,32 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
       setLoading(true);
       setSearchError(null);
       try {
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/v1/search?q=${encodeURIComponent(debouncedQuery)}`,
           { signal: controller.signal },
         );
-        if (!response.ok) throw new Error("Search request failed");
         const data = await response.json();
         setResults(data.results || []);
-        setTotalResults(data.totalResults || 0);
+        setTotalResults(
+          typeof data.totalResults === "number" ? data.totalResults : 0,
+        );
+        setFacets({
+          types: Array.isArray(data.facets?.types) ? data.facets.types : [],
+          tags: Array.isArray(data.facets?.tags) ? data.facets.tags : [],
+        });
       } catch (err) {
         if (err instanceof Error && err.name !== "AbortError") {
-          setSearchError("Search failed. Please try again.");
+          if (err instanceof ApiError) {
+            const retry = err.retryAfterSeconds
+              ? ` Try again in ${err.retryAfterSeconds} seconds.`
+              : "";
+            const request = err.requestId
+              ? ` Request ID: ${err.requestId}.`
+              : "";
+            setSearchError(`${err.message}${retry}${request}`);
+          } else {
+            setSearchError("Search failed. Please try again.");
+          }
         }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
@@ -136,7 +167,7 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
         <TextField
           autoFocus
           fullWidth
-          placeholder="Search notes and bookmarks..."
+          placeholder="Search all canvas items..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -154,7 +185,7 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
             ) : null,
           }}
           inputProps={{
-            "aria-label": "Search notes and bookmarks",
+            "aria-label": "Search all canvas items",
           }}
         />
 
@@ -181,6 +212,26 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Found {totalResults} result{totalResults !== 1 ? "s" : ""}
             </Typography>
+            {(facets.types.length > 0 || facets.tags.length > 0) && (
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mb: 2 }}>
+                {facets.types.map((facet) => (
+                  <Chip
+                    key={`type-${facet.value}`}
+                    label={`${facet.value}: ${facet.count}`}
+                    size="small"
+                    variant="outlined"
+                  />
+                ))}
+                {facets.tags.map((facet) => (
+                  <Chip
+                    key={`tag-${facet.value}`}
+                    label={`#${facet.value}: ${facet.count}`}
+                    size="small"
+                    variant="outlined"
+                  />
+                ))}
+              </Box>
+            )}
             <List sx={{ maxHeight: "50vh", overflow: "auto" }}>
               {results.map((result, index) => (
                 <React.Fragment key={result.itemId}>
@@ -198,8 +249,10 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
                         >
                           {result.itemType === "NOTE" ? (
                             <NoteIcon fontSize="small" color="primary" />
-                          ) : (
+                          ) : result.itemType === "BOOKMARK" ? (
                             <BookmarkIcon fontSize="small" color="secondary" />
+                          ) : (
+                            <GenericItemIcon fontSize="small" color="action" />
                           )}
                           <Typography variant="body2" color="text.secondary">
                             {result.canvasName}

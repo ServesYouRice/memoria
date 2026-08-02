@@ -18,6 +18,13 @@ import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLayout } from "./AuthLayout";
+import { VerificationResendForm } from "./VerificationResendForm";
+import { safeAuthCallbackUrl } from "@/lib/auth/redirect";
+import type { RegistrationMode } from "./RegisterForm";
+
+interface LoginFormProps {
+  mode?: RegistrationMode;
+}
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -26,14 +33,18 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
-export function LoginForm() {
+export function LoginForm({ mode = "open" }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState(false);
+  const [attemptedEmail, setAttemptedEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const registered = searchParams.get("registered");
+  const verified = searchParams.get("verified");
+  const callbackUrl = searchParams.get("callbackUrl");
 
   const {
     register,
@@ -47,6 +58,8 @@ export function LoginForm() {
     try {
       setIsLoading(true);
       setError(null);
+      setUnverified(false);
+      setAttemptedEmail(data.email);
 
       const result = await signIn("credentials", {
         email: data.email,
@@ -59,6 +72,11 @@ export function LoginForm() {
           setError(
             "Your account is temporarily locked due to too many failed sign-in attempts. Please wait a few minutes and try again.",
           );
+        } else if (result.code === "email_not_verified") {
+          setUnverified(true);
+          setError(
+            "Your password is correct, but your email is not verified yet. Check your inbox before signing in.",
+          );
         } else {
           setError("Invalid email or password");
         }
@@ -66,7 +84,15 @@ export function LoginForm() {
       }
 
       if (result?.ok) {
-        router.push("/dashboard");
+        const safeDestination = safeAuthCallbackUrl(
+          callbackUrl,
+          window.location.origin,
+        );
+        const destination =
+          new URL(safeDestination).pathname +
+          new URL(safeDestination).search +
+          new URL(safeDestination).hash;
+        router.push(callbackUrl ? destination : "/dashboard");
         router.refresh();
       }
     } catch (err) {
@@ -94,7 +120,13 @@ export function LoginForm() {
           severity="success"
           sx={{ mb: 3, animation: "fadeIn 0.4s ease-out" }}
         >
-          Account created successfully! Please sign in.
+          Account created successfully. Verify your email before signing in.
+        </Alert>
+      )}
+
+      {verified && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          Email verified successfully. You can sign in now.
         </Alert>
       )}
 
@@ -105,6 +137,12 @@ export function LoginForm() {
         >
           {error}
         </Alert>
+      )}
+
+      {unverified && (
+        <Box sx={{ mb: 3 }}>
+          <VerificationResendForm initialEmail={attemptedEmail} compact />
+        </Box>
       )}
 
       <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
@@ -183,18 +221,24 @@ export function LoginForm() {
           color="text.secondary"
           sx={{ mt: 4 }}
         >
-          Don&apos;t have an account?{" "}
-          <Link
-            href="/auth/register"
-            sx={{
-              color: "primary.main",
-              textDecoration: "none",
-              fontWeight: 600,
-              "&:hover": { textDecoration: "underline" },
-            }}
-          >
-            Create one
-          </Link>
+          {mode === "closed" ? (
+            "Registration is currently closed."
+          ) : (
+            <>
+              Don&apos;t have an account?{" "}
+              <Link
+                href="/auth/register"
+                sx={{
+                  color: "primary.main",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                  "&:hover": { textDecoration: "underline" },
+                }}
+              >
+                {mode === "invite" ? "Use an invitation" : "Create one"}
+              </Link>
+            </>
+          )}
         </Typography>
       </Box>
     </AuthLayout>

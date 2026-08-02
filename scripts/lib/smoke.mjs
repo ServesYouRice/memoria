@@ -10,11 +10,80 @@ function toWebSocketUrl(baseUrl, pathname) {
   return url.toString();
 }
 
-async function fetchRoute(url, { timeoutMs = 5000 } = {}) {
+async function fetchRoute(url, { timeoutMs = 5000, headers } = {}) {
   return fetch(url, {
     redirect: 'follow',
+    headers,
     signal: AbortSignal.timeout(timeoutMs),
   });
+}
+
+async function checkSecurityHeaders(results, baseUrl, timeoutMs) {
+  const response = await fetchRoute(new URL('/', baseUrl), { timeoutMs });
+  const required = [
+    ['content-security-policy', 'Content-Security-Policy'],
+    ['x-content-type-options', 'X-Content-Type-Options'],
+    ['referrer-policy', 'Referrer-Policy'],
+  ];
+  const missing = required
+    .filter(([header]) => !response.headers.get(header))
+    .map(([, label]) => label);
+  addResult(
+    results,
+    'security-headers',
+    missing.length === 0 ? 'pass' : 'fail',
+    missing.length === 0
+      ? 'Public HTML includes the required security headers'
+      : `Missing headers: ${missing.join(', ')}`,
+  );
+}
+
+async function checkOperationsSurface(results, baseUrl, timeoutMs, operationsToken) {
+  for (const pathname of ['/api/ready', '/api/metrics', '/api/operations/outbox']) {
+    const hidden = await fetchRoute(new URL(pathname, baseUrl), { timeoutMs });
+    if (hidden.status !== 404) {
+      addResult(results, `protected:${pathname}`, 'fail', `${pathname} disclosed HTTP ${hidden.status}`);
+      continue;
+    }
+    addResult(results, `protected:${pathname}`, 'pass', `${pathname} is hidden without credentials`);
+  }
+
+  if (!operationsToken) {
+    addResult(results, 'operations-authenticated', 'fail', 'INTERNAL_OPERATIONS_TOKEN is unavailable');
+    return;
+  }
+
+  const headers = { authorization: `Bearer ${operationsToken}` };
+  const ready = await fetchRoute(new URL('/api/ready', baseUrl), { timeoutMs, headers });
+  const readyPayload = await ready.json().catch(() => null);
+  addResult(
+    results,
+    'readiness-authenticated',
+    ready.ok && readyPayload?.status === 'ready' ? 'pass' : 'fail',
+    ready.ok ? `Readiness reports ${readyPayload?.status || 'unknown'}` : `Readiness returned HTTP ${ready.status}`,
+  );
+
+  const metrics = await fetchRoute(new URL('/api/metrics', baseUrl), { timeoutMs, headers });
+  const metricsText = await metrics.text();
+  addResult(
+    results,
+    'metrics-authenticated',
+    metrics.ok && metricsText.includes('memoria_outbox_dead_jobs') ? 'pass' : 'fail',
+    metrics.ok ? 'Protected metrics are scrapeable' : `Metrics returned HTTP ${metrics.status}`,
+  );
+
+  const outbox = await fetchRoute(new URL('/api/operations/outbox?status=DEAD', baseUrl), {
+    timeoutMs,
+    headers,
+  });
+  const outboxPayload = await outbox.json().catch(() => null);
+  const deadJobs = Array.isArray(outboxPayload?.jobs) ? outboxPayload.jobs.length : -1;
+  addResult(
+    results,
+    'outbox-worker',
+    outbox.ok && deadJobs === 0 ? 'pass' : 'fail',
+    outbox.ok ? `${deadJobs} dead outbox jobs` : `Outbox control returned HTTP ${outbox.status}`,
+  );
 }
 
 async function checkHtmlRoute(results, baseUrl, pathname, name, timeoutMs) {
@@ -141,6 +210,7 @@ export async function runSmokeChecks({
   baseUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000',
   requireRunningApp = false,
   timeoutMs = 5000,
+  operationsToken = process.env.INTERNAL_OPERATIONS_TOKEN,
 } = {}) {
   const results = [];
 
@@ -184,6 +254,13 @@ export async function runSmokeChecks({
   }
 
   await checkHealthRoute(results, normalizedBaseUrl, timeoutMs);
+  await checkSecurityHeaders(results, normalizedBaseUrl, timeoutMs);
+  await checkOperationsSurface(
+    results,
+    normalizedBaseUrl,
+    timeoutMs,
+    operationsToken,
+  );
   await checkHtmlRoute(results, normalizedBaseUrl, '/', 'home-route', timeoutMs);
   await checkHtmlRoute(results, normalizedBaseUrl, '/auth/login', 'login-route', timeoutMs);
   await checkCollaborationUpgrade(results, normalizedBaseUrl, timeoutMs);

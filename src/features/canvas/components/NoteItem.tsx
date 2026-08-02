@@ -18,6 +18,7 @@ import {
 } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 import { stripHtmlTags } from "@/lib/utils/html";
+import { normalizeNoteContent } from "@/lib/rich-text/note-format";
 
 interface NoteItemProps {
   item: CanvasItem;
@@ -55,9 +56,15 @@ export function NoteItem({
     height: item.height,
   });
 
-  const content = isNoteContent(item.content)
-    ? item.content
-    : { text: "Invalid note" };
+  const content = isNoteContent(item.content) ? item.content : null;
+  let readableText = "Invalid note";
+  if (content) {
+    try {
+      readableText = normalizeNoteContent(content).plainText;
+    } catch {
+      readableText = stripHtmlTags(content.text || "Unsupported note content");
+    }
+  }
 
   useEffect(() => {
     setLocalPosition({ x: item.positionX, y: item.positionY });
@@ -172,7 +179,7 @@ export function NoteItem({
         y={10}
         width={localSize.width - 20}
         height={localSize.height - 20}
-        text={stripHtmlTags(content.text)}
+        text={readableText}
         fontSize={14}
         fontFamily="Arial"
         fill="#333"

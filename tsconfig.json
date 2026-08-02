@@ -23,6 +23,7 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "moduleDetection": "force",
+    "baseUrl": ".",
     /* Emit */
     "noEmit": true,
     "incremental": true,

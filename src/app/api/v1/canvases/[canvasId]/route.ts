@@ -64,6 +64,7 @@ export const GET = withApiHandler(
     // 5. Return combined response
     return NextResponse.json({
       ...canvasData,
+      thumbnailRevision: canvasData.thumbnailRevision.toString(),
       shares,
       accessLevel:
         canvasData.userId === userId ? "OWNER" : shares[0]?.role || "VIEW",
@@ -117,7 +118,10 @@ export const PATCH = withApiHandler(
       canvasName: updatedCanvas.name,
     });
 
-    return NextResponse.json(updatedCanvas);
+    return NextResponse.json({
+      ...updatedCanvas,
+      thumbnailRevision: updatedCanvas.thumbnailRevision.toString(),
+    });
   },
 );
 

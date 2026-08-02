@@ -24,8 +24,8 @@ export default function HelpPage() {
       </InfoSection>
       <InfoSection title="Sharing roles">
         Viewers can read, commenters can participate in comments, editors can
-        change items, and owners manage sharing, versions, templates,
-        thumbnails, and deletion.
+        change items, and owners manage sharing, versions, thumbnails, and
+        deletion.
       </InfoSection>
       <InfoSection title="Recovery">
         Use version history to restore a canvas snapshot. Password recovery

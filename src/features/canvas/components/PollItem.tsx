@@ -9,8 +9,6 @@ import {
   isPollContent,
 } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
-import { useSession } from "next-auth/react";
-import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
 
 interface PollItemProps {
   item: CanvasItem;
@@ -29,10 +27,6 @@ export function PollItem({
   capabilities,
   onCommitGeometry,
 }: PollItemProps) {
-  const { data: session } = useSession();
-  const userId = session?.user?.id;
-  const { mutate: updateItem } = useUpdateCanvasItem();
-
   if (!isPollContent(item.content)) return null;
   const { question, options, multipleChoice } = item.content;
 
@@ -46,56 +40,6 @@ export function PollItem({
   // Simple dynamic height calculation
   const height =
     headerHeight + options.length * (optionHeight + optionGap) + padding * 2;
-
-  const handleVote = (optionId: string) => {
-    if (!userId || !capabilities.canVote) return;
-
-    const newOptions = options.map((opt) => {
-      const hasVoted = opt.votes.includes(userId);
-
-      if (opt.id === optionId) {
-        // Toggle vote
-        return {
-          ...opt,
-          votes: hasVoted
-            ? opt.votes.filter((id) => id !== userId)
-            : [...opt.votes, userId],
-        };
-      } else {
-        // If single choice, remove vote from others if currently voting for target
-        // Logic: If I am clicking Option A, and I previously voted for Option B, remove B.
-        // Wait, the logic above toggles.
-        // If I click A, I vote A.
-        // If I had voted B, and not multiple choice, B should be unvoted.
-        // BUT if I allow unvoting A by clicking A again? Yes.
-
-        // If we are ADDING a vote to the target option (opt.id === optionId, and !hasVoted)
-        // Then clear others.
-        const targetOption = options.find((o) => o.id === optionId);
-        const isAddingVote =
-          targetOption && !targetOption.votes.includes(userId);
-
-        if (!multipleChoice && isAddingVote && opt.votes.includes(userId)) {
-          return {
-            ...opt,
-            votes: opt.votes.filter((id) => id !== userId),
-          };
-        }
-        return opt;
-      }
-    });
-
-    updateItem({
-      itemId: item.id,
-      data: {
-        version: item.version,
-        content: {
-          ...item.content,
-          options: newOptions,
-        },
-      },
-    });
-  };
 
   return (
     <Group
@@ -150,7 +94,6 @@ export function PollItem({
       {/* Options */}
       {options.map((option, index) => {
         const y = headerHeight + index * (optionHeight + optionGap);
-        const isVoted = userId ? option.votes.includes(userId) : false;
         const percent =
           totalVotes > 0 ? (option.votes.length / totalVotes) * 100 : 0;
 
@@ -161,22 +104,14 @@ export function PollItem({
             y={y}
             width={width - padding * 2}
             height={optionHeight}
-            onClick={(e) => {
-              e.cancelBubble = true;
-              handleVote(option.id);
-            }}
-            onTap={(e) => {
-              e.cancelBubble = true;
-              handleVote(option.id);
-            }}
           >
             {/* Option Background / Progress Bar */}
             <Rect
               width={width - padding * 2}
               height={optionHeight}
-              fill={isVoted ? "#eff6ff" : "#f8fafc"}
+              fill="#f8fafc"
               cornerRadius={8}
-              stroke={isVoted ? "#3b82f6" : "#cbd5e1"}
+              stroke="#cbd5e1"
               strokeWidth={1}
             />
             {/* Progress Fill */}
@@ -184,7 +119,7 @@ export function PollItem({
               <Rect
                 width={(width - padding * 2) * (percent / 100)}
                 height={optionHeight}
-                fill={isVoted ? "#dbeafe" : "#e2e8f0"}
+                fill="#e2e8f0"
                 cornerRadius={8}
                 opacity={0.5}
               />
@@ -197,7 +132,7 @@ export function PollItem({
               width={width - padding * 2 - 60} // reserve space for percent
               text={option.text}
               fontSize={14}
-              fill={isVoted ? "#1d4ed8" : "#334155"}
+              fill="#334155"
               wrap="none"
               ellipsis={true}
             />
@@ -221,7 +156,7 @@ export function PollItem({
         x={padding}
         y={height - 20}
         width={width - padding * 2}
-        text={`${totalVotes} votes • ${multipleChoice ? "Multiple Choice" : "Single Choice"}`}
+        text={`${totalVotes} votes · ${multipleChoice ? "Multiple Choice" : "Single Choice"} · Voting unavailable at launch`}
         fontSize={10}
         fill="#94a3b8"
         align="center"

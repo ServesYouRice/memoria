@@ -104,6 +104,7 @@ function getEmailConfig(): EmailServiceConfig {
   } else if (provider === "sendgrid") {
     config.sendgrid = {
       apiKey: process.env["SENDGRID_API_KEY"] || "",
+      apiUrl: process.env["SENDGRID_API_URL"],
     };
   } else if (provider === "resend") {
     config.resend = {

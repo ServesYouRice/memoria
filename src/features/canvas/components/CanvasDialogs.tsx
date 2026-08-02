@@ -11,7 +11,6 @@ import {
 import { CommentsPanel } from "@/features/canvas/components/CommentsPanel";
 import { TagFilterPanel } from "@/features/canvas/components/TagFilterPanel";
 import { SerendipityDialog } from "@/features/canvas/components/SerendipityDialog";
-import { TemplatesGallery } from "@/features/canvas/components/TemplatesGallery";
 import { WhisperMode } from "@/features/canvas/components/WhisperMode";
 import { ARCanvasLayer } from "@/features/canvas/components/ARCanvasLayer";
 
@@ -57,20 +56,6 @@ const CreateImageDialog = dynamic(
     ),
   { ssr: false },
 );
-const CreatePollDialog = dynamic(
-  () =>
-    import("@/features/canvas/components/CreatePollDialog").then(
-      (mod) => mod.CreatePollDialog,
-    ),
-  { ssr: false },
-);
-const SaveAsTemplateDialog = dynamic(
-  () =>
-    import("@/features/canvas/components/SaveAsTemplateDialog").then(
-      (mod) => mod.SaveAsTemplateDialog,
-    ),
-  { ssr: false },
-);
 const VersionHistoryDialog = dynamic(
   () =>
     import("@/features/canvas/components/VersionHistoryDialog").then(
@@ -110,8 +95,6 @@ interface CanvasDialogsProps {
   setBookmarkDialogOpen: (open: boolean) => void;
   imageDialogOpen: boolean;
   setImageDialogOpen: (open: boolean) => void;
-  pollDialogOpen: boolean;
-  setPollDialogOpen: (open: boolean) => void;
 
   editNoteDialogOpen: boolean;
   setEditNoteDialogOpen: (open: boolean) => void;
@@ -126,8 +109,6 @@ interface CanvasDialogsProps {
   editingImageItem: CanvasItem | null;
   setEditingImageItem: (item: CanvasItem | null) => void;
 
-  templateDialogOpen: boolean;
-  setTemplateDialogOpen: (open: boolean) => void;
   versionHistoryOpen: boolean;
   setVersionHistoryOpen: (open: boolean) => void;
   exportDialogOpen: boolean;
@@ -161,10 +142,6 @@ interface CanvasDialogsProps {
   setSerendipityOpen: (open: boolean) => void;
   onAddSerendipityItems: (items: any[]) => Promise<void>;
 
-  templatesOpen: boolean;
-  setTemplatesOpen: (open: boolean) => void;
-  onSelectTemplate: (items: any[]) => Promise<void>;
-
   whisperOpen: boolean;
   setWhisperOpen: (open: boolean) => void;
   onWhisperSend: (text: string) => Promise<void>;
@@ -186,8 +163,6 @@ export function CanvasDialogs({
   setBookmarkDialogOpen,
   imageDialogOpen,
   setImageDialogOpen,
-  pollDialogOpen,
-  setPollDialogOpen,
   editNoteDialogOpen,
   setEditNoteDialogOpen,
   editingNoteItem,
@@ -200,8 +175,6 @@ export function CanvasDialogs({
   setEditImageDialogOpen,
   editingImageItem,
   setEditingImageItem,
-  templateDialogOpen,
-  setTemplateDialogOpen,
   versionHistoryOpen,
   setVersionHistoryOpen,
   exportDialogOpen,
@@ -229,9 +202,6 @@ export function CanvasDialogs({
   serendipityOpen,
   setSerendipityOpen,
   onAddSerendipityItems,
-  templatesOpen,
-  setTemplatesOpen,
-  onSelectTemplate,
   whisperOpen,
   setWhisperOpen,
   onWhisperSend,
@@ -257,12 +227,6 @@ export function CanvasDialogs({
           <CreateImageDialog
             open={imageDialogOpen}
             onClose={() => setImageDialogOpen(false)}
-            canvasId={canvasId}
-            initialPosition={{ x: 100, y: 100 }}
-          />
-          <CreatePollDialog
-            open={pollDialogOpen}
-            onClose={() => setPollDialogOpen(false)}
             canvasId={canvasId}
             initialPosition={{ x: 100, y: 100 }}
           />
@@ -300,12 +264,6 @@ export function CanvasDialogs({
 
       {capabilities.canManageCanvas && (
         <>
-          <SaveAsTemplateDialog
-            open={templateDialogOpen}
-            onClose={() => setTemplateDialogOpen(false)}
-            canvasId={canvasId}
-            canvasName={canvasName}
-          />
           <VersionHistoryDialog
             open={versionHistoryOpen}
             onClose={() => setVersionHistoryOpen(false)}
@@ -373,14 +331,6 @@ export function CanvasDialogs({
           onClose={() => setSerendipityOpen(false)}
           canvasId={canvasId}
           onAddItems={onAddSerendipityItems}
-        />
-      )}
-
-      {templatesOpen && (
-        <TemplatesGallery
-          open={templatesOpen}
-          onClose={() => setTemplatesOpen(false)}
-          onSelectTemplate={onSelectTemplate}
         />
       )}
 

@@ -43,3 +43,6 @@ next-env.d.ts
 public/uploads
 .data
 .pnpm-store
+
+# Claude Code worktrees are local scratch checkouts, never repo content.
+.claude/worktrees/

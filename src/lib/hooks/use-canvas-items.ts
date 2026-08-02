@@ -48,6 +48,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type ItemType, type CanvasItem } from "@/types/canvas";
+import type { QueryClient } from "@tanstack/react-query";
 import {
   type CreateCanvasItemInput,
   type UpdateCanvasItemInput,
@@ -218,6 +219,86 @@ export const canvasItemKeys = {
   detail: (itemId: string) =>
     [...canvasItemKeys.all, "detail", itemId] as const,
 };
+
+export interface CommittedCanvasItemEvent {
+  schemaVersion: 1;
+  cursor: string;
+  operation: "created" | "updated" | "deleted";
+  entity: { type: "canvas-item"; id: string; version: number };
+}
+
+/**
+ * Apply a server-committed event to the existing item caches. Updates and
+ * creates fetch only the affected item; deletes apply a versioned tombstone.
+ * A reconnect therefore converges without refetching the whole canvas for
+ * every WebSocket message.
+ */
+export async function mergeCommittedCanvasItemEvent(
+  queryClient: QueryClient,
+  event: CommittedCanvasItemEvent,
+): Promise<void> {
+  if (event.operation === "deleted") {
+    queryClient.removeQueries({
+      queryKey: canvasItemKeys.detail(event.entity.id),
+    });
+    queryClient.setQueriesData(
+      { queryKey: canvasItemKeys.lists() },
+      (old: { items?: CanvasItem[] } | undefined) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter(
+            (item) =>
+              item.id !== event.entity.id ||
+              item.version > event.entity.version,
+          ),
+        };
+      },
+    );
+    return;
+  }
+
+  try {
+    const item = await api.getItem(event.entity.id);
+    if (item.version < event.entity.version) return;
+    queryClient.setQueryData(canvasItemKeys.detail(item.id), item);
+    queryClient.setQueriesData(
+      { queryKey: canvasItemKeys.lists() },
+      (old: { items?: CanvasItem[] } | undefined) => {
+        if (!old?.items) return old;
+        const existing = old.items.findIndex(
+          (candidate) => candidate.id === item.id,
+        );
+        if (existing < 0) return { ...old, items: [...old.items, item] };
+        if (old.items[existing]!.version > item.version) return old;
+        const items = [...old.items];
+        items[existing] = item;
+        return { ...old, items };
+      },
+    );
+  } catch (error) {
+    // A create/update event can race a revocation or deletion. Treat a
+    // durable 404 as the corresponding tombstone and leave transient errors
+    // for the normal query retry/snapshot path.
+    if (error instanceof ApiError && error.status === 404) {
+      queryClient.removeQueries({
+        queryKey: canvasItemKeys.detail(event.entity.id),
+      });
+      queryClient.setQueriesData(
+        { queryKey: canvasItemKeys.lists() },
+        (old: { items?: CanvasItem[] } | undefined) =>
+          old?.items
+            ? {
+                ...old,
+                items: old.items.filter((item) => item.id !== event.entity.id),
+              }
+            : old,
+      );
+      return;
+    }
+    throw error;
+  }
+}
 
 /**
  * Fetch all items for a canvas with optional type filtering and viewport pagination

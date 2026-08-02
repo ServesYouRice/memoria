@@ -11,13 +11,16 @@ import {
 
 interface SendGridConfig {
   apiKey: string;
+  apiUrl?: string;
 }
 
 export class SendGridEmailProvider implements EmailService {
   private apiKey: string;
+  private apiUrl: string;
 
   constructor(config: SendGridConfig) {
     this.apiKey = config.apiKey;
+    this.apiUrl = config.apiUrl || "https://api.sendgrid.com/v3/mail/send";
   }
 
   async send(options: SendEmailOptions): Promise<void> {
@@ -56,7 +59,7 @@ export class SendGridEmailProvider implements EmailService {
       })),
     };
 
-    const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    const response = await fetch(this.apiUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

@@ -188,7 +188,7 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
         x={padding}
         y={height - 20}
         width={width - padding * 2}
-        text={`${totalVotes} votes | ${item.content.multipleChoice ? "Multiple Choice" : "Single Choice"}`}
+        text={`${totalVotes} votes | ${item.content.multipleChoice ? "Multiple Choice" : "Single Choice"} | Voting unavailable at launch`}
         fontSize={10}
         fill="#94a3b8"
         align="center"

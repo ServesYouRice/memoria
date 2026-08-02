@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { createLogger } from "@/lib/logger";
+import type { CommittedCanvasItemEvent } from "@/lib/hooks/use-canvas-items";
 
 const logger = createLogger("collaboration");
 
@@ -29,6 +30,8 @@ export interface UseCollaborationOptions {
   name?: string;
   enabled?: boolean;
   onMessage?: (message: any) => void;
+  onCommittedEvent?: (event: CommittedCanvasItemEvent) => void | Promise<void>;
+  onSnapshotRequired?: () => void;
 }
 
 export interface UseCollaborationResult {
@@ -52,7 +55,16 @@ export interface UseCollaborationResult {
 export function useCollaboration(
   options: UseCollaborationOptions,
 ): UseCollaborationResult {
-  const { canvasId, userId, email, name, enabled = true, onMessage } = options;
+  const {
+    canvasId,
+    userId,
+    email,
+    name,
+    enabled = true,
+    onMessage,
+    onCommittedEvent,
+    onSnapshotRequired,
+  } = options;
 
   const [users, setUsers] = useState<CollaborationUser[]>([]);
   const [cursors, setCursors] = useState<CursorPosition[]>([]);
@@ -74,6 +86,16 @@ export function useCollaboration(
   );
   const reconnectAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(true);
+  const lastCursorRef = useRef<bigint>(0n);
+  const replayInFlightRef = useRef(false);
+  const replayCommittedEventsRef = useRef<
+    ((cursor: bigint) => Promise<void>) | null
+  >(null);
+  const acceptCommittedEventRef = useRef<
+    ((event: CommittedCanvasItemEvent) => void) | null
+  >(null);
+  const onCommittedEventRef = useRef(onCommittedEvent);
+  const onSnapshotRequiredRef = useRef(onSnapshotRequired);
 
   const BASE_RECONNECT_DELAY_MS = 1000;
   const MAX_RECONNECT_DELAY_MS = 15000;
@@ -81,7 +103,9 @@ export function useCollaboration(
   // Update ref when onMessage changes
   useEffect(() => {
     onMessageRef.current = onMessage;
-  }, [onMessage]);
+    onCommittedEventRef.current = onCommittedEvent;
+    onSnapshotRequiredRef.current = onSnapshotRequired;
+  }, [onCommittedEvent, onMessage, onSnapshotRequired]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -106,8 +130,85 @@ export function useCollaboration(
           onMessageRef.current(message.payload);
         }
         break;
+
+      case "committed-event":
+      case "event": {
+        const event = message.event ?? message.payload;
+        if (isCommittedCanvasItemEvent(event)) {
+          acceptCommittedEventRef.current?.(event);
+        }
+        break;
+      }
     }
   }, []);
+
+  const acceptCommittedEvent = useCallback(
+    (event: CommittedCanvasItemEvent, detectGap = true) => {
+      const cursor = BigInt(event.cursor);
+      const lastCursor = lastCursorRef.current;
+      if (cursor <= lastCursor) return;
+      if (detectGap && lastCursor > 0n && cursor > lastCursor + 1n) {
+        void replayCommittedEventsRef.current?.(lastCursor);
+      }
+      lastCursorRef.current = cursor;
+      void onCommittedEventRef.current?.(event);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    acceptCommittedEventRef.current = acceptCommittedEvent;
+  }, [acceptCommittedEvent]);
+
+  const replayCommittedEvents = useCallback(
+    async (cursor: bigint) => {
+      if (replayInFlightRef.current) return;
+      replayInFlightRef.current = true;
+      try {
+        let nextCursor = cursor;
+        for (let page = 0; page < 10; page += 1) {
+          const response = await fetch(
+            `/api/v1/canvases/${encodeURIComponent(canvasId)}/events?cursor=${nextCursor.toString()}&limit=200`,
+          );
+          if (!response.ok) throw new Error("Committed event replay failed");
+          const payload = (await response.json()) as {
+            events?: unknown[];
+            nextCursor?: string;
+            hasMore?: boolean;
+            snapshotRequired?: boolean;
+          };
+          if (payload.snapshotRequired) {
+            onSnapshotRequiredRef.current?.();
+            return;
+          }
+          for (const event of payload.events || []) {
+            if (isCommittedCanvasItemEvent(event)) {
+              acceptCommittedEvent(event, false);
+            }
+          }
+          const pageCursor = payload.nextCursor
+            ? BigInt(payload.nextCursor)
+            : nextCursor;
+          nextCursor = pageCursor > nextCursor ? pageCursor : nextCursor;
+          if (!payload.hasMore) return;
+        }
+        onSnapshotRequiredRef.current?.();
+      } catch (error) {
+        logger.warn(
+          { error },
+          "Committed event replay failed; requesting snapshot",
+        );
+        onSnapshotRequiredRef.current?.();
+      } finally {
+        replayInFlightRef.current = false;
+      }
+    },
+    [acceptCommittedEvent, canvasId],
+  );
+
+  useEffect(() => {
+    replayCommittedEventsRef.current = replayCommittedEvents;
+  }, [replayCommittedEvents]);
 
   // Connect to WebSocket server with reconnect/backoff
   useEffect(() => {
@@ -161,6 +262,7 @@ export function useCollaboration(
         reconnectAttemptsRef.current = 0;
         setConnected(true);
         setStatus("connected");
+        void replayCommittedEvents(lastCursorRef.current);
       };
 
       ws.onmessage = async (event) => {
@@ -223,7 +325,15 @@ export function useCollaboration(
       setUsers([]);
       setCursors([]);
     };
-  }, [canvasId, userId, email, name, enabled, handleMessage]);
+  }, [
+    canvasId,
+    userId,
+    email,
+    name,
+    enabled,
+    handleMessage,
+    replayCommittedEvents,
+  ]);
 
   // Update cursor position
   const updateCursor = useCallback((x: number, y: number) => {
@@ -256,4 +366,25 @@ export function useCollaboration(
     updateCursor,
     broadcastMessage,
   };
+}
+
+function isCommittedCanvasItemEvent(
+  value: unknown,
+): value is CommittedCanvasItemEvent {
+  if (!value || typeof value !== "object") return false;
+  const event = value as Record<string, unknown>;
+  const entity = event.entity;
+  if (!entity || typeof entity !== "object") return false;
+  const entityRecord = entity as Record<string, unknown>;
+  return (
+    event.schemaVersion === 1 &&
+    typeof event.cursor === "string" &&
+    /^\d+$/.test(event.cursor) &&
+    ["created", "updated", "deleted"].includes(String(event.operation)) &&
+    entityRecord.type === "canvas-item" &&
+    typeof entityRecord.id === "string" &&
+    typeof entityRecord.version === "number" &&
+    Number.isInteger(entityRecord.version) &&
+    entityRecord.version > 0
+  );
 }

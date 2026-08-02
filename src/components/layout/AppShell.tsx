@@ -31,7 +31,6 @@ import {
   Search as SearchIcon,
   DashboardOutlined as DashboardIcon,
   FolderOutlined as WorkspacesIcon,
-  ExploreOutlined as TemplatesIcon,
   PeopleAltOutlined as SharedIcon,
   NotificationsNoneOutlined as NotificationsIcon,
   SettingsOutlined as SettingsIcon,
@@ -47,7 +46,6 @@ const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
   { label: "Shared with me", href: "/shared", icon: SharedIcon },
   { label: "Workspaces", href: "/workspaces", icon: WorkspacesIcon },
-  { label: "Templates", href: "/templates", icon: TemplatesIcon },
   { label: "Trash", href: "/trash", icon: TrashIcon },
 ];
 

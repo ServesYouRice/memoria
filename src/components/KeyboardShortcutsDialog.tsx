@@ -3,9 +3,9 @@
  * Display all keyboard shortcuts in the app
  */
 
-'use client';
+"use client";
 
-import React from 'react';
+import React from "react";
 import {
   Dialog,
   DialogTitle,
@@ -15,8 +15,8 @@ import {
   Box,
   Chip,
   Divider,
-} from '@mui/material';
-import { Close } from '@mui/icons-material';
+} from "@mui/material";
+import { Close } from "@mui/icons-material";
 
 export interface KeyboardShortcutsDialogProps {
   open: boolean;
@@ -35,45 +35,46 @@ interface ShortcutCategory {
 
 const shortcuts: ShortcutCategory[] = [
   {
-    title: 'Canvas Navigation',
+    title: "Canvas Navigation",
     shortcuts: [
-      { keys: ['Space', '+', 'Drag'], description: 'Pan canvas' },
-      { keys: ['Scroll'], description: 'Zoom in/out' },
-      { keys: ['Ctrl/Cmd', '+', '0'], description: 'Reset zoom' },
+      { keys: ["Space", "+", "Drag"], description: "Pan canvas" },
+      { keys: ["Scroll"], description: "Zoom in/out" },
+      { keys: ["Ctrl/Cmd", "+", "0"], description: "Reset zoom" },
     ],
   },
   {
-    title: 'Canvas Actions',
+    title: "Canvas Actions",
     shortcuts: [
-      { keys: ['Ctrl/Cmd', '+', 'Z'], description: 'Undo' },
-      { keys: ['Ctrl/Cmd', '+', 'Y'], description: 'Redo' },
-      { keys: ['Delete'], description: 'Delete selected items' },
-      { keys: ['Ctrl/Cmd', '+', 'A'], description: 'Select all' },
+      { keys: ["Delete"], description: "Delete selected items" },
+      { keys: ["Ctrl/Cmd", "+", "A"], description: "Select all" },
     ],
   },
   {
-    title: 'Comments',
+    title: "Comments",
     shortcuts: [
-      { keys: ['Ctrl/Cmd', '+', 'Enter'], description: 'Submit comment' },
+      { keys: ["Ctrl/Cmd", "+", "Enter"], description: "Submit comment" },
     ],
   },
   {
-    title: 'General',
+    title: "General",
     shortcuts: [
-      { keys: ['?'], description: 'Show keyboard shortcuts' },
-      { keys: ['Esc'], description: 'Close dialogs' },
+      { keys: ["?"], description: "Show keyboard shortcuts" },
+      { keys: ["Esc"], description: "Close dialogs" },
     ],
   },
 ];
 
-export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDialogProps) {
+export function KeyboardShortcutsDialog({
+  open,
+  onClose,
+}: KeyboardShortcutsDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         Keyboard Shortcuts
         <IconButton
           onClick={onClose}
-          sx={{ position: 'absolute', right: 8, top: 8 }}
+          sx={{ position: "absolute", right: 8, top: 8 }}
           aria-label="Close"
         >
           <Close />
@@ -82,7 +83,10 @@ export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDial
 
       <DialogContent>
         {shortcuts.map((category, idx) => (
-          <Box key={category.title} sx={{ mb: idx < shortcuts.length - 1 ? 3 : 0 }}>
+          <Box
+            key={category.title}
+            sx={{ mb: idx < shortcuts.length - 1 ? 3 : 0 }}
+          >
             <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
               {category.title}
             </Typography>
@@ -90,30 +94,30 @@ export function KeyboardShortcutsDialog({ open, onClose }: KeyboardShortcutsDial
               <Box
                 key={sIdx}
                 sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                   py: 1,
                   borderBottom: sIdx < category.shortcuts.length - 1 ? 1 : 0,
-                  borderColor: 'divider',
+                  borderColor: "divider",
                 }}
               >
                 <Typography variant="body2">{shortcut.description}</Typography>
-                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <Box sx={{ display: "flex", gap: 0.5 }}>
                   {shortcut.keys.map((key, kIdx) => (
                     <React.Fragment key={kIdx}>
                       {kIdx > 0 && (
                         <Typography variant="body2" sx={{ mx: 0.5 }}>
-                          {key === '+' ? '+' : ''}
+                          {key === "+" ? "+" : ""}
                         </Typography>
                       )}
-                      {key !== '+' && (
+                      {key !== "+" && (
                         <Chip
                           label={key}
                           size="small"
                           sx={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
+                            fontFamily: "monospace",
+                            fontSize: "0.75rem",
                             height: 24,
                           }}
                         />

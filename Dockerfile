@@ -1,12 +1,14 @@
-FROM node:26.5.0-alpine AS build
+FROM node:26.5.0-alpine AS source
 
 WORKDIR /app
-RUN corepack enable
+RUN npm install --global pnpm@11.13.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+
+FROM source AS build
 
 # Hermetic, non-secret values used only while compiling route modules. Runtime
 # configuration is injected by Compose and is not copied from this stage.
@@ -27,13 +29,15 @@ ENV NODE_ENV=production \
     S3_ACCESS_KEY_ID=build \
     S3_SECRET_ACCESS_KEY=build-secret
 
-RUN pnpm db:generate && pnpm build && pnpm prune --prod
+RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts
 
 FROM node:26.5.0-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
-RUN corepack enable && addgroup -S memoria && adduser -S memoria -G memoria
+RUN npm install --global pnpm@11.13.0 \
+  && addgroup -S memoria \
+  && adduser -S memoria -G memoria
 
 COPY --from=build --chown=memoria:memoria /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build --chown=memoria:memoria /app/node_modules ./node_modules

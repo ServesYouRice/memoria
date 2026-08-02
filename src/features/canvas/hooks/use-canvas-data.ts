@@ -142,7 +142,13 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     const timeoutId = window.setTimeout(() => {
       updateCanvas({
         canvasId,
-        data: { zoomLevel: zoom, panX: position.x, panY: position.y },
+        data: {
+          defaultViewport: {
+            zoomLevel: zoom,
+            panX: position.x,
+            panY: position.y,
+          },
+        },
       }).catch((error) => {
         setCanvasLoadError(
           error instanceof Error
