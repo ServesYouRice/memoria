@@ -30,7 +30,7 @@ export interface PasswordStrengthResult {
  */
 export async function validatePasswordStrength(
   password: string,
-  userInputs: string[] = []
+  userInputs: string[] = [],
 ): Promise<PasswordStrengthResult> {
   if (password.length < PASSWORD_MIN_LENGTH) {
     return {
@@ -43,13 +43,13 @@ export async function validatePasswordStrength(
     };
   }
 
-  const { default: zxcvbn } = await import('zxcvbn');
+  const { default: zxcvbn } = await import("zxcvbn");
   const result = zxcvbn(password, userInputs);
 
   return {
     score: result.score,
     feedback: {
-      warning: result.feedback.warning || '',
+      warning: result.feedback.warning || "",
       suggestions: result.feedback.suggestions || [],
     },
     isValid: result.score >= PASSWORD_MIN_SCORE,

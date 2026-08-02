@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { withApiHandler } from "@/lib/api/route-handler";

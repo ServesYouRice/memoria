@@ -17,7 +17,7 @@ import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import LinkIcon from "@mui/icons-material/Link";
 import RestoreIcon from "@mui/icons-material/Restore";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import {
@@ -124,24 +124,49 @@ export function AgentControlCenter() {
       <Stack
         direction={{ xs: "column", lg: "row" }}
         spacing={2}
-        justifyContent="space-between"
-        alignItems={{ xs: "flex-start", lg: "center" }}
-        sx={{ mb: 3 }}
+        sx={{
+          justifyContent: "space-between",
+          alignItems: { xs: "flex-start", lg: "center" },
+          mb: 3,
+        }}
       >
         <Box>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: "center",
+              mb: 1,
+            }}
+          >
             <SmartToyIcon color="primary" />
-            <Typography variant="h6" fontWeight={700}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Agent control center
             </Typography>
           </Stack>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+            }}
+          >
             Review agent profiles, configured BYOK providers, external
             integrations, pending suggestions, and audited changes before or
             after the organizer layer touches anything.
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            flexWrap: "wrap",
+          }}
+        >
           <Chip
             label={`${agentProfiles.length} agents`}
             color="primary"
@@ -180,11 +205,18 @@ export function AgentControlCenter() {
           <Stack
             direction="row"
             spacing={1}
-            alignItems="center"
-            sx={{ mb: 1.5 }}
+            sx={{
+              alignItems: "center",
+              mb: 1.5,
+            }}
           >
             <SmartToyIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight={700}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Agent profiles
             </Typography>
           </Stack>
@@ -202,10 +234,17 @@ export function AgentControlCenter() {
                     <Stack
                       direction="row"
                       spacing={1}
-                      alignItems="center"
-                      justifyContent="space-between"
+                      sx={{
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
                     >
-                      <Typography variant="subtitle2" fontWeight={700}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 700,
+                        }}
+                      >
                         {profile.name}
                       </Typography>
                       <Chip
@@ -214,11 +253,21 @@ export function AgentControlCenter() {
                         variant="outlined"
                       />
                     </Stack>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       Max rung {profile.maxCapabilityRung} · enabled{" "}
                       {profile.enabledRungs.join(", ")}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {profile.integrationAccounts.length} integration
                       account(s)
                     </Typography>
@@ -233,11 +282,18 @@ export function AgentControlCenter() {
           <Stack
             direction="row"
             spacing={1}
-            alignItems="center"
-            sx={{ mb: 1.5 }}
+            sx={{
+              alignItems: "center",
+              mb: 1.5,
+            }}
           >
             <VpnKeyIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight={700}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Provider credentials
             </Typography>
           </Stack>
@@ -256,10 +312,17 @@ export function AgentControlCenter() {
                     <Stack
                       direction="row"
                       spacing={1}
-                      alignItems="center"
-                      justifyContent="space-between"
+                      sx={{
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
                     >
-                      <Typography variant="subtitle2" fontWeight={700}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 700,
+                        }}
+                      >
                         {slot.label}
                       </Typography>
                       <Chip
@@ -273,7 +336,12 @@ export function AgentControlCenter() {
                         variant="outlined"
                       />
                     </Stack>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {slot.suggestedModels.join(", ")}
                     </Typography>
                   </Stack>
@@ -287,11 +355,18 @@ export function AgentControlCenter() {
           <Stack
             direction="row"
             spacing={1}
-            alignItems="center"
-            sx={{ mb: 1.5 }}
+            sx={{
+              alignItems: "center",
+              mb: 1.5,
+            }}
           >
             <LinkIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight={700}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Integrations
             </Typography>
           </Stack>
@@ -311,10 +386,17 @@ export function AgentControlCenter() {
                     <Stack
                       direction="row"
                       spacing={1}
-                      alignItems="center"
-                      justifyContent="space-between"
+                      sx={{
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
                     >
-                      <Typography variant="subtitle2" fontWeight={700}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 700,
+                        }}
+                      >
                         {integration.providerType}
                       </Typography>
                       <Chip
@@ -323,10 +405,20 @@ export function AgentControlCenter() {
                         variant="outlined"
                       />
                     </Stack>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {integration.externalAccountId}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       Agent{" "}
                       {profilesById.get(integration.agentProfileId)?.name ||
                         integration.agentProfileId}
@@ -350,15 +442,28 @@ export function AgentControlCenter() {
           <Stack
             direction="row"
             spacing={1}
-            alignItems="center"
-            sx={{ mb: 1.5 }}
+            sx={{
+              alignItems: "center",
+              mb: 1.5,
+            }}
           >
             <PendingActionsIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight={700}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Suggestion queue
             </Typography>
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2,
+            }}
+          >
             Approve or reject low-risk proposals first. Execution is separated
             so higher-risk actions still need an explicit second step.
           </Typography>
@@ -379,14 +484,18 @@ export function AgentControlCenter() {
                     <Stack
                       direction="row"
                       spacing={1}
-                      justifyContent="space-between"
-                      alignItems="center"
+                      sx={{
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
                     >
                       <Stack
                         direction="row"
                         spacing={1}
-                        alignItems="center"
-                        flexWrap="wrap"
+                        sx={{
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}
                       >
                         <Chip
                           label={suggestion.status.toLowerCase()}
@@ -402,14 +511,29 @@ export function AgentControlCenter() {
                           variant="outlined"
                         />
                       </Stack>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                        }}
+                      >
                         {new Date(suggestion.createdAt).toLocaleString()}
                       </Typography>
                     </Stack>
-                    <Typography variant="subtitle2" fontWeight={700}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 700,
+                      }}
+                    >
                       {suggestion.summary}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       Agent{" "}
                       {suggestion.agentProfileId
                         ? profilesById.get(suggestion.agentProfileId)?.name ||
@@ -484,15 +608,28 @@ export function AgentControlCenter() {
           <Stack
             direction="row"
             spacing={1}
-            alignItems="center"
-            sx={{ mb: 1.5 }}
+            sx={{
+              alignItems: "center",
+              mb: 1.5,
+            }}
           >
             <RestoreIcon color="primary" />
-            <Typography variant="subtitle1" fontWeight={700}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Rollback and history
             </Typography>
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2,
+            }}
+          >
             Reverts are change-set driven. If an agent write goes wrong, roll
             back the whole audited change set instead of trying to patch over
             partial state by hand.
@@ -513,8 +650,10 @@ export function AgentControlCenter() {
                     <Stack
                       direction="row"
                       spacing={1}
-                      justifyContent="space-between"
-                      alignItems="center"
+                      sx={{
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
                     >
                       <Chip
                         label={changeSet.status.toLowerCase()}
@@ -522,14 +661,29 @@ export function AgentControlCenter() {
                         color={getChangeSetColor(changeSet.status)}
                         variant="outlined"
                       />
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                        }}
+                      >
                         {new Date(changeSet.startedAt).toLocaleString()}
                       </Typography>
                     </Stack>
-                    <Typography variant="subtitle2" fontWeight={700}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 700,
+                      }}
+                    >
                       {changeSet.summary}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {changeSet.changeRecords.length} change record(s) · scope{" "}
                       {changeSet.scopeType}
                     </Typography>

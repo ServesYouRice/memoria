@@ -103,7 +103,12 @@ export function VersionHistoryDialog({
             <Alert severity="error">Failed to load versions</Alert>
           ) : versions.length === 0 ? (
             <Box sx={{ textAlign: "center", py: 4 }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
                 No versions saved yet
               </Typography>
             </Box>

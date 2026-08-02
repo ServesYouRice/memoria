@@ -1,6 +1,6 @@
-import { auth } from '@/lib/auth';
-import { Problems, problemToResponse } from '@/lib/errors';
-import { prisma } from '@/lib/db';
+import { auth } from "@/lib/auth";
+import { Problems, problemToResponse } from "@/lib/errors";
+import { prisma } from "@/lib/db";
 
 /**
  * Get the current authenticated user
@@ -18,7 +18,7 @@ export async function getCurrentUser() {
 export async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) {
-    throw new Error('Unauthorized');
+    throw new Error("Unauthorized");
   }
   return user;
 }
@@ -36,11 +36,11 @@ export async function requireCanvasOwnership(canvasId: string) {
   });
 
   if (!canvas) {
-    throw new Error('Canvas not found');
+    throw new Error("Canvas not found");
   }
 
   if (canvas.userId !== user.id) {
-    throw new Error('Forbidden');
+    throw new Error("Forbidden");
   }
 
   return canvas;
@@ -62,11 +62,11 @@ export async function requireCanvasItemOwnership(itemId: string) {
   });
 
   if (!item) {
-    throw new Error('Canvas item not found');
+    throw new Error("Canvas item not found");
   }
 
   if (item.canvas.userId !== user.id) {
-    throw new Error('Forbidden');
+    throw new Error("Forbidden");
   }
 
   return item;
@@ -76,7 +76,9 @@ export async function requireCanvasItemOwnership(itemId: string) {
  * Middleware wrapper for API routes that require authentication
  */
 export function withAuth<T>(
-  handler: (user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>) => Promise<T>
+  handler: (
+    user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>,
+  ) => Promise<T>,
 ) {
   return async (): Promise<T> => {
     const user = await requireAuth();
@@ -89,13 +91,13 @@ export function withAuth<T>(
  */
 export function handleAuthError(error: unknown): Response {
   if (error instanceof Error) {
-    if (error.message === 'Unauthorized') {
+    if (error.message === "Unauthorized") {
       return problemToResponse(Problems.Unauthorized());
     }
-    if (error.message === 'Forbidden') {
+    if (error.message === "Forbidden") {
       return problemToResponse(Problems.Forbidden());
     }
-    if (error.message.includes('not found')) {
+    if (error.message.includes("not found")) {
       return problemToResponse(Problems.NotFound(error.message));
     }
   }

@@ -73,7 +73,13 @@ export function AuthLayout({
           <Box sx={{ width: 88, mx: "auto", mb: 4 }}>
             <MemoriaLogo size={88} />
           </Box>
-          <Typography variant="h3" fontWeight={700} gutterBottom>
+          <Typography
+            variant="h3"
+            gutterBottom
+            sx={{
+              fontWeight: 700,
+            }}
+          >
             {headline}
           </Typography>
           <Typography
@@ -112,8 +118,10 @@ export function AuthLayout({
             <Stack
               direction="row"
               spacing={1}
-              justifyContent="center"
-              sx={{ mt: 4 }}
+              sx={{
+                justifyContent: "center",
+                mt: 4,
+              }}
             >
               <Button component={Link} href="/privacy" size="small">
                 Privacy

@@ -14,7 +14,7 @@ import {
   ListItemText,
   Paper,
 } from "@mui/material";
-import { DeleteOutline, Restore } from "@mui/icons-material";
+import { DeleteOutlined, Restore } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -87,7 +87,7 @@ export function TrashContent() {
       )}
       {!query.isLoading && !query.error && items.length === 0 && (
         <EmptyState
-          icon={DeleteOutline}
+          icon={DeleteOutlined}
           title="Trash is empty"
           description="Deleted canvas items will appear here."
         />

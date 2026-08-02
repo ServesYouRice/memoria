@@ -84,7 +84,10 @@ export interface RateLimitStore {
    * Increment counter for key
    * Returns current count and TTL
    */
-  increment(key: string, windowSeconds: number): Promise<{ count: number; ttl: number }>;
+  increment(
+    key: string,
+    windowSeconds: number,
+  ): Promise<{ count: number; ttl: number }>;
 
   /**
    * Get current count for key

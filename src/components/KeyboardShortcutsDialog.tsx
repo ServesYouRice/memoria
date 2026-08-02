@@ -87,7 +87,13 @@ export function KeyboardShortcutsDialog({
             key={category.title}
             sx={{ mb: idx < shortcuts.length - 1 ? 3 : 0 }}
           >
-            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+            <Typography
+              variant="subtitle1"
+              gutterBottom
+              sx={{
+                fontWeight: "bold",
+              }}
+            >
               {category.title}
             </Typography>
             {category.shortcuts.map((shortcut, sIdx) => (

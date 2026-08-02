@@ -43,7 +43,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   const parseResult = registerSchema.safeParse(body);
 
   if (!parseResult.success) {
-    const errors: ValidationErrorDetail[] = parseResult.error.errors.map(
+    const errors: ValidationErrorDetail[] = parseResult.error.issues.map(
       (err) => ({
         field: err.path.join("."),
         message: err.message,

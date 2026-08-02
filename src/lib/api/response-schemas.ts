@@ -1,4 +1,4 @@
-import { ItemType } from "@prisma/client";
+import { ItemType } from "@/generated/prisma/client";
 import { z } from "zod";
 
 export const canvasItemResponseSchema = z

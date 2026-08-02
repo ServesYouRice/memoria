@@ -55,8 +55,13 @@ export default function Error({
 
           <Typography
             variant="body1"
-            color="text.secondary"
-            sx={{ mb: 2, maxWidth: 400, mx: "auto", lineHeight: 1.7 }}
+            sx={{
+              color: "text.secondary",
+              mb: 2,
+              maxWidth: 400,
+              mx: "auto",
+              lineHeight: 1.7,
+            }}
           >
             We encountered an unexpected error. Any changes that had not
             finished saving may not have been stored. Please try again or return
@@ -66,8 +71,12 @@ export default function Error({
           {error.digest && (
             <Typography
               variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 4, fontFamily: "monospace" }}
+              sx={{
+                color: "text.secondary",
+                display: "block",
+                mb: 4,
+                fontFamily: "monospace",
+              }}
             >
               Error ID: {error.digest}
             </Typography>

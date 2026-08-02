@@ -5,4 +5,4 @@
  * It re-exports the authConfig from the main auth configuration.
  */
 
-export { authConfig as authOptions } from './auth';
+export { authConfig as authOptions } from "./auth";

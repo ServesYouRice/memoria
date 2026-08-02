@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { runIdempotent, withApiHandler } from "@/lib/api/route-handler";

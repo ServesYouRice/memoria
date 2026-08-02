@@ -1,4 +1,4 @@
-import { ItemType } from "@prisma/client";
+import { ItemType } from "@/generated/prisma/client";
 import { ApiError } from "@/lib/errors";
 
 export function requirePollsEnabled(type: string): void {

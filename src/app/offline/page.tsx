@@ -13,7 +13,12 @@ export default function OfflinePage() {
           <Typography component="h1" variant="h4" gutterBottom>
             You’re offline
           </Typography>
-          <Typography color="text.secondary" sx={{ mb: 3 }}>
+          <Typography
+            sx={{
+              color: "text.secondary",
+              mb: 3,
+            }}
+          >
             Memoria keeps private canvases on the network path, so personal data
             is never served from a shared browser cache. Reconnect to continue.
           </Typography>

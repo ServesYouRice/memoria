@@ -2,7 +2,7 @@ import {
   UploadAssetStatus,
   type Prisma,
   type PrismaClient,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 import { ApiError } from "@/lib/errors";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 

@@ -92,7 +92,12 @@ export default async function Home() {
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <MemoriaLogo size={34} />
-            <Typography variant="h6" fontWeight={700}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Memoria
             </Typography>
           </Box>
@@ -165,8 +170,8 @@ export default async function Home() {
           </Typography>
           <Typography
             variant="h6"
-            color="text.secondary"
             sx={{
+              color: "text.secondary",
               fontWeight: 400,
               lineHeight: 1.6,
               maxWidth: 560,
@@ -181,7 +186,9 @@ export default async function Home() {
           <Stack
             direction={{ xs: "column", sm: "row" }}
             spacing={2}
-            justifyContent="center"
+            sx={{
+              justifyContent: "center",
+            }}
           >
             <Button href="/auth/register" variant="contained" size="large">
               Get started free
@@ -190,7 +197,13 @@ export default async function Home() {
               Sign in
             </Button>
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2.5 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mt: 2.5,
+            }}
+          >
             No credit card required • Free forever
           </Typography>
 
@@ -212,8 +225,10 @@ export default async function Home() {
             <Stack
               direction="row"
               spacing={2}
-              justifyContent="center"
-              sx={{ mb: 2.5 }}
+              sx={{
+                justifyContent: "center",
+                mb: 2.5,
+              }}
             >
               {[CanvasIcon, BookmarkIcon].map((Icon, i) => (
                 <Box
@@ -233,10 +248,20 @@ export default async function Home() {
                 </Box>
               ))}
             </Stack>
-            <Typography variant="h6" fontWeight={600}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 600,
+              }}
+            >
               Everything in one place
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               Sticky notes, bookmarks, images, and rich text — arranged your
               way.
             </Typography>
@@ -255,8 +280,12 @@ export default async function Home() {
           </Typography>
           <Typography
             variant="h6"
-            color="text.secondary"
-            sx={{ fontWeight: 400, maxWidth: 600, mx: "auto" }}
+            sx={{
+              color: "text.secondary",
+              fontWeight: 400,
+              maxWidth: 600,
+              mx: "auto",
+            }}
           >
             Powerful features to capture, organize, and collaborate on your
             ideas
@@ -294,13 +323,21 @@ export default async function Home() {
                 >
                   <feature.icon sx={{ fontSize: 26, color: "primary.main" }} />
                 </Box>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
                   {feature.title}
                 </Typography>
                 <Typography
                   variant="body2"
-                  color="text.secondary"
-                  sx={{ lineHeight: 1.7 }}
+                  sx={{
+                    color: "text.secondary",
+                    lineHeight: 1.7,
+                  }}
                 >
                   {feature.description}
                 </Typography>
@@ -362,10 +399,20 @@ export default async function Home() {
           }}
         >
           <Box>
-            <Typography variant="subtitle1" fontWeight={700}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Memoria
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               A modern, secure, and fast note-taking application.
             </Typography>
           </Box>
@@ -373,8 +420,10 @@ export default async function Home() {
             direction="row"
             spacing={1}
             useFlexGap
-            flexWrap="wrap"
-            alignItems="center"
+            sx={{
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
           >
             <Button href="/help" size="small">
               Help
@@ -388,7 +437,12 @@ export default async function Home() {
             <Button href="/terms" size="small">
               Terms
             </Button>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               © {new Date().getFullYear()} Memoria.
             </Typography>
           </Stack>

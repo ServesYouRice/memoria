@@ -1,4 +1,8 @@
-import { ItemType, type Prisma, type PrismaClient } from "@prisma/client";
+import {
+  ItemType,
+  type Prisma,
+  type PrismaClient,
+} from "@/generated/prisma/client";
 import { z } from "zod";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { safeFetch } from "@/lib/utils/ssrf-protection";

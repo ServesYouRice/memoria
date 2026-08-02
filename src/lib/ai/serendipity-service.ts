@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { type CanvasItem, Prisma } from "@prisma/client";
+import { type CanvasItem, Prisma } from "@/generated/prisma/client";
 
 export interface SerendipityResult {
   item: CanvasItem;

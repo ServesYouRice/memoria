@@ -1073,18 +1073,30 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             >
               <SpeedDialAction
                 icon={<NoteAdd />}
-                tooltipTitle="Note"
                 onClick={() => setNoteDialogOpen(true)}
+                slotProps={{
+                  tooltip: {
+                    title: "Note",
+                  },
+                }}
               />
               <SpeedDialAction
                 icon={<Bookmark />}
-                tooltipTitle="Bookmark"
                 onClick={() => setBookmarkDialogOpen(true)}
+                slotProps={{
+                  tooltip: {
+                    title: "Bookmark",
+                  },
+                }}
               />
               <SpeedDialAction
                 icon={<ImageIcon />}
-                tooltipTitle="Image"
                 onClick={() => setImageDialogOpen(true)}
+                slotProps={{
+                  tooltip: {
+                    title: "Image",
+                  },
+                }}
               />
             </SpeedDial>
           )}

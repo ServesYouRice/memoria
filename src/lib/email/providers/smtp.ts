@@ -8,14 +8,18 @@
  * 3. Configure SMTP settings in environment variables
  */
 
-import { logger } from '@/lib/logger';
-import type { EmailService, SendEmailOptions, EmailServiceConfig } from '../types';
+import { logger } from "@/lib/logger";
+import type {
+  EmailService,
+  SendEmailOptions,
+  EmailServiceConfig,
+} from "../types";
 
 export class SMTPEmailProvider implements EmailService {
-  private config: NonNullable<EmailServiceConfig['smtp']>;
+  private config: NonNullable<EmailServiceConfig["smtp"]>;
   // private transporter: any; // nodemailer.Transporter
 
-  constructor(config: NonNullable<EmailServiceConfig['smtp']>) {
+  constructor(config: NonNullable<EmailServiceConfig["smtp"]>) {
     this.config = config;
 
     // Uncomment when nodemailer is installed:
@@ -32,7 +36,10 @@ export class SMTPEmailProvider implements EmailService {
   }
 
   async send(options: SendEmailOptions): Promise<void> {
-    logger.info({ to: options.to, subject: options.subject }, 'Sending email via SMTP');
+    logger.info(
+      { to: options.to, subject: options.subject },
+      "Sending email via SMTP",
+    );
 
     // Uncomment when nodemailer is installed:
     // const mailOptions = {
@@ -52,7 +59,7 @@ export class SMTPEmailProvider implements EmailService {
 
     // Temporary fallback to console for development
     throw new Error(
-      'SMTP provider requires nodemailer. Install with: pnpm add nodemailer @types/nodemailer'
+      "SMTP provider requires nodemailer. Install with: pnpm add nodemailer @types/nodemailer",
     );
   }
 
@@ -63,23 +70,26 @@ export class SMTPEmailProvider implements EmailService {
       // logger.info('SMTP connection verified');
       // return true;
 
-      logger.warn('SMTP provider not configured (nodemailer not installed)');
+      logger.warn("SMTP provider not configured (nodemailer not installed)");
       return false;
     } catch (error) {
-      logger.error({ error }, 'SMTP verification failed');
+      logger.error({ error }, "SMTP verification failed");
       return false;
     }
   }
 
   private formatAddress(address: { email: string; name?: string }): string {
-    return address.name ? `"${address.name}" <${address.email}>` : address.email;
+    return address.name
+      ? `"${address.name}" <${address.email}>`
+      : address.email;
   }
 
   private formatAddresses(
-    addresses: { email: string; name?: string } | { email: string; name?: string }[]
+    addresses:
+      { email: string; name?: string } | { email: string; name?: string }[],
   ): string {
     if (Array.isArray(addresses)) {
-      return addresses.map(a => this.formatAddress(a)).join(', ');
+      return addresses.map((a) => this.formatAddress(a)).join(", ");
     }
     return this.formatAddress(addresses);
   }

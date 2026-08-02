@@ -181,8 +181,8 @@ export function CommentsPanel({
       anchor="right"
       open={open}
       onClose={onClose}
-      PaperProps={{
-        sx: { width: { xs: "100%", sm: 400 } },
+      slotProps={{
+        paper: { sx: { width: { xs: "100%", sm: 400 } } },
       }}
     >
       <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -199,7 +199,12 @@ export function CommentsPanel({
         >
           <Box>
             <Typography variant="h6">Comments</Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               {itemType === "NOTE" ? "Note" : "Bookmark"}
             </Typography>
           </Box>
@@ -218,7 +223,12 @@ export function CommentsPanel({
             <Alert severity="error">Failed to load comments</Alert>
           ) : comments.length === 0 ? (
             <Box sx={{ textAlign: "center", py: 4 }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
                 No comments yet. Be the first to comment!
               </Typography>
             </Box>
@@ -247,8 +257,10 @@ export function CommentsPanel({
                         </Typography>
                         <Typography
                           variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 1 }}
+                          sx={{
+                            color: "text.secondary",
+                            ml: 1,
+                          }}
                         >
                           {formatDistanceToNow(new Date(comment.createdAt), {
                             addSuffix: true,
@@ -351,8 +363,11 @@ export function CommentsPanel({
             </Box>
             <Typography
               variant="caption"
-              color="text.secondary"
-              sx={{ mt: 0.5, display: "block" }}
+              sx={{
+                color: "text.secondary",
+                mt: 0.5,
+                display: "block",
+              }}
             >
               Cmd/Ctrl + Enter to submit
             </Typography>
@@ -368,7 +383,12 @@ export function CommentsPanel({
               textAlign: "center",
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               Sign in to add comments
             </Typography>
           </Box>
@@ -407,7 +427,7 @@ export function CommentsPanel({
         anchorEl={mentionAnchorEl}
         open={Boolean(mentionAnchorEl)}
         onClose={() => setMentionAnchorEl(null)}
-        PaperProps={{ sx: { maxHeight: 200 } }}
+        slotProps={{ paper: { sx: { maxHeight: 200 } } }}
       >
         {collaborators
           .filter(

@@ -278,7 +278,12 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
               }}
             >
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                <Typography variant="body2" fontWeight={600}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
                   {selectedCanvasIds.size} selected
                 </Typography>
                 {selectedCanvasIds.size > 0 && (

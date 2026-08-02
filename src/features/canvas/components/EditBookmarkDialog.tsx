@@ -4,9 +4,9 @@
  * MUI dialog for editing existing bookmarks on the canvas
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -20,13 +20,13 @@ import {
   Typography,
   Card,
   CardContent,
-} from '@mui/material';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useUpdateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { type CanvasItem, isBookmarkContent } from '@/types/canvas';
-import { TagInput } from './TagInput';
+} from "@mui/material";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { type CanvasItem, isBookmarkContent } from "@/types/canvas";
+import { TagInput } from "./TagInput";
 
 interface EditBookmarkDialogProps {
   open: boolean;
@@ -35,13 +35,21 @@ interface EditBookmarkDialogProps {
 }
 
 const formSchema = z.object({
-  url: z.string().url('Please enter a valid URL'),
+  url: z.string().url("Please enter a valid URL"),
   tags: z.array(z.string()).default([]),
 });
 
-type FormData = z.infer<typeof formSchema>;
+// Zod 4 separates a schema's input and output types: `.default()` makes a
+// field optional on the way in and guaranteed on the way out. React Hook Form
+// needs both, so the form is typed with the input and the resolved output.
+type FormInput = z.input<typeof formSchema>;
+type FormData = z.output<typeof formSchema>;
 
-export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogProps) {
+export function EditBookmarkDialog({
+  open,
+  onClose,
+  item,
+}: EditBookmarkDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [isUnfurling, setIsUnfurling] = useState(false);
   const [metadata, setMetadata] = useState<any>(null);
@@ -53,20 +61,20 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
     reset,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<FormData>({
+  } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      url: '',
+      url: "",
       tags: [],
     },
   });
 
-  const urlValue = watch('url');
+  const urlValue = watch("url");
 
   useEffect(() => {
     if (item && isBookmarkContent(item.content)) {
       reset({
-        url: item.content.url || '',
+        url: item.content.url || "",
         tags: item.tags || [],
       });
       // Set initial metadata from existing content
@@ -89,7 +97,7 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
 
   const handleUnfurl = async () => {
     if (!urlValue) {
-      setError('Please enter a URL first');
+      setError("Please enter a URL first");
       return;
     }
 
@@ -97,21 +105,21 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
       setError(null);
       setIsUnfurling(true);
 
-      const response = await fetch('/api/v1/unfurl', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/v1/unfurl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: urlValue }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || 'Failed to fetch preview');
+        throw new Error(errorData.error?.message || "Failed to fetch preview");
       }
 
       const data = await response.json();
       setMetadata(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch preview');
+      setError(err instanceof Error ? err.message : "Failed to fetch preview");
     } finally {
       setIsUnfurling(false);
     }
@@ -145,7 +153,9 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
 
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update bookmark');
+      setError(
+        err instanceof Error ? err.message : "Failed to update bookmark",
+      );
     }
   };
 
@@ -158,9 +168,15 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
       <DialogTitle>Edit Bookmark</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              Update the bookmark URL and tags. You can re-fetch metadata if the URL has changed.
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
+              Update the bookmark URL and tags. You can re-fetch metadata if the
+              URL has changed.
             </Typography>
 
             <Box>
@@ -187,7 +203,7 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
                 sx={{ mt: 1 }}
                 startIcon={isUnfurling ? <CircularProgress size={16} /> : null}
               >
-                {isUnfurling ? 'Fetching...' : 'Re-fetch Metadata'}
+                {isUnfurling ? "Fetching..." : "Re-fetch Metadata"}
               </Button>
             </Box>
 
@@ -198,17 +214,34 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
                     Preview
                   </Typography>
                   {metadata.title && (
-                    <Typography variant="body1" fontWeight="bold" gutterBottom>
+                    <Typography
+                      variant="body1"
+                      gutterBottom
+                      sx={{
+                        fontWeight: "bold",
+                      }}
+                    >
                       {metadata.title}
                     </Typography>
                   )}
                   {metadata.description && (
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                    <Typography
+                      variant="body2"
+                      gutterBottom
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {metadata.description}
                     </Typography>
                   )}
                   {metadata.siteName && (
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {metadata.siteName}
                     </Typography>
                   )}
@@ -246,7 +279,7 @@ export function EditBookmarkDialog({ open, onClose, item }: EditBookmarkDialogPr
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? 'Saving...' : 'Save Changes'}
+            {isSubmitting ? "Saving..." : "Save Changes"}
           </Button>
         </DialogActions>
       </form>

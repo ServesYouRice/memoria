@@ -11,7 +11,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { ItemType, Prisma } from "@prisma/client";
+import { ItemType, Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { ConflictError, errorResponse } from "@/lib/errors";
@@ -24,7 +24,7 @@ import {
   viewportPaginationSchema,
   type ViewportPaginationInput,
 } from "@/lib/validation/canvas-item";
-import type { CanvasItem } from "@prisma/client";
+import type { CanvasItem } from "@/generated/prisma/client";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { requirePollsEnabled } from "@/lib/polls/availability";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";

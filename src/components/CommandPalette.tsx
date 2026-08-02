@@ -77,11 +77,13 @@ export function CommandPalette({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{
-        sx: {
-          overflow: "hidden",
-          borderRadius: 2,
-          boxShadow: 24,
+      slotProps={{
+        paper: {
+          sx: {
+            overflow: "hidden",
+            borderRadius: 2,
+            boxShadow: 24,
+          },
         },
       }}
     >

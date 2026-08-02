@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { SuggestionKind } from "@prisma/client";
+import { SuggestionKind } from "@/generated/prisma/client";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { resolveAgentRequestContext } from "@/lib/agents/auth";
 import { assertAgentCapability, assertCanvasScope } from "@/lib/agents/policy";

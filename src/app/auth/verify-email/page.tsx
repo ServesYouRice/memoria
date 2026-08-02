@@ -134,10 +134,22 @@ function VerifyEmailContent() {
               <CheckCircle
                 sx={{ fontSize: 80, color: "success.main", mb: 2 }}
               />
-              <Typography variant="h4" gutterBottom fontWeight={600}>
+              <Typography
+                variant="h4"
+                gutterBottom
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
                 Email verified
               </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              <Typography
+                variant="body1"
+                sx={{
+                  color: "text.secondary",
+                  mb: 3,
+                }}
+              >
                 Your email is verified. Taking you to sign in…
               </Typography>
               <Button
@@ -154,8 +166,10 @@ function VerifyEmailContent() {
               <Typography
                 variant="h4"
                 gutterBottom
-                fontWeight={600}
                 color="error"
+                sx={{
+                  fontWeight: 600,
+                }}
               >
                 Verification unavailable
               </Typography>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createItemSchema, updateItemSchema } from "@/lib/validation";
-import { ItemType } from "@prisma/client";
+import { ItemType } from "@/generated/prisma/client";
 
 describe("Item Validation Schemas", () => {
   describe("createItemSchema", () => {

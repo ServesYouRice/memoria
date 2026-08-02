@@ -82,7 +82,12 @@ export function SetupForm({ needsToken }: SetupFormProps) {
     >
       <Stack spacing={2}>
         <Typography variant="h4">Initial Setup</Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+          }}
+        >
           Create the first owner account, the default Personal workspace, and
           the Inbox canvas.
         </Typography>

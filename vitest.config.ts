@@ -13,6 +13,17 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
+    // The @mui/icons-material barrel resolves to one module per icon. Left
+    // unbundled it opens thousands of files at once and trips EMFILE on
+    // Windows, so pre-bundle it into a single dependency chunk.
+    deps: {
+      optimizer: {
+        client: {
+          enabled: true,
+          include: ["@mui/icons-material"],
+        },
+      },
+    },
     exclude: [
       "**/node_modules/**",
       "**/.pnpm/**",

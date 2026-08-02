@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { ItemType } from "@prisma/client";
+import { ItemType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { InternalServerError, UnauthorizedError } from "@/lib/errors";

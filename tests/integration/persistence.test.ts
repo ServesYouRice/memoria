@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import {
   claimOutboxJobs,
@@ -25,7 +26,7 @@ import {
 } from "@/lib/retention/outbox-handler";
 
 const prisma = new PrismaClient({
-  datasources: { db: { url: process.env.TEST_DATABASE_URL } },
+  adapter: new PrismaPg({ connectionString: process.env.TEST_DATABASE_URL }),
 });
 
 beforeEach(async () => {

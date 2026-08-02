@@ -84,9 +84,14 @@ function SettingsSection({
     >
       <Typography
         variant="h6"
-        fontWeight={600}
         color={danger ? "error" : undefined}
-        sx={{ mb: 2.5, display: "flex", alignItems: "center", gap: 1 }}
+        sx={{
+          fontWeight: 600,
+          mb: 2.5,
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+        }}
       >
         {icon} {title}
       </Typography>
@@ -260,10 +265,22 @@ export function SettingsContent({ user }: SettingsContentProps) {
               {getInitials(user.name, user.email)}
             </Avatar>
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="subtitle1" fontWeight={600} noWrap>
+              <Typography
+                variant="subtitle1"
+                noWrap
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
                 {user.name || "User"}
               </Typography>
-              <Typography variant="body2" color="text.secondary" noWrap>
+              <Typography
+                variant="body2"
+                noWrap
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
                 {user.email}
               </Typography>
             </Box>
@@ -386,7 +403,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
               <Switch
                 checked={mode === "dark"}
                 onChange={toggleTheme}
-                inputProps={{ "aria-label": "Toggle dark mode" }}
+                slotProps={{ input: { "aria-label": "Toggle dark mode" } }}
               />
             </ListItem>
           </List>
@@ -416,7 +433,12 @@ export function SettingsContent({ user }: SettingsContentProps) {
                   bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
                 }}
               >
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "text.secondary",
+                  }}
+                >
                   {shortcut.description}
                 </Typography>
                 <Box sx={{ display: "flex", gap: 0.5 }}>
@@ -462,10 +484,20 @@ export function SettingsContent({ user }: SettingsContentProps) {
             }}
           >
             <Box>
-              <Typography variant="subtitle1" fontWeight={600}>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 600,
+                }}
+              >
                 API keys
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
                 Manage API keys for external access and extensions
               </Typography>
             </Box>
@@ -479,7 +511,13 @@ export function SettingsContent({ user }: SettingsContentProps) {
           icon={<DownloadIcon color="primary" />}
           title="Your data"
         >
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2,
+            }}
+          >
             Download a JSON copy of your profile, workspaces, canvases, items,
             and sharing settings.
           </Typography>
@@ -495,7 +533,13 @@ export function SettingsContent({ user }: SettingsContentProps) {
 
         {/* Danger zone */}
         <SettingsSection icon={<DeleteIcon />} title="Danger zone" danger>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 3,
+            }}
+          >
             Once you delete your account, there is no going back. All your
             canvases, notes, and data will be permanently deleted.
           </Typography>

@@ -8,23 +8,23 @@
  * where HTML rendering is not supported
  */
 export function stripHtmlTags(html: string): string {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     // Server-side: use a simple regex approach
     return html
-      .replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
+      .replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
       .trim();
   }
 
   // Client-side: use DOM parser for better accuracy
-  const temp = document.createElement('div');
+  const temp = document.createElement("div");
   temp.innerHTML = html;
-  return temp.textContent || temp.innerText || '';
+  return temp.textContent || temp.innerText || "";
 }
 
 /**
@@ -34,7 +34,7 @@ export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) {
     return text;
   }
-  return text.substring(0, maxLength - 3) + '...';
+  return text.substring(0, maxLength - 3) + "...";
 }
 
 /**

@@ -3,8 +3,8 @@ import {
   AgentActionKind,
   AgentActionStatus,
   IntegrationProviderType,
-} from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+} from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { AGENT_CAPABILITY_RUNGS } from "@/lib/agents/constants";
 import { decryptSecret } from "@/lib/agents/crypto";

@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const validation = createCommentSchema.safeParse(body);
     if (!validation.success) {
       throw new ValidationError(
-        validation.error.errors[0]?.message || "Validation error",
+        validation.error.issues[0]?.message || "Validation error",
       );
     }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { OutboxJobStatus } from "@prisma/client";
+import { OutboxJobStatus } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { hasInternalOperationsAccess } from "@/lib/operations/internal-auth";

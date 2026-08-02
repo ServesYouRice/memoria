@@ -37,7 +37,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["scripts/**/*.mjs", "prisma/seed.ts"],
+    files: ["scripts/**/*.mjs", "scripts/**/*.ts", "prisma/seed.ts"],
     rules: {
       "no-console": "off",
     },
@@ -51,6 +51,7 @@ export default defineConfig([
     "out/**",
     "playwright-report/**",
     "prisma/migrations/**",
+    "src/generated/**",
     "test-results/**",
   ]),
 ]);

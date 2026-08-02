@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { AgentActionKind } from "@prisma/client";
+import { AgentActionKind } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { withApiHandler } from "@/lib/api/route-handler";

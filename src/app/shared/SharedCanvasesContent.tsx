@@ -1,24 +1,32 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { useRouter } from 'next/navigation';
-import { Alert, Chip } from '@mui/material';
+import React from "react";
+import { useRouter } from "next/navigation";
+import { Alert, Chip } from "@mui/material";
 import {
   PeopleAltOutlined as SharedIcon,
   VisibilityOutlined as ViewIcon,
-  ChatBubbleOutline as CommentIcon,
+  ChatBubbleOutlined as CommentIcon,
   EditOutlined as EditIcon,
-} from '@mui/icons-material';
-import { formatDistanceToNow } from 'date-fns';
-import { useSharedCanvases } from '@/lib/hooks/use-canvases';
-import { CanvasCard, CanvasCardSkeleton, CardGrid } from '@/features/dashboard/components/CanvasCard';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { EmptyState } from '@/components/layout/EmptyState';
+} from "@mui/icons-material";
+import { formatDistanceToNow } from "date-fns";
+import { useSharedCanvases } from "@/lib/hooks/use-canvases";
+import {
+  CanvasCard,
+  CanvasCardSkeleton,
+  CardGrid,
+} from "@/features/dashboard/components/CanvasCard";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
 
 const ROLE_META = {
-  VIEW: { label: 'Can view', icon: <ViewIcon />, color: 'default' as const },
-  COMMENT: { label: 'Can comment', icon: <CommentIcon />, color: 'info' as const },
-  EDIT: { label: 'Can edit', icon: <EditIcon />, color: 'success' as const },
+  VIEW: { label: "Can view", icon: <ViewIcon />, color: "default" as const },
+  COMMENT: {
+    label: "Can comment",
+    icon: <CommentIcon />,
+    color: "info" as const,
+  },
+  EDIT: { label: "Can edit", icon: <EditIcon />, color: "success" as const },
 };
 
 export function SharedCanvasesContent() {
@@ -33,8 +41,8 @@ export function SharedCanvasesContent() {
         title="Shared with me"
         subtitle={
           isLoading
-            ? 'Loading…'
-            : `${items.length} canvas${items.length === 1 ? '' : 'es'} shared by other people`
+            ? "Loading…"
+            : `${items.length} canvas${items.length === 1 ? "" : "es"} shared by other people`
         }
       />
 
@@ -77,12 +85,12 @@ export function SharedCanvasesContent() {
                     icon={role.icon}
                     label={role.label}
                     color={role.color}
-                    sx={{ bgcolor: 'background.paper' }}
+                    sx={{ bgcolor: "background.paper" }}
                     variant="outlined"
                   />
                 }
-                meta={`By ${canvas.owner.name || 'Unknown'} • ${canvas.itemCount} item${
-                  canvas.itemCount === 1 ? '' : 's'
+                meta={`By ${canvas.owner.name || "Unknown"} • ${canvas.itemCount} item${
+                  canvas.itemCount === 1 ? "" : "s"
                 } • Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}
               />
             );

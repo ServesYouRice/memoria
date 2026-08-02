@@ -1,4 +1,7 @@
-import { IntegrationProviderType, SuggestionKind } from "@prisma/client";
+import {
+  IntegrationProviderType,
+  SuggestionKind,
+} from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import type { AgentRequestContext } from "@/lib/agents/auth";

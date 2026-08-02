@@ -5,9 +5,9 @@
  * Validates URL input using Zod schema
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -24,16 +24,16 @@ import {
   CardMedia,
   IconButton,
   LinearProgress,
-} from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { bookmarkContentSchema } from '@/lib/validation/canvas-item';
-import { useCreateCanvasItem } from '@/lib/hooks/use-canvas-items';
-import { useDebounce } from '@/lib/hooks/use-debounce';
-import { ItemType } from '@/types/canvas';
-import { TagInput } from './TagInput';
+} from "@mui/material";
+import { Refresh as RefreshIcon } from "@mui/icons-material";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { bookmarkContentSchema } from "@/lib/validation/canvas-item";
+import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { useDebounce } from "@/lib/hooks/use-debounce";
+import { ItemType } from "@/types/canvas";
+import { TagInput } from "./TagInput";
 
 interface CreateBookmarkDialogProps {
   open: boolean;
@@ -47,7 +47,11 @@ const formSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
-type FormData = z.infer<typeof formSchema>;
+// Zod 4 separates a schema's input and output types: `.default()` makes a
+// field optional on the way in and guaranteed on the way out. React Hook Form
+// needs both, so the form is typed with the input and the resolved output.
+type FormInput = z.input<typeof formSchema>;
+type FormData = z.output<typeof formSchema>;
 
 interface UnfurledMetadata {
   title?: string;
@@ -75,16 +79,16 @@ export function CreateBookmarkDialog({
     reset,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<FormData>({
+  } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      url: '',
+      url: "",
       tags: [],
     },
   });
 
   // Watch the URL field for auto-unfurling
-  const urlValue = watch('url');
+  const urlValue = watch("url");
   const debouncedUrl = useDebounce(urlValue, 1000); // 1 second debounce
 
   const handleClose = () => {
@@ -118,21 +122,21 @@ export function CreateBookmarkDialog({
       setError(null);
       setUnfurling(true);
 
-      const response = await fetch('/api/v1/unfurl', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/v1/unfurl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch URL metadata');
+        throw new Error(errorData.error || "Failed to fetch URL metadata");
       }
 
       const unfurledData = await response.json();
       setMetadata(unfurledData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to unfurl URL');
+      setError(err instanceof Error ? err.message : "Failed to unfurl URL");
     } finally {
       setUnfurling(false);
     }
@@ -168,7 +172,9 @@ export function CreateBookmarkDialog({
 
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create bookmark');
+      setError(
+        err instanceof Error ? err.message : "Failed to create bookmark",
+      );
     }
   };
 
@@ -177,8 +183,13 @@ export function CreateBookmarkDialog({
       <DialogTitle>Add Bookmark</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Typography variant="body2" color="text.secondary">
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               Enter a URL to create a bookmark on your canvas.
             </Typography>
 
@@ -186,7 +197,7 @@ export function CreateBookmarkDialog({
               name="url"
               control={control}
               render={({ field }) => (
-                <Box sx={{ display: 'flex', gap: 1 }}>
+                <Box sx={{ display: "flex", gap: 1 }}>
                   <TextField
                     {...field}
                     label="URL"
@@ -204,9 +215,11 @@ export function CreateBookmarkDialog({
                   />
                   <IconButton
                     onClick={() => handleUnfurl(field.value)}
-                    disabled={unfurling || isSubmitting || !field.value || !!errors.url}
+                    disabled={
+                      unfurling || isSubmitting || !field.value || !!errors.url
+                    }
                     title="Fetch preview"
-                    sx={{ alignSelf: 'flex-start', mt: 1 }}
+                    sx={{ alignSelf: "flex-start", mt: 1 }}
                   >
                     <RefreshIcon />
                   </IconButton>
@@ -224,12 +237,14 @@ export function CreateBookmarkDialog({
                     component="img"
                     height="140"
                     image={metadata.previewImage}
-                    alt={metadata.title || 'Preview'}
-                    sx={{ objectFit: 'cover' }}
+                    alt={metadata.title || "Preview"}
+                    sx={{ objectFit: "cover" }}
                   />
                 )}
                 <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                  <Box
+                    sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}
+                  >
                     {metadata.favicon && (
                       <Box
                         component="img"
@@ -247,19 +262,24 @@ export function CreateBookmarkDialog({
                       {metadata.description && (
                         <Typography
                           variant="body2"
-                          color="text.secondary"
                           sx={{
-                            display: '-webkit-box',
+                            color: "text.secondary",
+                            display: "-webkit-box",
                             WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
                           }}
                         >
                           {metadata.description}
                         </Typography>
                       )}
                       {metadata.siteName && (
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                          }}
+                        >
                           {metadata.siteName}
                         </Typography>
                       )}
@@ -299,7 +319,7 @@ export function CreateBookmarkDialog({
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? 'Creating...' : 'Create Bookmark'}
+            {isSubmitting ? "Creating..." : "Create Bookmark"}
           </Button>
         </DialogActions>
       </form>

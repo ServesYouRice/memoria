@@ -1,4 +1,4 @@
-import { AgentProfileStatus } from "@prisma/client";
+import { AgentProfileStatus } from "@/generated/prisma/client";
 import { ForbiddenError } from "@/lib/errors";
 
 interface ScopedAgentProfile {

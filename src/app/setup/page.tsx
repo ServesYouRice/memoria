@@ -27,7 +27,12 @@ export default async function SetupPage() {
       ) : (
         <>
           <Box sx={{ maxWidth: 640, mx: "auto", mb: 3 }}>
-            <Typography variant="overline" color="text.secondary">
+            <Typography
+              variant="overline"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               Memoria Bootstrap
             </Typography>
           </Box>

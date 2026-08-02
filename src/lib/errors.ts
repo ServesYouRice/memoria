@@ -190,7 +190,7 @@ export class ServiceUnavailableError extends ApiError {
  * Convert Zod errors to ValidationError
  */
 export function fromZodError(error: ZodError): ValidationError {
-  const errors: ValidationErrorDetail[] = error.errors.map((err) => ({
+  const errors: ValidationErrorDetail[] = error.issues.map((err) => ({
     field: err.path.join("."),
     message: err.message,
     code: err.code,

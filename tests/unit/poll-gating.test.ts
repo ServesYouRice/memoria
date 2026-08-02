@@ -1,4 +1,4 @@
-import { ItemType } from "@prisma/client";
+import { ItemType } from "@/generated/prisma/client";
 import { describe, expect, it } from "vitest";
 import { requirePollsEnabled } from "@/lib/polls/availability";
 

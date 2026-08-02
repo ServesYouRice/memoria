@@ -122,10 +122,23 @@ export function RegisterForm({ mode = "open" }: RegisterFormProps) {
       headline="Start your journey"
       tagline="Create your free account and unlock unlimited creative possibilities."
     >
-      <Typography variant="h4" component="h1" fontWeight={700} gutterBottom>
+      <Typography
+        variant="h4"
+        component="h1"
+        gutterBottom
+        sx={{
+          fontWeight: 700,
+        }}
+      >
         Create account
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+      <Typography
+        variant="body1"
+        sx={{
+          color: "text.secondary",
+          mb: 4,
+        }}
+      >
         Sign up to start using Memoria
       </Typography>
 
@@ -275,8 +288,10 @@ export function RegisterForm({ mode = "open" }: RegisterFormProps) {
         <Typography
           variant="body2"
           align="center"
-          color="text.secondary"
-          sx={{ mt: 4 }}
+          sx={{
+            color: "text.secondary",
+            mt: 4,
+          }}
         >
           Already have an account?{" "}
           <Link
@@ -298,8 +313,10 @@ export function RegisterForm({ mode = "open" }: RegisterFormProps) {
         <Typography
           variant="body2"
           align="center"
-          color="text.secondary"
-          sx={{ mt: 3 }}
+          sx={{
+            color: "text.secondary",
+            mt: 3,
+          }}
         >
           Already have an account? <Link href="/auth/login">Sign in</Link>
         </Typography>

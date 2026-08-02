@@ -3,7 +3,7 @@ import {
   Prisma,
   type OutboxJob,
   type PrismaClient,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 
 export function retryDelayMs(attempts: number): number {
   return Math.min(60 * 60 * 1000, 1000 * 2 ** Math.max(0, attempts - 1));

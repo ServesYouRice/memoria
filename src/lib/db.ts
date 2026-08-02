@@ -39,7 +39,8 @@
  * @see {@link https://www.prisma.io/docs Prisma Documentation}
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { createLogger } from "./logger";
 
 const logger = createLogger("database");
@@ -53,9 +54,18 @@ const skipEagerConnect =
   process.env.MEMORIA_SKIP_DB_EAGER_CONNECT === "true" ||
   process.env.NEXT_PHASE === "phase-production-build";
 
+// Prisma 7 connects through a driver adapter rather than a `datasources`
+// block. Pooling still comes from the DATABASE_URL query parameters, which the
+// pg pool reads directly.
+// Example: postgresql://user:pass@host:5432/db?connection_limit=5&pool_timeout=10
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+});
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
+    adapter,
     log:
       process.env.NODE_ENV === "development"
         ? [
@@ -64,14 +74,6 @@ export const prisma =
             { emit: "stdout", level: "warn" },
           ]
         : [{ emit: "stdout", level: "error" }],
-
-    // Connection pooling is controlled via DATABASE_URL query parameters.
-    // Example: postgresql://user:pass@host:5432/db?connection_limit=5&pool_timeout=10
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
-    },
   });
 
 if (process.env.NODE_ENV !== "production") {

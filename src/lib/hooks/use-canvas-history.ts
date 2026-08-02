@@ -55,36 +55,36 @@
  * ```
  */
 
-import { useState, useCallback, useRef } from 'react';
-import { type CanvasItem } from '@/types/canvas';
-import { logger } from '@/lib/logger';
+import { useState, useCallback, useRef } from "react";
+import { type CanvasItem } from "@/types/canvas";
+import { logger } from "@/lib/logger";
 
 export interface Command {
-  type: 'create' | 'delete' | 'update' | 'batch';
+  type: "create" | "delete" | "update" | "batch";
   execute: () => Promise<void>;
   undo: () => Promise<void>;
   description: string;
 }
 
 export interface CreateCommand extends Command {
-  type: 'create';
+  type: "create";
   itemId: string;
 }
 
 export interface DeleteCommand extends Command {
-  type: 'delete';
+  type: "delete";
   item: CanvasItem;
 }
 
 export interface UpdateCommand extends Command {
-  type: 'update';
+  type: "update";
   itemId: string;
   oldData: Partial<CanvasItem>;
   newData: Partial<CanvasItem>;
 }
 
 export interface BatchCommand extends Command {
-  type: 'batch';
+  type: "batch";
   commands: Command[];
 }
 
@@ -106,24 +106,27 @@ export function useCanvasHistory(options: UseCanvasHistoryOptions = {}) {
   /**
    * Add a command to history
    */
-  const addCommand = useCallback((command: Command) => {
-    if (isExecutingRef.current) {
-      // Don't add commands that are part of undo/redo
-      return;
-    }
-
-    setUndoStack((prev) => {
-      const newStack = [...prev, command];
-      // Limit stack size
-      if (newStack.length > maxHistorySize) {
-        return newStack.slice(newStack.length - maxHistorySize);
+  const addCommand = useCallback(
+    (command: Command) => {
+      if (isExecutingRef.current) {
+        // Don't add commands that are part of undo/redo
+        return;
       }
-      return newStack;
-    });
 
-    // Clear redo stack when new command is added
-    setRedoStack([]);
-  }, [maxHistorySize]);
+      setUndoStack((prev) => {
+        const newStack = [...prev, command];
+        // Limit stack size
+        if (newStack.length > maxHistorySize) {
+          return newStack.slice(newStack.length - maxHistorySize);
+        }
+        return newStack;
+      });
+
+      // Clear redo stack when new command is added
+      setRedoStack([]);
+    },
+    [maxHistorySize],
+  );
 
   /**
    * Undo last command
@@ -144,7 +147,10 @@ export function useCanvasHistory(options: UseCanvasHistoryOptions = {}) {
       setUndoStack((prev) => prev.slice(0, -1));
       setRedoStack((prev) => [...prev, command]);
     } catch (error) {
-      logger.error({ error, command: command.description }, 'Undo operation failed');
+      logger.error(
+        { error, command: command.description },
+        "Undo operation failed",
+      );
       throw error;
     } finally {
       isExecutingRef.current = false;
@@ -171,7 +177,10 @@ export function useCanvasHistory(options: UseCanvasHistoryOptions = {}) {
       setRedoStack((prev) => prev.slice(0, -1));
       setUndoStack((prev) => [...prev, command]);
     } catch (error) {
-      logger.error({ error, command: command.description }, 'Redo operation failed');
+      logger.error(
+        { error, command: command.description },
+        "Redo operation failed",
+      );
       throw error;
     } finally {
       isExecutingRef.current = false;

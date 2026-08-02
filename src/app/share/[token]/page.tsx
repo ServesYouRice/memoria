@@ -228,7 +228,9 @@ export default function SharePage({ params }: SharePageProps) {
             <Typography
               component="span"
               variant="caption"
-              color="text.secondary"
+              sx={{
+                color: "text.secondary",
+              }}
             >
               (Read Only)
             </Typography>
@@ -308,7 +310,12 @@ export default function SharePage({ params }: SharePageProps) {
               height: "100%",
             }}
           >
-            <Typography variant="h6" color="text.secondary">
+            <Typography
+              variant="h6"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               This canvas is empty
             </Typography>
           </Box>

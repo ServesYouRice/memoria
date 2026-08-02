@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server";
-import { ItemType, Prisma, type CanvasItem } from "@prisma/client";
+import { ItemType, Prisma, type CanvasItem } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { errorResponse, NotFoundError, ForbiddenError } from "@/lib/errors";

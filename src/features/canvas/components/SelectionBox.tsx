@@ -4,10 +4,10 @@
  * Visual rectangle overlay for multi-select on canvas
  */
 
-'use client';
+"use client";
 
-import React from 'react';
-import { Rect } from 'react-konva';
+import React from "react";
+import { Rect } from "react-konva";
 
 export interface SelectionBoxProps {
   x: number;

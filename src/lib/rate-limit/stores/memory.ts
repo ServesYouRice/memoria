@@ -3,7 +3,7 @@
  * For development and testing only - not suitable for production with multiple servers
  */
 
-import type { RateLimitStore } from '../types';
+import type { RateLimitStore } from "../types";
 
 interface MemoryEntry {
   count: number;
@@ -21,7 +21,10 @@ export class MemoryRateLimitStore implements RateLimitStore {
     }, 60000);
   }
 
-  async increment(key: string, windowSeconds: number): Promise<{ count: number; ttl: number }> {
+  async increment(
+    key: string,
+    windowSeconds: number,
+  ): Promise<{ count: number; ttl: number }> {
     const now = Date.now();
     const entry = this.store.get(key);
 

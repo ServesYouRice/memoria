@@ -110,8 +110,11 @@ export const MeetingTimer: React.FC = () => {
 
           <Typography
             variant="caption"
-            color="text.secondary"
-            sx={{ display: "block", mb: 2 }}
+            sx={{
+              color: "text.secondary",
+              display: "block",
+              mb: 2,
+            }}
           >
             {MEETING_TIMER_DISCLOSURE}
           </Typography>
@@ -131,8 +134,10 @@ export const MeetingTimer: React.FC = () => {
           <Stack
             direction="row"
             spacing={1}
-            justifyContent="center"
-            sx={{ mb: 2 }}
+            sx={{
+              justifyContent: "center",
+              mb: 2,
+            }}
           >
             {!isRunning ? (
               <Button

@@ -4,7 +4,7 @@
  * Extracts Open Graph and meta tags from HTML for bookmark unfurling
  */
 
-import * as cheerio from 'cheerio';
+import * as cheerio from "cheerio";
 
 export interface ExtractedMetadata {
   title?: string;
@@ -19,31 +19,34 @@ export interface ExtractedMetadata {
  * Extract metadata from HTML content
  * Prioritizes Open Graph tags, falls back to standard meta tags
  */
-export function extractMetadata(html: string, baseUrl: string): ExtractedMetadata {
+export function extractMetadata(
+  html: string,
+  baseUrl: string,
+): ExtractedMetadata {
   const $ = cheerio.load(html);
   const metadata: ExtractedMetadata = {};
 
   // Title
   // Priority: og:title > twitter:title > <title> tag
   metadata.title =
-    $('meta[property="og:title"]').attr('content') ||
-    $('meta[name="twitter:title"]').attr('content') ||
-    $('title').text().trim() ||
+    $('meta[property="og:title"]').attr("content") ||
+    $('meta[name="twitter:title"]').attr("content") ||
+    $("title").text().trim() ||
     undefined;
 
   // Description
   // Priority: og:description > twitter:description > meta description
   metadata.description =
-    $('meta[property="og:description"]').attr('content') ||
-    $('meta[name="twitter:description"]').attr('content') ||
-    $('meta[name="description"]').attr('content') ||
+    $('meta[property="og:description"]').attr("content") ||
+    $('meta[name="twitter:description"]').attr("content") ||
+    $('meta[name="description"]').attr("content") ||
     undefined;
 
   // Image
   // Priority: og:image > twitter:image > first <img> tag
-  const ogImage = $('meta[property="og:image"]').attr('content');
-  const twitterImage = $('meta[name="twitter:image"]').attr('content');
-  const firstImg = $('img').first().attr('src');
+  const ogImage = $('meta[property="og:image"]').attr("content");
+  const twitterImage = $('meta[name="twitter:image"]').attr("content");
+  const firstImg = $("img").first().attr("src");
 
   const imageUrl = ogImage || twitterImage || firstImg;
   if (imageUrl) {
@@ -66,7 +69,7 @@ export function extractMetadata(html: string, baseUrl: string): ExtractedMetadat
   ];
 
   for (const selector of faviconSelectors) {
-    const faviconHref = $(selector).attr('href');
+    const faviconHref = $(selector).attr("href");
     if (faviconHref) {
       try {
         const resolvedUrl = new URL(faviconHref, baseUrl);
@@ -90,13 +93,12 @@ export function extractMetadata(html: string, baseUrl: string): ExtractedMetadat
 
   // Site name
   metadata.siteName =
-    $('meta[property="og:site_name"]').attr('content') ||
-    undefined;
+    $('meta[property="og:site_name"]').attr("content") || undefined;
 
   // Canonical URL
   const canonicalUrl =
-    $('link[rel="canonical"]').attr('href') ||
-    $('meta[property="og:url"]').attr('content');
+    $('link[rel="canonical"]').attr("href") ||
+    $('meta[property="og:url"]').attr("content");
 
   if (canonicalUrl) {
     try {
@@ -111,10 +113,10 @@ export function extractMetadata(html: string, baseUrl: string): ExtractedMetadat
 
   // Truncate long values
   if (metadata.title && metadata.title.length > 200) {
-    metadata.title = metadata.title.substring(0, 197) + '...';
+    metadata.title = metadata.title.substring(0, 197) + "...";
   }
   if (metadata.description && metadata.description.length > 500) {
-    metadata.description = metadata.description.substring(0, 497) + '...';
+    metadata.description = metadata.description.substring(0, 497) + "...";
   }
 
   return metadata;
@@ -123,7 +125,9 @@ export function extractMetadata(html: string, baseUrl: string): ExtractedMetadat
 /**
  * Clean and validate extracted metadata
  */
-export function validateMetadata(metadata: ExtractedMetadata): ExtractedMetadata {
+export function validateMetadata(
+  metadata: ExtractedMetadata,
+): ExtractedMetadata {
   const cleaned: ExtractedMetadata = {};
 
   // Ensure all string values are properly trimmed and non-empty

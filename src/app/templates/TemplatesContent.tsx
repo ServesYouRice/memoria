@@ -36,7 +36,7 @@ import {
 import {
   Visibility,
   ExploreOutlined as TemplatesIcon,
-  DeleteOutline as DeleteIcon,
+  DeleteOutlined as DeleteIcon,
 } from "@mui/icons-material";
 import {
   useTemplates,
@@ -214,7 +214,13 @@ export function TemplatesContent() {
 
       {!isLoading && !error && templates.length > 0 && (
         <>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2,
+            }}
+          >
             {templates.length} template{templates.length !== 1 ? "s" : ""} found
           </Typography>
           <Box
@@ -263,15 +269,17 @@ export function TemplatesContent() {
                       variant="h6"
                       gutterBottom
                       noWrap
-                      fontWeight={600}
-                      sx={{ pr: isOwner ? 4 : 0 }}
+                      sx={{
+                        fontWeight: 600,
+                        pr: isOwner ? 4 : 0,
+                      }}
                     >
                       {template.name}
                     </Typography>
                     <Typography
                       variant="body2"
-                      color="text.secondary"
                       sx={{
+                        color: "text.secondary",
                         mb: 2,
                         display: "-webkit-box",
                         WebkitLineClamp: 3,
@@ -306,7 +314,12 @@ export function TemplatesContent() {
                         variant="outlined"
                       />
                     </Box>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {template.itemCount} item
                       {template.itemCount !== 1 ? "s" : ""} • By{" "}
                       {isOwner ? "you" : template.user.name || "Anonymous"}

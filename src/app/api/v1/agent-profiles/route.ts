@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { AgentProfileStatus } from "@prisma/client";
+import { AgentProfileStatus } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/api/auth";

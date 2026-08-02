@@ -2,7 +2,7 @@
 
 import { apiFetch } from "@/lib/api/fetch-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CanvasViewType } from "@prisma/client";
+import type { CanvasViewType } from "@/generated/prisma/enums";
 
 export interface CanvasViewRecord {
   id: string;

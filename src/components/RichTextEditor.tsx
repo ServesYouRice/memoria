@@ -326,7 +326,11 @@ export function RichTextEditor({
             aria-label="Add Link"
           >
             <Tooltip title="Add Link">
-              <LinkIcon fontSize="small" />
+              <LinkIcon
+                sx={{
+                  fontSize: "small",
+                }}
+              />
             </Tooltip>
           </IconButton>
         </Box>

@@ -53,7 +53,12 @@ export function StatusSummary() {
           {name}: <strong>{check.status}</strong>
         </Typography>
       ))}
-      <Typography variant="caption" color="text.secondary">
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+        }}
+      >
         Checked {new Date(health.timestamp).toLocaleString()}
       </Typography>
     </Stack>

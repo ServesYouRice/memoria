@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { SuggestionKind } from "@prisma/client";
+import { SuggestionKind } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { withApiHandler } from "@/lib/api/route-handler";

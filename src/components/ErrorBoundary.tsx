@@ -1,8 +1,11 @@
-'use client';
+"use client";
 
-import React, { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Box, Button, Typography, Paper } from '@mui/material';
-import { Refresh as RefreshIcon, ErrorOutline as ErrorIcon } from '@mui/icons-material';
+import React, { Component, type ErrorInfo, type ReactNode } from "react";
+import { Box, Button, Typography, Paper } from "@mui/material";
+import {
+  Refresh as RefreshIcon,
+  ErrorOutlined as ErrorIcon,
+} from "@mui/icons-material";
 
 interface Props {
   children: ReactNode;
@@ -26,7 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    console.error("Uncaught error:", error, errorInfo);
   }
 
   public reset = () => {
@@ -43,13 +46,13 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <Box
           sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
             minHeight: 400,
             p: 3,
-            bgcolor: 'background.default',
+            bgcolor: "background.default",
           }}
         >
           <Paper
@@ -57,34 +60,48 @@ export class ErrorBoundary extends Component<Props, State> {
             sx={{
               p: 4,
               maxWidth: 500,
-              textAlign: 'center',
+              textAlign: "center",
               borderRadius: 4,
-              border: '1px solid',
-              borderColor: 'error.light',
-              bgcolor: 'background.paper',
+              border: "1px solid",
+              borderColor: "error.light",
+              bgcolor: "background.paper",
             }}
           >
             <Box
               sx={{
                 width: 64,
                 height: 64,
-                borderRadius: '50%',
-                bgcolor: 'error.soft',
-                color: 'error.main',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                mx: 'auto',
+                borderRadius: "50%",
+                bgcolor: "error.soft",
+                color: "error.main",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                mx: "auto",
                 mb: 2,
               }}
             >
               <ErrorIcon sx={{ fontSize: 40 }} />
             </Box>
-            <Typography variant="h5" gutterBottom fontWeight="bold" color="text.primary">
+            <Typography
+              variant="h5"
+              gutterBottom
+              sx={{
+                fontWeight: "bold",
+                color: "text.primary",
+              }}
+            >
               Something went wrong
             </Typography>
-            <Typography variant="body1" color="text.secondary" paragraph>
-              {this.state.error.message || 'An unexpected error occurred while rendering this component.'}
+            <Typography
+              variant="body1"
+              sx={{
+                mb: 2,
+                color: "text.secondary",
+              }}
+            >
+              {this.state.error.message ||
+                "An unexpected error occurred while rendering this component."}
             </Typography>
             <Button
               variant="contained"

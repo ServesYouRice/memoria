@@ -1,4 +1,4 @@
-import type { OutboxJob } from "@prisma/client";
+import type { OutboxJob } from "@/generated/prisma/client";
 
 export type OutboxHandler = (job: OutboxJob) => Promise<void>;
 export type OutboxHandlers = Record<string, OutboxHandler>;

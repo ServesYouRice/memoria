@@ -29,14 +29,25 @@ export function PublicInfoPage({
           {title}
         </Typography>
         <Typography
-          color="text.secondary"
-          sx={{ mt: 2, mb: 5, textWrap: "pretty" }}
+          sx={{
+            color: "text.secondary",
+            mt: 2,
+            mb: 5,
+            textWrap: "pretty",
+          }}
         >
           {description}
         </Typography>
         <Stack spacing={4}>{children}</Stack>
         <Divider sx={{ my: 5 }} />
-        <Stack direction="row" useFlexGap flexWrap="wrap" spacing={2}>
+        <Stack
+          direction="row"
+          useFlexGap
+          spacing={2}
+          sx={{
+            flexWrap: "wrap",
+          }}
+        >
           <Button component={Link} href="/help">
             Help
           </Button>
@@ -74,8 +85,11 @@ export function InfoSection({
       </Typography>
       <Typography
         component="div"
-        color="text.secondary"
-        sx={{ lineHeight: 1.75, textWrap: "pretty" }}
+        sx={{
+          color: "text.secondary",
+          lineHeight: 1.75,
+          textWrap: "pretty",
+        }}
       >
         {children}
       </Typography>

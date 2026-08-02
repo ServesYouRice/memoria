@@ -79,7 +79,12 @@ export function ActivityFeed({
 
       {activities.length === 0 ? (
         <Box sx={{ textAlign: "center", py: 4 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+            }}
+          >
             No recent activity
           </Typography>
         </Box>
@@ -131,7 +136,12 @@ export function ActivityFeed({
                   </Box>
                 }
                 secondary={
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                    }}
+                  >
                     {formatDistanceToNow(new Date(activity.createdAt), {
                       addSuffix: true,
                     })}

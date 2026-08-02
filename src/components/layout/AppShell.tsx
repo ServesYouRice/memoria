@@ -215,9 +215,11 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
               </Typography>
               <Typography
                 variant="caption"
-                color="text.secondary"
                 noWrap
-                sx={{ display: "block" }}
+                sx={{
+                  color: "text.secondary",
+                  display: "block",
+                }}
               >
                 {user?.email}
               </Typography>
@@ -264,7 +266,12 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
         <Box sx={{ width: 264 }} role="navigation" aria-label="Main navigation">
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
             <MemoriaLogo size={32} />
-            <Typography variant="h6" fontWeight={700}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+              }}
+            >
               Memoria
             </Typography>
           </Box>
@@ -317,8 +324,10 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
           direction="row"
           spacing={1}
           useFlexGap
-          flexWrap="wrap"
-          justifyContent="center"
+          sx={{
+            flexWrap: "wrap",
+            justifyContent: "center",
+          }}
         >
           <Button component={Link} href="/help" size="small">
             Help

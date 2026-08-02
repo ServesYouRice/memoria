@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
 import { normalizeNoteContent } from "../src/lib/rich-text/note-format";
 

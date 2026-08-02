@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 

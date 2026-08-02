@@ -1,18 +1,18 @@
-import { redirect } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import { AppShell } from '@/components/layout/AppShell';
-import { NotificationsContent } from './NotificationsContent';
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { AppShell } from "@/components/layout/AppShell";
+import { NotificationsContent } from "./NotificationsContent";
 
 export const metadata = {
-  title: 'Notifications',
-  description: 'Recent activity across your canvases',
+  title: "Notifications",
+  description: "Recent activity across your canvases",
 };
 
 export default async function NotificationsPage() {
   const session = await auth();
 
   if (!session?.user) {
-    redirect('/auth/login');
+    redirect("/auth/login");
   }
 
   return (

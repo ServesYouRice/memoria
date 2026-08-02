@@ -253,15 +253,22 @@ export function CanvasItemListView({
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1}
-        alignItems={{ xs: "flex-start", sm: "center" }}
-        justifyContent="space-between"
-        sx={{ mb: 1.5 }}
+        sx={{
+          alignItems: { xs: "flex-start", sm: "center" },
+          justifyContent: "space-between",
+          mb: 1.5,
+        }}
       >
         <Box>
           <Typography variant="h2" sx={{ fontSize: "1.125rem", mb: 0.25 }}>
             Canvas items
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+            }}
+          >
             {items.length === 0
               ? "This canvas has no items yet."
               : `${items.length} item${items.length === 1 ? "" : "s"}. Tab to an item, then press Enter to edit or the arrow keys to move it.`}
@@ -323,9 +330,11 @@ export function CanvasItemListView({
                 <Stack
                   direction="row"
                   spacing={1}
-                  alignItems="center"
-                  flexWrap="wrap"
-                  sx={{ mb: 0.5 }}
+                  sx={{
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    mb: 0.5,
+                  }}
                 >
                   <Chip size="small" label={item.type.toLowerCase()} />
                   {isSelected && (
@@ -333,12 +342,23 @@ export function CanvasItemListView({
                   )}
                 </Stack>
 
-                <Typography variant="subtitle1" component="h3" fontWeight={600}>
+                <Typography
+                  variant="subtitle1"
+                  component="h3"
+                  sx={{
+                    fontWeight: 600,
+                  }}
+                >
                   {heading}
                 </Typography>
 
                 {detail && (
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.secondary",
+                    }}
+                  >
                     {detail}
                   </Typography>
                 )}
@@ -347,10 +367,12 @@ export function CanvasItemListView({
                   <Stack
                     direction="row"
                     spacing={0.5}
-                    flexWrap="wrap"
                     useFlexGap
-                    sx={{ mt: 1 }}
                     aria-label={`Tags: ${item.tags.join(", ")}`}
+                    sx={{
+                      flexWrap: "wrap",
+                      mt: 1,
+                    }}
                   >
                     {item.tags.map((tag) => (
                       <Chip

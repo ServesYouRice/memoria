@@ -9,7 +9,7 @@ import {
   WorkspaceCheckpointActorType,
   type CanvasItem as PrismaCanvasItem,
   type SuggestionKind,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";

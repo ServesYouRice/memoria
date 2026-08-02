@@ -1,17 +1,20 @@
-import { type NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { prisma } from '@/lib/db';
-import { generateApiKey } from '@/lib/api/api-key';
-import { requireAuth } from '@/lib/api/auth';
-import { withApiHandler } from '@/lib/api/route-handler';
-import { BadRequestError, fromZodError } from '@/lib/errors';
+import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/db";
+import { generateApiKey } from "@/lib/api/api-key";
+import { requireAuth } from "@/lib/api/auth";
+import { withApiHandler } from "@/lib/api/route-handler";
+import { BadRequestError, fromZodError } from "@/lib/errors";
 
 const createApiKeySchema = z.object({
   name: z.string().min(1).max(255),
   expiresAt: z.string().datetime().optional().nullable(),
 });
 
-function buildKeyPreview(prefix: string | null, suffix: string | null): string | null {
+function buildKeyPreview(
+  prefix: string | null,
+  suffix: string | null,
+): string | null {
   if (!prefix || !suffix) return null;
   return `${prefix}...${suffix}`;
 }
@@ -21,7 +24,7 @@ export const GET = withApiHandler(async () => {
 
   const keys = await prisma.apiKey.findMany({
     where: { userId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json({
@@ -52,11 +55,11 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   const expiresAtDate = expiresAt ? new Date(expiresAt) : null;
 
   if (expiresAtDate && Number.isNaN(expiresAtDate.getTime())) {
-    throw new BadRequestError('Invalid expiresAt value');
+    throw new BadRequestError("Invalid expiresAt value");
   }
 
   if (expiresAtDate && expiresAtDate <= new Date()) {
-    throw new BadRequestError('expiresAt must be in the future');
+    throw new BadRequestError("expiresAt must be in the future");
   }
 
   const { key, hash } = await generateApiKey();
@@ -89,6 +92,6 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       },
       plaintextKey: key,
     },
-    { status: 201 }
+    { status: 201 },
   );
 });

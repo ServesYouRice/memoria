@@ -1,16 +1,28 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Box, LinearProgress, Typography } from '@mui/material';
-import { validatePasswordStrength } from '@/lib/validation/password';
+import React from "react";
+import { Box, LinearProgress, Typography } from "@mui/material";
+import { validatePasswordStrength } from "@/lib/validation/password";
 
 interface PasswordStrengthIndicatorProps {
   password: string;
   userInputs?: string[];
 }
 
-const SCORE_COLORS = ['error', 'error', 'warning', 'success', 'success'] as const;
-const SCORE_LABELS = ['Very Weak', 'Weak', 'Fair', 'Strong', 'Very Strong'] as const;
+const SCORE_COLORS = [
+  "error",
+  "error",
+  "warning",
+  "success",
+  "success",
+] as const;
+const SCORE_LABELS = [
+  "Very Weak",
+  "Weak",
+  "Fair",
+  "Strong",
+  "Very Strong",
+] as const;
 
 export function PasswordStrengthIndicator({
   password,
@@ -38,7 +50,7 @@ export function PasswordStrengthIndicator({
           setResult(strength);
         }
       } catch (error) {
-        console.error('Password validation failed:', error);
+        console.error("Password validation failed:", error);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -60,7 +72,12 @@ export function PasswordStrengthIndicator({
   if (isLoading || !result) {
     return (
       <Box sx={{ mt: 1 }}>
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+          }}
+        >
           Checking strength...
         </Typography>
         <LinearProgress sx={{ mt: 0.5, height: 6, borderRadius: 1 }} />
@@ -72,11 +89,22 @@ export function PasswordStrengthIndicator({
 
   return (
     <Box sx={{ mt: 1 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-        <Typography variant="caption" color="text.secondary">
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+          }}
+        >
           Strength:
         </Typography>
-        <Typography variant="caption" color={`${SCORE_COLORS[score]}.main`} fontWeight="medium">
+        <Typography
+          variant="caption"
+          color={`${SCORE_COLORS[score]}.main`}
+          sx={{
+            fontWeight: "medium",
+          }}
+        >
           {SCORE_LABELS[score]}
         </Typography>
       </Box>
@@ -89,7 +117,14 @@ export function PasswordStrengthIndicator({
       />
 
       {feedback.warning && (
-        <Typography variant="caption" color="error" display="block" sx={{ mt: 1 }}>
+        <Typography
+          variant="caption"
+          color="error"
+          sx={{
+            display: "block",
+            mt: 1,
+          }}
+        >
           {feedback.warning}
         </Typography>
       )}
@@ -97,7 +132,14 @@ export function PasswordStrengthIndicator({
       {feedback.suggestions.length > 0 && (
         <Box sx={{ mt: 1 }}>
           {feedback.suggestions.map((suggestion, index) => (
-            <Typography key={index} variant="caption" color="text.secondary" display="block">
+            <Typography
+              key={index}
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                display: "block",
+              }}
+            >
               • {suggestion}
             </Typography>
           ))}

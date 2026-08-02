@@ -41,7 +41,11 @@ const formSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
-type FormData = z.infer<typeof formSchema>;
+// Zod 4 separates a schema's input and output types: `.default()` makes a
+// field optional on the way in and guaranteed on the way out. React Hook Form
+// needs both, so the form is typed with the input and the resolved output.
+type FormInput = z.input<typeof formSchema>;
+type FormData = z.output<typeof formSchema>;
 
 export function CreateImageDialog({
   open,
@@ -65,7 +69,7 @@ export function CreateImageDialog({
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<FormData>({
+  } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       alt: "",
@@ -184,7 +188,12 @@ export function CreateImageDialog({
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               Upload an image to add it to your canvas.
             </Typography>
 
@@ -239,9 +248,11 @@ export function CreateImageDialog({
                 />
                 <Typography
                   variant="caption"
-                  display="block"
-                  sx={{ mt: 1 }}
-                  color="text.secondary"
+                  sx={{
+                    display: "block",
+                    color: "text.secondary",
+                    mt: 1,
+                  }}
                 >
                   {uploadedImage.filename}
                   {uploadedImage.width &&

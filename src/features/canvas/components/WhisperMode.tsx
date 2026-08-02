@@ -69,8 +69,10 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
             <QuickEntryIcon color="action" fontSize="small" sx={{ mr: 1 }} />
             <Typography
               variant="caption"
-              color="text.secondary"
-              sx={{ fontWeight: 600 }}
+              sx={{
+                color: "text.secondary",
+                fontWeight: 600,
+              }}
             >
               QUICK CAPTURE
             </Typography>
@@ -96,20 +98,22 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          InputProps={{
-            disableUnderline: true,
-            endAdornment: (
-              <IconButton
-                aria-label="Save quick capture"
-                onClick={handleSend}
-                disabled={!text.trim()}
-                color="primary"
-                size="small"
-              >
-                <SendIcon />
-              </IconButton>
-            ),
-            style: { fontSize: "1.2rem" },
+          slotProps={{
+            input: {
+              disableUnderline: true,
+              endAdornment: (
+                <IconButton
+                  aria-label="Save quick capture"
+                  onClick={handleSend}
+                  disabled={!text.trim()}
+                  color="primary"
+                  size="small"
+                >
+                  <SendIcon />
+                </IconButton>
+              ),
+              style: { fontSize: "1.2rem" },
+            },
           }}
         />
       </DialogContent>

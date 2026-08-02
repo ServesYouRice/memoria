@@ -3,18 +3,22 @@
  * Handles app-wide keyboard shortcuts
  */
 
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
-import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts';
+import React, { useState } from "react";
+import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
+import { useKeyboardShortcuts } from "@/lib/hooks/use-keyboard-shortcuts";
 
-export function GlobalShortcutsProvider({ children }: { children: React.ReactNode }) {
+export function GlobalShortcutsProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
 
   useKeyboardShortcuts([
     {
-      key: '?',
+      key: "?",
       handler: () => setShortcutsDialogOpen(true),
     },
   ]);

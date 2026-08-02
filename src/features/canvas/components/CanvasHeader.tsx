@@ -337,22 +337,24 @@ export function CanvasHeader({
               size="small"
               autoFocus
               sx={{ minWidth: { xs: 180, sm: 300 }, maxWidth: 500 }}
-              InputProps={{
-                startAdornment: (
-                  <SearchIcon sx={{ mr: 1, color: "action.active" }} />
-                ),
-                endAdornment: searchQuery ? (
-                  <IconButton
-                    aria-label="Clear canvas search"
-                    size="small"
-                    onClick={() => {
-                      onSearchChange("");
-                      setShowSearch(false);
-                    }}
-                  >
-                    <ClearIcon fontSize="small" />
-                  </IconButton>
-                ) : null,
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <SearchIcon sx={{ mr: 1, color: "action.active" }} />
+                  ),
+                  endAdornment: searchQuery ? (
+                    <IconButton
+                      aria-label="Clear canvas search"
+                      size="small"
+                      onClick={() => {
+                        onSearchChange("");
+                        setShowSearch(false);
+                      }}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  ) : null,
+                },
               }}
             />
           ) : isEditingName ? (

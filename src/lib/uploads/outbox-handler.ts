@@ -1,5 +1,5 @@
 import type { OutboxHandler } from "@/lib/outbox/types";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { deletePrivateUploadObject } from "./private-storage";
 
 export function createUploadDeleteHandler(prisma: PrismaClient): OutboxHandler {

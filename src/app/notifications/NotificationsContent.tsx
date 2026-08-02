@@ -77,10 +77,20 @@ export function NotificationsContent() {
             {activities.map((activity) => {
               const message = (
                 <>
-                  <Typography component="span" fontWeight={600}>
+                  <Typography
+                    component="span"
+                    sx={{
+                      fontWeight: 600,
+                    }}
+                  >
                     {activity.user.name || activity.user.email}
                   </Typography>{" "}
-                  <Typography component="span" color="text.secondary">
+                  <Typography
+                    component="span"
+                    sx={{
+                      color: "text.secondary",
+                    }}
+                  >
                     {getActivityMessage(activity)}
                   </Typography>
                 </>
@@ -124,7 +134,9 @@ export function NotificationsContent() {
                       new Date(activity.createdAt),
                       { addSuffix: true },
                     )}
-                    secondaryTypographyProps={{ variant: "caption" }}
+                    slotProps={{
+                      secondary: { variant: "caption" },
+                    }}
                   />
                 </ListItem>
               );

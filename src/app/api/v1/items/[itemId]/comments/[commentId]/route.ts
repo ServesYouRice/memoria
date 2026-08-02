@@ -103,7 +103,7 @@ export const PATCH = withApiHandler(
     const validation = updateCommentSchema.safeParse(body);
     if (!validation.success) {
       throw new ValidationError(
-        validation.error.errors[0]?.message || "Validation error",
+        validation.error.issues[0]?.message || "Validation error",
       );
     }
 

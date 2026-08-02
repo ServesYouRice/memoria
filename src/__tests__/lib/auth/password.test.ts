@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { describe, it, expect } from "vitest";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 
-describe('Password Hashing', () => {
-  describe('hashPassword', () => {
-    it('should hash a password using Argon2id', async () => {
-      const password = 'MySecurePassword123!';
+describe("Password Hashing", () => {
+  describe("hashPassword", () => {
+    it("should hash a password using Argon2id", async () => {
+      const password = "MySecurePassword123!";
       const hash = await hashPassword(password);
 
       expect(hash).toBeDefined();
@@ -12,8 +12,8 @@ describe('Password Hashing', () => {
       expect(hash).toMatch(/^\$argon2id\$/); // Argon2id hash starts with $argon2id$
     });
 
-    it('should generate different hashes for the same password', async () => {
-      const password = 'MySecurePassword123!';
+    it("should generate different hashes for the same password", async () => {
+      const password = "MySecurePassword123!";
       const hash1 = await hashPassword(password);
       const hash2 = await hashPassword(password);
 
@@ -21,33 +21,33 @@ describe('Password Hashing', () => {
     });
   });
 
-  describe('verifyPassword', () => {
-    it('should verify a correct password', async () => {
-      const password = 'MySecurePassword123!';
+  describe("verifyPassword", () => {
+    it("should verify a correct password", async () => {
+      const password = "MySecurePassword123!";
       const hash = await hashPassword(password);
 
       const isValid = await verifyPassword(hash, password);
       expect(isValid).toBe(true);
     });
 
-    it('should reject an incorrect password', async () => {
-      const password = 'MySecurePassword123!';
+    it("should reject an incorrect password", async () => {
+      const password = "MySecurePassword123!";
       const hash = await hashPassword(password);
 
-      const isValid = await verifyPassword(hash, 'WrongPassword456!');
+      const isValid = await verifyPassword(hash, "WrongPassword456!");
       expect(isValid).toBe(false);
     });
 
-    it('should handle invalid hash format', async () => {
-      const isValid = await verifyPassword('invalid-hash', 'password');
+    it("should handle invalid hash format", async () => {
+      const isValid = await verifyPassword("invalid-hash", "password");
       expect(isValid).toBe(false);
     });
 
-    it('should be case-sensitive', async () => {
-      const password = 'MySecurePassword123!';
+    it("should be case-sensitive", async () => {
+      const password = "MySecurePassword123!";
       const hash = await hashPassword(password);
 
-      const isValid = await verifyPassword(hash, 'mysecurepassword123!');
+      const isValid = await verifyPassword(hash, "mysecurepassword123!");
       expect(isValid).toBe(false);
     });
   });

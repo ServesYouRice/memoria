@@ -1,7 +1,10 @@
 import { randomBytes } from "crypto";
 import * as argon2 from "argon2";
 import { type NextRequest } from "next/server";
-import { AgentProfileStatus, IntegrationStatus } from "@prisma/client";
+import {
+  AgentProfileStatus,
+  IntegrationStatus,
+} from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { getCachedSession } from "@/lib/api/session-cache";
 import {

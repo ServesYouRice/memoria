@@ -145,8 +145,10 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
       onClose={onClose}
       maxWidth="md"
       fullWidth
-      PaperProps={{
-        sx: { minHeight: "60vh", maxHeight: "80vh" },
+      slotProps={{
+        paper: {
+          sx: { minHeight: "60vh", maxHeight: "80vh" },
+        },
       }}
     >
       <DialogTitle sx={{ pb: 1 }}>
@@ -172,26 +174,34 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           sx={{ mb: 2 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-            endAdornment: loading ? (
-              <InputAdornment position="end">
-                <CircularProgress size={20} />
-              </InputAdornment>
-            ) : null,
-          }}
-          inputProps={{
-            "aria-label": "Search all canvas items",
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+              endAdornment: loading ? (
+                <InputAdornment position="end">
+                  <CircularProgress size={20} />
+                </InputAdornment>
+              ) : null,
+            },
+
+            htmlInput: {
+              "aria-label": "Search all canvas items",
+            },
           }}
         />
 
         {query.length < 2 && (
           <Box sx={{ textAlign: "center", py: 4 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               Type at least 2 characters to search
             </Typography>
           </Box>
@@ -199,7 +209,12 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
 
         {query.length >= 2 && totalResults === 0 && !loading && (
           <Box sx={{ textAlign: "center", py: 4 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+              }}
+            >
               No results found for &quot;{query}&quot;
             </Typography>
           </Box>
@@ -209,7 +224,13 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
 
         {totalResults > 0 && (
           <>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 1,
+              }}
+            >
               Found {totalResults} result{totalResults !== 1 ? "s" : ""}
             </Typography>
             {(facets.types.length > 0 || facets.tags.length > 0) && (
@@ -254,7 +275,12 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
                           ) : (
                             <GenericItemIcon fontSize="small" color="action" />
                           )}
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: "text.secondary",
+                            }}
+                          >
                             {result.canvasName}
                           </Typography>
                         </Box>
@@ -279,13 +305,15 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
                               ))}
                             </Box>
                           }
-                          primaryTypographyProps={{
-                            sx: {
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
+                          slotProps={{
+                            primary: {
+                              sx: {
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                              },
                             },
                           }}
                         />

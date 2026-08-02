@@ -201,7 +201,13 @@ export function SearchContent() {
 
       {enabled && results.length > 0 && (
         <>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 1,
+            }}
+          >
             {results.length} result{results.length === 1 ? "" : "s"}
           </Typography>
           <Paper
@@ -247,7 +253,9 @@ export function SearchContent() {
                         <Typography
                           component="span"
                           variant="caption"
-                          color="text.secondary"
+                          sx={{
+                            color: "text.secondary",
+                          }}
                         >
                           in <strong>{result.canvasName}</strong> • updated{" "}
                           {formatDistanceToNow(new Date(result.updatedAt), {
@@ -265,7 +273,9 @@ export function SearchContent() {
                         ))}
                       </Box>
                     }
-                    secondaryTypographyProps={{ component: "div" }}
+                    slotProps={{
+                      secondary: { component: "div" },
+                    }}
                   />
                 </ListItemButton>
               ))}

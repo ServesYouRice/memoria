@@ -45,6 +45,9 @@ COPY --from=build --chown=memoria:memoria /app/.next ./.next
 COPY --from=build --chown=memoria:memoria /app/dist ./dist
 COPY --from=build --chown=memoria:memoria /app/public ./public
 COPY --from=build --chown=memoria:memoria /app/prisma ./prisma
+# Prisma 7 reads the migrate datasource URL from prisma.config.ts, so the
+# `migrate` service needs it inside the runtime image.
+COPY --from=build --chown=memoria:memoria /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build --chown=memoria:memoria /app/scripts ./scripts
 
 USER memoria

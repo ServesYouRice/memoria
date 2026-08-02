@@ -39,6 +39,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Prisma 7 generates its client into the source tree; CI and Docker run
+# `pnpm db:generate` before every step that needs it.
+src/generated/
+
 # Uploads
 public/uploads
 .data

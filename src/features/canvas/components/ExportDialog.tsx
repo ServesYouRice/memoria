@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -12,13 +12,17 @@ import {
   Radio,
   Typography,
   Box,
-  CircularProgress
-} from '@mui/material';
-import { Download, Description, Code, PictureAsPdf } from '@mui/icons-material';
-import { type CanvasItem } from '@/types/canvas';
-import { exportToJSON, exportToMarkdown, exportToPDF } from '@/lib/export/export-utils';
+  CircularProgress,
+} from "@mui/material";
+import { Download, Description, Code, PictureAsPdf } from "@mui/icons-material";
+import { type CanvasItem } from "@/types/canvas";
+import {
+  exportToJSON,
+  exportToMarkdown,
+  exportToPDF,
+} from "@/lib/export/export-utils";
 
-export type ExportFormat = 'json' | 'markdown' | 'pdf' | 'png';
+export type ExportFormat = "json" | "markdown" | "pdf" | "png";
 
 export interface ExportOptions {
   includeBackground: boolean;
@@ -40,28 +44,28 @@ export function ExportDialog({
   canvasId,
   canvasName,
   items,
-  stageRef
+  stageRef,
 }: ExportDialogProps) {
-  const [format, setFormat] = useState<ExportFormat>('png');
+  const [format, setFormat] = useState<ExportFormat>("png");
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const filename = canvasName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const filename = canvasName.replace(/[^a-z0-9]/gi, "_").toLowerCase();
 
-      if (format === 'json') {
+      if (format === "json") {
         const json = await exportToJSON(canvasId, canvasName, items);
-        downloadFile(json, `${filename}.json`, 'application/json');
-      } else if (format === 'markdown') {
+        downloadFile(json, `${filename}.json`, "application/json");
+      } else if (format === "markdown") {
         const md = await exportToMarkdown(canvasId, canvasName, items);
-        downloadFile(md, `${filename}.md`, 'text/markdown');
-      } else if (format === 'pdf') {
+        downloadFile(md, `${filename}.md`, "text/markdown");
+      } else if (format === "pdf") {
         await exportToPDF(filename, stageRef.current);
-      } else if (format === 'png') {
+      } else if (format === "png") {
         if (stageRef.current) {
           const dataUrl = stageRef.current.toDataURL({ pixelRatio: 2 });
-          const link = document.createElement('a');
+          const link = document.createElement("a");
           link.download = `${filename}.png`;
           link.href = dataUrl;
           document.body.appendChild(link);
@@ -72,7 +76,7 @@ export function ExportDialog({
 
       onClose();
     } catch (error) {
-      console.error('Export failed:', error);
+      console.error("Export failed:", error);
       // Show error toast
     } finally {
       setIsExporting(false);
@@ -82,7 +86,7 @@ export function ExportDialog({
   const downloadFile = (content: string, filename: string, type: string) => {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
     link.download = filename;
     document.body.appendChild(link);
@@ -105,7 +109,7 @@ export function ExportDialog({
               value="png"
               control={<Radio />}
               label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <Download fontSize="small" />
                   <Typography>PNG Image</Typography>
                 </Box>
@@ -115,7 +119,7 @@ export function ExportDialog({
               value="pdf"
               control={<Radio />}
               label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <PictureAsPdf fontSize="small" />
                   <Typography>PDF Document</Typography>
                 </Box>
@@ -125,7 +129,7 @@ export function ExportDialog({
               value="markdown"
               control={<Radio />}
               label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <Description fontSize="small" />
                   <Typography>Markdown (Notes & Links)</Typography>
                 </Box>
@@ -135,7 +139,7 @@ export function ExportDialog({
               value="json"
               control={<Radio />}
               label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <Code fontSize="small" />
                   <Typography>JSON (Backup)</Typography>
                 </Box>
@@ -152,9 +156,11 @@ export function ExportDialog({
           onClick={handleExport}
           variant="contained"
           disabled={isExporting}
-          startIcon={isExporting ? <CircularProgress size={20} /> : <Download />}
+          startIcon={
+            isExporting ? <CircularProgress size={20} /> : <Download />
+          }
         >
-          {isExporting ? 'Exporting...' : 'Export'}
+          {isExporting ? "Exporting..." : "Export"}
         </Button>
       </DialogActions>
     </Dialog>

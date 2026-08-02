@@ -104,7 +104,9 @@ export function CanvasSecondaryActions({
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={() => setAnchorEl(null)}
-        MenuListProps={{ "aria-label": "More canvas actions" }}
+        slotProps={{
+          list: { "aria-label": "More canvas actions" },
+        }}
       >
         {actions.map((action) => (
           <MenuItem

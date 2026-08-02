@@ -1,5 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { IntegrationAuthMode, IntegrationProviderType } from "@prisma/client";
+import {
+  IntegrationAuthMode,
+  IntegrationProviderType,
+} from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { withApiHandler } from "@/lib/api/route-handler";

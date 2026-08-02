@@ -160,7 +160,9 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
       open={open}
       onClose={onClose}
       fullScreen
-      TransitionComponent={SlideTransition}
+      slots={{
+        transition: SlideTransition,
+      }}
     >
       <Box
         ref={containerRef}

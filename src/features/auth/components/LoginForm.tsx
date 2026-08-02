@@ -108,10 +108,23 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
       headline="Welcome back"
       tagline="Continue your creative journey. Your canvases are waiting for you."
     >
-      <Typography variant="h4" component="h1" fontWeight={700} gutterBottom>
+      <Typography
+        variant="h4"
+        component="h1"
+        gutterBottom
+        sx={{
+          fontWeight: 700,
+        }}
+      >
         Sign in
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+      <Typography
+        variant="body1"
+        sx={{
+          color: "text.secondary",
+          mb: 4,
+        }}
+      >
         Welcome back! Please enter your details.
       </Typography>
 
@@ -218,8 +231,10 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
         <Typography
           variant="body2"
           align="center"
-          color="text.secondary"
-          sx={{ mt: 4 }}
+          sx={{
+            color: "text.secondary",
+            mt: 4,
+          }}
         >
           {mode === "closed" ? (
             "Registration is currently closed."

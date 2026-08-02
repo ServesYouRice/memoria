@@ -1,7 +1,7 @@
 import { Box, Button, Container, Typography } from "@mui/material";
 import {
   Home as HomeIcon,
-  ErrorOutline as NotFoundIcon,
+  ErrorOutlined as NotFoundIcon,
 } from "@mui/icons-material";
 import { gradients } from "@/lib/theme";
 
@@ -68,8 +68,13 @@ export default function NotFound() {
 
           <Typography
             variant="body1"
-            color="text.secondary"
-            sx={{ mb: 4, maxWidth: 400, mx: "auto", lineHeight: 1.7 }}
+            sx={{
+              color: "text.secondary",
+              mb: 4,
+              maxWidth: 400,
+              mx: "auto",
+              lineHeight: 1.7,
+            }}
           >
             Oops! The canvas you&apos;re looking for seems to have wandered off
             into the infinite void. Let&apos;s get you back on track.

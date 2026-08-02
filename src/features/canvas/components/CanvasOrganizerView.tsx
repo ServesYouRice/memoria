@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { CanvasViewType } from "@prisma/client";
+import { CanvasViewType } from "@/generated/prisma/enums";
 import {
   Alert,
   Box,
@@ -164,7 +164,14 @@ function renderEntityCard(
       }}
     >
       <CardContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
           <Chip
             label={entity.entityType}
             color="primary"
@@ -185,11 +192,21 @@ function renderEntityCard(
             variant="outlined"
           />
         </Stack>
-        <Typography variant="h6" fontWeight={700}>
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 700,
+          }}
+        >
           {entity.title}
         </Typography>
         {entity.summary && (
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+            }}
+          >
             {entity.summary}
           </Typography>
         )}
@@ -197,8 +214,10 @@ function renderEntityCard(
         <Box>
           <Typography
             variant="caption"
-            color="text.secondary"
-            sx={{ textTransform: "uppercase" }}
+            sx={{
+              color: "text.secondary",
+              textTransform: "uppercase",
+            }}
           >
             Source items
           </Typography>
@@ -217,15 +236,22 @@ function renderEntityCard(
                   <Stack
                     direction="row"
                     spacing={1}
-                    alignItems="center"
-                    justifyContent="space-between"
+                    sx={{
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
                   >
                     <Chip
                       label={item.type.toLowerCase()}
                       size="small"
                       variant="outlined"
                     />
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
                       {item.tags.length > 0 ? item.tags.join(", ") : "untagged"}
                     </Typography>
                   </Stack>
@@ -235,7 +261,12 @@ function renderEntityCard(
                 </Paper>
               ))
             ) : (
-              <Typography variant="body2" color="text.secondary">
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
                 This entity no longer has a readable source item on the canvas.
               </Typography>
             )}
@@ -245,14 +276,21 @@ function renderEntityCard(
         <Box>
           <Typography
             variant="caption"
-            color="text.secondary"
-            sx={{ textTransform: "uppercase" }}
+            sx={{
+              color: "text.secondary",
+              textTransform: "uppercase",
+            }}
           >
             Derived relations
           </Typography>
           <Stack spacing={1} sx={{ mt: 1 }}>
             {relationGroups.every((group) => group.relations.length === 0) ? (
-              <Typography variant="body2" color="text.secondary">
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
                 No derived relations connect to this entity yet.
               </Typography>
             ) : (
@@ -261,8 +299,11 @@ function renderEntityCard(
                   <Box key={group.label}>
                     <Typography
                       variant="caption"
-                      color="text.secondary"
-                      sx={{ display: "block", mb: 0.75 }}
+                      sx={{
+                        color: "text.secondary",
+                        display: "block",
+                        mb: 0.75,
+                      }}
                     >
                       {group.label}
                     </Typography>
@@ -283,8 +324,10 @@ function renderEntityCard(
                               <Stack
                                 direction="row"
                                 spacing={1}
-                                alignItems="center"
-                                flexWrap="wrap"
+                                sx={{
+                                  alignItems: "center",
+                                  flexWrap: "wrap",
+                                }}
                               >
                                 <Chip
                                   label={relation.relationType}
@@ -306,13 +349,20 @@ function renderEntityCard(
                                   />
                                 )}
                               </Stack>
-                              <Typography variant="body2" fontWeight={600}>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 600,
+                                }}
+                              >
                                 {counterpart.title}
                               </Typography>
                               {relation.summary && (
                                 <Typography
                                   variant="caption"
-                                  color="text.secondary"
+                                  sx={{
+                                    color: "text.secondary",
+                                  }}
                                 >
                                   {relation.summary}
                                 </Typography>
@@ -474,22 +524,32 @@ export function CanvasOrganizerView({
         <Stack
           direction={{ xs: "column", lg: "row" }}
           spacing={2}
-          justifyContent="space-between"
-          alignItems={{ xs: "flex-start", lg: "center" }}
+          sx={{
+            justifyContent: "space-between",
+            alignItems: { xs: "flex-start", lg: "center" },
+          }}
         >
           <Box>
             <Stack
               direction="row"
               spacing={1}
-              alignItems="center"
-              sx={{ mb: 1 }}
+              sx={{
+                alignItems: "center",
+                mb: 1,
+              }}
             >
               <AutoAwesomeIcon />
               <Typography variant="overline" sx={{ letterSpacing: 1.5 }}>
                 Organizer Lens
               </Typography>
             </Stack>
-            <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 800,
+                mb: 1,
+              }}
+            >
               Derived structure, not live mutation
             </Typography>
             <Typography
@@ -568,14 +628,26 @@ export function CanvasOrganizerView({
           >
             <Stack
               direction="row"
-              justifyContent="space-between"
-              alignItems="center"
+              sx={{
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
             >
               <Box>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "text.secondary",
+                  }}
+                >
                   {metric.label}
                 </Typography>
-                <Typography variant="h4" fontWeight={800}>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 800,
+                  }}
+                >
                   {metric.value}
                 </Typography>
               </Box>
@@ -608,15 +680,27 @@ export function CanvasOrganizerView({
             <Stack
               direction={{ xs: "column", md: "row" }}
               spacing={2}
-              justifyContent="space-between"
-              alignItems={{ xs: "stretch", md: "center" }}
-              sx={{ mb: 2.5 }}
+              sx={{
+                justifyContent: "space-between",
+                alignItems: { xs: "stretch", md: "center" },
+                mb: 2.5,
+              }}
             >
               <Box>
-                <Typography variant="h5" fontWeight={700}>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: 700,
+                  }}
+                >
                   Derived entities
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "text.secondary",
+                  }}
+                >
                   Stable semantic records connected back to source items through
                   item links.
                 </Typography>
@@ -675,15 +759,27 @@ export function CanvasOrganizerView({
             <Stack
               direction={{ xs: "column", md: "row" }}
               spacing={2}
-              justifyContent="space-between"
-              alignItems={{ xs: "stretch", md: "center" }}
-              sx={{ mb: 2.5 }}
+              sx={{
+                justifyContent: "space-between",
+                alignItems: { xs: "stretch", md: "center" },
+                mb: 2.5,
+              }}
             >
               <Box>
-                <Typography variant="h6" fontWeight={700}>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 700,
+                  }}
+                >
                   Proposal queue
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "text.secondary",
+                  }}
+                >
                   Internal organization suggestions tied to this canvas.
                 </Typography>
               </Box>
@@ -739,8 +835,10 @@ export function CanvasOrganizerView({
                       <Stack
                         direction="row"
                         spacing={1}
-                        justifyContent="space-between"
-                        alignItems="center"
+                        sx={{
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
                       >
                         <Chip
                           label={suggestion.status.toLowerCase()}
@@ -748,15 +846,30 @@ export function CanvasOrganizerView({
                           color={getSuggestionStatusColor(suggestion.status)}
                           variant="outlined"
                         />
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                          }}
+                        >
                           expires{" "}
                           {new Date(suggestion.expiresAt).toLocaleString()}
                         </Typography>
                       </Stack>
-                      <Typography variant="subtitle2" fontWeight={700}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 700,
+                        }}
+                      >
                         {suggestion.summary}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                        }}
+                      >
                         {suggestion.kind.replaceAll("_", " ").toLowerCase()}
                       </Typography>
                     </Stack>
@@ -775,10 +888,22 @@ export function CanvasOrganizerView({
               borderColor: "divider",
             }}
           >
-            <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                mb: 0.5,
+              }}
+            >
               Audited writes
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 2.5,
+              }}
+            >
               Recent change sets scoped to this canvas. Revert actions remain
               gated in the control console.
             </Typography>
@@ -804,8 +929,10 @@ export function CanvasOrganizerView({
                       <Stack
                         direction="row"
                         spacing={1}
-                        justifyContent="space-between"
-                        alignItems="center"
+                        sx={{
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
                       >
                         <Chip
                           label={changeSet.status.toLowerCase()}
@@ -813,14 +940,29 @@ export function CanvasOrganizerView({
                           color={getChangeSetStatusColor(changeSet.status)}
                           variant="outlined"
                         />
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                          }}
+                        >
                           {new Date(changeSet.startedAt).toLocaleString()}
                         </Typography>
                       </Stack>
-                      <Typography variant="subtitle2" fontWeight={700}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 700,
+                        }}
+                      >
                         {changeSet.summary}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                        }}
+                      >
                         {changeSet.changeRecords.length} recorded changes
                       </Typography>
                     </Stack>

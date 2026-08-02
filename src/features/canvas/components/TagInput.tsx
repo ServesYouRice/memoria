@@ -1,13 +1,7 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import {
-  Box,
-  Chip,
-  TextField,
-
-  Autocomplete,
-} from '@mui/material';
+import React, { useState } from "react";
+import { Box, Chip, TextField, Autocomplete } from "@mui/material";
 
 export interface TagInputProps {
   tags: string[];
@@ -15,18 +9,18 @@ export interface TagInputProps {
   placeholder?: string;
   maxTags?: number;
   suggestions?: string[];
-  size?: 'small' | 'medium';
+  size?: "small" | "medium";
 }
 
 export function TagInput({
   tags,
   onChange,
-  placeholder = 'Add tags...',
+  placeholder = "Add tags...",
   maxTags = 20,
   suggestions = [],
-  size = 'small',
+  size = "small",
 }: TagInputProps) {
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
 
   const handleDelete = (tagToDelete: string) => {
     onChange(tags.filter((tag) => tag !== tagToDelete));
@@ -42,13 +36,15 @@ export function TagInput({
         inputValue={inputValue}
         onInputChange={(_, value) => setInputValue(value)}
         onChange={(_, newValue) => {
-          const uniqueTags = Array.from(new Set(newValue.map(v => v.trim()))).slice(0, maxTags);
+          const uniqueTags = Array.from(
+            new Set(newValue.map((v) => v.trim())),
+          ).slice(0, maxTags);
           onChange(uniqueTags);
         }}
         options={suggestions}
-        renderTags={(value, getTagProps) =>
+        renderValue={(value, getItemProps) =>
           value.map((option, index) => {
-            const { key, ...tagProps } = getTagProps({ index });
+            const { key, ...tagProps } = getItemProps({ index });
             return (
               <Chip
                 key={key}
@@ -63,9 +59,11 @@ export function TagInput({
         renderInput={(params) => (
           <TextField
             {...params}
-            placeholder={tags.length === 0 ? placeholder : ''}
+            placeholder={tags.length === 0 ? placeholder : ""}
             variant="outlined"
-            helperText={tags.length > 0 ? `${tags.length}/${maxTags} tags` : undefined}
+            helperText={
+              tags.length > 0 ? `${tags.length}/${maxTags} tags` : undefined
+            }
           />
         )}
       />

@@ -4,10 +4,10 @@
  * Caches unfurled metadata to reduce external HTTP requests
  */
 
-import { getRedisClient } from './redis-client';
-import { createLogger } from '@/lib/logger';
+import { getRedisClient } from "./redis-client";
+import { createLogger } from "@/lib/logger";
 
-const logger = createLogger('unfurl-cache');
+const logger = createLogger("unfurl-cache");
 
 interface UnfurledMetadata {
   title?: string;
@@ -27,7 +27,9 @@ const UNFURL_CACHE_TTL = 24 * 60 * 60;
 /**
  * Get cached unfurl metadata for a URL
  */
-export async function getCachedUnfurl(url: string): Promise<UnfurledMetadata | null> {
+export async function getCachedUnfurl(
+  url: string,
+): Promise<UnfurledMetadata | null> {
   const redis = getRedisClient();
   if (!redis) return null;
 
@@ -40,7 +42,7 @@ export async function getCachedUnfurl(url: string): Promise<UnfurledMetadata | n
 
     return JSON.parse(cached) as UnfurledMetadata;
   } catch (error) {
-    logger.error({ error }, 'Error getting cached unfurl');
+    logger.error({ error }, "Error getting cached unfurl");
     return null;
   }
 }
@@ -48,15 +50,22 @@ export async function getCachedUnfurl(url: string): Promise<UnfurledMetadata | n
 /**
  * Set unfurl metadata in cache
  */
-export async function setCachedUnfurl(url: string, metadata: UnfurledMetadata): Promise<void> {
+export async function setCachedUnfurl(
+  url: string,
+  metadata: UnfurledMetadata,
+): Promise<void> {
   const redis = getRedisClient();
   if (!redis) return;
 
   try {
     const normalizedUrl = normalizeUrl(url);
-    await redis.setex(`unfurl:${normalizedUrl}`, UNFURL_CACHE_TTL, JSON.stringify(metadata));
+    await redis.setex(
+      `unfurl:${normalizedUrl}`,
+      UNFURL_CACHE_TTL,
+      JSON.stringify(metadata),
+    );
   } catch (error) {
-    logger.error({ error }, 'Error setting cached unfurl');
+    logger.error({ error }, "Error setting cached unfurl");
   }
 }
 
@@ -71,7 +80,7 @@ export async function invalidateUnfurlCache(url: string): Promise<void> {
     const normalizedUrl = normalizeUrl(url);
     await redis.del(`unfurl:${normalizedUrl}`);
   } catch (error) {
-    logger.error({ error }, 'Error invalidating unfurl cache');
+    logger.error({ error }, "Error invalidating unfurl cache");
   }
 }
 
@@ -87,16 +96,18 @@ function normalizeUrl(url: string): string {
     const parsed = new URL(url);
 
     // Remove fragment
-    parsed.hash = '';
+    parsed.hash = "";
 
     // Sort query parameters
-    const params = Array.from(parsed.searchParams.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    parsed.search = '';
+    const params = Array.from(parsed.searchParams.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    );
+    parsed.search = "";
     params.forEach(([key, value]) => parsed.searchParams.set(key, value));
 
     // Convert to string and remove trailing slash
     let normalized = parsed.toString().toLowerCase();
-    if (normalized.endsWith('/')) {
+    if (normalized.endsWith("/")) {
       normalized = normalized.slice(0, -1);
     }
 
@@ -118,17 +129,17 @@ export async function getUnfurlCacheStats(): Promise<{
   if (!redis) return null;
 
   try {
-    const keys = await redis.keys('unfurl:*');
-    const info = await redis.info('memory');
+    const keys = await redis.keys("unfurl:*");
+    const info = await redis.info("memory");
     const memoryMatch = info.match(/used_memory_human:(.+)/);
-    const memoryUsage = memoryMatch?.[1] ? memoryMatch[1].trim() : 'unknown';
+    const memoryUsage = memoryMatch?.[1] ? memoryMatch[1].trim() : "unknown";
 
     return {
       totalKeys: keys.length,
       memoryUsage,
     };
   } catch (error) {
-    logger.error({ error }, 'Error getting unfurl cache stats');
+    logger.error({ error }, "Error getting unfurl cache stats");
     return null;
   }
 }

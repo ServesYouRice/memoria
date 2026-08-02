@@ -3,10 +3,10 @@
  * Following ADR-0011: Server-Side Caching Strategy
  */
 
-import Redis from 'ioredis';
-import { createLogger } from '@/lib/logger';
+import Redis from "ioredis";
+import { createLogger } from "@/lib/logger";
 
-const logger = createLogger('redis-client');
+const logger = createLogger("redis-client");
 
 let redis: Redis | null = null;
 let redisWarningLogged = false;
@@ -17,10 +17,10 @@ let redisWarningLogged = false;
  */
 export function getRedisClient(): Redis | null {
   // Check if Redis is enabled
-  const redisUrl = process.env['REDIS_URL'];
+  const redisUrl = process.env["REDIS_URL"];
   if (!redisUrl) {
     if (!redisWarningLogged) {
-      logger.warn('Redis URL not configured, caching disabled');
+      logger.warn("Redis URL not configured, caching disabled");
       redisWarningLogged = true;
     }
     return null;
@@ -43,17 +43,17 @@ export function getRedisClient(): Redis | null {
       },
     });
 
-    redis.on('error', (error) => {
-      logger.error({ error }, 'Redis connection error');
+    redis.on("error", (error) => {
+      logger.error({ error }, "Redis connection error");
     });
 
-    redis.on('connect', () => {
-      logger.info('Redis connected successfully');
+    redis.on("connect", () => {
+      logger.info("Redis connected successfully");
     });
 
     return redis;
   } catch (error) {
-    logger.error({ error }, 'Failed to initialize Redis client');
+    logger.error({ error }, "Failed to initialize Redis client");
     return null;
   }
 }
@@ -72,5 +72,5 @@ export async function closeRedisConnection(): Promise<void> {
  * Check if Redis is available
  */
 export function isRedisAvailable(): boolean {
-  return redis !== null && redis.status === 'ready';
+  return redis !== null && redis.status === "ready";
 }

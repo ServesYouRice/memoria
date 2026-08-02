@@ -2,7 +2,7 @@
  * Activity logging utilities
  */
 
-import { type Prisma } from "@prisma/client";
+import { type Prisma } from "@/generated/prisma/client";
 import { prisma } from "./db";
 import { createLogger } from "./logger";
 

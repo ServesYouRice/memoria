@@ -188,19 +188,26 @@ export function createAppTheme(mode: PaletteMode) {
             padding: "8px 18px",
             transition: `all ${transitions.fast}`,
           },
-          containedPrimary: {
-            background: gradients.brand,
-            "&:hover": {
-              background: gradients.brand,
-              filter: "brightness(1.08)",
-              boxShadow: `0 4px 16px ${alpha(brand.primary.main, 0.35)}`,
-            },
-          },
           sizeLarge: {
             padding: "12px 28px",
             fontSize: "1rem",
           },
         },
+        // MUI v9 dropped the `containedPrimary` style-override slot; the same
+        // rule is now expressed as a variant match.
+        variants: [
+          {
+            props: { variant: "contained", color: "primary" },
+            style: {
+              background: gradients.brand,
+              "&:hover": {
+                background: gradients.brand,
+                filter: "brightness(1.08)",
+                boxShadow: `0 4px 16px ${alpha(brand.primary.main, 0.35)}`,
+              },
+            },
+          },
+        ],
       },
       MuiCard: {
         styleOverrides: {

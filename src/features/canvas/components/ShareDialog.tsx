@@ -286,9 +286,11 @@ export function ShareDialog({
             />
             <Typography
               variant="caption"
-              color="text.secondary"
-              display="block"
-              sx={{ ml: 4 }}
+              sx={{
+                color: "text.secondary",
+                display: "block",
+                ml: 4,
+              }}
             >
               Public links are view-only
             </Typography>
@@ -304,15 +306,17 @@ export function ShareDialog({
                 fullWidth
                 size="small"
                 sx={{ mt: 2 }}
-                InputProps={{
-                  readOnly: true,
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={handleCopyLink} edge="end">
-                        <ContentCopy />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton onClick={handleCopyLink} edge="end">
+                          <ContentCopy />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
             )}

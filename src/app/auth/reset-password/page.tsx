@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, Suspense } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Box,
   Button,
@@ -12,19 +12,19 @@ import {
   Alert,
   Paper,
   CircularProgress,
-} from '@mui/material';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+} from "@mui/material";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 const formSchema = z
   .object({
-    password: z.string().min(8, 'Password must be at least 8 characters'),
+    password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
   });
 
 type FormData = z.infer<typeof formSchema>;
@@ -32,7 +32,7 @@ type FormData = z.infer<typeof formSchema>;
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get('token');
+  const token = searchParams.get("token");
 
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,29 +44,29 @@ function ResetPasswordForm() {
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      password: '',
-      confirmPassword: '',
+      password: "",
+      confirmPassword: "",
     },
   });
 
   useEffect(() => {
     if (!token) {
-      setError('Invalid reset link. Please request a new password reset.');
+      setError("Invalid reset link. Please request a new password reset.");
     }
   }, [token]);
 
   const onSubmit = async (data: FormData) => {
     if (!token) {
-      setError('Invalid reset link');
+      setError("Invalid reset link");
       return;
     }
 
     try {
       setError(null);
 
-      const response = await fetch('/api/v1/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/v1/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
           password: data.password,
@@ -75,32 +75,55 @@ function ResetPasswordForm() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to reset password');
+        throw new Error(errorData.message || "Failed to reset password");
       }
 
       setSuccess(true);
 
       // Redirect to login after 3 seconds
       setTimeout(() => {
-        router.push('/auth/login');
+        router.push("/auth/login");
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset password');
+      setError(err instanceof Error ? err.message : "Failed to reset password");
     }
   };
 
   if (!token) {
     return (
       <Container maxWidth="sm">
-        <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: '100%' }}>
-            <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
+        <Box
+          sx={{
+            minHeight: "100vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Paper
+            variant="outlined"
+            sx={{ p: 4, borderRadius: 3, width: "100%" }}
+          >
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{
+                fontWeight: 600,
+              }}
+            >
               Invalid Reset Link
             </Typography>
             <Alert severity="error" sx={{ mb: 2 }}>
-              This password reset link is invalid or has expired. Please request a new one.
+              This password reset link is invalid or has expired. Please request
+              a new one.
             </Alert>
-            <Button component={Link} href="/auth/forgot-password" variant="contained" fullWidth>
+            <Button
+              component={Link}
+              href="/auth/forgot-password"
+              variant="contained"
+              fullWidth
+            >
               Request New Reset Link
             </Button>
           </Paper>
@@ -111,13 +134,33 @@ function ResetPasswordForm() {
 
   return (
     <Container maxWidth="sm">
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: '100%' }}>
-          <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Paper variant="outlined" sx={{ p: 4, borderRadius: 3, width: "100%" }}>
+          <Typography
+            variant="h4"
+            component="h1"
+            gutterBottom
+            sx={{
+              fontWeight: 600,
+            }}
+          >
             Reset Password
           </Typography>
 
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 3,
+            }}
+          >
             Enter your new password below.
           </Typography>
 
@@ -127,7 +170,7 @@ function ResetPasswordForm() {
             </Alert>
           ) : (
             <form onSubmit={handleSubmit(onSubmit)}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 <Controller
                   name="password"
                   control={control}
@@ -173,15 +216,25 @@ function ResetPasswordForm() {
                   size="large"
                   fullWidth
                   disabled={isSubmitting}
-                  startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
+                  startIcon={
+                    isSubmitting ? <CircularProgress size={20} /> : null
+                  }
                 >
-                  {isSubmitting ? 'Resetting...' : 'Reset Password'}
+                  {isSubmitting ? "Resetting..." : "Reset Password"}
                 </Button>
 
-                <Box sx={{ textAlign: 'center', mt: 2 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Remember your password?{' '}
-                    <Link href="/auth/login" style={{ color: 'inherit', textDecoration: 'underline' }}>
+                <Box sx={{ textAlign: "center", mt: 2 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.secondary",
+                    }}
+                  >
+                    Remember your password?{" "}
+                    <Link
+                      href="/auth/login"
+                      style={{ color: "inherit", textDecoration: "underline" }}
+                    >
                       Login
                     </Link>
                   </Typography>
@@ -200,7 +253,14 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <Container maxWidth="sm">
-          <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              minHeight: "100vh",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <CircularProgress />
           </Box>
         </Container>

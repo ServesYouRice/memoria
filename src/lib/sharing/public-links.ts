@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { BadRequestError, ForbiddenError } from "@/lib/errors";
 
 async function requireOwnedCanvas(

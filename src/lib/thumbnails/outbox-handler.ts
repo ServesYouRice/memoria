@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import {

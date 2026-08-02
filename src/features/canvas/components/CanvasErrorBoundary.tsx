@@ -75,22 +75,41 @@ export class CanvasErrorBoundary extends Component<Props, State> {
             }}
           >
             <WarningIcon color="error" sx={{ fontSize: 64, mb: 2 }} />
-            <Typography variant="h5" gutterBottom fontWeight={600}>
+            <Typography
+              variant="h5"
+              gutterBottom
+              sx={{
+                fontWeight: 600,
+              }}
+            >
               Something went wrong with the canvas
             </Typography>
-            <Typography color="text.secondary" paragraph>
+            <Typography
+              sx={{
+                mb: 2,
+                color: "text.secondary",
+              }}
+            >
               {this.state.error?.message ||
                 "An unexpected error occurred while rendering the canvas."}
             </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph>
+            <Typography
+              variant="body2"
+              sx={{
+                mb: 2,
+                color: "text.secondary",
+              }}
+            >
               Edits that had not finished saving may not have been stored.
               Reopening the canvas shows the last state the server accepted.
             </Typography>
             <Stack
               direction={{ xs: "column", sm: "row" }}
               spacing={1.5}
-              justifyContent="center"
-              sx={{ mt: 2 }}
+              sx={{
+                justifyContent: "center",
+                mt: 2,
+              }}
             >
               <Button
                 variant="contained"

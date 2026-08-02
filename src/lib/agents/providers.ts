@@ -1,4 +1,4 @@
-import { ModelProvider } from "@prisma/client";
+import { ModelProvider } from "@/generated/prisma/client";
 
 export interface ProviderSlot {
   provider: ModelProvider;
