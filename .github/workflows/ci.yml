@@ -238,7 +238,7 @@ jobs:
 
       - name: Retain browser traces, screenshots, and service logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: production-e2e-evidence
           path: |
