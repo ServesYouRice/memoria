@@ -1,0 +1,39 @@
+# Reference Caddyfile for Memoria self-hosted deployment
+# Replace {$MEMORIA_DOMAIN:localhost} with your public domain (e.g. notes.example.com)
+
+{$MEMORIA_DOMAIN:localhost} {
+    # Block internal operations routes from public internet access
+    @blocked_operations {
+        path /api/operations/* /api/internal/*
+    }
+    respond @blocked_operations "Forbidden" 403
+
+    # Limit request body sizes before forwarding to Node.js / Next.js
+    @upload_paths {
+        path /api/v1/uploads /api/v1/canvases/*/thumbnail
+    }
+    request_body @upload_paths {
+        max_size 50MB
+    }
+    request_body {
+        max_size 2MB
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Reverse proxy to Memoria app with WebSocket upgrade and trusted forwarding
+    reverse_proxy app:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+}

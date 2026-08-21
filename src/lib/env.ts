@@ -36,6 +36,9 @@ const rawEnv = {
   SMTP_PASS: process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD,
 };
 
+const KNOWN_PLACEHOLDER_REGEX =
+  /^(replace-me|replace-with|devpassword|minioadmin)/i;
+
 const envSchema = z
   .object({
     NODE_ENV: z
@@ -56,6 +59,7 @@ const envSchema = z
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
+    BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,
     // DEC-013: the AR canvas layer stays off until the real-device matrix
     // passes. Deployments opt in explicitly.
     NEXT_PUBLIC_ENABLE_AR_CANVAS: z.enum(["true", "false"]).optional(),
@@ -87,6 +91,9 @@ const envSchema = z
     S3_ENDPOINT: optionalUrl,
     S3_ACCESS_KEY_ID: optionalString,
     S3_SECRET_ACCESS_KEY: optionalString,
+    BACKUP_BUCKET: optionalString,
+    BACKUP_RETENTION_DAYS: optionalInt,
+    BACKUP_MANIFEST_HMAC_KEY: optionalString,
     OPENAI_API_KEY: optionalString,
     APP_BOOTSTRAP_TOKEN: optionalString,
     DATABASE_PASSWORD: optionalString,
@@ -97,6 +104,36 @@ const envSchema = z
     const validateProductionRuntime =
       data.NODE_ENV === "production" &&
       process.env.MEMORIA_BUILD_PHASE !== "true";
+
+    if (validateProductionRuntime) {
+      const securitySecrets = [
+        { name: "AUTH_SECRET", val: data.AUTH_SECRET },
+        {
+          name: "INTERNAL_OPERATIONS_TOKEN",
+          val: data.INTERNAL_OPERATIONS_TOKEN,
+        },
+        { name: "APP_BOOTSTRAP_TOKEN", val: data.APP_BOOTSTRAP_TOKEN },
+        {
+          name: "MODEL_CREDENTIAL_ENCRYPTION_KEY",
+          val: data.MODEL_CREDENTIAL_ENCRYPTION_KEY,
+        },
+        { name: "CRON_SECRET", val: data.CRON_SECRET },
+        {
+          name: "BACKUP_MANIFEST_HMAC_KEY",
+          val: data.BACKUP_MANIFEST_HMAC_KEY,
+        },
+      ] as const;
+
+      for (const { name, val } of securitySecrets) {
+        if (val && KNOWN_PLACEHOLDER_REGEX.test(val)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: `${name} contains a known placeholder. A distinct, randomly generated secret is required in production.`,
+          });
+        }
+      }
+    }
 
     if (validateProductionRuntime && !data.REDIS_URL) {
       ctx.addIssue({

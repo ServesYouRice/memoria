@@ -232,6 +232,7 @@ export async function runIdempotent<T>(
   };
 
   const expiryCutoff = new Date(Date.now() - IDEMPOTENCY_TTL_MS);
+  const IN_FLIGHT_LEASE_MS = 60 * 1000;
 
   let existing = await prisma.idempotencyKey.findUnique({
     where: { key_userId_method_path: scope },
@@ -257,7 +258,18 @@ export async function runIdempotent<T>(
         true,
       ) as any;
     }
-    throw new ConflictError("Request is currently being processed");
+
+    // If an in-flight lease has expired without completion, recover it
+    const isLeaseExpired =
+      Date.now() - existing.createdAt.getTime() > IN_FLIGHT_LEASE_MS;
+    if (isLeaseExpired) {
+      await prisma.idempotencyKey
+        .delete({ where: { id: existing.id } })
+        .catch(() => {});
+      existing = null;
+    } else {
+      throw new ConflictError("Request is currently being processed");
+    }
   }
 
   try {

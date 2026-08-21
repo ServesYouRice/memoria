@@ -30,6 +30,9 @@ export function createBookmarkRefreshHandler(
   prisma: PrismaClient,
 ): OutboxHandler {
   return async (job) => {
+    if (process.env.FEATURE_BOOKMARK_UNFURLING === "false") {
+      return;
+    }
     const { itemId } = payloadSchema.parse(job.payload);
     const item = await prisma.canvasItem.findFirst({
       where: { id: itemId, type: ItemType.BOOKMARK, deletedAt: null },

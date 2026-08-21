@@ -131,52 +131,64 @@ export async function deliverSignedWebhook(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    let targetUrl = input.url;
-    let response: Response | undefined;
+    let currentUrl = input.url;
+    let finalResponse: { status: number; ok: boolean; body: string } | undefined;
 
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const validation = await validateUrlForSsrfWithDns(targetUrl);
-      if (!validation.valid) {
+      const validation = await validateUrlForSsrfWithDns(currentUrl);
+      if (!validation.valid || !validation.pinnedIp || !validation.targetUrl) {
         throw new BadRequestError(
           validation.error || "Webhook destination is invalid.",
         );
       }
 
-      response = await fetch(targetUrl, {
-        method: input.method || "POST",
-        redirect: "manual",
-        signal: controller.signal,
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": input.idempotencyKey || deliveryId,
-          "x-memoria-delivery-id": deliveryId,
-          "x-memoria-signature": `sha256=${signature}`,
-          "x-memoria-signature-timestamp": timestamp,
-          ...sanitizeWebhookHeaders(input.headers),
-        },
-        body,
-      });
+      const headers = {
+        "content-type": "application/json",
+        "idempotency-key": input.idempotencyKey || deliveryId,
+        "x-memoria-delivery-id": deliveryId,
+        "x-memoria-signature": `sha256=${signature}`,
+        "x-memoria-signature-timestamp": timestamp,
+        ...sanitizeWebhookHeaders(input.headers),
+      };
 
-      if (response.status < 300 || response.status >= 400) break;
-      const location = response.headers.get("location");
-      if (!location) break;
-      if (hop === MAX_REDIRECTS) {
-        throw new BadRequestError("Webhook redirect limit exceeded.");
+      const response = await pinnedHttpRequest(
+        validation.targetUrl,
+        validation.pinnedIp,
+        {
+          method: input.method || "POST",
+          headers,
+          body,
+          timeout: timeoutMs,
+          maxSize: MAX_RESPONSE_BYTES,
+        },
+      );
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers["location"];
+        if (!location || typeof location !== "string") {
+          finalResponse = response;
+          break;
+        }
+        if (hop === MAX_REDIRECTS) {
+          throw new BadRequestError("Webhook redirect limit exceeded.");
+        }
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
       }
-      targetUrl = new URL(location, targetUrl).toString();
+
+      finalResponse = response;
+      break;
     }
 
-    if (!response) {
+    if (!finalResponse) {
       throw new BadRequestError("Webhook delivery did not produce a response.");
     }
 
-    const responseBody = await readBoundedResponseBody(response);
-
     return {
       deliveryId,
-      status: response.status,
-      ok: response.ok,
-      responseBody,
+      status: finalResponse.status,
+      ok: finalResponse.ok,
+      responseBody: finalResponse.body,
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {

@@ -3,7 +3,10 @@ import { ItemType, Prisma, type CanvasItem } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { errorResponse, NotFoundError, ForbiddenError } from "@/lib/errors";
-import { boundedItemsResponse } from "@/lib/api/bounded-response";
+import {
+  boundedItemsResponse,
+  decodeItemCursor,
+} from "@/lib/api/bounded-response";
 
 const querySchema = z
   .object({
@@ -13,6 +16,7 @@ const querySchema = z
     maxY: z.coerce.number().finite().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     offset: z.coerce.number().int().min(0).max(10_000).default(0),
+    cursor: z.string().optional(),
   })
   .refine(
     (value) =>
@@ -51,6 +55,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     if (!canvas.isPublic)
       throw new ForbiddenError("This canvas is not publicly shared");
 
+    const cursorTarget = decodeItemCursor(query.cursor);
+
     const hasViewport = query.minX !== undefined;
     const spatial = hasViewport
       ? Prisma.sql`
@@ -60,6 +66,13 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           AND "positionY" <= ${query.maxY!}
         `
       : Prisma.empty;
+    const cursorFilter = cursorTarget
+      ? Prisma.sql`AND ("zIndex" > ${cursorTarget.zIndex} OR ("zIndex" = ${cursorTarget.zIndex} AND "id" > ${cursorTarget.id}))`
+      : Prisma.empty;
+    const paginationFragment = cursorTarget
+      ? Prisma.empty
+      : Prisma.sql`OFFSET ${query.offset}`;
+
     const countRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
       SELECT COUNT(*) AS count FROM "CanvasItem"
       WHERE "canvasId" = ${canvas.id} AND "deletedAt" IS NULL
@@ -73,8 +86,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       FROM "CanvasItem"
       WHERE "canvasId" = ${canvas.id} AND "deletedAt" IS NULL
         AND "type" <> ${ItemType.POLL}::"ItemType" ${spatial}
+        ${cursorFilter}
       ORDER BY "zIndex" ASC, "id" ASC
-      LIMIT ${query.limit} OFFSET ${query.offset}
+      LIMIT ${query.limit} ${paginationFragment}
     `;
     const total = Number(countRows[0]?.count ?? 0n);
     return boundedItemsResponse(items, {
@@ -87,9 +101,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         panY: canvas.panY,
       },
       total,
-      offset: query.offset,
+      offset: cursorTarget ? undefined : query.offset,
       limit: query.limit,
-      hasMore: query.offset + items.length < total,
+      hasMore: cursorTarget ? undefined : query.offset + items.length < total,
     });
   } catch (error) {
     return errorResponse(error, request.url);

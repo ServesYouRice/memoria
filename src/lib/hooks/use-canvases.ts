@@ -12,6 +12,10 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import {
+  canvasListResponseSchema,
+  sharedCanvasResponseSchema,
+} from "@/lib/api/response-schemas";
 
 export interface Canvas {
   id: string;
@@ -21,7 +25,9 @@ export interface Canvas {
   zoomLevel: number;
   panX: number;
   panY: number;
-  thumbnail?: string | null;
+  thumbnailKey?: string | null;
+  thumbnailRevision?: string;
+  isPublic?: boolean;
   createdAt: string;
   updatedAt: string;
   shares?: Array<{
@@ -35,7 +41,8 @@ export interface Canvas {
 export interface SharedCanvas {
   id: string;
   name: string;
-  thumbnail?: string | null;
+  thumbnailKey?: string | null;
+  thumbnailRevision?: string;
   itemCount: number;
   owner: {
     name: string | null;
@@ -79,14 +86,32 @@ const api = {
     if (workspaceId) params.set("workspaceId", workspaceId);
     const response = await apiFetch(`/api/v1/canvases?${params}`);
     if (!response.ok) throw new Error("Failed to fetch canvases");
-    return (await response.json()) as CanvasesListResponse;
+    const raw = await response.json();
+    const parsed = canvasListResponseSchema.parse(raw);
+    return {
+      canvases: parsed.canvases.map((c) => ({
+        ...c,
+        createdAt:
+          c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
+        updatedAt:
+          c.updatedAt instanceof Date ? c.updatedAt.toISOString() : c.updatedAt,
+      })),
+      pagination: parsed.pagination,
+    } as CanvasesListResponse;
   },
 
   async listSharedCanvases() {
     const response = await apiFetch("/api/v1/shared-canvases");
     if (!response.ok) throw new Error("Failed to fetch shared canvases");
-    const data = await response.json();
-    return data.canvases as SharedCanvas[];
+    const raw = await response.json();
+    const parsed = sharedCanvasResponseSchema.parse(raw);
+    return parsed.canvases.map((c) => ({
+      ...c,
+      sharedAt:
+        c.sharedAt instanceof Date ? c.sharedAt.toISOString() : c.sharedAt,
+      updatedAt:
+        c.updatedAt instanceof Date ? c.updatedAt.toISOString() : c.updatedAt,
+    })) as SharedCanvas[];
   },
 
   async createCanvas(input: CreateCanvasInput) {
@@ -215,6 +240,9 @@ export function useCreateCanvas() {
               zoomLevel: 1,
               panX: 0,
               panY: 0,
+              thumbnailKey: null,
+              thumbnailRevision: "0",
+              isPublic: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             },

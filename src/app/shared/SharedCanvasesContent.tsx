@@ -76,7 +76,11 @@ export function SharedCanvasesContent() {
               <CanvasCard
                 key={canvas.id}
                 name={canvas.name}
-                thumbnail={canvas.thumbnail}
+                thumbnail={
+                  canvas.thumbnailKey
+                    ? `/api/v1/canvases/${canvas.id}/thumbnail?v=${canvas.thumbnailRevision || "0"}`
+                    : null
+                }
                 index={index}
                 onClick={() => router.push(`/canvas/${canvas.id}`)}
                 badge={

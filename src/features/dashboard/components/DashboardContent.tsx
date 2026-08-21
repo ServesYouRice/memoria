@@ -161,42 +161,76 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   };
 
   const handleBulkDuplicate = async () => {
-    try {
-      await Promise.all(
-        Array.from(selectedCanvasIds).map((id) =>
-          duplicateCanvas.mutateAsync(id),
-        ),
-      );
+    const ids = Array.from(selectedCanvasIds);
+    if (ids.length === 0) return;
+
+    const results = await Promise.allSettled(
+      ids.map((id) => duplicateCanvas.mutateAsync(id)),
+    );
+
+    const succeeded = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+
+    if (failed === 0) {
       toast.success(
-        `Duplicated ${selectedCanvasIds.size} canvas${selectedCanvasIds.size === 1 ? "" : "es"}`,
+        `Duplicated ${succeeded} canvas${succeeded === 1 ? "" : "es"}`,
       );
       setSelectedCanvasIds(new Set());
       setSelectionMode(false);
-    } catch {
-      toast.error("Failed to duplicate canvases");
+    } else if (succeeded > 0) {
+      toast.warning(
+        `Duplicated ${succeeded} canvas${succeeded === 1 ? "" : "es"}, ${failed} failed`,
+      );
+      const failedIds = new Set(
+        ids.filter((_, idx) => results[idx].status === "rejected"),
+      );
+      setSelectedCanvasIds(failedIds);
+    } else {
+      toast.error("Failed to duplicate selected canvases");
     }
   };
 
   const handleBulkDelete = async () => {
+    const ids = Array.from(selectedCanvasIds);
+    if (ids.length === 0) return;
     setIsDeleting(true);
+
     try {
-      await Promise.all(
-        Array.from(selectedCanvasIds).map(async (id) => {
+      const results = await Promise.allSettled(
+        ids.map(async (id) => {
           const response = await fetch(`/api/v1/canvases/${id}`, {
             method: "DELETE",
           });
-          if (!response.ok) throw new Error("Failed to delete canvas");
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || "Failed to delete canvas");
+          }
+          return id;
         }),
       );
-      toast.success(
-        `Deleted ${selectedCanvasIds.size} canvas${selectedCanvasIds.size === 1 ? "" : "es"}`,
-      );
-      setSelectedCanvasIds(new Set());
-      setSelectionMode(false);
+
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+
+      if (failed === 0) {
+        toast.success(
+          `Deleted ${succeeded} canvas${succeeded === 1 ? "" : "es"}`,
+        );
+        setSelectedCanvasIds(new Set());
+        setSelectionMode(false);
+      } else if (succeeded > 0) {
+        toast.warning(
+          `Deleted ${succeeded} canvas${succeeded === 1 ? "" : "es"}, ${failed} failed`,
+        );
+        const failedIds = new Set(
+          ids.filter((_, idx) => results[idx].status === "rejected"),
+        );
+        setSelectedCanvasIds(failedIds);
+      } else {
+        toast.error("Failed to delete selected canvases");
+      }
       setDeleteConfirmOpen(false);
       await queryClient.invalidateQueries({ queryKey: canvasKeys.all });
-    } catch {
-      toast.error("Failed to delete canvases");
     } finally {
       setIsDeleting(false);
     }
@@ -204,6 +238,8 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
 
   const hasCanvases = canvases.length > 0;
   const workspaceName = workspaceData?.name;
+
+  const totalCount = data?.pages[0]?.pagination.total ?? canvases.length;
 
   return (
     <>
@@ -222,7 +258,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             `Welcome back${userName ? `, ${userName}` : ""} — ${
               isLoading
                 ? "loading…"
-                : `${canvases.length} canvas${canvases.length === 1 ? "" : "es"}`
+                : `${totalCount} canvas${totalCount === 1 ? "" : "es"}`
             }`
           )
         }
@@ -301,7 +337,9 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                       setSelectedCanvasIds(new Set(canvases.map((c) => c.id)))
                     }
                   >
-                    Select all
+                    {canvases.length < totalCount
+                      ? `Select all loaded (${canvases.length})`
+                      : "Select all"}
                   </Button>
                 )}
               </Box>
@@ -375,7 +413,11 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                   <CanvasCard
                     key={canvas.id}
                     name={canvas.name}
-                    thumbnail={canvas.thumbnail}
+                    thumbnail={
+                      canvas.thumbnailKey
+                        ? `/api/v1/canvases/${canvas.id}/thumbnail?v=${canvas.thumbnailRevision || "0"}`
+                        : null
+                    }
                     index={index}
                     selected={selectedCanvasIds.has(canvas.id)}
                     meta={`Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}
