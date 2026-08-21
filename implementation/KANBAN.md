@@ -2,11 +2,14 @@
 
 Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISIONS`.
 
-Gate status, 2026-08-22: `pnpm type-check` is red (`TS5102`, `baseUrl` removed in
-TypeScript 7) and `pnpm test -- --run` is red (10 failing tests, 3 suites that
-fail to collect). The pre-push hook and CI both fail on the first of these. No
-card can produce trustworthy evidence until [IMP-052](tasks/IMP-052.md) lands,
-so take it before resuming anything else.
+Gate status, 2026-08-22: every verification gate is red on `main`, and the
+`pre-commit` and `pre-push` hooks fail with it. `pnpm lint` cannot load
+(typescript-eslint 8.66.0 rejects TypeScript 7.0), `pnpm type-check` fails
+(`TS5102`, `baseUrl` removed in TypeScript 7), and `pnpm test -- --run` is red
+(10 failing tests, 3 suites that fail to collect). The lint and type-check
+breaks both trace to the TypeScript 7 major bump in `acea360` landing without
+its migration; see DEC-015. No card can produce trustworthy evidence until
+[IMP-052](tasks/IMP-052.md) lands, so take it before resuming anything else.
 
 Completed launch-foundation cards and their prior board snapshot are archived under
 `archive/2026-08-01/`. Parked product proposals remain under `future-expansion/`
@@ -53,6 +56,7 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | ID | Decision | Recommended | Choice | Unblocks |
 | -- | -------- | ----------- | ------ | -------- |
 | DEC-014 | Final production-gate execution | Grant or run unrestricted Docker/esbuild verification: `pnpm test:e2e`, real-PostgreSQL `pnpm test:integration`, `pnpm build`, and `pnpm smoke` |  | IMP-038 |
+| DEC-015 | TypeScript 7 toolchain incompatibility | Pin `typescript` back to `^6` until typescript-eslint supports 7.x. The bump to `^7.0.2` broke `pnpm lint` outright and `pnpm type-check` via `TS5102`; typescript-eslint tracks 7.x support in its issue 10940, so waiting leaves lint dead for an unknown period |  | IMP-052 |
 
 ## DONE
 
