@@ -38,6 +38,9 @@ describe("email verification API", () => {
     vi.clearAllMocks();
     vi.stubEnv("AUTH_URL", "https://memoria.example");
     mocks.tokenCreate.mockResolvedValue({ id: "verification-1" });
+    // The redemption path compares updateMany's count against 1 to make the
+    // token single-use, so the stub has to report a row was claimed.
+    mocks.tokenUpdateMany.mockResolvedValue({ count: 1 });
     mocks.transaction.mockImplementation(async (input: unknown) => {
       if (typeof input === "function") {
         return input({
@@ -45,6 +48,9 @@ describe("email verification API", () => {
             updateMany: mocks.tokenUpdateMany,
             create: mocks.tokenCreate,
           },
+          // Redemption marks the user verified inside the same transaction;
+          // without this the callback throws and the route answers 500.
+          user: { update: mocks.userUpdate },
           outboxJob: { upsert: mocks.outboxUpsert },
         });
       }

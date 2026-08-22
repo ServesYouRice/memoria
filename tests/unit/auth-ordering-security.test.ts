@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as argon2 from "argon2";
+import type * as Argon2Module from "argon2";
 import { authConfig } from "@/lib/auth";
 import {
   isAccountLocked,
@@ -28,6 +29,15 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/cache/redis-client", () => ({ getRedisClient: () => null }));
 
+// An ESM module namespace is not configurable, so vi.spyOn(argon2, "verify")
+// throws. Replacing the module with real implementations wrapped in vi.fn
+// keeps the genuine hashing while making the calls observable — which is the
+// point of the ordering assertions below.
+vi.mock("argon2", async (importOriginal) => {
+  const actual = await importOriginal<typeof Argon2Module>();
+  return { ...actual, hash: vi.fn(actual.hash), verify: vi.fn(actual.verify) };
+});
+
 describe("auth ordering and capability handling (IMP-041)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,7 +45,12 @@ describe("auth ordering and capability handling (IMP-041)", () => {
   });
 
   const credentialsProvider = authConfig.providers[0] as any;
-  const authorize = credentialsProvider.authorize;
+  // CredentialsProvider keeps the application's authorize under `options` and
+  // puts its own no-op stub on the provider itself. Reading the top-level one
+  // returns that stub, which resolves null without touching the database, so
+  // every assertion below would pass or fail for the wrong reason.
+  const authorize =
+    credentialsProvider.options?.authorize ?? credentialsProvider.authorize;
 
   describe("login authorization and lockout ordering", () => {
     it("rejects locked account immediately without invoking Argon2 verification", async () => {
@@ -43,9 +58,11 @@ describe("auth ordering and capability handling (IMP-041)", () => {
       for (let i = 0; i < 5; i++) {
         await recordFailedAttempt("locked@example.com", "127.0.0.1");
       }
-      expect(await isAccountLocked("locked@example.com", "127.0.0.1")).toBe(true);
+      expect(await isAccountLocked("locked@example.com", "127.0.0.1")).toBe(
+        true,
+      );
 
-      const argonVerifySpy = vi.spyOn(argon2, "verify");
+      const argonVerifySpy = vi.mocked(argon2.verify);
 
       const req = {
         headers: new Headers({ "x-memoria-client-ip": "127.0.0.1" }),
@@ -60,13 +77,12 @@ describe("auth ordering and capability handling (IMP-041)", () => {
 
       // Argon2 verify must NOT have been called for a locked attempt
       expect(argonVerifySpy).not.toHaveBeenCalled();
-      argonVerifySpy.mockRestore();
     });
 
     it("spends Argon2 work on unknown user and returns null", async () => {
       vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
 
-      const argonVerifySpy = vi.spyOn(argon2, "verify");
+      const argonVerifySpy = vi.mocked(argon2.verify);
       const req = {
         headers: new Headers({ "x-memoria-client-ip": "127.0.0.1" }),
       };
@@ -78,7 +94,6 @@ describe("auth ordering and capability handling (IMP-041)", () => {
 
       expect(result).toBeNull();
       expect(argonVerifySpy).toHaveBeenCalled();
-      argonVerifySpy.mockRestore();
     });
 
     it("does not expose unverified email state when password is wrong", async () => {
@@ -175,7 +190,9 @@ describe("auth ordering and capability handling (IMP-041)", () => {
       });
 
       // Attempts should be cleared
-      expect(await isAccountLocked("verified@example.com", "127.0.0.1")).toBe(false);
+      expect(await isAccountLocked("verified@example.com", "127.0.0.1")).toBe(
+        false,
+      );
     });
   });
 
@@ -218,7 +235,9 @@ describe("auth ordering and capability handling (IMP-041)", () => {
       });
       vi.mocked(prisma.canvasShare.findMany).mockResolvedValue([]);
 
-      const ownerReq = new Request("http://localhost/api/v1/canvases/canvas_123");
+      const ownerReq = new Request(
+        "http://localhost/api/v1/canvases/canvas_123",
+      );
       const ownerRes = await GET(ownerReq, {
         params: Promise.resolve({ canvasId: "canvas_123" }),
       });
@@ -241,7 +260,9 @@ describe("auth ordering and capability handling (IMP-041)", () => {
         },
       ]);
 
-      const collabReq = new Request("http://localhost/api/v1/canvases/canvas_123");
+      const collabReq = new Request(
+        "http://localhost/api/v1/canvases/canvas_123",
+      );
       const collabRes = await GET(collabReq, {
         params: Promise.resolve({ canvasId: "canvas_123" }),
       });
