@@ -13,6 +13,14 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
+    server: {
+      deps: {
+        // next-auth's ESM does a bare `import "next/server"`, which Node
+        // cannot resolve from inside pnpm's nested store. Letting Vite
+        // transform the package routes that import through its own resolver.
+        inline: ["next-auth", "@auth/core"],
+      },
+    },
     // The @mui/icons-material barrel resolves to one module per icon. Left
     // unbundled it opens thousands of files at once and trips EMFILE on
     // Windows, so pre-bundle it into a single dependency chunk.

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { isPrivateIp, validateUrlForSsrf } from "@/lib/utils/ssrf-protection";
-import { parseCanvasItemContent, MAX_ITEM_CONTENT_BYTES } from "@/lib/validation/canvas-item";
+import {
+  parseCanvasItemContent,
+  MAX_ITEM_CONTENT_BYTES,
+} from "@/lib/validation/canvas-item";
 import { ItemType } from "@/types/canvas";
 import { NextRequest, NextResponse } from "next/server";
 import { applyCors, handleCorsPreflight } from "@/middleware/cors";
@@ -41,32 +44,40 @@ describe("fetch, upload, and request hardening (IMP-043)", () => {
       expect(validateUrlForSsrf("gopher://example.com").valid).toBe(false);
       expect(validateUrlForSsrf("http://localhost:3000").valid).toBe(false);
       expect(validateUrlForSsrf("http://127.0.0.1:5432").valid).toBe(false);
-      expect(validateUrlForSsrf("http://user:pass@example.com").valid).toBe(false);
+      expect(validateUrlForSsrf("http://user:pass@example.com").valid).toBe(
+        false,
+      );
       expect(validateUrlForSsrf("https://example.com").valid).toBe(true);
     });
   });
 
   describe("CORS Vary: Origin cache header", () => {
     it("sets Vary: Origin on reflected CORS responses", () => {
-      const request = new NextRequest("http://localhost:3000/api/v1/canvases", {
-        headers: { origin: "http://localhost:3000" },
-      });
+      // `origin` is a forbidden header name, so passing it to the NextRequest
+      // constructor drops it silently and the assertions below read null.
+      // Setting it on the built request is the only form that survives.
+      const request = new NextRequest("http://localhost:3000/api/v1/canvases");
+      request.headers.set("origin", "http://localhost:3000");
       const response = NextResponse.next();
 
       applyCors(request, response);
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "http://localhost:3000",
+      );
       expect(response.headers.get("Vary")).toContain("Origin");
     });
 
     it("sets Vary: Origin on OPTIONS preflight responses", () => {
       const request = new NextRequest("http://localhost:3000/api/v1/canvases", {
         method: "OPTIONS",
-        headers: { origin: "http://localhost:3000" },
       });
+      request.headers.set("origin", "http://localhost:3000");
 
       const preflight = handleCorsPreflight(request);
       expect(preflight).not.toBeNull();
-      expect(preflight?.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
+      expect(preflight?.headers.get("Access-Control-Allow-Origin")).toBe(
+        "http://localhost:3000",
+      );
       expect(preflight?.headers.get("Vary")).toBe("Origin");
     });
   });

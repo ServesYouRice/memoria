@@ -67,7 +67,10 @@ describe("item mutation composability and recovery (IMP-044)", () => {
         { queryKey: canvasItemKeys.list(canvasId) },
         (old: { items?: CanvasItem[] } | undefined) => ({
           ...old,
-          items: [...(old?.items || []), optimisticItemC as unknown as CanvasItem],
+          items: [
+            ...(old?.items || []),
+            optimisticItemC as unknown as CanvasItem,
+          ],
         }),
       );
 
@@ -137,10 +140,12 @@ describe("item mutation composability and recovery (IMP-044)", () => {
         updatedAt: new Date(),
       };
 
-      queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.lists() },
-        { items: [itemA, itemB] },
-      );
+      // Seed with setQueryData, not setQueriesData: the plural form only
+      // rewrites queries already in the cache, so on an empty cache it stores
+      // nothing and every read below comes back undefined.
+      queryClient.setQueryData(canvasItemKeys.lists(), {
+        items: [itemA, itemB],
+      });
 
       const snapshotItemA = { ...itemA };
 
@@ -229,7 +234,9 @@ describe("item mutation composability and recovery (IMP-044)", () => {
 
       const succeeded = results.filter((r) => r.status === "fulfilled").length;
       const failed = results.filter((r) => r.status === "rejected").length;
-      const failedIds = ids.filter((_, idx) => results[idx].status === "rejected");
+      const failedIds = ids.filter(
+        (_, idx) => results[idx].status === "rejected",
+      );
 
       expect(succeeded).toBe(2);
       expect(failed).toBe(1);

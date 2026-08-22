@@ -56,9 +56,10 @@ describe("bounded-response and cursor continuation", () => {
       ).toBeNull();
       expect(
         decodeItemCursor(
-          Buffer.from(JSON.stringify({ z: "not-a-number", id: "123" }), "utf8").toString(
-            "base64url",
-          ),
+          Buffer.from(
+            JSON.stringify({ z: "not-a-number", id: "123" }),
+            "utf8",
+          ).toString("base64url"),
         ),
       ).toBeNull();
     });
@@ -67,12 +68,18 @@ describe("bounded-response and cursor continuation", () => {
   describe("linear accumulation and byte bounding", () => {
     it("returns all items when within byte budget", async () => {
       const items = Array.from({ length: 20 }, (_, i) => makeItem(i, 50));
-      const response = boundedItemsResponse(items, { total: 20, limit: 50, offset: 0 });
+      const response = boundedItemsResponse(items, {
+        total: 20,
+        limit: 50,
+        offset: 0,
+      });
 
       const raw = await response.text();
       const body = JSON.parse(raw);
       expect(response.status).toBe(200);
-      expect(Buffer.byteLength(raw, "utf8")).toBeLessThanOrEqual(ITEM_RESPONSE_BYTE_BUDGET);
+      expect(Buffer.byteLength(raw, "utf8")).toBeLessThanOrEqual(
+        ITEM_RESPONSE_BYTE_BUDGET,
+      );
       expect(body.items.length).toBe(20);
       expect(body.truncatedByBytes).toBe(false);
       expect(body.hasMore).toBe(false);
@@ -85,13 +92,19 @@ describe("bounded-response and cursor continuation", () => {
     it("truncates strictly when byte budget is exceeded and provides authoritative cursor", async () => {
       // 100 items of 10KB content each = ~1MB (exceeds 512KB budget)
       const items = Array.from({ length: 100 }, (_, i) => makeItem(i, 10_000));
-      const response = boundedItemsResponse(items, { total: 100, limit: 100, offset: 0 });
+      const response = boundedItemsResponse(items, {
+        total: 100,
+        limit: 100,
+        offset: 0,
+      });
 
       const raw = await response.text();
       const body = JSON.parse(raw);
 
       expect(response.status).toBe(200);
-      expect(Buffer.byteLength(raw, "utf8")).toBeLessThanOrEqual(ITEM_RESPONSE_BYTE_BUDGET);
+      expect(Buffer.byteLength(raw, "utf8")).toBeLessThanOrEqual(
+        ITEM_RESPONSE_BYTE_BUDGET,
+      );
       expect(body.truncatedByBytes).toBe(true);
       expect(body.hasMore).toBe(true);
       expect(body.items.length).toBeGreaterThan(0);
@@ -110,7 +123,9 @@ describe("bounded-response and cursor continuation", () => {
     });
 
     it("simulates full exactly-once pagination traversal across byte boundaries", async () => {
-      const allItems = Array.from({ length: 80 }, (_, i) => makeItem(i, 10_000));
+      const allItems = Array.from({ length: 80 }, (_, i) =>
+        makeItem(i, 10_000),
+      );
       const budget = 200 * 1024; // 200 KB budget
 
       const collectedItems: unknown[] = [];
@@ -125,7 +140,8 @@ describe("bounded-response and cursor continuation", () => {
           ? allItems.filter(
               (item) =>
                 item.zIndex > cursorTarget.zIndex ||
-                (item.zIndex === cursorTarget.zIndex && item.id > cursorTarget.id),
+                (item.zIndex === cursorTarget.zIndex &&
+                  item.id > cursorTarget.id),
             )
           : allItems;
 
@@ -183,7 +199,8 @@ describe("bounded-response and cursor continuation", () => {
           {
             id: "c111111111111111111111111",
             name: "Canvas 1",
-            userId: "u111111111111111111111111",
+            // A cuid must start with "c"; the schema validates this field.
+            userId: "cuser11111111111111111111",
             workspaceId: null,
             zoomLevel: 1,
             panX: 0,
