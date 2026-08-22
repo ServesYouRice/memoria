@@ -12,7 +12,6 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import {
-  Problems,
   problemToResponse,
   createValidationProblem,
   type ValidationErrorDetail,

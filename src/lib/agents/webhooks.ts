@@ -35,37 +35,6 @@ export interface SignedWebhookResponse {
 const MAX_REDIRECTS = 3;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 
-async function readBoundedResponseBody(response: Response): Promise<string> {
-  if (!response.body) return "";
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let size = 0;
-  let result = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAX_RESPONSE_BYTES) {
-        await reader.cancel();
-        return `${result}${decoder.decode(
-          value.subarray(
-            0,
-            Math.max(0, MAX_RESPONSE_BYTES - (size - value.byteLength)),
-          ),
-          { stream: true },
-        )}\n[response truncated]`;
-      }
-      result += decoder.decode(value, { stream: true });
-    }
-    return result + decoder.decode();
-  } finally {
-    reader.releaseLock();
-  }
-}
-
 function sanitizeWebhookHeaders(headers?: Record<string, string>) {
   const sanitized: Record<string, string> = {};
 
