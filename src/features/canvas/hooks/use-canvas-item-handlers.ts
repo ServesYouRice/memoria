@@ -21,6 +21,7 @@ interface UseCanvasItemHandlersOptions {
     data: Partial<CanvasItem> & { canvasId: string },
   ) => Promise<CanvasItem>;
   deleteItem: (data: { itemId: string; version: number }) => Promise<void>;
+  restoreItem?: (data: { itemId: string; version: number }) => Promise<void>;
   addCommand: (command: Command) => void;
 }
 
@@ -39,6 +40,7 @@ export function useCanvasItemHandlers({
   setSelectedItemId,
   createItem,
   deleteItem,
+  restoreItem,
   addCommand,
 }: UseCanvasItemHandlersOptions) {
   const handleDelete = useCallback(async () => {
@@ -58,21 +60,32 @@ export function useCanvasItemHandlers({
             );
           },
           undo: async () => {
-            await Promise.all(
-              itemsToDelete.map((item) =>
-                createItem({
-                  canvasId,
-                  type: item.type,
-                  positionX: item.positionX,
-                  positionY: item.positionY,
-                  width: item.width,
-                  height: item.height,
-                  zIndex: item.zIndex,
-                  content: item.content,
-                  tags: item.tags || [],
-                }),
-              ),
-            );
+            if (restoreItem) {
+              await Promise.all(
+                itemsToDelete.map((item) =>
+                  restoreItem({
+                    itemId: item.id,
+                    version: item.version + 1,
+                  }),
+                ),
+              );
+            } else {
+              await Promise.all(
+                itemsToDelete.map((item) =>
+                  createItem({
+                    canvasId,
+                    type: item.type,
+                    positionX: item.positionX,
+                    positionY: item.positionY,
+                    width: item.width,
+                    height: item.height,
+                    zIndex: item.zIndex,
+                    content: item.content,
+                    tags: item.tags || [],
+                  }),
+                ),
+              );
+            }
           },
         };
         await deleteCommand.execute();
@@ -95,17 +108,24 @@ export function useCanvasItemHandlers({
               });
             },
             undo: async () => {
-              await createItem({
-                canvasId,
-                type: selectedItem.type,
-                positionX: selectedItem.positionX,
-                positionY: selectedItem.positionY,
-                width: selectedItem.width,
-                height: selectedItem.height,
-                zIndex: selectedItem.zIndex,
-                content: selectedItem.content,
-                tags: selectedItem.tags || [],
-              });
+              if (restoreItem) {
+                await restoreItem({
+                  itemId: selectedItem.id,
+                  version: selectedItem.version + 1,
+                });
+              } else {
+                await createItem({
+                  canvasId,
+                  type: selectedItem.type,
+                  positionX: selectedItem.positionX,
+                  positionY: selectedItem.positionY,
+                  width: selectedItem.width,
+                  height: selectedItem.height,
+                  zIndex: selectedItem.zIndex,
+                  content: selectedItem.content,
+                  tags: selectedItem.tags || [],
+                });
+              }
             },
           };
           await deleteCommand.execute();
@@ -125,6 +145,7 @@ export function useCanvasItemHandlers({
     setSelectedItemId,
     createItem,
     deleteItem,
+    restoreItem,
     addCommand,
   ]);
 

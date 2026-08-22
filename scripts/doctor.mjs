@@ -61,11 +61,28 @@ if (emailProvider === 'smtp') {
 }
 
 if ((envValues.get('NODE_ENV') || 'development') === 'production') {
-  addCheck(
+  const securityKeys = [
+    'AUTH_SECRET',
     'APP_BOOTSTRAP_TOKEN',
-    envValues.get('APP_BOOTSTRAP_TOKEN') ? 'pass' : 'fail',
-    envValues.get('APP_BOOTSTRAP_TOKEN') ? 'Configured' : 'Missing'
-  );
+    'INTERNAL_OPERATIONS_TOKEN',
+    'MODEL_CREDENTIAL_ENCRYPTION_KEY',
+    'CRON_SECRET',
+    'BACKUP_MANIFEST_HMAC_KEY',
+  ];
+
+  for (const key of securityKeys) {
+    const val = envValues.get(key);
+    if (!val) {
+      addCheck(key, 'fail', 'Missing in production environment');
+    } else if (/replace-me|replace-with|devpassword|minioadmin/i.test(val)) {
+      addCheck(key, 'fail', 'Contains a known placeholder value');
+    } else if (val.length < 24) {
+      addCheck(key, 'fail', `Too short (${val.length} chars, minimum 24 required)`);
+    } else {
+      addCheck(key, 'pass', 'Configured securely');
+    }
+  }
+
   const registrationMode = envValues.get('REGISTRATION_MODE');
   addCheck(
     'registration-mode',

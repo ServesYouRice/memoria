@@ -1,4 +1,4 @@
-FROM node:26.5.0-alpine AS source
+FROM node:26.7.0-alpine AS source
 
 WORKDIR /app
 RUN npm install --global pnpm@11.13.0
@@ -31,7 +31,7 @@ ENV NODE_ENV=production \
 
 RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts
 
-FROM node:26.5.0-alpine AS runtime
+FROM node:26.7.0-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app

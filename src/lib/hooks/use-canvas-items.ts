@@ -47,6 +47,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { nanoid } from "nanoid";
 import { type ItemType, type CanvasItem } from "@/types/canvas";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -59,6 +60,10 @@ import {
   POLLING_INTERVAL_INACTIVE_MS,
   ENABLE_COLLABORATIVE_POLLING,
 } from "@/lib/constants";
+import {
+  canvasItemListResponseSchema,
+  type CanvasItemListResponse,
+} from "@/lib/api/response-schemas";
 
 /**
  * Viewport parameters for viewport-based loading
@@ -81,7 +86,11 @@ const api = {
     type?: ItemType,
     viewport?: ViewportParams,
   ) {
-    const buildParams = (offset?: number, limit?: number) => {
+    const buildParams = (
+      offset?: number,
+      limit?: number,
+      cursor?: string | null,
+    ) => {
       const params = new URLSearchParams({ canvasId });
       if (type) params.set("type", type);
 
@@ -92,45 +101,54 @@ const api = {
         params.set("maxY", viewport.maxY.toString());
       }
 
+      if (cursor) {
+        params.set("cursor", cursor);
+      } else if (offset !== undefined) {
+        params.set("offset", offset.toString());
+      }
       if (limit !== undefined) params.set("limit", limit.toString());
-      if (offset !== undefined) params.set("offset", offset.toString());
 
       return params;
     };
 
-    const fetchPage = async (offset?: number, limit?: number) => {
+    const fetchPage = async (
+      offset?: number,
+      limit?: number,
+      cursor?: string | null,
+    ): Promise<CanvasItemListResponse> => {
       const response = await apiFetch(
-        `/api/v1/canvas-items?${buildParams(offset, limit)}`,
+        `/api/v1/canvas-items?${buildParams(offset, limit, cursor)}`,
       );
       if (!response.ok) throw new Error("Failed to fetch items");
-      return response.json();
+      const raw = await response.json();
+      return canvasItemListResponseSchema.parse(raw);
     };
 
     const firstPage = await fetchPage(viewport?.offset, viewport?.limit);
-    const items: CanvasItem[] = Array.isArray(firstPage.items)
-      ? firstPage.items
-      : [];
-    let total = firstPage.total ?? items.length;
+    const items: CanvasItem[] = firstPage.items as unknown as CanvasItem[];
+    let total = firstPage.total;
     let offset = firstPage.offset ?? 0;
     let limit = firstPage.limit ?? items.length;
-    let hasMore = firstPage.hasMore ?? offset + items.length < total;
+    let hasMore = firstPage.hasMore;
+    let nextCursor = firstPage.nextCursor;
 
     if (!viewport && hasMore) {
-      let currentOffset = offset + items.length;
-      const pageLimit = limit || items.length;
+      const pageLimit = limit || 100;
       let pageCount = 1;
 
       while (hasMore && pageCount < 100) {
-        const nextPage = await fetchPage(currentOffset, pageLimit);
-        const nextItems = Array.isArray(nextPage.items) ? nextPage.items : [];
-        if (nextItems.length === 0) {
-          throw new Error("Item pagination made no progress");
+        const nextPage = await fetchPage(
+          nextCursor ? undefined : items.length,
+          pageLimit,
+          nextCursor,
+        );
+        if (nextPage.items.length === 0) {
+          break;
         }
-        items.push(...nextItems);
-        total = nextPage.total ?? total;
-        const nextOffset = nextPage.offset ?? currentOffset;
-        currentOffset = nextOffset + nextItems.length;
-        hasMore = nextPage.hasMore ?? currentOffset < total;
+        items.push(...(nextPage.items as unknown as CanvasItem[]));
+        total = nextPage.total;
+        hasMore = nextPage.hasMore;
+        nextCursor = nextPage.nextCursor;
         pageCount += 1;
       }
 
@@ -202,6 +220,21 @@ const api = {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || "Failed to delete item");
+    }
+
+    return response.json();
+  },
+
+  async restoreItem(itemId: string, version: number) {
+    const response = await apiFetch(`/api/v1/trash`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId, version }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || "Failed to restore item");
     }
 
     return response.json();
@@ -494,48 +527,69 @@ export function useCreateCanvasItem() {
   return useMutation({
     mutationFn: api.createItem,
     onMutate: async (newItem) => {
-      // Cancel outgoing refetches to prevent overwriting optimistic update
+      // Scope cancellation to this canvas's list queries
       await queryClient.cancelQueries({
         queryKey: canvasItemKeys.list(newItem.canvasId),
       });
 
-      // Snapshot previous value for rollback
-      const previousItems = queryClient.getQueryData(
-        canvasItemKeys.list(newItem.canvasId),
-      );
+      const tempId = `temp-${nanoid(10)}`;
 
       // Optimistically update cache with temporary item
       const optimisticItem = {
         ...newItem,
-        id: `temp-${Date.now()}`, // Temporary ID
+        id: tempId,
         version: 1,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         deletedAt: null,
       };
 
-      queryClient.setQueryData(
-        canvasItemKeys.list(newItem.canvasId),
-        (old: any) => ({
+      queryClient.setQueriesData(
+        { queryKey: canvasItemKeys.list(newItem.canvasId) },
+        (old: { items?: CanvasItem[] } | undefined) => ({
           ...old,
-          items: old ? [...old.items, optimisticItem] : [optimisticItem],
+          items: old?.items
+            ? [...old.items, optimisticItem as unknown as CanvasItem]
+            : [optimisticItem as unknown as CanvasItem],
         }),
       );
 
-      return { previousItems };
+      return { tempId, canvasId: newItem.canvasId };
     },
-    onSuccess: (newItem) => {
-      // Invalidate list queries for this canvas to get real server data
+    onSuccess: (newItem, _variables, context) => {
+      // Replace temporary item with real server item in place
+      queryClient.setQueriesData(
+        {
+          queryKey: canvasItemKeys.list(
+            context?.canvasId || newItem.canvasId,
+          ),
+        },
+        (old: { items?: CanvasItem[] } | undefined) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((item) =>
+              item.id === context?.tempId ? newItem : item,
+            ),
+          };
+        },
+      );
       queryClient.invalidateQueries({
         queryKey: canvasItemKeys.list(newItem.canvasId),
       });
     },
-    onError: (err, newItem, context) => {
-      // Rollback on error
-      if (context?.previousItems) {
-        queryClient.setQueryData(
-          canvasItemKeys.list(newItem.canvasId),
-          context.previousItems,
+    onError: (_err, newItem, context) => {
+      // Targeted rollback: remove only the temporary item
+      if (context?.tempId) {
+        queryClient.setQueriesData(
+          { queryKey: canvasItemKeys.list(context.canvasId) },
+          (old: { items?: CanvasItem[] } | undefined) => {
+            if (!old?.items) return old;
+            return {
+              ...old,
+              items: old.items.filter((item) => item.id !== context.tempId),
+            };
+          },
         );
       }
     },
@@ -553,26 +607,6 @@ export function useCreateCanvasItem() {
  * Automatically handles version mismatches by refetching data.
  *
  * @returns TanStack Query mutation result
- *
- * @example
- * ```typescript
- * function DraggableItem({ item }: { item: CanvasItem }) {
- *   const updateItem = useUpdateCanvasItem();
- *
- *   const handleDragEnd = (e: KonvaEventObject<DragEvent>) => {
- *     updateItem.mutate({
- *       itemId: item.id,
- *       data: {
- *         version: item.version,
- *         positionX: e.target.x(),
- *         positionY: e.target.y()
- *       }
- *     });
- *   };
- *
- *   return <Group draggable onDragEnd={handleDragEnd}>...</Group>;
- * }
- * ```
  */
 export function useUpdateCanvasItem() {
   const queryClient = useQueryClient();
@@ -586,79 +620,93 @@ export function useUpdateCanvasItem() {
       data: UpdateCanvasItemInput;
     }) => api.updateItem(itemId, data),
     onMutate: async ({ itemId, data }) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({
-        queryKey: canvasItemKeys.all,
-      });
+      // Find previous item snapshot specifically for this item
+      const previousItem =
+        queryClient.getQueryData<CanvasItem>(canvasItemKeys.detail(itemId)) ||
+        queryClient
+          .getQueriesData<{ items?: CanvasItem[] }>({
+            queryKey: canvasItemKeys.lists(),
+          })
+          .flatMap(([_, d]) => d?.items || [])
+          .find((item) => item.id === itemId);
 
-      // Snapshot previous value
-      const previousItem = queryClient.getQueryData(
-        canvasItemKeys.detail(itemId),
-      );
-      const previousListQueries = queryClient.getQueriesData({
-        queryKey: canvasItemKeys.lists(),
-      });
+      if (previousItem) {
+        queryClient.setQueryData(
+          canvasItemKeys.detail(itemId),
+          (old: CanvasItem | undefined) => {
+            if (!old) return old;
+            return {
+              ...old,
+              ...data,
+              updatedAt: new Date(),
+            };
+          },
+        );
 
-      // Optimistically update the item in detail cache
-      queryClient.setQueryData(canvasItemKeys.detail(itemId), (old: any) => {
-        if (!old) return old;
-        return {
-          ...old,
-          ...data,
-          updatedAt: new Date().toISOString(),
-        };
-      });
+        queryClient.setQueriesData(
+          { queryKey: canvasItemKeys.lists() },
+          (old: { items?: CanvasItem[] } | undefined) => {
+            if (!old?.items) return old;
+            return {
+              ...old,
+              items: old.items.map((item) =>
+                item.id === itemId
+                  ? ({ ...item, ...data, updatedAt: new Date() } as CanvasItem)
+                  : item,
+              ),
+            };
+          },
+        );
+      }
 
-      // Also update in list caches
-      queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.lists() },
-        (old: any) => {
-          if (!old?.items) return old;
-          return {
-            ...old,
-            items: old.items.map((item: any) =>
-              item.id === itemId
-                ? { ...item, ...data, updatedAt: new Date().toISOString() }
-                : item,
-            ),
-          };
-        },
-      );
-
-      return { previousItem, previousListQueries, itemId };
+      return { previousItem, itemId };
     },
     onSuccess: (updatedItem) => {
-      // Update cache with real server data
       queryClient.setQueryData(
         canvasItemKeys.detail(updatedItem.id),
         updatedItem,
       );
-
-      // Invalidate list queries to ensure consistency
-      queryClient.invalidateQueries({
-        queryKey: canvasItemKeys.list(updatedItem.canvasId),
-      });
+      queryClient.setQueriesData(
+        { queryKey: canvasItemKeys.list(updatedItem.canvasId) },
+        (old: { items?: CanvasItem[] } | undefined) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((item) =>
+              item.id === updatedItem.id ? updatedItem : item,
+            ),
+          };
+        },
+      );
     },
-    onError: (error: Error, variables, context) => {
-      // Rollback on error
+    onError: (error: Error, _variables, context) => {
+      // Targeted rollback: restore only the affected item
       if (context?.previousItem) {
         queryClient.setQueryData(
           canvasItemKeys.detail(context.itemId),
           context.previousItem,
         );
+        queryClient.setQueriesData(
+          { queryKey: canvasItemKeys.lists() },
+          (old: { items?: CanvasItem[] } | undefined) => {
+            if (!old?.items) return old;
+            return {
+              ...old,
+              items: old.items.map((item) =>
+                item.id === context.itemId
+                  ? (context.previousItem as CanvasItem)
+                  : item,
+              ),
+            };
+          },
+        );
       }
-      context?.previousListQueries?.forEach(([queryKey, data]) => {
-        queryClient.setQueryData(queryKey, data);
-      });
 
       if (isVersionConflict(error)) {
         queryClient.invalidateQueries({
           queryKey: canvasItemKeys.all,
         });
       }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: canvasItemKeys.lists() });
     },
   });
 }
@@ -674,24 +722,6 @@ export function useUpdateCanvasItem() {
  * Automatically invalidates all item queries on success.
  *
  * @returns TanStack Query mutation result
- *
- * @example
- * ```typescript
- * function DeleteButton({ item }: { item: CanvasItem }) {
- *   const deleteItem = useDeleteCanvasItem();
- *
- *   const handleDelete = async () => {
- *     if (confirm('Delete this item?')) {
- *       await deleteItem.mutateAsync({
- *         itemId: item.id,
- *         version: item.version
- *       });
- *     }
- *   };
- *
- *   return <button onClick={handleDelete}>Delete</button>;
- * }
- * ```
  */
 export function useDeleteCanvasItem() {
   const queryClient = useQueryClient();
@@ -700,52 +730,71 @@ export function useDeleteCanvasItem() {
     mutationFn: ({ itemId, version }: { itemId: string; version: number }) =>
       api.deleteItem(itemId, { version }),
     onMutate: async ({ itemId }) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({
-        queryKey: canvasItemKeys.all,
-      });
+      const deletedItem =
+        queryClient.getQueryData<CanvasItem>(canvasItemKeys.detail(itemId)) ||
+        queryClient
+          .getQueriesData<{ items?: CanvasItem[] }>({
+            queryKey: canvasItemKeys.lists(),
+          })
+          .flatMap(([_, d]) => d?.items || [])
+          .find((item) => item.id === itemId);
 
-      // Snapshot all list caches that might contain this item
-      const previousListQueries = queryClient.getQueriesData({
-        queryKey: canvasItemKeys.lists(),
-      });
-
-      // Optimistically remove item from all list caches
       queryClient.setQueriesData(
         { queryKey: canvasItemKeys.lists() },
-        (old: any) => {
+        (old: { items?: CanvasItem[] } | undefined) => {
           if (!old?.items) return old;
           return {
             ...old,
-            items: old.items.filter((item: any) => item.id !== itemId),
+            items: old.items.filter((item) => item.id !== itemId),
           };
         },
       );
 
-      // Remove from detail cache
       queryClient.removeQueries({
         queryKey: canvasItemKeys.detail(itemId),
       });
 
-      return { previousListQueries, itemId };
+      return { deletedItem, itemId };
+    },
+    onError: (_err, _variables, context) => {
+      // Targeted rollback: re-insert the deleted item back into list caches
+      if (context?.deletedItem) {
+        queryClient.setQueryData(
+          canvasItemKeys.detail(context.itemId),
+          context.deletedItem,
+        );
+        queryClient.setQueriesData(
+          { queryKey: canvasItemKeys.lists() },
+          (old: { items?: CanvasItem[] } | undefined) => {
+            if (!old?.items) return old;
+            return {
+              ...old,
+              items: [...old.items, context.deletedItem as CanvasItem],
+            };
+          },
+        );
+      }
     },
     onSuccess: () => {
-      // Invalidate queries to ensure consistency
       queryClient.invalidateQueries({
-        queryKey: canvasItemKeys.all,
+        queryKey: canvasItemKeys.lists(),
       });
     },
-    onError: (err, variables, context) => {
-      // Rollback all list caches on error
-      if (context?.previousListQueries) {
-        context.previousListQueries.forEach(([queryKey, data]) => {
-          queryClient.setQueryData(queryKey, data);
-        });
-      }
+  });
+}
 
-      // Refetch to ensure we have latest data
+/**
+ * Restore a soft-deleted canvas item
+ */
+export function useRestoreCanvasItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ itemId, version }: { itemId: string; version: number }) =>
+      api.restoreItem(itemId, version),
+    onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: canvasItemKeys.all,
+        queryKey: canvasItemKeys.lists(),
       });
     },
   });

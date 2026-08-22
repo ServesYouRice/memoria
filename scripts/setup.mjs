@@ -74,6 +74,15 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   const cronSecret = usableSecret(currentValues.get('CRON_SECRET'), 24)
     ? currentValues.get('CRON_SECRET')
     : randomSecret(32);
+  const operationsToken = usableSecret(currentValues.get('INTERNAL_OPERATIONS_TOKEN'), 32)
+    ? currentValues.get('INTERNAL_OPERATIONS_TOKEN')
+    : randomSecret(48);
+  const backupHmacKey = usableSecret(currentValues.get('BACKUP_MANIFEST_HMAC_KEY'), 32)
+    ? currentValues.get('BACKUP_MANIFEST_HMAC_KEY')
+    : randomSecret(48);
+  const backupMinioPassword = usableSecret(currentValues.get('BACKUP_MINIO_ROOT_PASSWORD'), 24)
+    ? currentValues.get('BACKUP_MINIO_ROOT_PASSWORD')
+    : randomSecret(32);
   const appUrl = selfHostChoices?.publicUrl || 'http://localhost:3000';
   const bucket = currentValues.get('S3_BUCKET') || 'memoria-uploads';
 
@@ -99,7 +108,9 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(raw, 'AUTH_SECRET', authSecret);
   raw = upsertEnvValue(raw, 'NEXTAUTH_SECRET', authSecret);
   raw = upsertEnvValue(raw, 'APP_BOOTSTRAP_TOKEN', bootstrapToken);
-  raw = upsertEnvValue(raw, 'REGISTRATION_MODE', 'open');
+  raw = upsertEnvValue(raw, 'INTERNAL_OPERATIONS_TOKEN', operationsToken);
+  raw = upsertEnvValue(raw, 'REGISTRATION_MODE', currentValues.get('REGISTRATION_MODE') || 'open');
+  raw = upsertEnvValue(raw, 'AUTH_RATE_LIMIT_MAX_REQUESTS', currentValues.get('AUTH_RATE_LIMIT_MAX_REQUESTS') || '5');
   raw = upsertEnvValue(raw, 'EMAIL_PROVIDER', selfHostChoices?.emailProvider || 'console');
   if (selfHostChoices?.emailProvider === 'sendgrid') {
     raw = upsertEnvValue(raw, 'SENDGRID_API_KEY', selfHostChoices.providerKey);
@@ -118,6 +129,13 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(raw, 'S3_SECRET_ACCESS_KEY', minioPassword);
   raw = upsertEnvValue(raw, 'MINIO_ROOT_USER', minioUser);
   raw = upsertEnvValue(raw, 'MINIO_ROOT_PASSWORD', minioPassword);
+  raw = upsertEnvValue(raw, 'BACKUP_BUCKET', currentValues.get('BACKUP_BUCKET') || 'memoria-backups');
+  raw = upsertEnvValue(raw, 'BACKUP_RETENTION_DAYS', currentValues.get('BACKUP_RETENTION_DAYS') || '35');
+  raw = upsertEnvValue(raw, 'BACKUP_MANIFEST_HMAC_KEY', backupHmacKey);
+  raw = upsertEnvValue(raw, 'BACKUP_MINIO_ROOT_USER', currentValues.get('BACKUP_MINIO_ROOT_USER') || 'backupadmin');
+  raw = upsertEnvValue(raw, 'BACKUP_MINIO_ROOT_PASSWORD', backupMinioPassword);
+  raw = upsertEnvValue(raw, 'FEATURE_BOOKMARK_UNFURLING', currentValues.get('FEATURE_BOOKMARK_UNFURLING') || 'true');
+  raw = upsertEnvValue(raw, 'BOOKMARK_REFRESH_INTERVAL_MS', currentValues.get('BOOKMARK_REFRESH_INTERVAL_MS') || '900000');
   raw = upsertEnvValue(raw, 'SMTP_PASS', '');
 
   writeEnvFile(targetPath, raw);

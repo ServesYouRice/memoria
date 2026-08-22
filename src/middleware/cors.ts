@@ -129,6 +129,12 @@ export function applyCors(request: NextRequest, response: NextResponse): void {
     // Set allowed origin (never use "*" with credentials)
     if (origin) {
       response.headers.set("Access-Control-Allow-Origin", origin);
+      const existingVary = response.headers.get("Vary");
+      if (!existingVary) {
+        response.headers.set("Vary", "Origin");
+      } else if (!existingVary.toLowerCase().includes("origin")) {
+        response.headers.set("Vary", `${existingVary}, Origin`);
+      }
     }
 
     // Allow credentials (cookies, authorization headers)
@@ -186,6 +192,7 @@ export function handleCorsPreflight(request: NextRequest): NextResponse | null {
   // Set CORS headers
   if (origin) {
     response.headers.set("Access-Control-Allow-Origin", origin);
+    response.headers.set("Vary", "Origin");
   }
 
   if (config.allowCredentials) {

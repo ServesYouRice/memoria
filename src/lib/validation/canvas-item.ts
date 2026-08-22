@@ -72,11 +72,11 @@ export const bookmarkContentSchema = z.object({
     }
     return sanitized;
   }),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  favicon: z.string().optional(),
-  previewImage: z.string().optional(),
-  siteName: z.string().optional(),
+  title: z.string().max(500).optional(),
+  description: z.string().max(2000).optional(),
+  favicon: z.string().max(2048).optional(),
+  previewImage: z.string().max(2048).optional(),
+  siteName: z.string().max(200).optional(),
   unfurledAt: z.string().optional(),
 });
 
@@ -84,7 +84,7 @@ export const bookmarkContentSchema = z.object({
  * Image content validation
  */
 export const imageContentSchema = z.object({
-  url: z.string().refine((value) => {
+  url: z.string().max(2048).refine((value) => {
     if (/^\/api\/v1\/uploads\/c[a-z0-9]{20,}$/i.test(value)) return true;
     try {
       const parsed = new URL(value);
@@ -93,19 +93,19 @@ export const imageContentSchema = z.object({
       return false;
     }
   }, "Image URL must be an HTTP URL or a private upload URL"),
-  filename: z.string().min(1),
-  alt: z.string().optional(),
-  width: z.number().positive().optional(),
-  height: z.number().positive().optional(),
+  filename: z.string().min(1).max(255),
+  alt: z.string().max(500).optional(),
+  width: z.number().positive().max(10000).optional(),
+  height: z.number().positive().max(10000).optional(),
 });
 
 /**
  * Drawing path validation
  */
 const drawingPathSchema = z.object({
-  points: z.array(z.number()),
-  stroke: z.string(),
-  strokeWidth: z.number().positive(),
+  points: z.array(z.number().finite()).max(2000),
+  stroke: z.string().max(50),
+  strokeWidth: z.number().positive().max(100),
   opacity: z.number().min(0).max(1).optional(),
   tension: z.number().optional(),
 });
@@ -114,7 +114,7 @@ const drawingPathSchema = z.object({
  * Drawing content validation
  */
 export const drawingContentSchema = z.object({
-  paths: z.array(drawingPathSchema),
+  paths: z.array(drawingPathSchema).max(500),
 });
 
 /**
@@ -129,10 +129,10 @@ export const shapeContentSchema = z.object({
     "star",
     "arrow_shape",
   ]),
-  stroke: z.string().optional(),
-  fill: z.string().optional(),
-  strokeWidth: z.number().positive().optional(),
-  radius: z.number().nonnegative().optional(),
+  stroke: z.string().max(50).optional(),
+  fill: z.string().max(50).optional(),
+  strokeWidth: z.number().positive().max(100).optional(),
+  radius: z.number().nonnegative().max(10000).optional(),
 });
 
 /**
@@ -141,39 +141,39 @@ export const shapeContentSchema = z.object({
 export const arrowContentSchema = z.object({
   startItemId: z.string().cuid().optional(),
   endItemId: z.string().cuid().optional(),
-  startPoint: z.object({ x: z.number(), y: z.number() }).optional(),
-  endPoint: z.object({ x: z.number(), y: z.number() }).optional(),
-  stroke: z.string().optional(),
-  strokeWidth: z.number().positive().optional(),
+  startPoint: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
+  endPoint: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
+  stroke: z.string().max(50).optional(),
+  strokeWidth: z.number().positive().max(100).optional(),
   arrowHeadStart: z.enum(["none", "arrow", "circle"]).optional(),
   arrowHeadEnd: z.enum(["none", "arrow", "circle"]).optional(),
-  label: z.string().optional(),
+  label: z.string().max(500).optional(),
 });
 
 /**
  * Text content validation
  */
 export const textContentSchema = z.object({
-  text: z.string(),
-  fontSize: z.number().positive().optional(),
-  fontFamily: z.string().optional(),
+  text: z.string().max(50000),
+  fontSize: z.number().positive().max(500).optional(),
+  fontFamily: z.string().max(100).optional(),
   align: z.enum(["left", "center", "right"]).optional(),
-  color: z.string().optional(),
+  color: z.string().max(50).optional(),
 });
 
 /**
  * Frame content validation
  */
 export const frameContentSchema = z.object({
-  title: z.string().optional(),
-  backgroundColor: z.string().optional(),
+  title: z.string().max(200).optional(),
+  backgroundColor: z.string().max(50).optional(),
 });
 
 /**
  * Embed content validation
  */
 export const embedContentSchema = z.object({
-  url: z.string().url(),
+  url: z.string().url().max(2048),
   embedType: z.enum(["youtube", "figma", "loom", "generic"]),
 });
 
@@ -181,16 +181,18 @@ export const embedContentSchema = z.object({
  * Poll content validation
  */
 export const pollContentSchema = z.object({
-  question: z.string().min(1),
+  question: z.string().min(1).max(500),
   options: z.array(
     z.object({
-      id: z.string(),
-      text: z.string(),
-      votes: z.array(z.string()),
+      id: z.string().max(50),
+      text: z.string().max(200),
+      votes: z.array(z.string().cuid()).max(1000),
     }),
-  ),
+  ).max(20),
   multipleChoice: z.boolean().optional(),
 });
+
+export const MAX_ITEM_CONTENT_BYTES = 256 * 1024; // 256 KB max per item content
 
 export const canvasItemContentSchemas = {
   [ItemType.NOTE]: noteContentSchema,
@@ -213,6 +215,17 @@ export function parseCanvasItemContent(type: string, content: unknown) {
         code: "custom",
         message: `Unsupported item type: ${type}`,
         path: ["type"],
+      },
+    ]);
+  }
+
+  const serialized = JSON.stringify(content ?? null);
+  if (Buffer.byteLength(serialized, "utf8") > MAX_ITEM_CONTENT_BYTES) {
+    throw new z.ZodError([
+      {
+        code: "custom",
+        message: `Item content exceeds maximum byte size of ${MAX_ITEM_CONTENT_BYTES} bytes`,
+        path: ["content"],
       },
     ]);
   }
@@ -292,6 +305,7 @@ export const listCanvasItemsSchema = z.object({
     .max(MAX_VIEWPORT_ITEMS)
     .default(MAX_VIEWPORT_ITEMS),
   offset: z.number().int().nonnegative().default(0),
+  cursor: z.string().optional(),
 });
 
 /**
@@ -326,6 +340,7 @@ export const viewportPaginationSchema = z.object({
     .max(MAX_VIEWPORT_ITEMS)
     .default(DEFAULT_VIEWPORT_LIMIT),
   offset: z.number().int().nonnegative().default(0),
+  cursor: z.string().optional(),
 });
 
 /**

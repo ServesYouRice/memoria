@@ -43,17 +43,39 @@ export const GET = withApiHandler(
     // duplicate the full canvas payload in this metadata request.
     const canvasData = await prisma.canvas.findUnique({
       where: { id: canvasId },
+      select: {
+        id: true,
+        name: true,
+        userId: true,
+        workspaceId: true,
+        zoomLevel: true,
+        panX: true,
+        panY: true,
+        thumbnailKey: true,
+        thumbnailRevision: true,
+        isPublic: true,
+        isTemplate: true,
+        templateDescription: true,
+        templateCategory: true,
+        shareToken: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
     if (!canvasData) {
       throw new NotFoundError("Canvas not found");
     }
 
-    // 4. Fetch user-specific share info (always fresh)
+    const isOwner = canvasData.userId === userId;
+
+    // Fetch user-specific share info (always fresh)
     const shares = await prisma.canvasShare.findMany({
-      where: {
-        canvasId,
-        recipientId: userId,
-      },
+      where: isOwner
+        ? { canvasId }
+        : {
+            canvasId,
+            recipientId: userId,
+          },
       select: {
         id: true,
         role: true,
@@ -61,13 +83,26 @@ export const GET = withApiHandler(
       },
     });
 
-    // 5. Return combined response
+    // Return combined response with role-specific redactions
     return NextResponse.json({
-      ...canvasData,
+      id: canvasData.id,
+      name: canvasData.name,
+      userId: canvasData.userId,
+      workspaceId: canvasData.workspaceId,
+      zoomLevel: canvasData.zoomLevel,
+      panX: canvasData.panX,
+      panY: canvasData.panY,
+      thumbnailKey: canvasData.thumbnailKey,
       thumbnailRevision: canvasData.thumbnailRevision.toString(),
+      isPublic: canvasData.isPublic,
+      isTemplate: canvasData.isTemplate,
+      templateDescription: canvasData.templateDescription,
+      templateCategory: canvasData.templateCategory,
+      shareToken: isOwner ? canvasData.shareToken : null,
+      createdAt: canvasData.createdAt.toISOString(),
+      updatedAt: canvasData.updatedAt.toISOString(),
       shares,
-      accessLevel:
-        canvasData.userId === userId ? "OWNER" : shares[0]?.role || "VIEW",
+      accessLevel: isOwner ? "OWNER" : shares[0]?.role || "VIEW",
     });
   },
 );

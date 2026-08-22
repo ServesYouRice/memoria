@@ -18,7 +18,8 @@ export interface WorkspaceWithCanvases extends Workspace {
   canvases: {
     id: string;
     name: string;
-    thumbnail: string | null;
+    thumbnailKey: string | null;
+    thumbnailRevision: string;
     updatedAt: string;
   }[];
 }

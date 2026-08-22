@@ -25,6 +25,10 @@ import type Konva from "konva";
 import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
 import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
 import { NO_CANVAS_CAPABILITIES } from "@/types/canvas";
+import {
+  publicCanvasShareResponseSchema,
+  type PublicCanvasShareResponse,
+} from "@/lib/api/response-schemas";
 
 interface SharePageProps {
   params: Promise<{
@@ -40,7 +44,9 @@ export default function SharePage({ params }: SharePageProps) {
   const { token } = use(params);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [canvas, setCanvas] = useState<any>(null);
+  const [canvas, setCanvas] = useState<PublicCanvasShareResponse["canvas"] | null>(
+    null,
+  );
   const [items, setItems] = useState<CanvasItem[]>([]);
 
   // Canvas state
@@ -50,37 +56,74 @@ export default function SharePage({ params }: SharePageProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch canvas data
+  // Fetch canvas data and follow continuation until completeness contract is met
   useEffect(() => {
+    let active = true;
+
     const fetchCanvas = async () => {
       try {
         const response = await fetch(`/api/v1/share/${token}`);
 
         if (!response.ok) {
           if (response.status === 404) {
-            setError("Canvas not found or link has expired");
+            if (active) setError("Canvas not found or link has expired");
           } else if (response.status === 403) {
-            setError("This canvas is no longer publicly shared");
+            if (active) setError("This canvas is no longer publicly shared");
           } else {
-            setError("Failed to load canvas");
+            if (active) setError("Failed to load canvas");
           }
-          setLoading(false);
+          if (active) setLoading(false);
           return;
         }
 
-        const data = await response.json();
-        setCanvas(data);
-        setItems(data.items || []);
-        setZoom(data.zoomLevel || 1);
-        setPosition({ x: data.panX || 0, y: data.panY || 0 });
+        const rawData = await response.json();
+        const data = publicCanvasShareResponseSchema.parse(rawData);
+
+        if (!active) return;
+
+        setCanvas(data.canvas);
+        setZoom(data.canvas.zoomLevel || 1);
+        setPosition({ x: data.canvas.panX || 0, y: data.canvas.panY || 0 });
+
+        const allItems: CanvasItem[] = [...(data.items as unknown as CanvasItem[])];
+        let hasMore = data.hasMore;
+        let nextCursor = data.nextCursor;
+        let pageCount = 1;
+
+        while (hasMore && pageCount < 100) {
+          const nextUrl = nextCursor
+            ? `/api/v1/share/${token}?cursor=${encodeURIComponent(nextCursor)}`
+            : `/api/v1/share/${token}?offset=${allItems.length}`;
+          const pageResponse = await fetch(nextUrl);
+          if (!pageResponse.ok) {
+            throw new Error("Failed to load additional canvas items");
+          }
+          const nextRaw = await pageResponse.json();
+          const nextPage = publicCanvasShareResponseSchema.parse(nextRaw);
+
+          if (nextPage.items.length === 0) break;
+
+          allItems.push(...(nextPage.items as unknown as CanvasItem[]));
+          hasMore = nextPage.hasMore;
+          nextCursor = nextPage.nextCursor;
+          pageCount++;
+        }
+
+        if (active) {
+          setItems(allItems);
+        }
       } catch {
-        setError("Failed to load canvas");
+        if (active) setError("Failed to load canvas");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     fetchCanvas();
+
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   // Update stage size on mount and resize

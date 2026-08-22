@@ -56,17 +56,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Mark email as verified and mark token as used
-    await prisma.$transaction([
-      prisma.user.update({
+    // Mark email as verified and mark token as used with atomic compare-and-set
+    await prisma.$transaction(async (tx) => {
+      const tokenUpdate = await tx.emailVerificationToken.updateMany({
+        where: { id: verificationToken.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      if (tokenUpdate.count !== 1) {
+        throw new BadRequestError("Verification token has already been used");
+      }
+      await tx.user.update({
         where: { id: user.id },
         data: { emailVerified: new Date() },
-      }),
-      prisma.emailVerificationToken.update({
-        where: { id: verificationToken.id },
-        data: { usedAt: new Date() },
-      }),
-    ]);
+      });
+    });
 
     return NextResponse.json({
       message: "Email verified successfully!",

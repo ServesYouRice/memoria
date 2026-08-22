@@ -48,6 +48,38 @@ export async function recordCanvasItemEvent(
   return event;
 }
 
+export async function recordCanvasItemEventsBatch(
+  tx: Store,
+  events: Array<{
+    canvasId: string;
+    actorId: string;
+    itemId: string;
+    version: number;
+    operation: "created" | "updated" | "deleted";
+  }>,
+) {
+  if (events.length === 0) return [];
+  const created = [];
+  for (const input of events) {
+    const event = await tx.canvasEvent.create({
+      data: {
+        canvasId: input.canvasId,
+        actorId: input.actorId,
+        entityId: input.itemId,
+        entityVersion: input.version,
+        operation: input.operation,
+      },
+    });
+    await enqueueOutboxJob(tx, {
+      type: "canvas.event.publish",
+      payload: { eventId: event.id },
+      dedupeKey: `canvas.event.publish:${event.id}`,
+    });
+    created.push(event);
+  }
+  return created;
+}
+
 export function toCommittedEventEnvelope(event: {
   id: string;
   sequence: bigint;

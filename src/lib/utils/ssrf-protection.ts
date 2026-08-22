@@ -2,12 +2,14 @@
  * SSRF (Server-Side Request Forgery) Protection Utilities
  *
  * Implements ADR-0003: SSRF-Protected Unfurling
- * Prevents malicious URLs from accessing internal resources
+ * Prevents malicious URLs from accessing internal resources with pinned DNS lookups
  */
 
 import { URL } from "url";
 import { promises as dns } from "dns";
 import net from "net";
+import http from "http";
+import https from "https";
 
 // Private IP ranges to block
 const PRIVATE_IP_PATTERNS = [
@@ -69,7 +71,7 @@ function isPrivateOrLocalHost(hostname: string): boolean {
   return false;
 }
 
-function isPrivateIp(address: string): boolean {
+export function isPrivateIp(address: string): boolean {
   if (net.isIP(address) === 4) {
     const parts = address.split(".").map((part) => parseInt(part, 10));
     if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
@@ -114,7 +116,7 @@ function isPrivateIp(address: string): boolean {
 
 export async function validateUrlForSsrfWithDns(
   urlString: string,
-): Promise<{ valid: boolean; error?: string }> {
+): Promise<{ valid: boolean; error?: string; pinnedIp?: string; targetUrl?: URL }> {
   const base = validateUrlForSsrf(urlString);
   if (!base.valid) {
     return base;
@@ -130,7 +132,7 @@ export async function validateUrlForSsrfWithDns(
         error: "Cannot fetch URLs from private or local addresses",
       };
     }
-    return { valid: true };
+    return { valid: true, pinnedIp: hostname, targetUrl: url };
   }
 
   try {
@@ -144,11 +146,11 @@ export async function validateUrlForSsrfWithDns(
         return { valid: false, error: "Resolved to a private address" };
       }
     }
+
+    return { valid: true, pinnedIp: records[0].address, targetUrl: url };
   } catch {
     return { valid: false, error: "Hostname resolution failed" };
   }
-
-  return { valid: true };
 }
 
 /**
@@ -196,8 +198,103 @@ export function validateUrlForSsrf(urlString: string): {
 }
 
 /**
- * Fetch a URL with SSRF protection
- * Follows redirects but validates each redirect URL
+ * Execute an HTTP request pinned to a validated IP to prevent DNS rebinding TOCTOU attacks
+ */
+export function pinnedHttpRequest(
+  targetUrl: URL,
+  pinnedIp: string,
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeout?: number;
+    maxSize?: number;
+  } = {},
+): Promise<{
+  status: number;
+  headers: http.IncomingHttpHeaders;
+  body: string;
+  ok: boolean;
+}> {
+  return new Promise((resolve, reject) => {
+    const isHttps = targetUrl.protocol === "https:";
+    const lib = isHttps ? https : http;
+    const isIpv6 = net.isIP(pinnedIp) === 6;
+    const timeout = options.timeout ?? 10000;
+    const maxSize = options.maxSize ?? 1024 * 1024;
+
+    const reqOptions: http.RequestOptions = {
+      protocol: targetUrl.protocol,
+      hostname: isIpv6 ? `[${pinnedIp}]` : pinnedIp,
+      port: targetUrl.port || (isHttps ? 443 : 80),
+      path: `${targetUrl.pathname}${targetUrl.search}`,
+      method: options.method || "GET",
+      headers: {
+        Host: targetUrl.host,
+        "User-Agent": "Memoria/1.0 (Link Preview Bot)",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        ...options.headers,
+      },
+      lookup: (_hostname, _opts, callback) => {
+        callback(null, pinnedIp, net.isIP(pinnedIp));
+      },
+      timeout,
+    };
+
+    if (isHttps) {
+      (reqOptions as https.RequestOptions).servername = targetUrl.hostname;
+    }
+
+    const req = lib.request(reqOptions, (res) => {
+      const contentLength = res.headers["content-length"];
+      if (contentLength && parseInt(contentLength, 10) > maxSize) {
+        req.destroy();
+        return reject(new Error("Response too large"));
+      }
+
+      let totalSize = 0;
+      const chunks: Buffer[] = [];
+
+      res.on("data", (chunk: Buffer) => {
+        totalSize += chunk.length;
+        if (totalSize > maxSize) {
+          req.destroy();
+          return reject(new Error("Response too large"));
+        }
+        chunks.push(chunk);
+      });
+
+      res.on("end", () => {
+        const bodyBuffer = Buffer.concat(chunks);
+        resolve({
+          status: res.statusCode || 200,
+          ok: (res.statusCode || 200) >= 200 && (res.statusCode || 200) < 300,
+          headers: res.headers,
+          body: bodyBuffer.toString("utf8"),
+        });
+      });
+
+      res.on("error", (err) => reject(err));
+    });
+
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("Request timeout"));
+    });
+
+    req.on("error", (err) => reject(err));
+
+    if (options.body) {
+      req.write(options.body);
+    }
+    req.end();
+  });
+}
+
+/**
+ * Fetch a URL with SSRF protection and connection pinning
+ * Follows redirects but validates and pins each redirect URL
  */
 export async function safeFetch(
   urlString: string,
@@ -213,31 +310,26 @@ export async function safeFetch(
   let redirectCount = 0;
 
   while (redirectCount <= maxRedirects) {
-    // Validate current URL
+    // Validate current URL and resolve pinned IP
     const validation = await validateUrlForSsrfWithDns(currentUrl);
-    if (!validation.valid) {
+    if (!validation.valid || !validation.pinnedIp || !validation.targetUrl) {
       return { ok: false, status: 400, error: validation.error };
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
     try {
-      const response = await fetch(currentUrl, {
-        method: "GET",
-        redirect: "manual", // Handle redirects manually for validation
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Memoria/1.0 (Link Preview Bot)",
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      const response = await pinnedHttpRequest(
+        validation.targetUrl,
+        validation.pinnedIp,
+        {
+          timeout,
+          maxSize,
         },
-      });
+      );
 
       // Handle redirects
       if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get("location");
-        if (!location) {
+        const location = response.headers["location"];
+        if (!location || typeof location !== "string") {
           return {
             ok: false,
             status: response.status,
@@ -261,55 +353,18 @@ export async function safeFetch(
         };
       }
 
-      // Check content length
-      const contentLength = response.headers.get("content-length");
-      if (contentLength && parseInt(contentLength, 10) > maxSize) {
-        return { ok: false, status: 413, error: "Response too large" };
-      }
-
-      // Read response body with size limit
-      const reader = response.body?.getReader();
-      if (!reader) {
-        return { ok: false, status: 500, error: "No response body" };
-      }
-
-      const chunks: Uint8Array[] = [];
-      let totalSize = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        totalSize += value.length;
-        if (totalSize > maxSize) {
-          reader.cancel();
-          return { ok: false, status: 413, error: "Response too large" };
-        }
-
-        chunks.push(value);
-      }
-
-      // Combine chunks and decode
-      const allChunks = new Uint8Array(totalSize);
-      let position = 0;
-      for (const chunk of chunks) {
-        allChunks.set(chunk, position);
-        position += chunk.length;
-      }
-
-      const text = new TextDecoder("utf-8").decode(allChunks);
-
-      return { ok: true, status: response.status, data: text };
+      return { ok: true, status: response.status, data: response.body };
     } catch (error) {
       if (error instanceof Error) {
-        if (error.name === "AbortError") {
+        if (error.message.includes("timeout")) {
           return { ok: false, status: 408, error: "Request timeout" };
+        }
+        if (error.message.includes("too large")) {
+          return { ok: false, status: 413, error: "Response too large" };
         }
         return { ok: false, status: 500, error: error.message };
       }
       return { ok: false, status: 500, error: "Unknown error" };
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 

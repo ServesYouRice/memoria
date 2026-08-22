@@ -54,6 +54,12 @@ export const authConfig: NextAuthConfig = {
         const email = String(credentials.email).trim().toLowerCase();
         const clientId =
           request.headers.get("x-memoria-client-ip") || "unknown";
+
+        // Reject an active lockout before expensive password hashing
+        if (await isAccountLocked(email, clientId)) {
+          throw new AccountLockedError();
+        }
+
         const delayMs = await getLoginDelay(email);
         if (delayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -70,26 +76,23 @@ export const authConfig: NextAuthConfig = {
             await dummyPasswordHash,
             credentials.password as string,
           );
-          if (await isAccountLocked(email, clientId))
-            throw new AccountLockedError();
           await recordFailedAttempt(email, clientId);
           return null;
         }
 
-        if (process.env.NODE_ENV === "production" && !user.emailVerified) {
-          throw new EmailNotVerifiedError();
-        }
-
+        // Verify password first before evaluating any email verification state
         const isValidPassword = await argon2.verify(
           user.passwordHash,
           credentials.password as string,
         );
 
         if (!isValidPassword) {
-          if (await isAccountLocked(email, clientId))
-            throw new AccountLockedError();
           await recordFailedAttempt(email, clientId);
           return null;
+        }
+
+        if (process.env.NODE_ENV === "production" && !user.emailVerified) {
+          throw new EmailNotVerifiedError();
         }
 
         // Login successful, clear attempts
