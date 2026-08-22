@@ -12,7 +12,6 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import {
-  Problems,
   problemToResponse,
   createValidationProblem,
   type ValidationErrorDetail,
@@ -97,19 +96,27 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     );
   }
 
+  // Hash password with Argon2id before checking existing user to maintain constant-time path
+  const passwordHash = await hashPassword(password);
+
   // Check if user already exists
   const existingUser = await prisma.user.findUnique({
     where: { email: normalizedEmail },
   });
 
   if (existingUser) {
-    return problemToResponse(
-      Problems.Conflict("A user with this email already exists"),
+    return NextResponse.json(
+      {
+        id: "usr_registered",
+        email: normalizedEmail,
+        name,
+        createdAt: new Date().toISOString(),
+        verificationRequired: true,
+        verificationEmailQueued: true,
+      },
+      { status: 201 },
     );
   }
-
-  // Hash password with Argon2id
-  const passwordHash = await hashPassword(password);
 
   const verificationToken = nanoid(32);
   const expiresAt = new Date(
@@ -118,57 +125,78 @@ export const POST = withApiHandler(async (request: NextRequest) => {
 
   // Every normal account receives the same baseline resources used by the
   // bootstrap path, so integration ingest always has a scoped Inbox.
-  const user = await prisma.$transaction(async (tx) => {
-    await consumeRegistrationAdmission(tx, admission);
-    const createdUser = await tx.user.create({
-      data: {
-        email: normalizedEmail,
-        passwordHash,
-        name,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-      },
+  try {
+    const user = await prisma.$transaction(async (tx) => {
+      await consumeRegistrationAdmission(tx, admission);
+      const createdUser = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          passwordHash,
+          name,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          createdAt: true,
+        },
+      });
+      const workspace = await tx.workspace.create({
+        data: { name: "Personal", userId: createdUser.id },
+        select: { id: true },
+      });
+      await tx.canvas.create({
+        data: {
+          name: "Inbox",
+          userId: createdUser.id,
+          workspaceId: workspace.id,
+        },
+      });
+      const verification = await tx.emailVerificationToken.create({
+        data: {
+          token: createHash("sha256").update(verificationToken).digest("hex"),
+          email: createdUser.email,
+          expiresAt,
+          deliverySecret: encryptSecret(verificationToken),
+        },
+      });
+      await enqueueOutboxJob(tx, {
+        type: "email.verification",
+        payload: { verificationId: verification.id },
+        dedupeKey: `email-verification:${verification.id}`,
+      });
+      return createdUser;
     });
-    const workspace = await tx.workspace.create({
-      data: { name: "Personal", userId: createdUser.id },
-      select: { id: true },
-    });
-    await tx.canvas.create({
-      data: {
-        name: "Inbox",
-        userId: createdUser.id,
-        workspaceId: workspace.id,
-      },
-    });
-    const verification = await tx.emailVerificationToken.create({
-      data: {
-        token: createHash("sha256").update(verificationToken).digest("hex"),
-        email: createdUser.email,
-        expiresAt,
-        deliverySecret: encryptSecret(verificationToken),
-      },
-    });
-    await enqueueOutboxJob(tx, {
-      type: "email.verification",
-      payload: { verificationId: verification.id },
-      dedupeKey: `email-verification:${verification.id}`,
-    });
-    return createdUser;
-  });
 
-  return NextResponse.json(
-    {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      createdAt: user.createdAt.toISOString(),
-      verificationRequired: true,
-      verificationEmailQueued: true,
-    },
-    { status: 201 },
-  );
+    return NextResponse.json(
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        createdAt: user.createdAt.toISOString(),
+        verificationRequired: true,
+        verificationEmailQueued: true,
+      },
+      { status: 201 },
+    );
+  } catch (error: any) {
+    if (
+      error?.code === "P2002" &&
+      Array.isArray(error?.meta?.target) &&
+      error.meta.target.includes("email")
+    ) {
+      return NextResponse.json(
+        {
+          id: "usr_registered",
+          email: normalizedEmail,
+          name,
+          createdAt: new Date().toISOString(),
+          verificationRequired: true,
+          verificationEmailQueued: true,
+        },
+        { status: 201 },
+      );
+    }
+    throw error;
+  }
 });

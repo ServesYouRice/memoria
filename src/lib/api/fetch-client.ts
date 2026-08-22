@@ -53,6 +53,12 @@ function redirectToLogin() {
 
   redirectingToLogin = true;
   const callbackUrl = encodeURIComponent(pathname + search);
+  // A hard navigation is deliberate here. This runs from a plain module on a
+  // rejected request, not from a render pass or an event handler, so neither
+  // `redirect()` nor `useRouter()` is reachable. It also has to discard the
+  // client-side router cache and in-memory state built under the expired
+  // session, which a soft navigation would keep.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign(`/auth/login?callbackUrl=${callbackUrl}`);
 }
 

@@ -27,7 +27,8 @@ export const GET = withApiHandler(
           select: {
             id: true,
             name: true,
-            thumbnail: true,
+            thumbnailKey: true,
+            thumbnailRevision: true,
             updatedAt: true,
           },
         },
@@ -48,7 +49,8 @@ export const GET = withApiHandler(
       canvases: workspace.canvases.map((c) => ({
         id: c.id,
         name: c.name,
-        thumbnail: c.thumbnail,
+        thumbnailKey: c.thumbnailKey,
+        thumbnailRevision: c.thumbnailRevision.toString(),
         updatedAt: c.updatedAt.toISOString(),
       })),
       createdAt: workspace.createdAt.toISOString(),

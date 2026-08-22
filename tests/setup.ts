@@ -1,4 +1,18 @@
-import { beforeAll, afterAll, vi } from "vitest";
+import { afterAll, vi } from "vitest";
+
+// `src/lib/env.ts` reads and validates `process.env` at module scope, so these
+// have to be in place before the test file's imports are evaluated. A
+// `beforeAll` hook runs too late: the suite has already imported its module
+// graph by then, and any module reaching env.ts throws during collection.
+const dbPassword = process.env.DATABASE_PASSWORD || "devpassword";
+process.env.DATABASE_URL =
+  process.env.DATABASE_URL ||
+  `postgresql://memoria:${dbPassword}@localhost:5432/memoria`;
+process.env.DEMO_USER_ID = "test-user-id";
+process.env.NODE_ENV = "test";
+process.env.AUTH_URL = process.env.AUTH_URL || "http://localhost:3000";
+process.env.AUTH_SECRET =
+  process.env.AUTH_SECRET || "test-auth-secret-0123456789abcdef-placeholder";
 
 // Mock HTMLCanvasElement for Konva tests
 if (typeof HTMLCanvasElement !== "undefined") {
@@ -42,16 +56,6 @@ global.IntersectionObserver = vi.fn(() => ({
   takeRecords: vi.fn(),
   unobserve: vi.fn(),
 })) as any;
-
-beforeAll(async () => {
-  // Setup test database if needed
-  const dbPassword = process.env.DATABASE_PASSWORD || "devpassword";
-  process.env.DATABASE_URL =
-    process.env.DATABASE_URL ||
-    `postgresql://memoria:${dbPassword}@localhost:5432/memoria`;
-  process.env.DEMO_USER_ID = "test-user-id";
-  process.env.NODE_ENV = "test";
-});
 
 afterAll(async () => {
   // Cleanup

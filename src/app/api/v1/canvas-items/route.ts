@@ -29,7 +29,10 @@ import { ActivityType, logActivity } from "@/lib/activity";
 import { requirePollsEnabled } from "@/lib/polls/availability";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
-import { boundedItemsResponse } from "@/lib/api/bounded-response";
+import {
+  boundedItemsResponse,
+  decodeItemCursor,
+} from "@/lib/api/bounded-response";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 
 /**
@@ -215,6 +218,7 @@ export async function GET(request: NextRequest) {
           offset: searchParams.has("offset")
             ? parseInt(searchParams.get("offset")!, 10)
             : 0,
+          cursor: searchParams.get("cursor") || undefined,
         })
       : listCanvasItemsSchema.parse({
           canvasId: searchParams.get("canvasId"),
@@ -226,6 +230,7 @@ export async function GET(request: NextRequest) {
           offset: searchParams.has("offset")
             ? parseInt(searchParams.get("offset")!, 10)
             : undefined,
+          cursor: searchParams.get("cursor") || undefined,
         });
 
     // Verify user has VIEW permission (via ownership or share)
@@ -246,6 +251,8 @@ export async function GET(request: NextRequest) {
       type: query.type ?? { not: ItemType.POLL },
       ...(query.includeDeleted ? {} : { deletedAt: null }),
     };
+
+    const cursorTarget = decodeItemCursor(query.cursor);
 
     // Apply viewport filtering if viewport parameters are provided
     if (hasViewportParams) {
@@ -273,6 +280,14 @@ export async function GET(request: NextRequest) {
         ? Prisma.empty
         : Prisma.sql`AND "deletedAt" IS NULL`;
 
+      const cursorFilter = cursorTarget
+        ? Prisma.sql`AND ("zIndex" > ${cursorTarget.zIndex} OR ("zIndex" = ${cursorTarget.zIndex} AND "id" > ${cursorTarget.id}))`
+        : Prisma.empty;
+
+      const paginationFragment = cursorTarget
+        ? Prisma.empty
+        : Prisma.sql`OFFSET ${offset}`;
+
       // Get total count for pagination with parameterized query
       const countResult = await prisma.$queryRaw<[{ count: bigint }]>`
         SELECT COUNT(*)::int as count
@@ -294,38 +309,51 @@ export async function GET(request: NextRequest) {
         WHERE "canvasId" = ${query.canvasId}
           ${typeFilter}
           ${deletedFilter}
+          ${cursorFilter}
           AND ("positionX" + "width") >= ${minX}
           AND "positionX" <= ${maxX}
           AND ("positionY" + "height") >= ${minY}
           AND "positionY" <= ${maxY}
-        ORDER BY "zIndex" ASC, "createdAt" ASC
-        LIMIT ${limit} OFFSET ${offset}
+        ORDER BY "zIndex" ASC, "id" ASC
+        LIMIT ${limit} ${paginationFragment}
       `;
 
       // Return with pagination metadata
       return boundedItemsResponse(items, {
         total,
-        offset,
+        offset: cursorTarget ? undefined : offset,
         limit,
-        hasMore: offset + items.length < total,
+        hasMore: cursorTarget ? undefined : offset + items.length < total,
       });
     }
 
     const { limit, offset } = query;
     const total = await prisma.canvasItem.count({ where: baseWhere });
 
-    const items = await prisma.canvasItem.findMany({
-      where: baseWhere,
-      orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }],
-      take: limit,
-      skip: offset,
-    });
+    const items = cursorTarget
+      ? await prisma.canvasItem.findMany({
+          where: {
+            ...baseWhere,
+            OR: [
+              { zIndex: { gt: cursorTarget.zIndex } },
+              { zIndex: cursorTarget.zIndex, id: { gt: cursorTarget.id } },
+            ],
+          },
+          orderBy: [{ zIndex: "asc" }, { id: "asc" }],
+          take: limit,
+        })
+      : await prisma.canvasItem.findMany({
+          where: baseWhere,
+          orderBy: [{ zIndex: "asc" }, { id: "asc" }],
+          take: limit,
+          skip: offset,
+        });
 
     return boundedItemsResponse(items, {
       total,
-      offset,
+      offset: cursorTarget ? undefined : offset,
       limit,
-      hasMore: offset + items.length < total,
+      hasMore: cursorTarget ? undefined : offset + items.length < total,
     });
   } catch (error) {
     return errorResponse(error, request.url);

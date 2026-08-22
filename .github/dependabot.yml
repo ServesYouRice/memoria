@@ -10,6 +10,22 @@ updates:
         dependency-type: production
       development-dependencies:
         dependency-type: development
+    ignore:
+      # DEC-015. Both majors break `pnpm lint` outright, so a grouped bump
+      # carrying either one takes the whole group down with it.
+      #
+      # typescript 7: typescript-eslint 8.67 refuses to load against the TS 7
+      # API (upstream issue 10940 tracks support for TS >=7.1), and TS 7 also
+      # removed `baseUrl`, which tsconfig.json still uses (TS5102).
+      #
+      # eslint 10: eslint-plugin-react 7.37 calls `context.getFilename()`,
+      # removed in eslint 10, and throws while loading `react/display-name`.
+      #
+      # Drop each entry once its ecosystem has caught up.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

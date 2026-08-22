@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Box,
   Card,
@@ -38,6 +38,8 @@ export function CanvasCard({
   onClick,
   index = 0,
 }: CanvasCardProps) {
+  const [imageError, setImageError] = useState(false);
+
   return (
     <Card
       sx={{
@@ -79,11 +81,12 @@ export function CanvasCard({
             background: gradients.brandSoft,
           }}
         >
-          {thumbnail ? (
+          {thumbnail && !imageError ? (
             <Box
               component="img"
               src={thumbnail}
               alt=""
+              onError={() => setImageError(true)}
               sx={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
           ) : (

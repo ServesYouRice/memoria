@@ -12,7 +12,9 @@ const pnpmCli = process.env.npm_execpath;
 if (!pnpmCli) throw new Error('Run this script through pnpm test:integration');
 const env = { ...process.env, DATABASE_URL: databaseUrl, NODE_ENV: 'test' };
 for (const args of [
-  ['exec', 'prisma', 'migrate', 'reset', '--force', '--skip-seed'],
+  // Prisma 7 dropped `--skip-seed`; a config without a `migrations.seed`
+  // entry is how a reset is kept from seeding.
+  ['exec', 'prisma', 'migrate', 'reset', '--force', '--config', 'prisma.config.integration.ts'],
   ['exec', 'node', 'scripts/check-schema-drift.mjs'],
   ['exec', 'vitest', '--run', '--config', 'vitest.integration.config.ts'],
 ]) {

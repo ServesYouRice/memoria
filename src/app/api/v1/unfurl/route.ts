@@ -11,6 +11,15 @@ import { unfurlSchema } from "@/lib/validation/unfurl";
 import { ApiError } from "@/lib/errors";
 
 export const POST = withAuthValidation(unfurlSchema, async ({ url }) => {
+  if (process.env.FEATURE_BOOKMARK_UNFURLING === "false") {
+    throw new ApiError(
+      403,
+      "https://memoria.local/errors/feature-disabled",
+      "Feature Disabled",
+      "Bookmark unfurling is disabled by administrator policy.",
+    );
+  }
+
   // Check cache first (ADR-0011)
   const cachedMetadata = await getCachedUnfurl(url);
   if (cachedMetadata) {
