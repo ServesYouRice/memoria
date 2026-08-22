@@ -133,7 +133,7 @@
     "node": ">=22.14.0",
     "pnpm": ">=10.24.0"
   },
-  "packageManager": "pnpm@11.13.0",
+  "packageManager": "pnpm@11.13.1",
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
       "eslint --fix",
