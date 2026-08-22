@@ -1,4 +1,8 @@
-import { ItemType } from "@/generated/prisma/client";
+// The browser-safe enums entry, not `generated/prisma/client`. This module is
+// reachable from client components (share/[token]/page.tsx among them), and the
+// client entry drags @prisma/client's Node runtime — and so `node:fs` — into the
+// browser bundle, which fails the webpack build outright.
+import { ItemType } from "@/generated/prisma/enums";
 import { z } from "zod";
 
 export const canvasItemResponseSchema = z
