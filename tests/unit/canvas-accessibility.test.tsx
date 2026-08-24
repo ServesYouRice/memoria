@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * IMP-022 / DEC-009 — accessible and responsive canvas.
  *

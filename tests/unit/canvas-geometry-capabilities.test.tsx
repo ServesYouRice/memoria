@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * IMP-008 — one geometry and capability contract.
  *

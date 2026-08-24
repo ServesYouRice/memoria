@@ -23,6 +23,7 @@
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
     "test": "vitest",
+    "test:file": "vitest run",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "node scripts/run-e2e.mjs",

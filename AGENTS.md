@@ -47,6 +47,7 @@ Prefer focused tests while iterating. Before handoff, run the checks named by
 the task card. Common checks are:
 
 ```bash
+pnpm test:file <path>
 pnpm lint
 pnpm type-check
 pnpm test -- --run

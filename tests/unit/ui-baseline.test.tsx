@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * IMP-009 — SSR, theme, shortcut, and error baseline.
  *
