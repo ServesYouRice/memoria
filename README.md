@@ -88,10 +88,10 @@ Current limits:
 
 ## Stack
 
-- Next.js 16.2
+- Next.js 16.3.1
 - TypeScript
 - Prisma + PostgreSQL
-- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.31`; upstream still exposes the Next.js package on the beta track
+- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.32`; upstream still exposes the Next.js package on the beta track
 - Redis + ioredis
 - TanStack Query
 - Konva / react-konva
@@ -146,8 +146,8 @@ Production rules enforced by the app:
 Use this README and [ARCHITECTURE.md](./ARCHITECTURE.md) as the maintained
 project documentation. [implementation/KANBAN.md](./implementation/KANBAN.md)
 is the only live implementation backlog; its linked cards contain executable
-scope and acceptance criteria. Consolidated audits are archived under
-`implementation/archive/` and are not current instructions.
+scope and acceptance criteria. Superseded plans, completed cards, and audits are
+available from Git history rather than retained beside live work.
 
 ## Verification
 
@@ -158,5 +158,5 @@ pnpm doctor
 pnpm lint
 pnpm type-check
 pnpm build
-pnpm test
+pnpm test -- --run
 ```

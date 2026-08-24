@@ -1,11 +1,13 @@
 # Implementation workflow
 
 `KANBAN.md` is the only live backlog. Each row links to one self-contained task
-card. The work loop lives in `../AGENTS.md`; this file defines only what the
-board's columns and evidence values mean.
+card. The work loop lives in `../AGENTS.md`; this file defines only the board
+lifecycle and card format.
 
-Documents under `future-expansion/` are parked proposals. They become live work
-only after the user promotes a selected release into Kanban task cards.
+`tasks/` contains only unfinished cards linked by the board. Completed cards,
+superseded audits, and unselected proposals are removed from the working tree;
+Git history remains their source of record. Missing card numbers are therefore
+intentional and never imply work.
 
 ## Status rules
 
@@ -14,20 +16,19 @@ only after the user promotes a selected release into Kanban task cards.
 - `WAITING`: a listed `IMP-` or `DEC-` dependency is unresolved.
 - `USER DECISIONS`: the user fills `Choice`; the related card then moves from
   `WAITING` to `READY`.
-- `DONE`: acceptance checks passed and evidence is recorded.
 
-Every card has exactly one status row. Evidence is short — `unit + type-check`,
-a commit SHA, or a link. Keep the board terse; detail belongs in the linked card
-or in the code.
+Every unfinished card has exactly one status row. When acceptance checks pass,
+remove the row and task file in the same commit. Keep the board terse;
+completion evidence belongs in the commit and reported verification output.
 
 ## Card format
 
 Cards use XML sections so small models can separate context from work:
 `<objective>` (the outcome), `<files>` (repo-relative entry points, not an
-exhaustive list), optional `<context>`, `<steps>`, `<acceptance>`, and
-`<verification>`. Repository-wide context stays in `../AGENTS.md`; per-task
-context is loaded only from the selected card.
+exhaustive list), optional `<context>`, `<executor_constraints>`, `<steps>`,
+`<acceptance>`, and `<verification>`. Repository-wide context stays in
+`../AGENTS.md`; per-task context is loaded only from the selected card.
 
-Archived audits under `archive/` are evidence history. Proposals under
-`future-expansion/` are unscheduled and have no status row. Neither is an
-instruction, and an executor starts from neither.
+Do not add audit dumps, model transcripts, alternate backlogs, completed-card
+archives, or proposal folders under `implementation/`. Convert a confirmed,
+approved piece of work directly into one bounded Kanban card.

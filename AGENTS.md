@@ -12,16 +12,16 @@ write authority.
 1. Read `implementation/KANBAN.md`. Follow a user-named card; otherwise take
    the first `READY` card. Never start a card blocked by a user decision.
 2. Move only that card to `DOING`, then read its linked task file. Load source
-   files as needed. Treat `implementation/archive/` as history and
-   `implementation/future-expansion/` as unscheduled proposals; neither is a
-   current instruction and neither is a place to start work.
+   files as needed. Only cards linked from the live Kanban are instructions;
+   missing card numbers and material recoverable from Git history are not work.
 3. Implement the smallest complete change that meets the card acceptance
    criteria. Match nearby code, types, naming, and comments.
 4. Run the card's targeted checks, then the relevant repository checks. Do not
    weaken tests or checks to get a pass.
-5. Move the card to `DONE` with one short evidence note. If blocked, move it to
-   `WAITING` and add one `DEC-` row naming the exact decision or external action
-   needed.
+5. When the card passes, remove its Kanban row and task file in the same commit;
+   the commit and reported checks are the durable evidence. If blocked, move it
+   to `WAITING` and add one `DEC-` row naming the exact decision or external
+   action needed.
 
 Keep at most one card in `DOING`. Do not create new audit, plan, summary, or
 remaining-work files. Add newly discovered work to the Kanban only when it is
