@@ -4,6 +4,14 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import {
+  requireAuth,
+  requireCanvasOwnership,
+  requireItemOwnership,
+} from "@/lib/api/auth";
+import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 
 // Mock dependencies
 vi.mock("@/lib/auth", () => ({
@@ -28,9 +36,6 @@ describe("Auth Helpers", () => {
 
   describe("requireAuth", () => {
     it("should return userId and email when session is valid", async () => {
-      const { auth } = await import("@/lib/auth");
-      const { requireAuth } = await import("@/lib/api/auth");
-
       vi.mocked(auth).mockResolvedValue({
         user: {
           id: "user123",
@@ -48,20 +53,12 @@ describe("Auth Helpers", () => {
     });
 
     it("should throw when session is null", async () => {
-      const { auth } = await import("@/lib/auth");
-      const { requireAuth } = await import("@/lib/api/auth");
-      const { UnauthorizedError } = await import("@/lib/errors");
-
       vi.mocked(auth).mockResolvedValue(null);
 
       await expect(requireAuth()).rejects.toThrow(UnauthorizedError);
     });
 
     it("should throw when session.user is null", async () => {
-      const { auth } = await import("@/lib/auth");
-      const { requireAuth } = await import("@/lib/api/auth");
-      const { UnauthorizedError } = await import("@/lib/errors");
-
       vi.mocked(auth).mockResolvedValue({
         user: null,
         expires: "2025-12-31",
@@ -71,10 +68,6 @@ describe("Auth Helpers", () => {
     });
 
     it("should throw when session.user.email is missing", async () => {
-      const { auth } = await import("@/lib/auth");
-      const { requireAuth } = await import("@/lib/api/auth");
-      const { UnauthorizedError } = await import("@/lib/errors");
-
       vi.mocked(auth).mockResolvedValue({
         user: {
           id: "user123",
@@ -87,10 +80,6 @@ describe("Auth Helpers", () => {
     });
 
     it("should throw when session.user.id is missing (type guard check)", async () => {
-      const { auth } = await import("@/lib/auth");
-      const { requireAuth } = await import("@/lib/api/auth");
-      const { UnauthorizedError } = await import("@/lib/errors");
-
       vi.mocked(auth).mockResolvedValue({
         user: {
           id: null,
@@ -103,9 +92,6 @@ describe("Auth Helpers", () => {
     });
 
     it('should not use unsafe type casts (no "as string")', async () => {
-      const { auth } = await import("@/lib/auth");
-      const { requireAuth } = await import("@/lib/api/auth");
-
       vi.mocked(auth).mockResolvedValue({
         user: {
           id: "user123",
@@ -124,12 +110,9 @@ describe("Auth Helpers", () => {
 
   describe("requireCanvasOwnership", () => {
     it("should return canvas when user owns it", async () => {
-      const { prisma } = await import("@/lib/db");
-      const { requireCanvasOwnership } = await import("@/lib/api/auth");
-
       vi.mocked(prisma.canvas.findUnique).mockResolvedValue({
         userId: "user123",
-      });
+      } as any);
 
       const result = await requireCanvasOwnership("canvas123", "user123");
 
@@ -141,10 +124,6 @@ describe("Auth Helpers", () => {
     });
 
     it("should throw when canvas not found", async () => {
-      const { prisma } = await import("@/lib/db");
-      const { requireCanvasOwnership } = await import("@/lib/api/auth");
-      const { ForbiddenError } = await import("@/lib/errors");
-
       vi.mocked(prisma.canvas.findUnique).mockResolvedValue(null);
 
       await expect(
@@ -153,13 +132,9 @@ describe("Auth Helpers", () => {
     });
 
     it("should throw when user does not own canvas", async () => {
-      const { prisma } = await import("@/lib/db");
-      const { requireCanvasOwnership } = await import("@/lib/api/auth");
-      const { ForbiddenError } = await import("@/lib/errors");
-
       vi.mocked(prisma.canvas.findUnique).mockResolvedValue({
         userId: "otherUser",
-      });
+      } as any);
 
       await expect(
         requireCanvasOwnership("canvas123", "user123"),
@@ -169,9 +144,6 @@ describe("Auth Helpers", () => {
 
   describe("requireItemOwnership", () => {
     it("should return item when user owns the canvas", async () => {
-      const { prisma } = await import("@/lib/db");
-      const { requireItemOwnership } = await import("@/lib/api/auth");
-
       const mockItem = {
         id: "item123",
         canvas: {
@@ -179,7 +151,9 @@ describe("Auth Helpers", () => {
         },
       };
 
-      vi.mocked(prisma.canvasItem.findUnique).mockResolvedValue(mockItem);
+      vi.mocked(prisma.canvasItem.findUnique).mockResolvedValue(
+        mockItem as any,
+      );
 
       const result = await requireItemOwnership("item123", "user123");
 
@@ -197,10 +171,6 @@ describe("Auth Helpers", () => {
     });
 
     it("should throw when item not found", async () => {
-      const { prisma } = await import("@/lib/db");
-      const { requireItemOwnership } = await import("@/lib/api/auth");
-      const { ForbiddenError } = await import("@/lib/errors");
-
       vi.mocked(prisma.canvasItem.findUnique).mockResolvedValue(null);
 
       await expect(requireItemOwnership("item123", "user123")).rejects.toThrow(
@@ -209,16 +179,12 @@ describe("Auth Helpers", () => {
     });
 
     it("should throw when user does not own the canvas", async () => {
-      const { prisma } = await import("@/lib/db");
-      const { requireItemOwnership } = await import("@/lib/api/auth");
-      const { ForbiddenError } = await import("@/lib/errors");
-
       vi.mocked(prisma.canvasItem.findUnique).mockResolvedValue({
         id: "item123",
         canvas: {
           userId: "otherUser",
         },
-      });
+      } as any);
 
       await expect(requireItemOwnership("item123", "user123")).rejects.toThrow(
         ForbiddenError,

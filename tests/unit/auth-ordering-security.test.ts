@@ -29,6 +29,12 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/cache/redis-client", () => ({ getRedisClient: () => null }));
 
+vi.mock("@/lib/api/auth", () => ({
+  requireAuth: vi.fn(),
+  requireCanvasOwnership: vi.fn(),
+  requireCanvasAccess: vi.fn(),
+}));
+
 // An ESM module namespace is not configurable, so vi.spyOn(argon2, "verify")
 // throws. Replacing the module with real implementations wrapped in vi.fn
 // keeps the genuine hashing while making the calls observable — which is the
@@ -37,6 +43,9 @@ vi.mock("argon2", async (importOriginal) => {
   const actual = await importOriginal<typeof Argon2Module>();
   return { ...actual, hash: vi.fn(actual.hash), verify: vi.fn(actual.verify) };
 });
+
+import { GET as canvasGet } from "@/app/api/v1/canvases/[canvasId]/route";
+import { requireAuth } from "@/lib/api/auth";
 
 describe("auth ordering and capability handling (IMP-041)", () => {
   beforeEach(() => {
@@ -198,15 +207,6 @@ describe("auth ordering and capability handling (IMP-041)", () => {
 
   describe("canvas metadata role-aware redaction", () => {
     it("returns shareToken to owner and redacts shareToken for collaborator", async () => {
-      const { GET } = await import("@/app/api/v1/canvases/[canvasId]/route.ts");
-      const { requireAuth } = await import("@/lib/api/auth");
-
-      vi.mock("@/lib/api/auth", () => ({
-        requireAuth: vi.fn(),
-        requireCanvasOwnership: vi.fn(),
-        requireCanvasAccess: vi.fn(),
-      }));
-
       const canvasMock = {
         id: "canvas_123",
         name: "Test Canvas",
@@ -238,7 +238,7 @@ describe("auth ordering and capability handling (IMP-041)", () => {
       const ownerReq = new Request(
         "http://localhost/api/v1/canvases/canvas_123",
       );
-      const ownerRes = await GET(ownerReq, {
+      const ownerRes = await canvasGet(ownerReq, {
         params: Promise.resolve({ canvasId: "canvas_123" }),
       });
       const ownerBody = await ownerRes.json();
@@ -263,7 +263,7 @@ describe("auth ordering and capability handling (IMP-041)", () => {
       const collabReq = new Request(
         "http://localhost/api/v1/canvases/canvas_123",
       );
-      const collabRes = await GET(collabReq, {
+      const collabRes = await canvasGet(collabReq, {
         params: Promise.resolve({ canvasId: "canvas_123" }),
       });
       const collabBody = await collabRes.json();

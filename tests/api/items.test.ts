@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createItemSchema, updateItemSchema } from "@/lib/validation";
 import { ItemType } from "@/generated/prisma/client";
+import { ApiError } from "@/lib/errors";
 
 describe("Item Validation Schemas", () => {
   describe("createItemSchema", () => {
@@ -101,8 +102,6 @@ describe("Item Validation Schemas", () => {
 
 describe("API Error Handling", () => {
   it("should create proper error responses", async () => {
-    const { ApiError } = await import("@/lib/errors");
-
     const error = new ApiError(
       404,
       "https://memoria.local/errors/not-found",

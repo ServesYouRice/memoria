@@ -27,6 +27,8 @@ vi.mock("@/lib/uploads/private-storage", () => ({
   deletePrivateUploadObject: vi.fn(),
 }));
 
+import { GET as uploadsGet } from "@/app/api/v1/uploads/[assetId]/route";
+
 function bodyStream(value: string) {
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -57,9 +59,8 @@ describe("private upload reads", () => {
       contentLength: 11,
       etag: '"asset-etag"',
     });
-    const { GET } = await import("@/app/api/v1/uploads/[assetId]/route");
 
-    const response = await GET(
+    const response = await uploadsGet(
       new Request("http://localhost/api/v1/uploads/asset-1"),
       { params: Promise.resolve({ assetId: "asset-1" }) },
     );
@@ -78,9 +79,8 @@ describe("private upload reads", () => {
       contentLength: 11,
       etag: '"asset-etag"',
     });
-    const { GET } = await import("@/app/api/v1/uploads/[assetId]/route");
 
-    const response = await GET(
+    const response = await uploadsGet(
       new Request("http://localhost/api/v1/uploads/asset-1", {
         headers: { "if-none-match": '"asset-etag"' },
       }),

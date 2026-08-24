@@ -18,12 +18,14 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+import { GET as templatesGet } from "@/app/api/v1/templates/route";
+import { POST as duplicatePost } from "@/app/api/v1/canvases/[canvasId]/duplicate/route";
+
 describe("launch template gates", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns an explicit disabled problem before template reads", async () => {
-    const { GET } = await import("@/app/api/v1/templates/route");
-    const response = await GET(
+    const response = await templatesGet(
       new Request("https://memoria.example/api/v1/templates") as never,
     );
     expect(response.status).toBe(404);
@@ -36,9 +38,7 @@ describe("launch template gates", () => {
   });
 
   it("returns the same disabled problem before canvas duplication auth", async () => {
-    const { POST } =
-      await import("@/app/api/v1/canvases/[canvasId]/duplicate/route");
-    const response = await POST(
+    const response = await duplicatePost(
       new Request("https://memoria.example/api/v1/canvases/source/duplicate", {
         method: "POST",
       }) as never,

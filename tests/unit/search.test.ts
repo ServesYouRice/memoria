@@ -34,21 +34,21 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { GET as searchGet } from "@/app/api/v1/search/route";
+
 describe("Search API", () => {
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
   });
 
   it("should return 400 when query is too short", async () => {
-    const { auth } = await import("@/lib/auth");
     vi.mocked(auth).mockResolvedValue({
       user: { id: "user-1", email: "user@example.com" },
     });
 
-    const { GET } = await import("@/app/api/v1/search/route");
-
-    const response = await GET(
+    const response = await searchGet(
       new Request("http://localhost/api/v1/search?q=a"),
     );
     expect(response.status).toBe(400);
@@ -58,9 +58,6 @@ describe("Search API", () => {
   });
 
   it("should query and return results for valid search", async () => {
-    const { auth } = await import("@/lib/auth");
-    const { prisma } = await import("@/lib/db");
-
     vi.mocked(auth).mockResolvedValue({
       user: { id: "user-1", email: "user@example.com" },
     });
@@ -83,9 +80,7 @@ describe("Search API", () => {
         },
       ]);
 
-    const { GET } = await import("@/app/api/v1/search/route");
-
-    const response = await GET(
+    const response = await searchGet(
       new Request("http://localhost/api/v1/search?q=hello"),
     );
     expect(response.status).toBe(200);
