@@ -17,13 +17,12 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-058](tasks/IMP-058.md) | Cover operator, cron, bootstrap, and CSP boundaries | In progress |
+| [IMP-059](tasks/IMP-059.md) | Cover agent request authentication and credential modes | In progress |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-059](tasks/IMP-059.md) | Cover agent request authentication and credential modes |  |
 | [IMP-060](tasks/IMP-060.md) | Cover tenant scoping for workspaces, trash, and notifications |  |
 | [IMP-062](tasks/IMP-062.md) | Make nominal API suites exercise their routes |  |
 | [IMP-063](tasks/IMP-063.md) | Cover API-key management routes |  |
