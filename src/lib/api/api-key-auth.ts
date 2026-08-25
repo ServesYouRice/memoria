@@ -59,8 +59,7 @@ export async function authenticateApiKey(req: NextRequest) {
   if (!header) return null;
 
   // Quick format check before database lookup
-  // Allow legacy keys that don't match the new prefix as long as they are reasonably long.
-  if (!isValidApiKeyFormat(header) && header.length < 20) {
+  if (!isValidApiKeyFormat(header)) {
     return null;
   }
 

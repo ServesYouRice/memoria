@@ -18,17 +18,28 @@ import { randomBytes } from "crypto";
 
 const API_KEY_PREFIX = "mk_"; // Memoria Key
 const API_KEY_LENGTH = 32; // Characters after prefix
+const ALPHANUMERIC =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 /**
  * Generate a new API key
  * @returns Object containing the plaintext key (show to user once) and hash (store in DB)
  */
 export async function generateApiKey(): Promise<{ key: string; hash: string }> {
-  // Generate random alphanumeric key
-  const randomPart = randomBytes(API_KEY_LENGTH)
-    .toString("base64")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .slice(0, API_KEY_LENGTH);
+  let randomPart = "";
+  while (randomPart.length < API_KEY_LENGTH) {
+    const bytes = randomBytes(API_KEY_LENGTH);
+    for (
+      let i = 0;
+      i < bytes.length && randomPart.length < API_KEY_LENGTH;
+      i++
+    ) {
+      const byte = bytes[i];
+      if (byte < 248) {
+        randomPart += ALPHANUMERIC[byte % 62];
+      }
+    }
+  }
 
   const plaintextKey = `${API_KEY_PREFIX}${randomPart}`;
 

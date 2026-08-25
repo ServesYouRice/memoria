@@ -17,17 +17,17 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-056](tasks/IMP-056.md) | Cover and harden the API-key credential boundary | In progress |
+| [IMP-057](tasks/IMP-057.md) | Cover account credential and deletion routes | In progress |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-057](tasks/IMP-057.md) | Cover account credential and deletion routes |  |
 | [IMP-058](tasks/IMP-058.md) | Cover operator, cron, bootstrap, and CSP boundaries |  |
 | [IMP-059](tasks/IMP-059.md) | Cover agent request authentication and credential modes |  |
 | [IMP-060](tasks/IMP-060.md) | Cover tenant scoping for workspaces, trash, and notifications |  |
 | [IMP-062](tasks/IMP-062.md) | Make nominal API suites exercise their routes |  |
+| [IMP-063](tasks/IMP-063.md) | Cover API-key management routes |  |
 | [IMP-064](tasks/IMP-064.md) | Cover AI route authorization and request boundaries |  |
 | [IMP-065](tasks/IMP-065.md) | Cover comment authorization by visibility and role |  |
 | [IMP-066](tasks/IMP-066.md) | Cover connection authorization and canvas binding |  |
@@ -42,7 +42,6 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 | [IMP-047](tasks/IMP-047.md) | Make operations recoverable and observable (need higher model assistance) |  |
 | [IMP-048](tasks/IMP-048.md) | Bound resource cost at supported scale (need higher model assistance) | IMP-045 |
 | [IMP-038](tasks/IMP-038.md) | Production browser journeys and operations smoke (need higher model assistance) | IMP-045 through IMP-048, IMP-050, IMP-061, DEC-014 |
-| [IMP-063](tasks/IMP-063.md) | Cover API-key management routes | IMP-056 |
 | [IMP-061](tasks/IMP-061.md) | Ratchet explicit API-route coverage from a measured baseline | IMP-055 through IMP-060, IMP-062 through IMP-066 |
 
 ## USER DECISIONS
