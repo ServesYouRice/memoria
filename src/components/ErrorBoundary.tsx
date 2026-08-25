@@ -18,6 +18,23 @@ interface State {
   error: Error | null;
 }
 
+const SAFE_ERROR_MESSAGES = new Set([
+  "The requested canvas could not be found.",
+  "You do not have permission to view this canvas.",
+  "Failed to load canvas data.",
+  "Failed to load note content.",
+  "Network connection lost.",
+]);
+
+function getSafeErrorMessage(error: Error | null): string {
+  if (!error)
+    return "An unexpected error occurred while rendering this component.";
+  if (SAFE_ERROR_MESSAGES.has(error.message)) {
+    return error.message;
+  }
+  return "An unexpected error occurred while rendering this component.";
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -42,6 +59,8 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) {
         return this.props.fallback(this.state.error, this.reset);
       }
+
+      const digest = (this.state.error as any)?.digest;
 
       return (
         <Box
@@ -100,9 +119,21 @@ export class ErrorBoundary extends Component<Props, State> {
                 color: "text.secondary",
               }}
             >
-              {this.state.error.message ||
-                "An unexpected error occurred while rendering this component."}
+              {getSafeErrorMessage(this.state.error)}
             </Typography>
+            {digest && (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "block",
+                  mb: 2,
+                  color: "text.secondary",
+                  fontFamily: "monospace",
+                }}
+              >
+                Incident ID: {digest}
+              </Typography>
+            )}
             <Button
               variant="contained"
               color="primary"

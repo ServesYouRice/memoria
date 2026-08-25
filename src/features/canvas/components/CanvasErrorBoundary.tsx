@@ -22,6 +22,22 @@ interface State {
   resetKey: number;
 }
 
+const SAFE_ERROR_MESSAGES = new Set([
+  "The requested canvas could not be found.",
+  "You do not have permission to view this canvas.",
+  "Failed to load canvas data.",
+  "Failed to load note content.",
+  "Network connection lost.",
+]);
+
+function getSafeCanvasErrorMessage(error: Error | null): string {
+  if (!error) return "An unexpected error occurred while rendering the canvas.";
+  if (SAFE_ERROR_MESSAGES.has(error.message)) {
+    return error.message;
+  }
+  return "An unexpected error occurred while rendering the canvas.";
+}
+
 export class CanvasErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -53,6 +69,8 @@ export class CanvasErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const digest = (this.state.error as any)?.digest;
+
       return (
         <Box
           sx={{
@@ -90,9 +108,21 @@ export class CanvasErrorBoundary extends Component<Props, State> {
                 color: "text.secondary",
               }}
             >
-              {this.state.error?.message ||
-                "An unexpected error occurred while rendering the canvas."}
+              {getSafeCanvasErrorMessage(this.state.error)}
             </Typography>
+            {digest && (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "block",
+                  mb: 2,
+                  color: "text.secondary",
+                  fontFamily: "monospace",
+                }}
+              >
+                Incident ID: {digest}
+              </Typography>
+            )}
             <Typography
               variant="body2"
               sx={{
