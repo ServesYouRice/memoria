@@ -1,4 +1,5 @@
 import { existsSync } from 'fs';
+import { resolve } from 'path';
 import {
   defaultEnvFile,
   ensureS3Bucket,
@@ -15,7 +16,11 @@ import { runSmokeChecks } from './lib/smoke.mjs';
 
 const { flags } = parseArgs(process.argv.slice(2));
 const asJson = flags.has('--json');
-const envFile = flags.has('--selfhost') ? selfHostEnvFile : defaultEnvFile;
+const envFile = process.env.MEMORIA_ENV_FILE
+  ? resolve(projectRoot, process.env.MEMORIA_ENV_FILE)
+  : flags.has('--selfhost')
+    ? selfHostEnvFile
+    : defaultEnvFile;
 const results = [];
 
 function addCheck(name, status, detail) {
@@ -133,24 +138,52 @@ if (envValues.get('UPLOAD_STORAGE') === 's3') {
   }
 }
 
-const smokeReport = await runSmokeChecks({
-  baseUrl: envValues.get('AUTH_URL') || envValues.get('NEXTAUTH_URL') || 'http://localhost:3000',
-  requireRunningApp: flags.has('--smoke'),
-});
+const authUrlValue =
+  envValues.get('AUTH_URL') || envValues.get('NEXTAUTH_URL');
+let smokeReport = { results: [] };
+if (flags.has('--smoke') || authUrlValue) {
+  smokeReport = await runSmokeChecks({
+    baseUrl: authUrlValue || 'http://localhost:3000',
+    requireRunningApp: flags.has('--smoke'),
+    timeoutMs: 1000,
+  });
+} else {
+  smokeReport = {
+    results: [
+      {
+        name: 'app-url',
+        status: 'warn',
+        detail: 'AUTH_URL is not configured',
+      },
+    ],
+  };
+}
 
 for (const result of smokeReport.results) {
   addCheck(`smoke:${result.name}`, result.status, result.detail);
 }
 
-const pnpm = getPnpmCommand();
-try {
-  await run(pnpm, ['exec', 'prisma', 'migrate', 'status', '--schema', 'prisma/schema.prisma'], {
-    cwd: projectRoot,
-    env: { ...process.env, MEMORIA_ENV_FILE: envFile },
-  });
-  addCheck('migrations', 'pass', 'Prisma migration status completed');
-} catch (error) {
-  addCheck('migrations', 'fail', error instanceof Error ? error.message : 'Migration status failed');
+if (envValues.get('DATABASE_URL')) {
+  const pnpm = getPnpmCommand();
+  try {
+    await run(
+      pnpm,
+      ['exec', 'prisma', 'migrate', 'status', '--schema', 'prisma/schema.prisma'],
+      {
+        cwd: projectRoot,
+        env: { ...process.env, MEMORIA_ENV_FILE: envFile },
+      }
+    );
+    addCheck('migrations', 'pass', 'Prisma migration status completed');
+  } catch (error) {
+    addCheck(
+      'migrations',
+      'fail',
+      error instanceof Error ? error.message : 'Migration status failed'
+    );
+  }
+} else {
+  addCheck('migrations', 'fail', 'DATABASE_URL is not configured');
 }
 
 try {

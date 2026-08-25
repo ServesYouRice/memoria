@@ -17,13 +17,12 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-055](tasks/IMP-055.md) | Replace test evidence that asserts nothing about the product | In progress |
+| [IMP-056](tasks/IMP-056.md) | Cover and harden the API-key credential boundary | In progress |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-056](tasks/IMP-056.md) | Cover and harden the API-key credential boundary |  |
 | [IMP-057](tasks/IMP-057.md) | Cover account credential and deletion routes |  |
 | [IMP-058](tasks/IMP-058.md) | Cover operator, cron, bootstrap, and CSP boundaries |  |
 | [IMP-059](tasks/IMP-059.md) | Cover agent request authentication and credential modes |  |
