@@ -18,24 +18,49 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { GET as templatesGet } from "@/app/api/v1/templates/route";
+import {
+  GET as templatesGet,
+  POST as templatesPost,
+} from "@/app/api/v1/templates/route";
 import { POST as duplicatePost } from "@/app/api/v1/canvases/[canvasId]/duplicate/route";
 
-describe("launch template gates", () => {
+describe("launch template gates (IMP-062)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns an explicit disabled problem before template reads", async () => {
-    const response = await templatesGet(
-      new Request("https://memoria.example/api/v1/templates") as never,
-    );
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({
-      type: "https://memoria.local/errors/feature-disabled",
-      title: "Feature Disabled",
-    });
-    expect(mocks.auth).not.toHaveBeenCalled();
-    expect(mocks.canvasFindMany).not.toHaveBeenCalled();
-  });
+  const templateHandlers = [
+    {
+      method: "GET",
+      handler: () =>
+        templatesGet(
+          new Request("https://memoria.example/api/v1/templates") as never,
+        ),
+    },
+    {
+      method: "POST",
+      handler: () =>
+        templatesPost(
+          new Request("https://memoria.example/api/v1/templates", {
+            method: "POST",
+          }) as never,
+        ),
+    },
+  ];
+
+  it.each(templateHandlers)(
+    "returns an explicit disabled problem before template reads on $method",
+    async ({ handler }) => {
+      const response = await handler();
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({
+        type: "https://memoria.local/errors/feature-disabled",
+        title: "Feature Disabled",
+      });
+      expect(mocks.auth).not.toHaveBeenCalled();
+      expect(mocks.requireAuth).not.toHaveBeenCalled();
+      expect(mocks.canvasFindMany).not.toHaveBeenCalled();
+      expect(mocks.canvasCount).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns the same disabled problem before canvas duplication auth", async () => {
     const response = await duplicatePost(
