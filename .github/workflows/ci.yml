@@ -79,6 +79,15 @@ jobs:
       - name: Run tests with coverage
         run: pnpm test:coverage
 
+      - name: Run explicit API route coverage gate
+        run: pnpm test:coverage:routes
+
+      - name: Retain route coverage evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: route-coverage-report
+          path: coverage/routes/
+
   integration:
     name: PostgreSQL Integration Tests
     runs-on: ubuntu-latest

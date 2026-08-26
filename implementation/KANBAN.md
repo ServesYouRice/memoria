@@ -17,7 +17,6 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-061](tasks/IMP-061.md) | Ratchet explicit API-route coverage from a measured baseline | In progress |
 
 ## READY
 
