@@ -17,13 +17,12 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-050](tasks/IMP-050.md) | Make local push checks proportional and fail-safe | In progress |
+| [IMP-061](tasks/IMP-061.md) | Ratchet explicit API-route coverage from a measured baseline | In progress |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-061](tasks/IMP-061.md) | Ratchet explicit API-route coverage from a measured baseline |  |
 
 ## WAITING
 
