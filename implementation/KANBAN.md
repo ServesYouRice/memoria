@@ -17,13 +17,13 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-066](tasks/IMP-066.md) | Cover connection authorization and canvas binding | In progress |
+| [IMP-050](tasks/IMP-050.md) | Make local push checks proportional and fail-safe | In progress |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-050](tasks/IMP-050.md) | Make local push checks proportional and fail-safe |  |
+| [IMP-061](tasks/IMP-061.md) | Ratchet explicit API-route coverage from a measured baseline |  |
 
 ## WAITING
 
@@ -34,7 +34,6 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 | [IMP-047](tasks/IMP-047.md) | Make operations recoverable and observable (need higher model assistance) |  |
 | [IMP-048](tasks/IMP-048.md) | Bound resource cost at supported scale (need higher model assistance) | IMP-045 |
 | [IMP-038](tasks/IMP-038.md) | Production browser journeys and operations smoke (need higher model assistance) | IMP-045 through IMP-048, IMP-050, IMP-061, DEC-014 |
-| [IMP-061](tasks/IMP-061.md) | Ratchet explicit API-route coverage from a measured baseline | IMP-055 through IMP-060, IMP-062 through IMP-066 |
 
 ## USER DECISIONS
 
