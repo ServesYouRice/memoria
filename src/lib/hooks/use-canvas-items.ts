@@ -168,9 +168,30 @@ const api = {
 
   async getItem(itemId: string) {
     const response = await apiFetch(`/api/v1/canvas-items/${itemId}`);
-    if (!response.ok) throw new Error("Failed to fetch item");
+    if (!response.ok) {
+      throw new ApiError(response.status, "Failed to fetch item");
+    }
 
     return response.json() as Promise<CanvasItem>;
+  },
+
+  async getItemsByIds(canvasId: string, itemIds: string[]) {
+    const params = new URLSearchParams({
+      canvasId,
+      ids: itemIds.join(","),
+    });
+    const response = await apiFetch(`/api/v1/canvas-items?${params}`);
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        "Failed to hydrate committed canvas items",
+      );
+    }
+    const payload = (await response.json()) as { items?: unknown };
+    if (!Array.isArray(payload.items)) {
+      throw new Error("Invalid committed item hydration response");
+    }
+    return payload.items as CanvasItem[];
   },
 
   async createItem(input: CreateCanvasItemInput) {
@@ -261,76 +282,159 @@ export interface CommittedCanvasItemEvent {
 }
 
 /**
- * Apply a server-committed event to the existing item caches. Updates and
- * creates fetch only the affected item; deletes apply a versioned tombstone.
- * A reconnect therefore converges without refetching the whole canvas for
- * every WebSocket message.
+ * Hydrate a committed-event burst in bounded chunks, then update every list
+ * cache in one pass. Repeated events for an item collapse to the newest cursor.
  */
+export async function mergeCommittedCanvasItemEvents(
+  queryClient: QueryClient,
+  canvasId: string,
+  events: CommittedCanvasItemEvent[],
+): Promise<void> {
+  const latestEvents = newestCommittedEvents(events);
+  const hydrationEvents = latestEvents.filter(
+    (event) => event.operation !== "deleted",
+  );
+  const hydratedItems: CanvasItem[] = [];
+
+  for (let offset = 0; offset < hydrationEvents.length; offset += 100) {
+    const ids = hydrationEvents
+      .slice(offset, offset + 100)
+      .map((event) => event.entity.id);
+    hydratedItems.push(...(await api.getItemsByIds(canvasId, ids)));
+  }
+
+  const hydratedById = new Map(
+    hydratedItems.map((item) => [item.id, item] as const),
+  );
+  for (const event of hydrationEvents) {
+    const item = hydratedById.get(event.entity.id);
+    if (item && item.version < event.entity.version) {
+      throw new Error(
+        `Committed item ${event.entity.id} was hydrated below version ${event.entity.version}`,
+      );
+    }
+  }
+
+  applyCommittedCanvasItemBatch(queryClient, latestEvents, hydratedById);
+}
+
+/** Compatibility helper for isolated event consumers and focused tests. */
 export async function mergeCommittedCanvasItemEvent(
   queryClient: QueryClient,
   event: CommittedCanvasItemEvent,
 ): Promise<void> {
   if (event.operation === "deleted") {
-    queryClient.removeQueries({
-      queryKey: canvasItemKeys.detail(event.entity.id),
-    });
-    queryClient.setQueriesData(
-      { queryKey: canvasItemKeys.lists() },
-      (old: { items?: CanvasItem[] } | undefined) => {
-        if (!old?.items) return old;
-        return {
-          ...old,
-          items: old.items.filter(
-            (item) =>
-              item.id !== event.entity.id ||
-              item.version > event.entity.version,
-          ),
-        };
-      },
-    );
+    applyCommittedCanvasItemBatch(queryClient, [event], new Map());
     return;
   }
 
   try {
     const item = await api.getItem(event.entity.id);
-    if (item.version < event.entity.version) return;
-    queryClient.setQueryData(canvasItemKeys.detail(item.id), item);
-    queryClient.setQueriesData(
-      { queryKey: canvasItemKeys.lists() },
-      (old: { items?: CanvasItem[] } | undefined) => {
-        if (!old?.items) return old;
-        const existing = old.items.findIndex(
-          (candidate) => candidate.id === item.id,
-        );
-        if (existing < 0) return { ...old, items: [...old.items, item] };
-        if (old.items[existing]!.version > item.version) return old;
-        const items = [...old.items];
-        items[existing] = item;
-        return { ...old, items };
-      },
+    if (item.version < event.entity.version) {
+      throw new Error(
+        `Committed item ${event.entity.id} was hydrated below version ${event.entity.version}`,
+      );
+    }
+    applyCommittedCanvasItemBatch(
+      queryClient,
+      [event],
+      new Map([[item.id, item]]),
     );
   } catch (error) {
-    // A create/update event can race a revocation or deletion. Treat a
-    // durable 404 as the corresponding tombstone and leave transient errors
-    // for the normal query retry/snapshot path.
+    // A create/update event can race a deletion. A durable 404 is the
+    // corresponding tombstone; authorization and transient failures bubble to
+    // the snapshot recovery path.
     if (error instanceof ApiError && error.status === 404) {
-      queryClient.removeQueries({
-        queryKey: canvasItemKeys.detail(event.entity.id),
-      });
-      queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.lists() },
-        (old: { items?: CanvasItem[] } | undefined) =>
-          old?.items
-            ? {
-                ...old,
-                items: old.items.filter((item) => item.id !== event.entity.id),
-              }
-            : old,
-      );
+      applyCommittedCanvasItemBatch(queryClient, [event], new Map());
       return;
     }
     throw error;
   }
+}
+
+function newestCommittedEvents(
+  events: CommittedCanvasItemEvent[],
+): CommittedCanvasItemEvent[] {
+  const newest = new Map<string, CommittedCanvasItemEvent>();
+  for (const event of events) {
+    const current = newest.get(event.entity.id);
+    if (!current || BigInt(event.cursor) > BigInt(current.cursor)) {
+      newest.set(event.entity.id, event);
+    }
+  }
+  return Array.from(newest.values()).sort((left, right) =>
+    BigInt(left.cursor) < BigInt(right.cursor) ? -1 : 1,
+  );
+}
+
+function applyCommittedCanvasItemBatch(
+  queryClient: QueryClient,
+  events: CommittedCanvasItemEvent[],
+  hydratedById: Map<string, CanvasItem>,
+): void {
+  const tombstones = new Map<string, number>();
+  const incoming = new Map<string, CanvasItem>();
+
+  for (const event of events) {
+    const item = hydratedById.get(event.entity.id);
+    if (event.operation === "deleted" || !item) {
+      tombstones.set(event.entity.id, event.entity.version);
+    } else {
+      incoming.set(item.id, item);
+    }
+  }
+
+  for (const [itemId, version] of tombstones) {
+    const cached = queryClient.getQueryData<CanvasItem>(
+      canvasItemKeys.detail(itemId),
+    );
+    if (!cached || cached.version <= version) {
+      queryClient.removeQueries({ queryKey: canvasItemKeys.detail(itemId) });
+    }
+  }
+  for (const item of incoming.values()) {
+    const cached = queryClient.getQueryData<CanvasItem>(
+      canvasItemKeys.detail(item.id),
+    );
+    if (!cached || cached.version <= item.version) {
+      queryClient.setQueryData(canvasItemKeys.detail(item.id), item);
+    }
+  }
+
+  queryClient.setQueriesData(
+    { queryKey: canvasItemKeys.lists() },
+    (old: { items?: CanvasItem[] } | undefined) => {
+      if (!old?.items) return old;
+      const seen = new Set<string>();
+      let changed = false;
+      const items = old.items.flatMap((item) => {
+        seen.add(item.id);
+        const tombstoneVersion = tombstones.get(item.id);
+        if (
+          tombstoneVersion !== undefined &&
+          item.version <= tombstoneVersion
+        ) {
+          changed = true;
+          return [];
+        }
+        const replacement = incoming.get(item.id);
+        if (replacement && item.version <= replacement.version) {
+          if (replacement !== item) changed = true;
+          return [replacement];
+        }
+        return [item];
+      });
+
+      for (const item of incoming.values()) {
+        if (!seen.has(item.id)) {
+          items.push(item);
+          changed = true;
+        }
+      }
+
+      return changed ? { ...old, items } : old;
+    },
+  );
 }
 
 /**
@@ -560,9 +664,7 @@ export function useCreateCanvasItem() {
       // Replace temporary item with real server item in place
       queryClient.setQueriesData(
         {
-          queryKey: canvasItemKeys.list(
-            context?.canvasId || newItem.canvasId,
-          ),
+          queryKey: canvasItemKeys.list(context?.canvasId || newItem.canvasId),
         },
         (old: { items?: CanvasItem[] } | undefined) => {
           if (!old?.items) return old;

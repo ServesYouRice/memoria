@@ -27,7 +27,6 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-045](tasks/IMP-045.md) | Make collaboration transport truthful and bounded (need higher model assistance) |  |
 | [IMP-046](tasks/IMP-046.md) | Make the launch surface truthful and accessible (need higher model assistance) |  |
 | [IMP-047](tasks/IMP-047.md) | Make operations recoverable and observable (need higher model assistance) |  |
 | [IMP-048](tasks/IMP-048.md) | Bound resource cost at supported scale (need higher model assistance) | IMP-045 |

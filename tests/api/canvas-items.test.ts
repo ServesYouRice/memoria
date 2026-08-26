@@ -12,6 +12,7 @@ const authMocks = vi.hoisted(() => ({
 const prismaMocks = vi.hoisted(() => ({
   $transaction: vi.fn(),
   canvasItemCreate: vi.fn(),
+  canvasItemFindMany: vi.fn(),
   canvasItemFindUnique: vi.fn(),
   canvasItemUpdateMany: vi.fn(),
 }));
@@ -47,6 +48,7 @@ vi.mock("@/lib/db", () => ({
     $transaction: prismaMocks.$transaction,
     canvasItem: {
       create: prismaMocks.canvasItemCreate,
+      findMany: prismaMocks.canvasItemFindMany,
       findUnique: prismaMocks.canvasItemFindUnique,
       updateMany: prismaMocks.canvasItemUpdateMany,
     },
@@ -77,7 +79,10 @@ vi.mock("@/lib/canvas/mutation-lock", () => ({
   lockCanvasForMutation: mutationLockMocks.lockCanvasForMutation,
 }));
 
-import { POST as canvasItemsPost } from "@/app/api/v1/canvas-items/route";
+import {
+  GET as canvasItemsGet,
+  POST as canvasItemsPost,
+} from "@/app/api/v1/canvas-items/route";
 import { PATCH as canvasItemPatch } from "@/app/api/v1/canvas-items/[itemId]/route";
 
 function createNextRequest(
@@ -113,6 +118,53 @@ describe("Canvas Items API (IMP-062)", () => {
     authMocks.requireAuth.mockResolvedValue({ userId, email: userEmail });
     authMocks.requireCanvasAccess.mockResolvedValue("EDIT");
     authMocks.requireItemAccess.mockResolvedValue("EDIT");
+  });
+
+  describe("GET /api/v1/canvas-items (Committed Event Hydration)", () => {
+    it("hydrates a bounded item set under canvas VIEW authorization", async () => {
+      prismaMocks.canvasItemFindMany.mockResolvedValue([
+        { id: validItemId, canvasId: validCanvasId, version: 2 },
+      ]);
+      const secondItemId = "cjld2cjxh0002qzrmn831i7rn";
+      const req = createNextRequest(
+        `http://localhost/api/v1/canvas-items?canvasId=${validCanvasId}&ids=${validItemId},${secondItemId}`,
+      );
+
+      const res = await canvasItemsGet(req);
+
+      expect(res.status).toBe(200);
+      expect(authMocks.requireCanvasAccess).toHaveBeenCalledWith(
+        validCanvasId,
+        userId,
+        userEmail,
+        "VIEW",
+      );
+      expect(prismaMocks.canvasItemFindMany).toHaveBeenCalledWith({
+        where: {
+          canvasId: validCanvasId,
+          id: { in: [validItemId, secondItemId] },
+          deletedAt: null,
+        },
+      });
+      await expect(res.json()).resolves.toEqual({
+        items: [{ id: validItemId, canvasId: validCanvasId, version: 2 }],
+      });
+    });
+
+    it("rejects an unbounded hydration set before reading items", async () => {
+      const ids = Array.from(
+        { length: 101 },
+        (_, index) => `cjld2cjxh${String(index).padStart(4, "0")}qzrmn831i7rn`,
+      );
+      const req = createNextRequest(
+        `http://localhost/api/v1/canvas-items?canvasId=${validCanvasId}&ids=${ids.join(",")}`,
+      );
+
+      const res = await canvasItemsGet(req);
+
+      expect(res.status).toBe(400);
+      expect(prismaMocks.canvasItemFindMany).not.toHaveBeenCalled();
+    });
   });
 
   describe("POST /api/v1/canvas-items (Create Canvas Item)", () => {

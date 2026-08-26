@@ -3,6 +3,7 @@ import { QueryClient } from "@tanstack/react-query";
 import {
   canvasItemKeys,
   mergeCommittedCanvasItemEvent,
+  mergeCommittedCanvasItemEvents,
 } from "@/lib/hooks/use-canvas-items";
 
 const item = {
@@ -92,5 +93,59 @@ describe("committed client item recovery", () => {
     ).toMatchObject({
       items: [],
     });
+  });
+
+  it("hydrates a committed update burst with one bounded HTTP read", async () => {
+    const queryClient = new QueryClient();
+    const existingItems = Array.from({ length: 50 }, (_, index) => ({
+      ...item,
+      id: `item-${index}`,
+      version: 1,
+    }));
+    queryClient.setQueryData(canvasItemKeys.list(item.canvasId), {
+      items: existingItems,
+      total: existingItems.length,
+    });
+    const updatedItems = existingItems.map((candidate) => ({
+      ...candidate,
+      version: 2,
+      content: { ...candidate.content, plainText: `Updated ${candidate.id}` },
+    }));
+    const events = updatedItems.map((candidate, index) => ({
+      schemaVersion: 1 as const,
+      cursor: String(index + 1),
+      operation: "updated" as const,
+      entity: {
+        type: "canvas-item" as const,
+        id: candidate.id,
+        version: candidate.version,
+      },
+    }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: updatedItems }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await mergeCommittedCanvasItemEvents(queryClient, item.canvasId, events);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]![0]).toContain(
+      `/api/v1/canvas-items?canvasId=${item.canvasId}&ids=`,
+    );
+    expect(
+      queryClient.getQueryData<{ items: typeof updatedItems }>(
+        canvasItemKeys.list(item.canvasId),
+      )?.items,
+    ).toHaveLength(50);
+    expect(
+      queryClient
+        .getQueryData<{ items: typeof updatedItems }>(
+          canvasItemKeys.list(item.canvasId),
+        )
+        ?.items.every((candidate) => candidate.version === 2),
+    ).toBe(true);
   });
 });
