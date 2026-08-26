@@ -17,13 +17,12 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-065](tasks/IMP-065.md) | Cover comment authorization by visibility and role | In progress |
+| [IMP-066](tasks/IMP-066.md) | Cover connection authorization and canvas binding | In progress |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-066](tasks/IMP-066.md) | Cover connection authorization and canvas binding |  |
 | [IMP-050](tasks/IMP-050.md) | Make local push checks proportional and fail-safe |  |
 
 ## WAITING
