@@ -47,7 +47,7 @@ describe("launch template gates (IMP-062)", () => {
   ];
 
   it.each(templateHandlers)(
-    "returns an explicit disabled problem before template reads on $method",
+    "authenticates, then returns an explicit disabled problem on $method",
     async ({ handler }) => {
       const response = await handler();
       expect(response.status).toBe(404);
@@ -56,13 +56,13 @@ describe("launch template gates (IMP-062)", () => {
         title: "Feature Disabled",
       });
       expect(mocks.auth).not.toHaveBeenCalled();
-      expect(mocks.requireAuth).not.toHaveBeenCalled();
+      expect(mocks.requireAuth).toHaveBeenCalledTimes(1);
       expect(mocks.canvasFindMany).not.toHaveBeenCalled();
       expect(mocks.canvasCount).not.toHaveBeenCalled();
     },
   );
 
-  it("returns the same disabled problem before canvas duplication auth", async () => {
+  it("authenticates before returning the canvas duplication gate", async () => {
     const response = await duplicatePost(
       new Request("https://memoria.example/api/v1/canvases/source/duplicate", {
         method: "POST",
@@ -72,6 +72,6 @@ describe("launch template gates (IMP-062)", () => {
     expect(await response.json()).toMatchObject({
       type: "https://memoria.local/errors/feature-disabled",
     });
-    expect(mocks.requireAuth).not.toHaveBeenCalled();
+    expect(mocks.requireAuth).toHaveBeenCalledTimes(1);
   });
 });

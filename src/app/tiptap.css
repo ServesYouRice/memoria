@@ -72,7 +72,8 @@
     padding: 0.2em 0.4em;
     border-radius: 3px;
     font-size: 0.9em;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+    font-family:
+      "Monaco", "Menlo", "Ubuntu Mono", "Consolas", "source-code-pro", monospace;
   }
 
   pre {
@@ -139,34 +140,32 @@
   }
 }
 
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-  .ProseMirror {
-    blockquote {
-      border-left-color: #4a5568;
-      color: #cbd5e0;
-    }
+/* Follow the app's explicit selection, not the operating-system preference. */
+:root[data-theme="dark"] .ProseMirror {
+  blockquote {
+    border-left-color: #4a5568;
+    color: #cbd5e0;
+  }
 
-    code {
-      background-color: rgba(255, 255, 255, 0.1);
-      color: #e2e8f0;
-    }
+  code {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+  }
 
-    pre {
-      background-color: #1a202c;
-      color: #f7fafc;
-    }
+  pre {
+    background-color: #1a202c;
+    color: #f7fafc;
+  }
 
-    a {
-      color: #63b3ed;
+  a {
+    color: #63b3ed;
 
-      &:hover {
-        color: #90cdf4;
-      }
+    &:hover {
+      color: #90cdf4;
     }
+  }
 
-    p.is-editor-empty:first-child::before {
-      color: #718096;
-    }
+  p.is-editor-empty:first-child::before {
+    color: #718096;
   }
 }

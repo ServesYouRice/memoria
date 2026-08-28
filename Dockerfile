@@ -1,7 +1,7 @@
 FROM node:26.7.0-alpine AS source
 
 WORKDIR /app
-RUN npm install --global pnpm@11.13.0
+RUN npm install --global pnpm@11.13.1
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
@@ -35,7 +35,7 @@ FROM node:26.7.0-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
-RUN npm install --global pnpm@11.13.0 \
+RUN npm install --global pnpm@11.13.1 \
   && addgroup -S memoria \
   && adduser -S memoria -G memoria
 

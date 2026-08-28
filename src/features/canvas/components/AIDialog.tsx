@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -47,6 +47,7 @@ export function AIDialog({
   onAddNote,
   getContext,
 }: AIDialogProps) {
+  const chatInFlightRef = useRef(false);
   const [tab, setTab] = useState(0);
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState("");
@@ -100,7 +101,8 @@ export function AIDialog({
   };
 
   const handleChatSend = async () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || chatInFlightRef.current) return;
+    chatInFlightRef.current = true;
 
     const userMsg = chatInput;
     setChatMessages((prev) => [...prev, { role: "user", content: userMsg }]);
@@ -133,6 +135,7 @@ export function AIDialog({
         { role: "assistant", content: "Sorry, I encountered an error." },
       ]);
     } finally {
+      chatInFlightRef.current = false;
       setChatLoading(false);
     }
   };
@@ -266,7 +269,12 @@ export function AIDialog({
                   placeholder="Type a message..."
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleChatSend()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleChatSend();
+                    }
+                  }}
                 />
                 <Button
                   variant="contained"

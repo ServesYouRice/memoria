@@ -1,5 +1,5 @@
 import React from "react";
-import { Layer } from "react-konva";
+import { Group, Layer } from "react-konva";
 import type {
   CanvasCapabilities,
   CanvasItem,
@@ -29,6 +29,7 @@ import { TextItem } from "@/features/canvas/components/TextItem";
 import { FrameItem } from "@/features/canvas/components/FrameItem";
 import { EmbedItem } from "@/features/canvas/components/EmbedItem";
 import { PollItem } from "@/features/canvas/components/PollItem";
+import { isStructuralCanvasItem } from "@/features/canvas/search";
 
 interface CanvasItemLayerProps {
   items: CanvasItem[];
@@ -43,6 +44,8 @@ interface CanvasItemLayerProps {
   onActivateItem: (item: CanvasItem) => void;
   /** The single durable geometry write path (IMP-008). */
   onCommitGeometry: (item: CanvasItem, geometry: ItemGeometryCommit) => void;
+  searchActive?: boolean;
+  searchMatchIds?: ReadonlySet<string>;
 }
 
 /**
@@ -59,6 +62,8 @@ export function CanvasItemLayer({
   onContextMenu,
   onActivateItem,
   onCommitGeometry,
+  searchActive = false,
+  searchMatchIds,
 }: CanvasItemLayerProps) {
   return (
     <Layer>
@@ -74,37 +79,51 @@ export function CanvasItemLayer({
             onCommitGeometry(item, geometry),
         };
 
+        let rendered: React.ReactNode = null;
         if (item.type === ItemType.NOTE && isNoteContent(item.content)) {
-          return <NoteItem key={item.id} {...adapterProps} />;
+          rendered = <NoteItem {...adapterProps} />;
         }
         if (item.type === ItemType.BOOKMARK) {
-          return <BookmarkItem key={item.id} {...adapterProps} />;
+          rendered = <BookmarkItem {...adapterProps} />;
         }
         if (item.type === ItemType.IMAGE) {
-          return <ImageItem key={item.id} {...adapterProps} />;
+          rendered = <ImageItem {...adapterProps} />;
         }
         if (item.type === ItemType.DRAWING && isDrawingContent(item.content)) {
-          return <DrawingItem key={item.id} {...adapterProps} />;
+          rendered = <DrawingItem {...adapterProps} />;
         }
         if (item.type === ItemType.SHAPE && isShapeContent(item.content)) {
-          return <ShapeItem key={item.id} {...adapterProps} />;
+          rendered = <ShapeItem {...adapterProps} />;
         }
         if (item.type === ItemType.ARROW && isArrowContent(item.content)) {
-          return <ArrowItem key={item.id} {...adapterProps} />;
+          rendered = <ArrowItem {...adapterProps} />;
         }
         if (item.type === ItemType.TEXT && isTextContent(item.content)) {
-          return <TextItem key={item.id} {...adapterProps} />;
+          rendered = <TextItem {...adapterProps} />;
         }
         if (item.type === ItemType.FRAME && isFrameContent(item.content)) {
-          return <FrameItem key={item.id} {...adapterProps} />;
+          rendered = <FrameItem {...adapterProps} />;
         }
         if (item.type === ItemType.EMBED && isEmbedContent(item.content)) {
-          return <EmbedItem key={item.id} {...adapterProps} />;
+          rendered = <EmbedItem {...adapterProps} />;
         }
         if (item.type === ItemType.POLL && isPollContent(item.content)) {
-          return <PollItem key={item.id} {...adapterProps} />;
+          rendered = <PollItem {...adapterProps} />;
         }
-        return null;
+        if (!rendered) return null;
+
+        const isMatch = searchMatchIds?.has(item.id) ?? true;
+        const opacity =
+          !searchActive || isMatch || selectedItemIds.has(item.id)
+            ? 1
+            : isStructuralCanvasItem(item)
+              ? 0.55
+              : 0.18;
+        return (
+          <Group key={item.id} opacity={opacity}>
+            {rendered}
+          </Group>
+        );
       })}
 
       {isSelecting && selectionBox && (

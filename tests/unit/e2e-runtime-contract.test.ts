@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { imageContentSchema } from "@/lib/validation/canvas-item";
 import { SendGridEmailProvider } from "@/lib/email/providers/sendgrid";
@@ -5,6 +7,23 @@ import { SendGridEmailProvider } from "@/lib/email/providers/sendgrid";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("production E2E runtime contracts", () => {
+  it("installs the package-manager version declared by the repository", () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(process.cwd(), "package.json"), "utf8"),
+    ) as { packageManager: string };
+    const dockerfile = readFileSync(
+      resolve(process.cwd(), "Dockerfile"),
+      "utf8",
+    );
+    const declaredVersion = packageJson.packageManager.replace("pnpm@", "");
+    const installedVersions = Array.from(
+      dockerfile.matchAll(/npm install --global pnpm@([^\s\\]+)/g),
+      (match) => match[1],
+    );
+
+    expect(installedVersions).toEqual([declaredVersion, declaredVersion]);
+  });
+
   it("accepts only the private upload relative URL shape", () => {
     expect(
       imageContentSchema.parse({

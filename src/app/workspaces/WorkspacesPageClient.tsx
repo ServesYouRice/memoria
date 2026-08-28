@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -43,6 +43,8 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 
 export default function WorkspacesPageClient() {
+  const createInFlightRef = useRef(false);
+  const editInFlightRef = useRef(false);
   const router = useRouter();
   const { data, isLoading, error } = useWorkspaces();
   const createWorkspace = useCreateWorkspace();
@@ -65,7 +67,8 @@ export default function WorkspacesPageClient() {
   const workspaces = data?.workspaces ?? [];
 
   const handleCreate = async () => {
-    if (!workspaceName.trim()) return;
+    if (!workspaceName.trim() || createInFlightRef.current) return;
+    createInFlightRef.current = true;
     try {
       await createWorkspace.mutateAsync({ name: workspaceName.trim() });
       setWorkspaceName("");
@@ -73,11 +76,15 @@ export default function WorkspacesPageClient() {
       toast.success("Workspace created");
     } catch {
       toast.error("Failed to create workspace");
+    } finally {
+      createInFlightRef.current = false;
     }
   };
 
   const handleEdit = async () => {
-    if (!selectedWorkspace || !workspaceName.trim()) return;
+    if (!selectedWorkspace || !workspaceName.trim() || editInFlightRef.current)
+      return;
+    editInFlightRef.current = true;
     try {
       await updateWorkspace.mutateAsync({
         workspaceId: selectedWorkspace.id,
@@ -89,6 +96,8 @@ export default function WorkspacesPageClient() {
       toast.success("Workspace renamed");
     } catch {
       toast.error("Failed to rename workspace");
+    } finally {
+      editInFlightRef.current = false;
     }
   };
 
@@ -304,7 +313,10 @@ export default function WorkspacesPageClient() {
             placeholder="e.g., Project Alpha"
             sx={{ mt: 1 }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleCreate();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleCreate();
+              }
             }}
           />
         </DialogContent>
@@ -337,7 +349,10 @@ export default function WorkspacesPageClient() {
             onChange={(e) => setWorkspaceName(e.target.value)}
             sx={{ mt: 1 }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleEdit();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleEdit();
+              }
             }}
           />
         </DialogContent>

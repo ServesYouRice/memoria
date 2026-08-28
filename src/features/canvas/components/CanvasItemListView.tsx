@@ -152,6 +152,9 @@ export interface CanvasItemListViewProps {
   onCreateItem?: () => void;
   /** Labels the region, e.g. the canvas name. */
   canvasName?: string;
+  /** Search annotates matches but never removes context rows. */
+  searchQuery?: string;
+  searchMatchIds?: ReadonlySet<string>;
 }
 
 export function CanvasItemListView({
@@ -164,6 +167,8 @@ export function CanvasItemListView({
   onDeleteItem,
   onCreateItem,
   canvasName,
+  searchQuery = "",
+  searchMatchIds,
 }: CanvasItemListViewProps) {
   const theme = useTheme();
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -271,7 +276,9 @@ export function CanvasItemListView({
           >
             {items.length === 0
               ? "This canvas has no items yet."
-              : `${items.length} item${items.length === 1 ? "" : "s"}. Tab to an item, then press Enter to edit or the arrow keys to move it.`}
+              : searchQuery.trim()
+                ? `${searchMatchIds?.size ?? 0} search match${searchMatchIds?.size === 1 ? "" : "es"}. All ${items.length} items remain listed as canvas context.`
+                : `${items.length} item${items.length === 1 ? "" : "s"}. Tab to an item, then press Enter to edit or the arrow keys to move it.`}
           </Typography>
         </Box>
         {capabilities.canCreateItems && onCreateItem && (
@@ -302,6 +309,7 @@ export function CanvasItemListView({
           const heading = describeItemHeading(item);
           const detail = describeItemDetail(item, itemsById);
           const isSelected = selectedItemIds?.has(item.id) ?? false;
+          const isSearchMatch = searchMatchIds?.has(item.id) ?? false;
 
           return (
             <Box component="li" key={item.id}>
@@ -339,6 +347,14 @@ export function CanvasItemListView({
                   <Chip size="small" label={item.type.toLowerCase()} />
                   {isSelected && (
                     <Chip size="small" color="primary" label="selected" />
+                  )}
+                  {searchQuery.trim() && (
+                    <Chip
+                      size="small"
+                      color={isSearchMatch ? "secondary" : "default"}
+                      variant={isSearchMatch ? "filled" : "outlined"}
+                      label={isSearchMatch ? "search match" : "context"}
+                    />
                   )}
                 </Stack>
 

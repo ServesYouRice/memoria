@@ -5,7 +5,7 @@ import { NotificationsContent } from "./NotificationsContent";
 
 export const metadata = {
   title: "Notifications",
-  description: "Recent activity across your canvases",
+  description: "Canvas invitations and responses",
 };
 
 export default async function NotificationsPage() {

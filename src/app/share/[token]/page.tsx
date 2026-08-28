@@ -20,7 +20,7 @@ import {
 import { ZoomIn, ZoomOut, FitScreen } from "@mui/icons-material";
 import { Stage } from "react-konva";
 import Link from "next/link";
-import { resolveCanvasCapabilities, type CanvasItem } from "@/types/canvas";
+import { type CanvasItem } from "@/types/canvas";
 import type Konva from "konva";
 import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
 import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
@@ -44,9 +44,9 @@ export default function SharePage({ params }: SharePageProps) {
   const { token } = use(params);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [canvas, setCanvas] = useState<PublicCanvasShareResponse["canvas"] | null>(
-    null,
-  );
+  const [canvas, setCanvas] = useState<
+    PublicCanvasShareResponse["canvas"] | null
+  >(null);
   const [items, setItems] = useState<CanvasItem[]>([]);
 
   // Canvas state
@@ -85,7 +85,9 @@ export default function SharePage({ params }: SharePageProps) {
         setZoom(data.canvas.zoomLevel || 1);
         setPosition({ x: data.canvas.panX || 0, y: data.canvas.panY || 0 });
 
-        const allItems: CanvasItem[] = [...(data.items as unknown as CanvasItem[])];
+        const allItems: CanvasItem[] = [
+          ...(data.items as unknown as CanvasItem[]),
+        ];
         let hasMore = data.hasMore;
         let nextCursor = data.nextCursor;
         let pageCount = 1;
@@ -326,7 +328,7 @@ export default function SharePage({ params }: SharePageProps) {
 
       <CanvasAccessiblePanel
         items={items}
-        capabilities={resolveCanvasCapabilities("VIEW")}
+        capabilities={NO_CANVAS_CAPABILITIES}
         canvasName={canvas?.name || "Shared canvas"}
       />
 
@@ -335,15 +337,8 @@ export default function SharePage({ params }: SharePageProps) {
         ref={containerRef}
         sx={{ flex: 1, overflow: "hidden", position: "relative" }}
         role="region"
-        aria-label="Shared canvas. An equivalent keyboard- and screen-reader-accessible item list follows."
+        aria-label="Shared canvas. An equivalent keyboard- and screen-reader-accessible item list is available from the skip control."
       >
-        {/* IMP-022: public canvases get the same DOM item list as owned ones. */}
-        <CanvasAccessiblePanel
-          items={items}
-          capabilities={NO_CANVAS_CAPABILITIES}
-          canvasName={canvas?.name || "this shared canvas"}
-        />
-
         {items.length === 0 ? (
           <Box
             sx={{

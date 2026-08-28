@@ -506,5 +506,26 @@ describe("Tenant Scoping for Workspaces, Trash, and Notifications (IMP-060)", ()
         data: { readAt: expect.any(Date) },
       });
     });
+
+    it("PATCH marks every unread notification for only the authenticated recipient", async () => {
+      authMocks.requireAuth.mockResolvedValue({ userId: ownerUserId });
+      prismaMocks.notificationUpdateMany.mockResolvedValue({ count: 4 });
+
+      const req = createNextRequest("http://localhost/api/v1/notifications", {
+        method: "PATCH",
+        body: { all: true },
+      });
+      const res = await notificationsPatch(req);
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({ updated: 4 });
+      expect(prismaMocks.notificationUpdateMany).toHaveBeenCalledWith({
+        where: {
+          recipientId: ownerUserId,
+          readAt: null,
+        },
+        data: { readAt: expect.any(Date) },
+      });
+    });
   });
 });

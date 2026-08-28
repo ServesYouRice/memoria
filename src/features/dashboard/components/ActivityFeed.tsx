@@ -60,7 +60,7 @@ export function ActivityFeed({
   if (isLoading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-        <CircularProgress />
+        <CircularProgress aria-label="Loading recent activity" />
       </Box>
     );
   }

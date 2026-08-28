@@ -90,7 +90,9 @@ export function createAppTheme(mode: PaletteMode) {
       mode,
       primary: {
         light: brand.primary.light,
-        main: isLight ? brand.primary.main : brand.primary.light,
+        // The launch UI uses primary.main for normal-size links and outlined
+        // controls, so the light palette needs the AA-safe brand shade.
+        main: isLight ? brand.primary.dark : brand.primary.light,
         dark: brand.primary.dark,
         contrastText: brand.primary.contrastText,
       },

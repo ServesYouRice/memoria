@@ -109,6 +109,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   // Data Hook (Single source of truth for display)
   const {
     items,
+    searchMatchIds,
     allItems,
     versions,
     allTags,
@@ -1078,28 +1079,15 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       )}
 
       <CanvasAccessiblePanel
-        items={allItems}
+        items={items}
         capabilities={capabilities}
+        searchQuery={searchQuery}
+        searchMatchIds={searchMatchIds}
         selectedItemIds={selectedItemIds}
         onSelectItem={(itemId) => handleSelectItem(itemId, false)}
-        onActivateItem={(item) => {
-          if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
-            handleNoteDoubleClick(item);
-          } else if (item.type === ItemType.BOOKMARK) {
-            handleBookmarkDoubleClick(item);
-          } else if (item.type === ItemType.IMAGE) {
-            handleImageDoubleClick(item);
-          }
-        }}
-        onNudgeItem={(item, deltaX, deltaY) => {
-          commitGeometry(item, {
-            positionX: item.positionX + deltaX,
-            positionY: item.positionY + deltaY,
-          });
-        }}
-        onDeleteItem={(item) => {
-          void deleteItem({ itemId: item.id, version: item.version });
-        }}
+        onActivateItem={handleActivateItem}
+        onNudgeItem={handleNudgeItem}
+        onDeleteItem={handleDeleteItem}
         onCreateItem={() => setNoteDialogOpen(true)}
         canvasName={canvasName}
       />
@@ -1118,7 +1106,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         <Box
           ref={stageContainerRef}
           role="region"
-          aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list follows."
+          aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list is available from the skip control."
           sx={{
             flexGrow: 1,
             position: "relative",
@@ -1128,20 +1116,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
           }}
         >
-          {/* IMP-022 / DEC-009: the canvas content as real DOM, always present
-              in the accessibility tree and operable without pointer or pixels. */}
-          <CanvasAccessiblePanel
-            items={allItems}
-            capabilities={capabilities}
-            canvasName={canvasName}
-            selectedItemIds={selectedItemIds}
-            onSelectItem={(id) => handleSelectItem(id, false)}
-            onActivateItem={handleActivateItem}
-            onNudgeItem={handleNudgeItem}
-            onDeleteItem={handleDeleteItem}
-            onCreateItem={() => setNoteDialogOpen(true)}
-          />
-
           {!isDrawing && !isPresentationMode && canEdit && (
             <SpeedDial
               ariaLabel="Add Item"
@@ -1242,6 +1216,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               onContextMenu={handleContextMenu}
               onActivateItem={handleActivateItem}
               onCommitGeometry={handleCommitGeometry}
+              searchActive={Boolean(searchQuery.trim())}
+              searchMatchIds={searchMatchIds}
             />
           </Stage>
 

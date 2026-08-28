@@ -20,19 +20,18 @@ import {
   BookmarkBorder as BookmarkIcon,
 } from "@mui/icons-material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
+import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 
 const FEATURES = [
   {
     icon: MultiCanvasIcon,
     title: "Multi-canvas",
-    description:
-      "Create unlimited canvases to organize different projects, ideas, and workflows.",
+    description: `Create up to ${LAUNCH_LIMITS.canvasesPerUser} canvases to organize projects, ideas, and workflows.`,
   },
   {
     icon: CanvasIcon,
-    title: "Infinite canvas",
-    description:
-      "Pan, zoom, and arrange your notes freely on an unlimited workspace.",
+    title: "Flexible canvas",
+    description: `Pan, zoom, and arrange up to ${LAUNCH_LIMITS.itemsPerCanvas.toLocaleString("en-US")} active items on each canvas.`,
   },
   {
     icon: CollaborationIcon,
@@ -44,19 +43,19 @@ const FEATURES = [
     icon: SecurityIcon,
     title: "Security first",
     description:
-      "Enterprise-grade security with Argon2 hashing, rate limiting, and strict CSP.",
+      "Argon2 password hashing, request rate limits, private uploads, and a strict content security policy.",
   },
   {
     icon: PerformanceIcon,
-    title: "Lightning fast",
+    title: "Visible save state",
     description:
-      "Optimized performance with instant autosave and efficient state management.",
+      "Autosave feedback, conflict messages, and version history make storage outcomes visible.",
   },
   {
     icon: ExportIcon,
-    title: "Export anywhere",
+    title: "Portable downloads",
     description:
-      "Export your canvases as PNG, PDF, or JSON for sharing and presentations.",
+      "Download a canvas as PNG, PDF, Markdown, or JSON from the canvas menu.",
   },
 ];
 
@@ -165,7 +164,7 @@ export default async function Home() {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              infinite canvas
+              visual canvas
             </Box>
           </Typography>
           <Typography
@@ -179,9 +178,8 @@ export default async function Home() {
               mb: 5,
             }}
           >
-            Memoria is a collaborative canvas for notes and bookmarks —
-            beautiful, secure, and blazing fast, designed for modern teams and
-            creative minds.
+            Memoria is a collaborative canvas for notes, bookmarks, images, and
+            rich text, with live presence and explicit save feedback.
           </Typography>
           <Stack
             direction={{ xs: "column", sm: "row" }}
@@ -191,7 +189,7 @@ export default async function Home() {
             }}
           >
             <Button href="/auth/register" variant="contained" size="large">
-              Get started free
+              Create account
             </Button>
             <Button href="/auth/login" variant="outlined" size="large">
               Sign in
@@ -204,7 +202,9 @@ export default async function Home() {
               mt: 2.5,
             }}
           >
-            No credit card required • Free forever
+            Launch limits: {LAUNCH_LIMITS.canvasesPerUser} canvases per account
+            • {LAUNCH_LIMITS.itemsPerCanvas.toLocaleString("en-US")} active
+            items per canvas
           </Typography>
 
           {/* Preview card */}
@@ -367,8 +367,8 @@ export default async function Home() {
             Ready to get organized?
           </Typography>
           <Typography sx={{ opacity: 0.9, maxWidth: 480, mx: "auto", mb: 4 }}>
-            Join thousands of users and experience a better way to capture and
-            organize your ideas.
+            Create an account to capture ideas, arrange visual context, and
+            collaborate through invitations and live presence.
           </Typography>
           <Button
             href="/auth/register"
@@ -380,7 +380,7 @@ export default async function Home() {
               "&:hover": { bgcolor: "#fff", filter: "brightness(0.95)" },
             }}
           >
-            Start free now
+            Create account
           </Button>
         </Box>
       </Container>
@@ -425,16 +425,24 @@ export default async function Home() {
               alignItems: "center",
             }}
           >
-            <Button href="/help" size="small">
+            <Button href="/help" size="small" sx={{ color: "text.secondary" }}>
               Help
             </Button>
-            <Button href="/status" size="small">
+            <Button
+              href="/status"
+              size="small"
+              sx={{ color: "text.secondary" }}
+            >
               Status
             </Button>
-            <Button href="/privacy" size="small">
+            <Button
+              href="/privacy"
+              size="small"
+              sx={{ color: "text.secondary" }}
+            >
               Privacy
             </Button>
-            <Button href="/terms" size="small">
+            <Button href="/terms" size="small" sx={{ color: "text.secondary" }}>
               Terms
             </Button>
             <Typography

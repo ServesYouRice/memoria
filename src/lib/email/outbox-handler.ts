@@ -73,6 +73,22 @@ export function createShareInvitationEmailHandler(
       invitation.expiresAt <= new Date()
     )
       return;
+    const recipient = await prisma.user.findUnique({
+      where: { email: invitation.email },
+      select: { id: true },
+    });
+    if (recipient) {
+      const preference = await prisma.notificationPreference.findUnique({
+        where: {
+          userId_type: {
+            userId: recipient.id,
+            type: "CANVAS_SHARED",
+          },
+        },
+        select: { emailEnabled: true },
+      });
+      if (preference?.emailEnabled === false) return;
+    }
     const rawToken = decryptSecret(invitation.deliverySecret);
     const template = shareInvitationTemplate({
       inviterName: invitation.invitedBy.name || invitation.invitedBy.email,

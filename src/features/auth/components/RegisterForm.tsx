@@ -120,7 +120,7 @@ export function RegisterForm({ mode = "open" }: RegisterFormProps) {
   return (
     <AuthLayout
       headline="Start your journey"
-      tagline="Create your free account and unlock unlimited creative possibilities."
+      tagline="Create your account and start organizing ideas on a visual canvas."
     >
       <Typography
         variant="h4"
