@@ -1,4 +1,4 @@
-FROM node:24.20.0-alpine AS source
+FROM node:26.8.1-alpine AS source
 
 ARG NEXT_PUBLIC_SENTRY_DSN
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
@@ -37,7 +37,7 @@ ENV NODE_ENV=production \
 
 RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts
 
-FROM node:24.20.0-alpine AS runtime
+FROM node:26.8.1-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
