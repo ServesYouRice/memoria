@@ -5,13 +5,14 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
 
-Gate status, 2026-08-24: `pnpm lint` and `pnpm type-check` pass with TypeScript
-5.9.3, and all 64 unit/API files collect. The normal test gate is still
-order-dependent: its first run failed 8 of 444 tests, `pnpm test:coverage` then
-passed 444/444, and an immediate repeat of the normal command passed 444/444.
-The focused command is also broken and nearly every server test still pays for
-happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
-[IMP-052](tasks/IMP-052.md), before relying on later test evidence.
+Gate status, 2026-08-29: after integrating the `gemini-implementation` and
+`codex-implementation` lines, `pnpm lint`, `pnpm type-check`,
+`pnpm test:coverage` (95 files, 750 tests), `pnpm test:coverage:routes`,
+`pnpm build`, and `pnpm check-bundle` all pass. The order-dependent unit gate
+that IMP-052 and IMP-053 addressed did not reappear across repeated runs. That
+evidence was collected on Node 22, not the Node 24 line `package.json` and CI
+pin. `pnpm test:integration`, `pnpm test:e2e`, and `pnpm smoke` are still
+unverified locally and remain gated on DEC-014.
 
 ## DOING
 
