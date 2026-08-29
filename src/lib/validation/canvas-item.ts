@@ -84,15 +84,18 @@ export const bookmarkContentSchema = z.object({
  * Image content validation
  */
 export const imageContentSchema = z.object({
-  url: z.string().max(2048).refine((value) => {
-    if (/^\/api\/v1\/uploads\/c[a-z0-9]{20,}$/i.test(value)) return true;
-    try {
-      const parsed = new URL(value);
-      return parsed.protocol === "http:" || parsed.protocol === "https:";
-    } catch {
-      return false;
-    }
-  }, "Image URL must be an HTTP URL or a private upload URL"),
+  url: z
+    .string()
+    .max(2048)
+    .refine((value) => {
+      if (/^\/api\/v1\/uploads\/c[a-z0-9]{20,}$/i.test(value)) return true;
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    }, "Image URL must be an HTTP URL or a private upload URL"),
   filename: z.string().min(1).max(255),
   alt: z.string().max(500).optional(),
   width: z.number().positive().max(10000).optional(),
@@ -141,8 +144,12 @@ export const shapeContentSchema = z.object({
 export const arrowContentSchema = z.object({
   startItemId: z.string().cuid().optional(),
   endItemId: z.string().cuid().optional(),
-  startPoint: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
-  endPoint: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
+  startPoint: z
+    .object({ x: z.number().finite(), y: z.number().finite() })
+    .optional(),
+  endPoint: z
+    .object({ x: z.number().finite(), y: z.number().finite() })
+    .optional(),
   stroke: z.string().max(50).optional(),
   strokeWidth: z.number().positive().max(100).optional(),
   arrowHeadStart: z.enum(["none", "arrow", "circle"]).optional(),
@@ -182,13 +189,15 @@ export const embedContentSchema = z.object({
  */
 export const pollContentSchema = z.object({
   question: z.string().min(1).max(500),
-  options: z.array(
-    z.object({
-      id: z.string().max(50),
-      text: z.string().max(200),
-      votes: z.array(z.string().cuid()).max(1000),
-    }),
-  ).max(20),
+  options: z
+    .array(
+      z.object({
+        id: z.string().max(50),
+        text: z.string().max(200),
+        votes: z.array(z.string().cuid()).max(1000),
+      }),
+    )
+    .max(20),
   multipleChoice: z.boolean().optional(),
 });
 
@@ -306,6 +315,7 @@ export const listCanvasItemsSchema = z.object({
     .default(MAX_VIEWPORT_ITEMS),
   offset: z.number().int().nonnegative().default(0),
   cursor: z.string().optional(),
+  tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(20).optional(),
 });
 
 /**
@@ -341,6 +351,7 @@ export const viewportPaginationSchema = z.object({
     .default(DEFAULT_VIEWPORT_LIMIT),
   offset: z.number().int().nonnegative().default(0),
   cursor: z.string().optional(),
+  tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).max(20).optional(),
 });
 
 /**

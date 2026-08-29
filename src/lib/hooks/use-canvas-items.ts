@@ -42,6 +42,7 @@
 import { apiFetch, ApiError, isVersionConflict } from "@/lib/api/fetch-client";
 import {
   useMutation,
+  useInfiniteQuery,
   useQuery,
   useSuspenseQuery,
   useQueryClient,
@@ -64,6 +65,8 @@ import {
   canvasItemListResponseSchema,
   type CanvasItemListResponse,
 } from "@/lib/api/response-schemas";
+import { canvasIndexKeys } from "@/lib/hooks/use-canvas-index";
+import { RESOURCE_BUDGETS } from "@/lib/policy/resource-budgets";
 
 /**
  * Viewport parameters for viewport-based loading
@@ -75,6 +78,7 @@ export interface ViewportParams {
   maxY: number;
   limit?: number;
   offset?: number;
+  tags?: string[];
 }
 
 /**
@@ -99,6 +103,9 @@ const api = {
         params.set("maxX", viewport.maxX.toString());
         params.set("minY", viewport.minY.toString());
         params.set("maxY", viewport.maxY.toString());
+        if (viewport.tags?.length) {
+          viewport.tags.forEach((tag) => params.append("tag", tag));
+        }
       }
 
       if (cursor) {
@@ -132,6 +139,10 @@ const api = {
     let hasMore = firstPage.hasMore;
     let nextCursor = firstPage.nextCursor;
 
+    // A viewport query intentionally keeps one bounded page in memory. The
+    // accessible organizer owns explicit cursor pagination; eagerly walking a
+    // viewport's `hasMore` cursor would silently turn a 250-item page back
+    // into a full-canvas hydration.
     if (!viewport && hasMore) {
       const pageLimit = limit || 100;
       let pageCount = 1;
@@ -150,6 +161,9 @@ const api = {
         hasMore = nextPage.hasMore;
         nextCursor = nextPage.nextCursor;
         pageCount += 1;
+        if (items.length > RESOURCE_BUDGETS.canvas.maxItems) {
+          throw new Error("Canvas exceeds the supported item capacity");
+        }
       }
 
       if (hasMore) throw new Error("Canvas exceeds the safe item page limit");
@@ -163,7 +177,25 @@ const api = {
       total,
       offset,
       limit,
+      nextCursor: hasMore ? nextCursor : null,
+      hasMore,
+      truncatedByBytes: firstPage.truncatedByBytes,
     };
+  },
+
+  async listItemPage(
+    canvasId: string,
+    cursor: string | null,
+    limit = 50,
+  ): Promise<CanvasItemListResponse> {
+    const params = new URLSearchParams({
+      canvasId,
+      limit: String(limit),
+    });
+    if (cursor) params.set("cursor", cursor);
+    const response = await apiFetch(`/api/v1/canvas-items?${params}`);
+    if (!response.ok) throw new Error("Failed to fetch accessible items");
+    return canvasItemListResponseSchema.parse(await response.json());
   },
 
   async getItem(itemId: string) {
@@ -477,6 +509,23 @@ export function useCanvasItems(
   });
 }
 
+/** Cursor-paginated full records for the always-present accessible DOM view. */
+export function useAccessibleCanvasItems(canvasId: string, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...canvasItemKeys.list(canvasId), "accessible"] as const,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      api.listItemPage(
+        canvasId,
+        pageParam,
+        RESOURCE_BUDGETS.canvas.accessiblePageItems,
+      ),
+    enabled: enabled && Boolean(canvasId),
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.nextCursor || undefined : undefined,
+  });
+}
+
 /**
  * Fetch a single canvas item by ID
  *
@@ -679,6 +728,9 @@ export function useCreateCanvasItem() {
       queryClient.invalidateQueries({
         queryKey: canvasItemKeys.list(newItem.canvasId),
       });
+      queryClient.invalidateQueries({
+        queryKey: canvasIndexKeys.all(newItem.canvasId),
+      });
     },
     onError: (_err, newItem, context) => {
       // Targeted rollback: remove only the temporary item
@@ -780,6 +832,9 @@ export function useUpdateCanvasItem() {
           };
         },
       );
+      queryClient.invalidateQueries({
+        queryKey: canvasIndexKeys.all(updatedItem.canvasId),
+      });
     },
     onError: (error: Error, _variables, context) => {
       // Targeted rollback: restore only the affected item
@@ -829,9 +884,15 @@ export function useDeleteCanvasItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ itemId, version }: { itemId: string; version: number }) =>
-      api.deleteItem(itemId, { version }),
-    onMutate: async ({ itemId }) => {
+    mutationFn: ({
+      itemId,
+      version,
+    }: {
+      itemId: string;
+      version: number;
+      canvasId?: string;
+    }) => api.deleteItem(itemId, { version }),
+    onMutate: async ({ itemId, canvasId }) => {
       const deletedItem =
         queryClient.getQueryData<CanvasItem>(canvasItemKeys.detail(itemId)) ||
         queryClient
@@ -856,7 +917,11 @@ export function useDeleteCanvasItem() {
         queryKey: canvasItemKeys.detail(itemId),
       });
 
-      return { deletedItem, itemId };
+      return {
+        deletedItem,
+        itemId,
+        canvasId: canvasId || deletedItem?.canvasId,
+      };
     },
     onError: (_err, _variables, context) => {
       // Targeted rollback: re-insert the deleted item back into list caches
@@ -877,10 +942,16 @@ export function useDeleteCanvasItem() {
         );
       }
     },
-    onSuccess: () => {
+    onSuccess: (_result, _variables, context) => {
       queryClient.invalidateQueries({
         queryKey: canvasItemKeys.lists(),
       });
+      const canvasId = context?.canvasId || context?.deletedItem?.canvasId;
+      if (canvasId) {
+        queryClient.invalidateQueries({
+          queryKey: canvasIndexKeys.all(canvasId),
+        });
+      }
     },
   });
 }

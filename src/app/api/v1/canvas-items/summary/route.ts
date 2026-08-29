@@ -13,7 +13,7 @@ export const GET = withApiHandler(async (request: Request) => {
     Object.fromEntries(new URL(request.url).searchParams),
   );
   await requireCanvasAccess(canvasId, userId, email, "VIEW");
-  const [summary, types, tags] = await Promise.all([
+  const [summary, types, tags, revisionRows] = await Promise.all([
     prisma.$queryRaw<
       Array<{
         count: bigint;
@@ -25,18 +25,27 @@ export const GET = withApiHandler(async (request: Request) => {
     >`
       SELECT COUNT(*) AS count, MIN("positionX") AS "minX", MIN("positionY") AS "minY",
         MAX("positionX" + "width") AS "maxX", MAX("positionY" + "height") AS "maxY"
-      FROM "CanvasItem" WHERE "canvasId" = ${canvasId} AND "deletedAt" IS NULL
+      FROM "CanvasItem"
+      WHERE "canvasId" = ${canvasId}
+        AND "deletedAt" IS NULL
+        AND "type" <> 'POLL'::"ItemType"
     `,
     prisma.canvasItem.groupBy({
       by: ["type"],
-      where: { canvasId, deletedAt: null },
+      where: { canvasId, deletedAt: null, type: { not: "POLL" } },
       _count: { _all: true },
     }),
     prisma.$queryRaw<Array<{ tag: string; count: bigint }>>(Prisma.sql`
       SELECT tag, COUNT(*) AS count FROM "CanvasItem", unnest("tags") tag
-      WHERE "canvasId" = ${canvasId} AND "deletedAt" IS NULL
+      WHERE "canvasId" = ${canvasId}
+        AND "deletedAt" IS NULL
+        AND "type" <> 'POLL'::"ItemType"
       GROUP BY tag ORDER BY count DESC, tag ASC LIMIT 100
     `),
+    prisma.$queryRaw<Array<{ revision: bigint }>>`
+      SELECT COALESCE(MAX("sequence"), 0) AS revision
+      FROM "CanvasEvent" WHERE "canvasId" = ${canvasId}
+    `,
   ]);
   const bounds = summary[0];
   return NextResponse.json({
@@ -56,5 +65,6 @@ export const GET = withApiHandler(async (request: Request) => {
       value: entry.tag,
       count: Number(entry.count),
     })),
+    revision: (revisionRows[0]?.revision ?? 0n).toString(),
   });
 });

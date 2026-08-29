@@ -41,6 +41,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { useThemeMode } from "@/lib/theme-context";
+import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
 
 export function DashboardContent({ userName }: { userName?: string | null }) {
   const router = useRouter();
@@ -346,11 +347,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                   <CanvasCard
                     key={canvas.id}
                     name={canvas.name}
-                    thumbnail={
-                      canvas.thumbnailKey
-                        ? `/api/v1/canvases/${canvas.id}/thumbnail?v=${canvas.thumbnailRevision || "0"}`
-                        : null
-                    }
+                    thumbnail={canvasThumbnailUrl(canvas)}
                     index={index}
                     selected={selectedCanvasIds.has(canvas.id)}
                     meta={`Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}

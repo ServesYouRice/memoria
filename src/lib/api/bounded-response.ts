@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { canvasItemResponseSchema } from "@/lib/api/response-schemas";
 import { InternalServerError } from "@/lib/errors";
+import { RESOURCE_BUDGETS } from "@/lib/policy/resource-budgets";
 
-export const ITEM_RESPONSE_BYTE_BUDGET = 512 * 1024;
+export const ITEM_RESPONSE_BYTE_BUDGET =
+  RESOURCE_BUDGETS.canvas.viewportResponseBytes;
 
 export interface ItemCursorTarget {
   id: string;
@@ -49,7 +51,8 @@ export function boundedItemsResponse<T extends { id: string; zIndex: number }>(
   let accumulatedItemBytes = 0;
 
   // Measure envelope overhead with placeholder for pagination/cursor fields
-  const sampleCursor = "eyJ6IjIxNDc0ODM2NDcsImlkIjoiY2p4eHh4eHh4eHh4eHh4eHh4eHh4eHgifQ";
+  const sampleCursor =
+    "eyJ6IjIxNDc0ODM2NDcsImlkIjoiY2p4eHh4eHh4eHh4eHh4eHh4eHh4eHgifQ";
   const envelopeWithSample = {
     ...metadata,
     items: [],
@@ -97,7 +100,8 @@ export function boundedItemsResponse<T extends { id: string; zIndex: number }>(
             typeof metadata.offset === "number"
           ? metadata.offset + accepted.length < metadata.total
           : false;
-    nextCursor = hasMore && lastAccepted ? encodeItemCursor(lastAccepted) : null;
+    nextCursor =
+      hasMore && lastAccepted ? encodeItemCursor(lastAccepted) : null;
   }
 
   const body = {

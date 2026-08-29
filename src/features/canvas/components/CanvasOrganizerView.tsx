@@ -47,6 +47,7 @@ import { useCanvasView, useSaveCanvasView } from "@/lib/hooks/use-canvas-views";
 interface CanvasOrganizerViewProps {
   canvasId: string;
   items: CanvasItem[];
+  itemCount?: number;
 }
 
 function getItemSummary(item: CanvasItem) {
@@ -386,6 +387,7 @@ function renderEntityCard(
 export function CanvasOrganizerView({
   canvasId,
   items,
+  itemCount = items.length,
 }: CanvasOrganizerViewProps) {
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const viewQuery = useCanvasView(canvasId, CanvasViewType.ORGANIZER);
@@ -592,7 +594,7 @@ export function CanvasOrganizerView({
         }}
       >
         {[
-          { label: "Manual items", value: items.length, icon: <HubIcon /> },
+          { label: "Manual items", value: itemCount, icon: <HubIcon /> },
           {
             label: "Derived entities",
             value: knowledgeQuery.data?.entities.length || 0,

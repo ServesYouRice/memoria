@@ -51,6 +51,7 @@ export async function runOutboxWorker(options: {
   batchSize?: number;
   leaseMs?: number;
   handlerTimeoutMs?: number;
+  handlerTimeoutMsByType?: Record<string, number>;
   concurrency?: number;
   owner?: string;
 }) {
@@ -72,13 +73,15 @@ export async function runOutboxWorker(options: {
     job: Awaited<ReturnType<typeof claimOutboxJobs>>[number],
   ) => {
     const controller = new AbortController();
-    const deadlineAt = new Date(Date.now() + handlerTimeoutMs);
+    const jobTimeoutMs =
+      options.handlerTimeoutMsByType?.[job.type] || handlerTimeoutMs;
+    const deadlineAt = new Date(Date.now() + jobTimeoutMs);
     let leaseLost = false;
     let renewalInFlight: Promise<void> | null = null;
     const timeout = setTimeout(() => {
       incrementOperationalCounter("outbox_handler_timeouts_total");
-      controller.abort(new OutboxHandlerTimeoutError(handlerTimeoutMs));
-    }, handlerTimeoutMs);
+      controller.abort(new OutboxHandlerTimeoutError(jobTimeoutMs));
+    }, jobTimeoutMs);
     timeout.unref?.();
 
     const renewal = setInterval(

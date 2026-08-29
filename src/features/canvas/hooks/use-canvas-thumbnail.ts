@@ -10,7 +10,7 @@ import { useUpdateCanvasThumbnail } from "@/lib/hooks/use-canvases";
 interface UseCanvasThumbnailOptions {
   canvasId: string;
   stageRef: React.RefObject<Konva.Stage>;
-  itemCount: number;
+  revision: string;
   /** Delay before generating thumbnail after items change (ms) */
   debounceMs?: number;
 }
@@ -18,7 +18,7 @@ interface UseCanvasThumbnailOptions {
 export function useCanvasThumbnail({
   canvasId,
   stageRef,
-  itemCount,
+  revision,
   debounceMs = 3000,
 }: UseCanvasThumbnailOptions) {
   const updateThumbnail = useUpdateCanvasThumbnail();
@@ -36,17 +36,21 @@ export function useCanvasThumbnail({
         mimeType: "image/jpeg",
         quality: 0.6,
       });
-      updateThumbnail.mutate({ canvasId, thumbnail });
+      updateThumbnail.mutate({
+        canvasId,
+        thumbnail,
+        expectedRevision: revision,
+      });
     } catch (err) {
       console.error("Failed to generate thumbnail:", err);
     }
-  }, [canvasId, stageRef, updateThumbnail]);
+  }, [canvasId, revision, stageRef, updateThumbnail]);
 
   /**
    * Auto-generate thumbnail when items change (debounced)
    */
   useEffect(() => {
-    if (itemCount === 0) return;
+    if (revision === "0") return;
 
     // Clear any pending thumbnail generation
     if (timeoutRef.current) {
@@ -63,7 +67,7 @@ export function useCanvasThumbnail({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [itemCount, generateThumbnail, debounceMs]);
+  }, [revision, generateThumbnail, debounceMs]);
 
   return {
     generateThumbnail,

@@ -348,16 +348,18 @@ export function useUpdateCanvasThumbnail() {
     mutationFn: async ({
       canvasId,
       thumbnail,
+      expectedRevision,
     }: {
       canvasId: string;
       thumbnail: string;
+      expectedRevision: string;
     }) => {
       const response = await apiFetch(
         `/api/v1/canvases/${canvasId}/thumbnail`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ thumbnail }),
+          body: JSON.stringify({ thumbnail, expectedRevision }),
         },
       );
 
@@ -366,7 +368,11 @@ export function useUpdateCanvasThumbnail() {
         throw new Error(error.message || "Failed to update thumbnail");
       }
 
-      return response.json() as Promise<Canvas>;
+      return response.json() as Promise<{
+        queued: boolean;
+        stale?: boolean;
+        revision: string;
+      }>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

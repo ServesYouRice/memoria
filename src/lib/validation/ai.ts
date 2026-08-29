@@ -6,7 +6,7 @@ export const tagSchema = z.object({
 
 export const chatSchema = z.object({
   message: z.string().min(1).max(5000),
-  context: z.string().max(20_000).optional(),
+  context: z.string().max(8_000).optional(),
   persona: z.enum(["creative", "socratic", "architect"]),
 });
 

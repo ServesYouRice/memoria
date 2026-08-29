@@ -1,5 +1,11 @@
 import OpenAI from "openai";
 import { ServiceUnavailableError } from "@/lib/errors";
+import { createLogger } from "@/lib/logger";
+import { AiProviderError } from "./errors";
+
+const logger = createLogger("ai-provider");
+export const AI_SUMMARY_ITEM_LIMIT = 500;
+export const AI_SUMMARY_CONTENT_BYTES = 48 * 1024;
 
 function getOpenAIClient() {
   const apiKey = process.env["OPENAI_API_KEY"];
@@ -22,7 +28,7 @@ export async function generateText(options: GenerateOptions): Promise<string> {
   const openai = getOpenAIClient();
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: process.env.AI_MODEL || "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -32,20 +38,34 @@ export async function generateText(options: GenerateOptions): Promise<string> {
         },
         { role: "user", content: options.prompt },
       ],
-      temperature: options.temperature || 0.7,
-      max_tokens: options.maxTokens || 500,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 500,
     });
 
     return response.choices[0]?.message?.content || "";
   } catch (error) {
-    console.error("AI Generation Error:", error);
-    throw new Error("Failed to generate text");
+    if (error instanceof ServiceUnavailableError) throw error;
+    const providerError = error as {
+      name?: string;
+      status?: number;
+      request_id?: string;
+    };
+    logger.warn(
+      {
+        provider: "openai",
+        errorName: providerError.name,
+        status: providerError.status,
+        providerRequestId: providerError.request_id,
+      },
+      "AI provider request failed",
+    );
+    throw new AiProviderError();
   }
 }
 
-export async function summarizeCanvas(items: any[]): Promise<string> {
+export function buildCanvasSummaryContent(items: any[]): string {
   const content = items
-    .slice(0, 1000)
+    .slice(0, AI_SUMMARY_ITEM_LIMIT)
     .map((item) => {
       if (item.type === "NOTE") return `Note: ${item.content?.text || ""}`;
       if (item.type === "TEXT") return `Text: ${item.content?.text || ""}`;
@@ -54,8 +74,16 @@ export async function summarizeCanvas(items: any[]): Promise<string> {
       return "";
     })
     .filter(Boolean)
-    .join("\n")
-    .slice(0, 100_000);
+    .join("\n");
+
+  const bytes = Buffer.from(content, "utf8");
+  return bytes.length <= AI_SUMMARY_CONTENT_BYTES
+    ? content
+    : bytes.subarray(0, AI_SUMMARY_CONTENT_BYTES).toString("utf8");
+}
+
+export async function summarizeCanvas(items: any[]): Promise<string> {
+  const content = buildCanvasSummaryContent(items);
 
   if (!content) return "Canvas is empty.";
 
@@ -64,6 +92,7 @@ export async function summarizeCanvas(items: any[]): Promise<string> {
     system:
       "You are a succinct summarizer. Focus on the main themes and key information.",
     temperature: 0.3,
+    maxTokens: 500,
   });
 }
 
@@ -73,6 +102,7 @@ export async function generateTags(content: string): Promise<string[]> {
     system:
       "You are a precise tagging system. Output only the tags separated by commas.",
     temperature: 0.3,
+    maxTokens: 80,
   });
 
   return result

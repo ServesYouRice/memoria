@@ -243,6 +243,7 @@ export async function GET(request: NextRequest) {
             ? parseInt(searchParams.get("offset")!, 10)
             : 0,
           cursor: searchParams.get("cursor") || undefined,
+          tags: searchParams.getAll("tag"),
         })
       : listCanvasItemsSchema.parse({
           canvasId: searchParams.get("canvasId"),
@@ -255,6 +256,7 @@ export async function GET(request: NextRequest) {
             ? parseInt(searchParams.get("offset")!, 10)
             : undefined,
           cursor: searchParams.get("cursor") || undefined,
+          tags: searchParams.getAll("tag"),
         });
 
     // Verify user has VIEW permission (via ownership or share)
@@ -274,6 +276,7 @@ export async function GET(request: NextRequest) {
       canvasId: query.canvasId,
       type: query.type ?? { not: ItemType.POLL },
       ...(query.includeDeleted ? {} : { deletedAt: null }),
+      ...(query.tags?.length ? { tags: { hasEvery: query.tags } } : {}),
     };
 
     const cursorTarget = decodeItemCursor(query.cursor);
@@ -304,6 +307,10 @@ export async function GET(request: NextRequest) {
         ? Prisma.empty
         : Prisma.sql`AND "deletedAt" IS NULL`;
 
+      const tagsFilter = query.tags?.length
+        ? Prisma.sql`AND "tags" @> ${query.tags}::text[]`
+        : Prisma.empty;
+
       const cursorFilter = cursorTarget
         ? Prisma.sql`AND ("zIndex" > ${cursorTarget.zIndex} OR ("zIndex" = ${cursorTarget.zIndex} AND "id" > ${cursorTarget.id}))`
         : Prisma.empty;
@@ -319,6 +326,7 @@ export async function GET(request: NextRequest) {
         WHERE "canvasId" = ${query.canvasId}
           ${typeFilter}
           ${deletedFilter}
+          ${tagsFilter}
           AND ("positionX" + "width") >= ${minX}
           AND "positionX" <= ${maxX}
           AND ("positionY" + "height") >= ${minY}
@@ -327,27 +335,32 @@ export async function GET(request: NextRequest) {
       const total = Number(countResult[0]?.count || 0);
 
       // Fetch items with viewport filtering using parameterized query
-      const items = await prisma.$queryRaw<CanvasItem[]>`
+      const pageSize = cursorTarget ? limit + 1 : limit;
+      const rawItems = await prisma.$queryRaw<CanvasItem[]>`
         SELECT *
         FROM "CanvasItem"
         WHERE "canvasId" = ${query.canvasId}
           ${typeFilter}
           ${deletedFilter}
+          ${tagsFilter}
           ${cursorFilter}
           AND ("positionX" + "width") >= ${minX}
           AND "positionX" <= ${maxX}
           AND ("positionY" + "height") >= ${minY}
           AND "positionY" <= ${maxY}
         ORDER BY "zIndex" ASC, "id" ASC
-        LIMIT ${limit} ${paginationFragment}
+        LIMIT ${pageSize} ${paginationFragment}
       `;
+      const items = rawItems.slice(0, limit);
 
       // Return with pagination metadata
       return boundedItemsResponse(items, {
         total,
         offset: cursorTarget ? undefined : offset,
         limit,
-        hasMore: cursorTarget ? undefined : offset + items.length < total,
+        hasMore: cursorTarget
+          ? rawItems.length > limit
+          : offset + items.length < total,
       });
     }
 
@@ -364,7 +377,7 @@ export async function GET(request: NextRequest) {
             ],
           },
           orderBy: [{ zIndex: "asc" }, { id: "asc" }],
-          take: limit,
+          take: limit + 1,
         })
       : await prisma.canvasItem.findMany({
           where: baseWhere,
@@ -373,11 +386,14 @@ export async function GET(request: NextRequest) {
           skip: offset,
         });
 
-    return boundedItemsResponse(items, {
+    const pageItems = cursorTarget ? items.slice(0, limit) : items;
+    return boundedItemsResponse(pageItems, {
       total,
       offset: cursorTarget ? undefined : offset,
       limit,
-      hasMore: cursorTarget ? undefined : offset + items.length < total,
+      hasMore: cursorTarget
+        ? items.length > limit
+        : offset + pageItems.length < total,
     });
   } catch (error) {
     return errorResponse(error, request.url);

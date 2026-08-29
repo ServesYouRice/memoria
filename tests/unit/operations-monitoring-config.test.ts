@@ -26,6 +26,7 @@ const requiredAlerts = [
   "MemoriaBackupFreshnessCheckFailure",
   "MemoriaAiBudgetWarning",
   "MemoriaAiBudgetExceeded",
+  "MemoriaAiBudgetRejections",
 ];
 
 describe("operations monitoring profile", () => {
@@ -52,6 +53,7 @@ describe("operations monitoring profile", () => {
     expect(alertTests).toContain("MemoriaUnavailable");
     expect(alertTests).toContain("MemoriaBackupMissing");
     expect(alertTests).toContain("MemoriaOutboxDeadLetters");
+    expect(alertTests).toContain("MemoriaAiBudgetRejections");
     const parsed = JSON.parse(dashboard) as {
       panels: Array<{ targets: unknown[] }>;
     };

@@ -15,7 +15,25 @@ const aiServiceMocks = vi.hoisted(() => ({
   generateTags: vi.fn(),
   summarizeCanvas: vi.fn(),
   findSerendipitousItems: vi.fn(),
+  buildCanvasSummaryContent: vi.fn(),
 }));
+
+const aiBudgetMocks = vi.hoisted(() => ({
+  runBudgetedAi: vi.fn(),
+}));
+
+const usage = {
+  enabled: true,
+  date: "2026-08-29",
+  tokensUsed: 25,
+  tokenLimit: 1000,
+  costMicroUsdUsed: 2,
+  costMicroUsdLimit: 100,
+  activeRequests: 1,
+  concurrencyLimit: 2,
+  requests: 1,
+  rejections: 0,
+};
 
 vi.mock("@/lib/auth", () => ({
   auth: authMocks.auth,
@@ -34,6 +52,12 @@ vi.mock("@/lib/ai/service", () => ({
   generateText: aiServiceMocks.generateText,
   generateTags: aiServiceMocks.generateTags,
   summarizeCanvas: aiServiceMocks.summarizeCanvas,
+  buildCanvasSummaryContent: aiServiceMocks.buildCanvasSummaryContent,
+  AI_SUMMARY_ITEM_LIMIT: 500,
+}));
+
+vi.mock("@/lib/ai/budget", () => ({
+  runBudgetedAi: aiBudgetMocks.runBudgetedAi,
 }));
 
 vi.mock("@/lib/ai/serendipity-service", () => ({
@@ -79,6 +103,17 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    aiServiceMocks.buildCanvasSummaryContent.mockReturnValue("summary prompt");
+    aiBudgetMocks.runBudgetedAi.mockImplementation(
+      async (
+        _userId: string,
+        _input: unknown,
+        operation: () => Promise<unknown>,
+      ) => ({
+        value: await operation(),
+        usage,
+      }),
+    );
   });
 
   describe("Unauthenticated Requests", () => {
@@ -286,11 +321,15 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
       const res = await generatePost(req);
 
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ result: "Generated note idea" });
+      expect(await res.json()).toEqual({
+        result: "Generated note idea",
+        usage,
+      });
       expect(aiServiceMocks.generateText).toHaveBeenCalledWith({
         prompt: "Write a note about gravity",
         system: "You are a physics expert",
         temperature: 0.8,
+        maxTokens: 500,
       });
     });
 
@@ -307,10 +346,14 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
       const res = await chatPost(req);
 
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ result: "Creative chat response" });
+      expect(await res.json()).toEqual({
+        result: "Creative chat response",
+        usage,
+      });
       expect(aiServiceMocks.generateText).toHaveBeenCalledWith({
         prompt: "How can I organize my board?",
         system: expect.stringContaining("Canvas with 5 physics notes"),
+        maxTokens: 500,
       });
     });
 
@@ -331,6 +374,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
         tags: ["physics", "gravity", "science"],
+        usage,
       });
       expect(aiServiceMocks.generateTags).toHaveBeenCalledWith(
         "General relativity describes the geometry of spacetime.",
@@ -403,12 +447,24 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
         expect(res.status).toBe(200);
         expect(await res.json()).toEqual({
           summary: "Executive summary of notes",
+          usage,
+          itemsConsumed: 2,
         });
 
         expect(prismaMocks.canvasFindUnique).toHaveBeenCalledWith({
           where: { id: validCanvasId },
-          include: {
-            items: { where: { deletedAt: null } },
+          select: {
+            id: true,
+            userId: true,
+            items: {
+              where: {
+                deletedAt: null,
+                type: { in: ["NOTE", "TEXT", "BOOKMARK"] },
+              },
+              orderBy: [{ zIndex: "asc" }, { id: "asc" }],
+              take: 500,
+              select: { type: true, content: true },
+            },
           },
         });
         expect(aiServiceMocks.summarizeCanvas).toHaveBeenCalledWith(mockItems);
@@ -451,7 +507,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
         const res = await serendipityPost(req);
 
         expect(res.status).toBe(200);
-        expect(await res.json()).toEqual({ results: mockResults });
+        expect(await res.json()).toEqual({ results: mockResults, usage });
 
         expect(aiServiceMocks.findSerendipitousItems).toHaveBeenCalledWith(
           sessionUser.id,

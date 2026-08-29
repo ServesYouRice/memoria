@@ -1,4 +1,11 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  useDeferredValue,
+} from "react";
 import { useCanvasItems } from "@/lib/hooks/use-canvas-items";
 import {
   useCanvasVersions,
@@ -8,9 +15,20 @@ import {
 import { useCanvas, useUpdateCanvas } from "@/lib/hooks/use-canvases";
 import { type CanvasItem } from "@/types/canvas";
 import { canvasItemMatchesSearch } from "@/features/canvas/search";
+import {
+  useCanvasGeometry,
+  useCanvasIndexSummary,
+  useCanvasSearch,
+} from "@/lib/hooks/use-canvas-index";
+import {
+  calculateViewportWindow,
+  readCanvasViewport,
+  writeCanvasViewport,
+} from "@/features/canvas/viewport-budget";
 
 interface UseCanvasDataProps {
   canvasId: string;
+  viewportSize: { width: number; height: number };
 }
 
 function hydrateSnapshotItems(
@@ -50,7 +68,7 @@ function hydrateSnapshotItems(
   });
 }
 
-export function useCanvasData({ canvasId }: UseCanvasDataProps) {
+export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
   const viewportInitializedRef = useRef(false);
   // Local UI State
   const [canvasName, setCanvasName] = useState("Untitled Canvas");
@@ -64,7 +82,19 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
   const [isTimeMachineActive, setTimeMachineActive] = useState(false);
   const [timeMachineIndex, setTimeMachineIndex] = useState(0);
 
-  // React Query
+  const { x: positionX, y: positionY } = position;
+  const { width: viewportWidth, height: viewportHeight } = viewportSize;
+  const viewport = useMemo(() => {
+    return calculateViewportWindow({
+      zoom,
+      position: { x: positionX, y: positionY },
+      size: { width: viewportWidth, height: viewportHeight },
+      tags: selectedTags,
+    });
+  }, [positionX, positionY, selectedTags, viewportHeight, viewportWidth, zoom]);
+
+  // React Query. Full item payloads follow the padded, tile-stable viewport;
+  // the small geometry index remains available for whole-canvas navigation.
   const {
     data: canvas,
     error: canvasError,
@@ -74,8 +104,14 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     data,
     error: itemsError,
     refetch: refetchItems,
-  } = useCanvasItems(canvasId);
+  } = useCanvasItems(canvasId, undefined, viewport);
   const allItems = useMemo(() => data?.items ?? [], [data?.items]);
+  const { data: geometryData, refetch: refetchGeometry } =
+    useCanvasGeometry(canvasId);
+  const { data: summaryData, refetch: refetchSummary } =
+    useCanvasIndexSummary(canvasId);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const searchQueryResult = useCanvasSearch(canvasId, deferredSearchQuery);
 
   const { data: versionsData } = useCanvasVersions(canvasId);
   const versions = useMemo(
@@ -91,6 +127,14 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
   const { mutateAsync: updateCanvas } = useUpdateCanvas();
 
   useEffect(() => {
+    viewportInitializedRef.current = false;
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+    setSearchQuery("");
+    setSelectedTags([]);
+  }, [canvasId]);
+
+  useEffect(() => {
     if (!canvas) {
       return;
     }
@@ -98,67 +142,59 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     setCanvasLoadError(null);
     setCanvasName(canvas.name);
     if (!viewportInitializedRef.current) {
-      const stored = window.localStorage.getItem(`canvas:${canvasId}:viewport`);
-      if (stored) {
-        try {
-          const viewport = JSON.parse(stored) as {
-            zoom?: number;
-            x?: number;
-            y?: number;
-          };
-          setZoom(
-            typeof viewport.zoom === "number"
-              ? viewport.zoom
-              : canvas.zoomLevel || 1,
-          );
-          setPosition({
-            x: typeof viewport.x === "number" ? viewport.x : canvas.panX || 0,
-            y: typeof viewport.y === "number" ? viewport.y : canvas.panY || 0,
-          });
-        } catch {
-          window.localStorage.removeItem(`canvas:${canvasId}:viewport`);
-        }
-      } else {
-        setZoom(canvas.zoomLevel || 1);
-        setPosition({ x: canvas.panX || 0, y: canvas.panY || 0 });
-      }
+      const viewport = readCanvasViewport(window.localStorage, canvasId, {
+        zoom: canvas.zoomLevel || 1,
+        x: canvas.panX || 0,
+        y: canvas.panY || 0,
+      });
+      setZoom(viewport.zoom);
+      setPosition({ x: viewport.x, y: viewport.y });
       viewportInitializedRef.current = true;
     }
   }, [canvas, canvasId]);
 
   useEffect(() => {
     if (!viewportInitializedRef.current) return;
-    window.localStorage.setItem(
-      `canvas:${canvasId}:viewport`,
-      JSON.stringify({ zoom, x: position.x, y: position.y }),
-    );
-  }, [canvasId, position.x, position.y, zoom]);
-
-  useEffect(() => {
-    if (!viewportInitializedRef.current || canvas?.accessLevel !== "OWNER") {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      updateCanvas({
-        canvasId,
-        data: {
-          defaultViewport: {
-            zoomLevel: zoom,
-            panX: position.x,
-            panY: position.y,
-          },
-        },
-      }).catch((error) => {
-        setCanvasLoadError(
-          error instanceof Error
-            ? error.message
-            : "Failed to save canvas viewport",
-        );
+    let idleId: number | undefined;
+    const persist = () => {
+      writeCanvasViewport(window.localStorage, canvasId, {
+        zoom,
+        x: position.x,
+        y: position.y,
       });
+      if (canvas?.accessLevel === "OWNER") {
+        updateCanvas({
+          canvasId,
+          data: {
+            defaultViewport: {
+              zoomLevel: zoom,
+              panX: position.x,
+              panY: position.y,
+            },
+          },
+        }).catch((error) => {
+          setCanvasLoadError(
+            error instanceof Error
+              ? error.message
+              : "Failed to save canvas viewport",
+          );
+        });
+      }
+    };
+    const timeoutId = window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(persist, { timeout: 1_000 });
+      } else {
+        persist();
+      }
     }, 750);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (idleId !== undefined && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+    };
   }, [
     canvas?.accessLevel,
     canvasId,
@@ -215,21 +251,15 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     return allItems;
   }, [allItems, canvasId, isTimeMachineActive, selectedVersion?.snapshot]);
 
-  // Extract tags
   const { allTags, tagCounts } = useMemo(() => {
-    const counts: Record<string, number> = {};
-    allItems.forEach((item: CanvasItem) => {
-      if (item.tags && Array.isArray(item.tags)) {
-        item.tags.forEach((tag) => {
-          counts[tag] = (counts[tag] || 0) + 1;
-        });
-      }
-    });
+    const tags = summaryData?.tags ?? [];
     return {
-      allTags: Object.keys(counts).sort(),
-      tagCounts: counts,
+      allTags: tags.map((entry) => entry.value).sort(),
+      tagCounts: Object.fromEntries(
+        tags.map((entry) => [entry.value, entry.count]),
+      ),
     };
-  }, [allItems]);
+  }, [summaryData?.tags]);
 
   // Tag filters intentionally narrow the working set. Text search does not:
   // every item stays mounted so frames, arrows, and nearby content continue to
@@ -245,15 +275,16 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     return filtered;
   }, [displayedItems, selectedTags]);
 
-  const searchMatchIds = useMemo(
-    () =>
-      new Set(
-        filteredItems
-          .filter((item) => canvasItemMatchesSearch(item, searchQuery))
-          .map((item) => item.id),
-      ),
-    [filteredItems, searchQuery],
-  );
+  const searchMatchIds = useMemo(() => {
+    if (deferredSearchQuery.trim()) {
+      return new Set(searchQueryResult.data?.itemIds ?? []);
+    }
+    return new Set(
+      filteredItems
+        .filter((item) => canvasItemMatchesSearch(item, deferredSearchQuery))
+        .map((item) => item.id),
+    );
+  }, [deferredSearchQuery, filteredItems, searchQueryResult.data?.itemIds]);
 
   return {
     // State
@@ -280,6 +311,10 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     versions,
     allTags,
     tagCounts,
+    geometry: geometryData?.items ?? [],
+    canvasBounds: summaryData?.bounds ?? null,
+    totalItemCount: summaryData?.count ?? data?.total ?? allItems.length,
+    canvasRevision: summaryData?.revision ?? "0",
     accessLevel: canvas?.accessLevel || "VIEW",
 
     // Actions
@@ -287,7 +322,12 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     // Retry refetches both canvas metadata and items — either can be the
     // source of the load error surfaced in the UI.
     refreshMetadata: useCallback(async () => {
-      await Promise.all([refetchCanvas(), refetchItems()]);
-    }, [refetchCanvas, refetchItems]),
+      await Promise.all([
+        refetchCanvas(),
+        refetchItems(),
+        refetchGeometry(),
+        refetchSummary(),
+      ]);
+    }, [refetchCanvas, refetchGeometry, refetchItems, refetchSummary]),
   };
 }

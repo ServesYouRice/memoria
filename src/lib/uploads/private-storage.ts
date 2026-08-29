@@ -1,7 +1,8 @@
-import { createReadStream } from "fs";
+import { createReadStream, createWriteStream } from "fs";
 import { mkdir, unlink, stat, writeFile } from "fs/promises";
 import { dirname, join, resolve, sep } from "path";
 import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -65,6 +66,35 @@ export async function writePrivateUploadObject(
   const localPath = getLocalPath(storageKey);
   await mkdir(dirname(localPath), { recursive: true });
   await writeFile(localPath, body);
+}
+
+export async function writePrivateUploadStream(
+  storageMode: string,
+  storageKey: string,
+  body: Readable,
+  contentType: string,
+  contentLength: number,
+  signal?: AbortSignal,
+) {
+  if (storageMode === "s3") {
+    const bucket = process.env.S3_BUCKET;
+    if (!bucket) throw new Error("Private upload bucket is not configured");
+    await getS3Client().send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: storageKey,
+        Body: body,
+        ContentLength: contentLength,
+        ContentType: contentType,
+        CacheControl: "private, no-store",
+      }),
+      { abortSignal: signal },
+    );
+    return;
+  }
+  const localPath = getLocalPath(storageKey);
+  await mkdir(dirname(localPath), { recursive: true });
+  await pipeline(body, createWriteStream(localPath), { signal });
 }
 
 export interface PrivateUploadRead {

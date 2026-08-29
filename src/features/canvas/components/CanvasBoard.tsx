@@ -103,8 +103,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const focusedItemRef = useRef<string | null>(null);
+  const lastThumbnailRevisionRef = useRef<string | null>(null);
   const theme = useTheme();
   const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
+  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
 
   // Data Hook (Single source of truth for display)
   const {
@@ -114,6 +116,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     versions,
     allTags,
     tagCounts,
+    geometry,
+    canvasBounds,
+    totalItemCount,
+    canvasRevision,
     canvasName,
     zoom,
     setZoom,
@@ -132,7 +138,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     updateCanvasName,
     refreshMetadata,
     accessLevel,
-  } = useCanvasData({ canvasId });
+  } = useCanvasData({ canvasId, viewportSize: stageSize });
   // IMP-008: one capability contract, derived once and passed down. Every
   // surface reads these flags instead of re-deriving a role comparison.
   const capabilities = React.useMemo(
@@ -272,7 +278,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           );
           await Promise.all(
             itemsToDelete.map((item) =>
-              deleteItem({ itemId: item.id, version: item.version }),
+              deleteItem({
+                itemId: item.id,
+                version: item.version,
+                canvasId: item.canvasId,
+              }),
             ),
           );
           setSelectedItemIds(new Set());
@@ -288,6 +298,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
             await deleteItem({
               itemId: selectedItem.id,
               version: selectedItem.version,
+              canvasId: selectedItem.canvasId,
             });
             setSelectedItemId(null);
           } catch (err) {
@@ -408,13 +419,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     updateItem,
   });
 
-  // Screen Size
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
-
   useEffect(() => {
     const itemId = searchParams.get("item");
     if (!itemId || focusedItemRef.current === itemId) return;
-    const item = allItems.find((candidate) => candidate.id === itemId);
+    const item = geometry.find((candidate) => candidate.id === itemId);
     if (!item) return;
 
     focusedItemRef.current = itemId;
@@ -425,7 +433,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
     });
   }, [
-    allItems,
+    geometry,
     searchParams,
     setPosition,
     stageSize.height,
@@ -697,35 +705,62 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
   const handleDeleteItem = (item: CanvasItem) => {
     if (!capabilities.canDeleteItems) return;
-    deleteItem({ itemId: item.id, version: item.version });
+    deleteItem({
+      itemId: item.id,
+      version: item.version,
+      canvasId: item.canvasId,
+    });
   };
 
-  const generateThumbnail = useCallback(() => {
-    if (!stageRef.current || !isOwner) return;
-    try {
-      const thumbnail = stageRef.current.toDataURL({
-        pixelRatio: 0.3,
-        mimeType: "image/jpeg",
-        quality: 0.6,
-      });
-      updateThumbnail.mutate({ canvasId, thumbnail });
-    } catch (err) {
-      console.error("Failed to generate thumbnail:", err);
-    }
-  }, [canvasId, isOwner, updateThumbnail]);
-
-  const thumbnailRevision = React.useMemo(
-    () => allItems.map((item) => `${item.id}:${item.version}`).join("|"),
-    [allItems],
+  const generateThumbnail = useCallback(
+    (expectedRevision: string) => {
+      if (!stageRef.current || !isOwner) return;
+      try {
+        const thumbnail = stageRef.current.toDataURL({
+          pixelRatio: 0.3,
+          mimeType: "image/jpeg",
+          quality: 0.6,
+        });
+        updateThumbnail.mutate({ canvasId, thumbnail, expectedRevision });
+        lastThumbnailRevisionRef.current = expectedRevision;
+      } catch {
+        // A thumbnail is a best-effort derivative and must not interrupt editing.
+      }
+    },
+    [canvasId, isOwner, updateThumbnail],
   );
 
   useEffect(() => {
-    if (!isOwner || allItems.length === 0) return;
-    const timeoutId = setTimeout(() => {
-      generateThumbnail();
-    }, 3000);
-    return () => clearTimeout(timeoutId);
-  }, [allItems.length, generateThumbnail, isOwner, thumbnailRevision]);
+    lastThumbnailRevisionRef.current = null;
+  }, [canvasId]);
+
+  useEffect(() => {
+    if (
+      !isOwner ||
+      totalItemCount === 0 ||
+      canvasRevision === "0" ||
+      lastThumbnailRevisionRef.current === canvasRevision
+    ) {
+      return;
+    }
+    let idleId: number | undefined;
+    const timeoutId = window.setTimeout(() => {
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(
+          () => generateThumbnail(canvasRevision),
+          { timeout: 2_000 },
+        );
+      } else {
+        generateThumbnail(canvasRevision);
+      }
+    }, 1_500);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (idleId !== undefined && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+    };
+  }, [canvasRevision, generateThumbnail, isOwner, totalItemCount]);
 
   const handleContextMenu = (
     e: React.MouseEvent | Konva.KonvaEventObject<MouseEvent>,
@@ -775,7 +810,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     if (!selectedItemId) return;
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
-      deleteItem({ itemId: selectedItemId, version: selectedItem.version });
+      deleteItem({
+        itemId: selectedItemId,
+        version: selectedItem.version,
+        canvasId: selectedItem.canvasId,
+      });
     }
   };
 
@@ -971,8 +1010,42 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         zoom={zoom}
         onZoomChange={setZoom}
         onFitToScreen={() => {
-          setZoom(1);
-          setPosition({ x: 0, y: 0 });
+          if (
+            canvasBounds?.minX === null ||
+            canvasBounds?.minY === null ||
+            canvasBounds?.maxX === null ||
+            canvasBounds?.maxY === null ||
+            !canvasBounds
+          ) {
+            setZoom(1);
+            setPosition({ x: 0, y: 0 });
+            return;
+          }
+          const contentWidth = Math.max(
+            1,
+            canvasBounds.maxX - canvasBounds.minX,
+          );
+          const contentHeight = Math.max(
+            1,
+            canvasBounds.maxY - canvasBounds.minY,
+          );
+          const nextZoom = Math.max(
+            0.1,
+            Math.min(
+              1,
+              (stageSize.width - 96) / contentWidth,
+              (stageSize.height - 96) / contentHeight,
+            ),
+          );
+          setZoom(nextZoom);
+          setPosition({
+            x:
+              stageSize.width / 2 -
+              ((canvasBounds.minX + canvasBounds.maxX) / 2) * nextZoom,
+            y:
+              stageSize.height / 2 -
+              ((canvasBounds.minY + canvasBounds.maxY) / 2) * nextZoom,
+          });
         }}
         onExport={() => setExportDialogOpen(true)}
         onVersionHistory={
@@ -1079,7 +1152,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
       )}
 
       <CanvasAccessiblePanel
-        items={items}
+        canvasId={canvasId}
         capabilities={capabilities}
         searchQuery={searchQuery}
         searchMatchIds={searchMatchIds}
@@ -1101,7 +1174,11 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         activeTool === "draw" && <DrawingToolbar />}
 
       {viewMode === "organizer" ? (
-        <CanvasOrganizerView canvasId={canvasId} items={allItems} />
+        <CanvasOrganizerView
+          canvasId={canvasId}
+          items={allItems}
+          itemCount={totalItemCount}
+        />
       ) : (
         <Box
           ref={stageContainerRef}
@@ -1116,6 +1193,28 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
           }}
         >
+          {totalItemCount > allItems.length && (
+            <Box
+              role="status"
+              sx={{
+                position: "absolute",
+                zIndex: 2,
+                left: 12,
+                bottom: 12,
+                px: 1.25,
+                py: 0.5,
+                borderRadius: 1,
+                bgcolor: "background.paper",
+                color: "text.secondary",
+                boxShadow: 1,
+                pointerEvents: "none",
+                fontSize: "0.75rem",
+              }}
+            >
+              {allItems.length} detailed items in this viewport; all{" "}
+              {totalItemCount} remain indexed for navigation and accessibility.
+            </Box>
+          )}
           {!isDrawing && !isPresentationMode && canEdit && (
             <SpeedDial
               ariaLabel="Add Item"

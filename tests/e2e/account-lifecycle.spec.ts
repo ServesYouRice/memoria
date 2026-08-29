@@ -27,7 +27,7 @@ test("account export and deletion remove durable and public data", async ({
   await page.getByRole("button", { name: "Download account data" }).click();
   const exportDownload = await exportPromise;
   expect(exportDownload.suggestedFilename()).toMatch(
-    /^memoria-account-\d{4}-\d{2}-\d{2}\.json$/,
+    /^memoria-account-\d{4}-\d{2}-\d{2}\.jsonl\.gz$/,
   );
 
   await page.getByRole("button", { name: "Delete account" }).click();

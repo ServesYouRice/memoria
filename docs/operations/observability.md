@@ -1,5 +1,10 @@
 # Observability
 
+Launch-scale byte, item, timing, memory, export, and collaboration ceilings
+are recorded in [resource-budgets.md](resource-budgets.md). Treat a budget
+violation as a capacity incident; do not raise a limit before capturing a
+fresh normal and hostile-flow trace.
+
 Start the reference profile with:
 
 ```bash
@@ -81,9 +86,13 @@ a provider performs an at-least-once retry.
 
 ## AI budget
 
-Owner: AI operations. Trailing 24-hour action use warns at 80% of
+Owner: AI operations. Direct provider requests reserve worst-case tokens and
+cost atomically in Redis before execution. `AI_ENABLED=false` is the operator
+kill switch; `AI_DAILY_TOKEN_BUDGET`, `AI_DAILY_COST_MICRO_USD`, and
+`AI_MAX_CONCURRENT_PER_USER` bound each account. Any budget rejection warns and
+is visible in account settings. The separate agent-action gauge warns at 80% of
 `AI_ACTION_BUDGET_DAILY` and becomes critical above 100%. Investigate runaway
-automation before raising the budget.
+automation or unexpected reservations before raising either budget.
 
 Backup alerts and recovery actions are documented in
 `docs/operations/backup-recovery.md`.

@@ -5,13 +5,11 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
 
-Gate status, 2026-08-24: `pnpm lint` and `pnpm type-check` pass with TypeScript
-5.9.3, and all 64 unit/API files collect. The normal test gate is still
-order-dependent: its first run failed 8 of 444 tests, `pnpm test:coverage` then
-passed 444/444, and an immediate repeat of the normal command passed 444/444.
-The focused command is also broken and nearly every server test still pays for
-happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
-[IMP-052](tasks/IMP-052.md), before relying on later test evidence.
+Gate status, 2026-08-29: `pnpm test -- --run` passes 104 files and 780 tests;
+`pnpm lint`, `pnpm type-check`, `pnpm check-bundle`, and `prisma validate` also
+pass. Next's webpack compilation and route generation pass; the final server
+bundle needs the repository's Node 24.20 runtime and unrestricted filesystem.
+Schema drift additionally needs a reachable `DATABASE_URL` database.
 
 ## DOING
 
@@ -27,8 +25,7 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-048](tasks/IMP-048.md) | Bound resource cost at supported scale (need higher model assistance) | IMP-045 |
-| [IMP-038](tasks/IMP-038.md) | Production browser journeys and operations smoke (need higher model assistance) | IMP-045 through IMP-048, IMP-050, IMP-061, DEC-014 |
+| [IMP-038](tasks/IMP-038.md) | Production browser journeys and operations smoke (need higher model assistance) | DEC-014 |
 
 ## USER DECISIONS
 

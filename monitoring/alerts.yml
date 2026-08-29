@@ -151,3 +151,10 @@ groups:
         annotations:
           summary: Trailing AI action use exceeds the daily operations budget
           runbook_url: /docs/operations/observability.md#ai-budget
+      - alert: MemoriaAiBudgetRejections
+        expr: increase(memoria_ai_budget_rejections_total[15m]) > 0
+        for: 5m
+        labels: { severity: warning, owner: ai-operations }
+        annotations:
+          summary: Per-user AI safety budgets are rejecting requests
+          runbook_url: /docs/operations/observability.md#ai-budget

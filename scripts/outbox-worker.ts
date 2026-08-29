@@ -22,6 +22,11 @@ import {
   createThumbnailDeleteHandler,
   createThumbnailStoreHandler,
 } from "../src/lib/thumbnails/outbox-handler";
+import {
+  createAccountExportBuildHandler,
+  createAccountExportDeleteHandler,
+} from "../src/lib/account-export/outbox-handler";
+import { accountExportTimeoutMs } from "../src/lib/account-export/constants";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -43,10 +48,15 @@ await runOutboxWorker({
     "bookmark.refresh": createBookmarkRefreshHandler(prisma),
     "thumbnail.store": createThumbnailStoreHandler(prisma),
     "thumbnail.delete": createThumbnailDeleteHandler(),
+    "account-export.build": createAccountExportBuildHandler(prisma),
+    "account-export.delete": createAccountExportDeleteHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
   handlerTimeoutMs: Number(process.env.OUTBOX_HANDLER_TIMEOUT_MS || 15_000),
+  handlerTimeoutMsByType: {
+    "account-export.build": accountExportTimeoutMs(),
+  },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });
 await prisma.$disconnect();

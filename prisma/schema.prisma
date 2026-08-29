@@ -51,6 +51,39 @@ model User {
   notifications Notification[] @relation("NotificationRecipient")
   notificationActions Notification[] @relation("NotificationActor")
   notificationPreferences NotificationPreference[]
+  accountExports AccountExport[]
+}
+
+enum AccountExportStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+model AccountExport {
+  id                String              @id @default(cuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            AccountExportStatus @default(QUEUED)
+  formatVersion     Int                 @default(2)
+  storageMode       String
+  storageKey        String?             @unique
+  byteSize          BigInt?
+  sha256            String?
+  manifest          Json?
+  lastError         String?
+  cancelRequestedAt DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
 }
 
 model Activity {

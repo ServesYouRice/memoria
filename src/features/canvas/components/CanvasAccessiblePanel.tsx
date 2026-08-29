@@ -19,10 +19,40 @@ import {
   CanvasItemListView,
   type CanvasItemListViewProps,
 } from "./CanvasItemListView";
+import { useAccessibleCanvasItems } from "@/lib/hooks/use-canvas-items";
 
-type CanvasAccessiblePanelProps = CanvasItemListViewProps;
+type CanvasAccessiblePanelProps = Omit<CanvasItemListViewProps, "items"> & {
+  canvasId?: string;
+  items?: CanvasItemListViewProps["items"];
+};
 
-export function CanvasAccessiblePanel(props: CanvasAccessiblePanelProps) {
+function PaginatedAccessibleItems({
+  canvasId,
+  props,
+}: {
+  canvasId: string;
+  props: Omit<CanvasItemListViewProps, "items">;
+}) {
+  const query = useAccessibleCanvasItems(canvasId);
+  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const totalItems = query.data?.pages[0]?.total ?? items.length;
+  return (
+    <CanvasItemListView
+      {...props}
+      items={items as unknown as CanvasItemListViewProps["items"]}
+      totalItems={totalItems}
+      hasMore={query.hasNextPage}
+      loadingMore={query.isFetchingNextPage}
+      onLoadMore={() => void query.fetchNextPage()}
+    />
+  );
+}
+
+export function CanvasAccessiblePanel({
+  canvasId,
+  items: suppliedItems,
+  ...props
+}: CanvasAccessiblePanelProps) {
   const panelId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +114,11 @@ export function CanvasAccessiblePanel(props: CanvasAccessiblePanelProps) {
         }}
       >
         <Box sx={{ minWidth: { xs: 280, sm: 380 } }}>
-          <CanvasItemListView {...props} />
+          {canvasId ? (
+            <PaginatedAccessibleItems canvasId={canvasId} props={props} />
+          ) : (
+            <CanvasItemListView {...props} items={suppliedItems || []} />
+          )}
         </Box>
       </Paper>
     </>

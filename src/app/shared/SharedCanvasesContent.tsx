@@ -18,6 +18,7 @@ import {
 } from "@/features/dashboard/components/CanvasCard";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
 
 const ROLE_META = {
   VIEW: { label: "Can view", icon: <ViewIcon />, color: "default" as const },
@@ -76,11 +77,7 @@ export function SharedCanvasesContent() {
               <CanvasCard
                 key={canvas.id}
                 name={canvas.name}
-                thumbnail={
-                  canvas.thumbnailKey
-                    ? `/api/v1/canvases/${canvas.id}/thumbnail?v=${canvas.thumbnailRevision || "0"}`
-                    : null
-                }
+                thumbnail={canvasThumbnailUrl(canvas)}
                 index={index}
                 onClick={() => router.push(`/canvas/${canvas.id}`)}
                 badge={

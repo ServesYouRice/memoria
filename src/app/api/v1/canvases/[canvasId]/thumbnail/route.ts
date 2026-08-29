@@ -9,12 +9,19 @@ import {
 } from "@/lib/errors";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import { readPrivateUploadObject } from "@/lib/uploads/private-storage";
+import { z } from "zod";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
 }
 const MAX_THUMBNAIL_BYTES = 200 * 1024;
 const DATA_URL = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
+const thumbnailBodySchema = z
+  .object({
+    thumbnail: z.string().max(300_000),
+    expectedRevision: z.string().regex(/^\d+$/),
+  })
+  .strict();
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
@@ -56,7 +63,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     if (!canvas) throw new NotFoundError("Canvas not found");
     if (canvas.userId !== userId)
       throw new ForbiddenError("Only the owner can update thumbnails");
-    const body = await request.json();
+    const body = thumbnailBodySchema.parse(await request.json());
     const match =
       typeof body.thumbnail === "string" ? DATA_URL.exec(body.thumbnail) : null;
     if (!match?.[1] || !match[2])
@@ -65,11 +72,22 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     if (bytes.length === 0 || bytes.length > MAX_THUMBNAIL_BYTES) {
       throw new ValidationError("Thumbnail must not exceed 200 KB");
     }
+    const expectedRevision = BigInt(body.expectedRevision);
     const result = await prisma.$transaction(async (tx) => {
       const revisionRows = await tx.$queryRaw<Array<{ revision: bigint }>>`
         SELECT COALESCE(MAX("sequence"), 0) AS revision FROM "CanvasEvent" WHERE "canvasId" = ${canvasId}
       `;
       const revision = revisionRows[0]?.revision ?? 0n;
+      if (revision !== expectedRevision) {
+        return { queued: false as const, revision };
+      }
+      const installed = await tx.canvas.findUnique({
+        where: { id: canvasId },
+        select: { thumbnailRevision: true, thumbnailKey: true },
+      });
+      if (installed?.thumbnailKey && installed.thumbnailRevision === revision) {
+        return { queued: false as const, revision };
+      }
       const candidate = await tx.canvasThumbnailCandidate.upsert({
         where: { canvasId_revision: { canvasId, revision } },
         create: { canvasId, revision, mimeType: `image/${match[1]}`, bytes },
@@ -80,10 +98,14 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         payload: { candidateId: candidate.id },
         dedupeKey: `thumbnail.store:${canvasId}:${revision}`,
       });
-      return revision;
+      return { queued: true as const, revision };
     });
     return NextResponse.json(
-      { queued: true, revision: result.toString() },
+      {
+        queued: result.queued,
+        stale: !result.queued && result.revision !== expectedRevision,
+        revision: result.revision.toString(),
+      },
       { status: 202 },
     );
   } catch (error) {

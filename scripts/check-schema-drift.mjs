@@ -1,26 +1,29 @@
-import { readFileSync } from 'fs';
-import { spawnSync } from 'child_process';
+import { readFileSync } from "fs";
+import { spawnSync } from "child_process";
 
 const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error('DATABASE_URL is required for schema drift checks');
+if (!databaseUrl)
+  throw new Error("DATABASE_URL is required for schema drift checks");
 const pnpmCli = process.env.npm_execpath;
-if (!pnpmCli) throw new Error('Run this script through pnpm');
+if (!pnpmCli) throw new Error("Run this script through pnpm");
 
 const result = spawnSync(
   process.execPath,
   [
     pnpmCli,
-    'exec',
-    'prisma',
-    'migrate',
-    'diff',
-    '--from-url',
-    databaseUrl,
-    '--to-schema-datamodel',
-    'prisma/schema.prisma',
-    '--script',
+    "exec",
+    "prisma",
+    "migrate",
+    "diff",
+    // Prisma 7 reads the connection URL from prisma.config.ts. The previous
+    // --from-url/--to-schema-datamodel flags were removed, so use the config
+    // datasource while retaining the checked-in schema as the target.
+    "--from-config-datasource",
+    "--to-schema",
+    "prisma/schema.prisma",
+    "--script",
   ],
-  { encoding: 'utf8', env: process.env, shell: false },
+  { encoding: "utf8", env: process.env, shell: false },
 );
 if (result.status !== 0) {
   process.stderr.write(result.stderr || result.stdout);
@@ -28,16 +31,16 @@ if (result.status !== 0) {
 }
 
 const statements = result.stdout
-  .split('\n')
+  .split("\n")
   .map((line) => line.trim())
-  .filter((line) => line && !line.startsWith('--'));
+  .filter((line) => line && !line.startsWith("--"));
 if (statements.length === 0) {
-  console.log('Schema drift check passed');
+  console.log("Schema drift check passed");
   process.exit(0);
 }
 
 const exceptions = JSON.parse(
-  readFileSync('implementation/schema-drift-exceptions.json', 'utf8'),
+  readFileSync("implementation/schema-drift-exceptions.json", "utf8"),
 );
 const today = new Date().toISOString().slice(0, 10);
 for (const statement of statements) {

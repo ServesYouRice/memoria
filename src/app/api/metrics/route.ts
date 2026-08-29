@@ -231,6 +231,21 @@ export async function GET(request: Request) {
     email_delivery_failures_total: "Email provider delivery failures.",
     backup_freshness_failures_total:
       "Independent backup freshness check failures.",
+    ai_requests_total: "AI requests admitted by per-user safety budgets.",
+    ai_budget_rejections_total:
+      "AI requests rejected by token, cost, or concurrency budgets.",
+    ai_reserved_tokens_total:
+      "Worst-case AI tokens atomically reserved before provider calls.",
+    ai_reserved_cost_micro_usd_total:
+      "Worst-case AI cost reserved before provider calls, in micro-US dollars.",
+    account_exports_completed_total:
+      "Background account archives completed successfully.",
+    account_exports_failed_total:
+      "Background account archive attempts that failed.",
+    account_exports_cancelled_total:
+      "Background account archives cancelled by their owner.",
+    account_export_bytes_total:
+      "Compressed bytes written by completed account archives.",
   };
   for (const name of OPERATIONAL_COUNTERS) {
     lines.push(

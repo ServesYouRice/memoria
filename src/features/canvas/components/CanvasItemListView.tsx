@@ -155,6 +155,11 @@ export interface CanvasItemListViewProps {
   /** Search annotates matches but never removes context rows. */
   searchQuery?: string;
   searchMatchIds?: ReadonlySet<string>;
+  /** Whole-canvas count when rows are cursor-paginated. */
+  totalItems?: number;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function CanvasItemListView({
@@ -169,6 +174,10 @@ export function CanvasItemListView({
   canvasName,
   searchQuery = "",
   searchMatchIds,
+  totalItems = items.length,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: CanvasItemListViewProps) {
   const theme = useTheme();
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -275,10 +284,12 @@ export function CanvasItemListView({
             }}
           >
             {items.length === 0
-              ? "This canvas has no items yet."
+              ? totalItems > 0
+                ? `No detailed items are in this viewport yet. ${totalItems} indexed item${totalItems === 1 ? " remains" : "s remain"} available through the accessible list.`
+                : "This canvas has no items yet."
               : searchQuery.trim()
                 ? `${searchMatchIds?.size ?? 0} search match${searchMatchIds?.size === 1 ? "" : "es"}. All ${items.length} items remain listed as canvas context.`
-                : `${items.length} item${items.length === 1 ? "" : "s"}. Tab to an item, then press Enter to edit or the arrow keys to move it.`}
+                : `${items.length === totalItems ? items.length : `${items.length} of ${totalItems}`} item${totalItems === 1 ? "" : "s"}. Tab to an item, then press Enter to edit or the arrow keys to move it.`}
           </Typography>
         </Box>
         {capabilities.canCreateItems && onCreateItem && (
@@ -431,6 +442,17 @@ export function CanvasItemListView({
           );
         })}
       </Stack>
+      {hasMore && onLoadMore && (
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={onLoadMore}
+          disabled={loadingMore}
+          sx={{ mt: 1.5 }}
+        >
+          {loadingMore ? "Loading more items…" : "Load 50 more items"}
+        </Button>
+      )}
     </Box>
   );
 }

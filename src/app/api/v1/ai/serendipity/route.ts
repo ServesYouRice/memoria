@@ -4,6 +4,7 @@ import { serendipitySchema } from "@/lib/validation/ai";
 import { findSerendipitousItems } from "@/lib/ai/serendipity-service";
 import { prisma } from "@/lib/db";
 import { forbiddenError } from "@/lib/errors";
+import { runBudgetedAi } from "@/lib/ai/budget";
 
 export const POST = withAuthValidation(
   serendipitySchema,
@@ -14,13 +15,22 @@ export const POST = withAuthValidation(
     });
     if (!owned)
       throw forbiddenError("Shared-canvas AI is disabled for launch.");
-    const results = await findSerendipitousItems(
+    const safeKeywords = keywords || [];
+    const budgeted = await runBudgetedAi(
       session.user.id,
-      canvasId,
-      keywords || [],
-      session.user.email || undefined,
+      { prompt: safeKeywords.join("\n") || "serendipity", maxOutputTokens: 1 },
+      () =>
+        findSerendipitousItems(
+          session.user.id,
+          canvasId,
+          safeKeywords,
+          session.user.email || undefined,
+        ),
     );
 
-    return NextResponse.json({ results });
+    return NextResponse.json({
+      results: budgeted.value,
+      usage: budgeted.usage,
+    });
   },
 );

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
@@ -24,6 +24,8 @@ import {
   Stack,
   Switch,
   alpha,
+  Alert,
+  LinearProgress,
 } from "@mui/material";
 import {
   Person as PersonIcon,
@@ -37,6 +39,7 @@ import {
   KeyOutlined as ApiKeysIcon,
   DownloadOutlined as DownloadIcon,
   NotificationsActiveOutlined as NotificationsIcon,
+  AutoAwesomeOutlined as AiUsageIcon,
 } from "@mui/icons-material";
 import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
@@ -51,6 +54,18 @@ interface SettingsContentProps {
     email?: string | null;
     image?: string | null;
   };
+}
+
+interface AiUsage {
+  enabled: boolean;
+  tokensUsed: number;
+  tokenLimit: number;
+  costMicroUsdUsed: number;
+  costMicroUsdLimit: number;
+  activeRequests: number;
+  concurrencyLimit: number;
+  requests: number;
+  rejections: number;
 }
 
 // Keyboard shortcuts data
@@ -120,29 +135,96 @@ export function SettingsContent({ user }: SettingsContentProps) {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [activeExportId, setActiveExportId] = useState<string | null>(null);
+  const exportControllerRef = useRef<AbortController | null>(null);
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
+  const [usageUnavailable, setUsageUnavailable] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/v1/usage", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Usage request failed");
+        const payload = (await response.json()) as { usage?: { ai?: AiUsage } };
+        if (payload.usage?.ai) setAiUsage(payload.usage.ai);
+      })
+      .catch((error) => {
+        if ((error as Error).name !== "AbortError") setUsageUnavailable(true);
+      });
+    return () => controller.abort();
+  }, []);
 
   const handleExportAccount = async () => {
+    const controller = new AbortController();
+    exportControllerRef.current?.abort();
+    exportControllerRef.current = controller;
     try {
       setExporting(true);
-      const response = await fetch("/api/v1/users/account");
-      if (!response.ok) throw new Error("Failed to export account data");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const response = await fetch("/api/v1/users/account/exports", {
+        method: "POST",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("Failed to queue account export");
+      const created = (await response.json()) as { id: string };
+      setActiveExportId(created.id);
+
+      let completed = false;
+      for (let attempt = 0; attempt < 600; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        const statusResponse = await fetch(
+          `/api/v1/users/account/exports/${created.id}`,
+          { signal: controller.signal },
+        );
+        if (!statusResponse.ok) throw new Error("Failed to read export status");
+        const status = (await statusResponse.json()) as {
+          status: string;
+          lastError?: string | null;
+        };
+        if (status.status === "COMPLETED") {
+          completed = true;
+          break;
+        }
+        if (status.status === "FAILED") {
+          throw new Error(status.lastError || "Account export failed");
+        }
+        if (status.status === "CANCELLED" || status.status === "EXPIRED") {
+          throw new DOMException("Account export cancelled", "AbortError");
+        }
+      }
+      if (!completed) throw new Error("Account export timed out");
+
       const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `memoria-account-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.href = `/api/v1/users/account/exports/${created.id}/download`;
+      anchor.download = `memoria-account-${new Date().toISOString().slice(0, 10)}.jsonl.gz`;
+      document.body.appendChild(anchor);
       anchor.click();
-      URL.revokeObjectURL(url);
+      anchor.remove();
       toast.success("Account export downloaded");
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to export account data",
-      );
+      if ((error as Error).name !== "AbortError") {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to export account data",
+        );
+      }
     } finally {
+      if (exportControllerRef.current === controller) {
+        exportControllerRef.current = null;
+      }
+      setActiveExportId(null);
       setExporting(false);
     }
+  };
+
+  const handleCancelExport = async () => {
+    if (!activeExportId) return;
+    const exportId = activeExportId;
+    exportControllerRef.current?.abort();
+    await fetch(`/api/v1/users/account/exports/${exportId}`, {
+      method: "DELETE",
+    }).catch(() => undefined);
+    toast.info("Account export cancelled");
   };
 
   // Profile update
@@ -479,6 +561,44 @@ export function SettingsContent({ user }: SettingsContentProps) {
         {/* AI agents */}
         <AgentControlCenter />
 
+        <SettingsSection
+          icon={<AiUsageIcon color="primary" />}
+          title="AI usage"
+        >
+          {usageUnavailable ? (
+            <Alert severity="warning">
+              AI allowance information is temporarily unavailable.
+            </Alert>
+          ) : aiUsage ? (
+            <Stack spacing={1.5}>
+              <Typography variant="body2" color="text.secondary">
+                {aiUsage.enabled
+                  ? `${aiUsage.tokensUsed.toLocaleString()} of ${aiUsage.tokenLimit.toLocaleString()} worst-case tokens reserved today across ${aiUsage.requests} request${aiUsage.requests === 1 ? "" : "s"}.`
+                  : "AI features are currently disabled by the operator."}
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(
+                  100,
+                  (aiUsage.tokensUsed / Math.max(1, aiUsage.tokenLimit)) * 100,
+                )}
+                aria-label="Daily AI token allowance used"
+              />
+              <Typography variant="caption" color="text.secondary">
+                Cost allowance: $
+                {(aiUsage.costMicroUsdUsed / 1_000_000).toFixed(4)} of $
+                {(aiUsage.costMicroUsdLimit / 1_000_000).toFixed(4)}. Concurrent
+                requests: {aiUsage.activeRequests}/{aiUsage.concurrencyLimit}.
+                Rejected today: {aiUsage.rejections}.
+              </Typography>
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Loading today&apos;s AI allowance…
+            </Typography>
+          )}
+        </SettingsSection>
+
         {/* Developer settings */}
         <SettingsSection
           icon={<ApiKeysIcon color="primary" />}
@@ -527,17 +647,26 @@ export function SettingsContent({ user }: SettingsContentProps) {
               mb: 2,
             }}
           >
-            Download a JSON copy of your profile, workspaces, canvases, items,
-            and sharing settings.
+            Build a versioned, checksummed JSON Lines archive of your profile,
+            workspaces, canvases, items, sharing settings, comments, activity,
+            preferences, and authorized upload objects. Large exports run in the
+            background and expire after 24 hours.
           </Typography>
-          <Button
-            variant="outlined"
-            startIcon={<DownloadIcon />}
-            onClick={handleExportAccount}
-            disabled={exporting}
-          >
-            {exporting ? "Preparing export…" : "Download account data"}
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={handleExportAccount}
+              disabled={exporting}
+            >
+              {exporting ? "Building secure archive…" : "Download account data"}
+            </Button>
+            {exporting && activeExportId && (
+              <Button color="error" onClick={handleCancelExport}>
+                Cancel export
+              </Button>
+            )}
+          </Stack>
         </SettingsSection>
 
         {/* Danger zone */}

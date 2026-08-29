@@ -8,7 +8,7 @@ tests:
     interval: 1m
     input_series:
       - series: 'memoria_readiness_ready{job="memoria",instance="app:3000"}'
-        values: '0 0 0 0'
+        values: "0 0 0 0"
     alert_rule_test:
       - eval_time: 3m
         alertname: MemoriaUnavailable
@@ -26,7 +26,7 @@ tests:
     interval: 1m
     input_series:
       - series: 'memoria_backup_last_success_timestamp_seconds{job="memoria"}'
-        values: '0x30'
+        values: "0x30"
     alert_rule_test:
       - eval_time: 20m
         alertname: MemoriaBackupMissing
@@ -43,7 +43,7 @@ tests:
     interval: 1m
     input_series:
       - series: 'memoria_outbox_dead_jobs{job="memoria"}'
-        values: '1 1 1'
+        values: "1 1 1"
     alert_rule_test:
       - eval_time: 2m
         alertname: MemoriaOutboxDeadLetters
@@ -55,3 +55,20 @@ tests:
             exp_annotations:
               summary: Outbox jobs require operator action
               runbook_url: /docs/operations/observability.md#outbox
+
+  - name: AI budget rejections reach the AI operations owner
+    interval: 1m
+    input_series:
+      - series: 'memoria_ai_budget_rejections_total{job="memoria"}'
+        values: "0 0 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: MemoriaAiBudgetRejections
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: ai-operations
+              job: memoria
+            exp_annotations:
+              summary: Per-user AI safety budgets are rejecting requests
+              runbook_url: /docs/operations/observability.md#ai-budget

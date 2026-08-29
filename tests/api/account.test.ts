@@ -4,6 +4,7 @@ import { type NextRequest } from "next/server";
 const prismaMocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   uploadAssetFindMany: vi.fn(),
+  accountExportFindMany: vi.fn(),
   $transaction: vi.fn(),
   txCanvasFindMany: vi.fn(),
   txCanvasItemFindMany: vi.fn(),
@@ -42,6 +43,9 @@ vi.mock("@/lib/db", () => ({
     },
     uploadAsset: {
       findMany: prismaMocks.uploadAssetFindMany,
+    },
+    accountExport: {
+      findMany: prismaMocks.accountExportFindMany,
     },
     $transaction: prismaMocks.$transaction,
   },
@@ -88,6 +92,7 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
     });
     argon2Mocks.verify.mockResolvedValue(false);
     prismaMocks.uploadAssetFindMany.mockResolvedValue([]);
+    prismaMocks.accountExportFindMany.mockResolvedValue([]);
     prismaMocks.$transaction.mockImplementation(async (callback: any) => {
       const tx = {
         canvas: {
@@ -139,59 +144,14 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
   });
 
   describe("GET /api/v1/users/account (Account Data Export)", () => {
-    it("exports user data omitting credential and secret fields, with private no-store caching", async () => {
-      const exportedUserData = {
-        id: userId,
-        email: userEmail,
-        name: "Alice",
-        image: null,
-        emailVerified: new Date("2026-01-01T00:00:00.000Z"),
-        createdAt: new Date("2026-01-01T00:00:00.000Z"),
-        updatedAt: new Date("2026-01-02T00:00:00.000Z"),
-        workspaces: [
-          {
-            id: "ws-1",
-            name: "Default Workspace",
-            createdAt: new Date("2026-01-01T00:00:00.000Z"),
-            updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-          },
-        ],
-        canvases: [],
-      };
-
-      prismaMocks.findUnique.mockResolvedValue(exportedUserData);
-
+    it("refuses the former unbounded synchronous export and points to the background API", async () => {
       const response = await GET(createJsonRequest("GET"));
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(405);
       expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-      expect(response.headers.get("Content-Disposition")).toContain(
-        'attachment; filename="memoria-account-',
-      );
-
-      // Verify prisma select strictly excludes passwordHash and sessionVersion
-      expect(prismaMocks.findUnique).toHaveBeenCalledTimes(1);
-      const queryArg = prismaMocks.findUnique.mock.calls[0][0];
-      expect(queryArg.where).toEqual({ id: userId });
-      expect(queryArg.select.passwordHash).toBeUndefined();
-      expect(queryArg.select.sessionVersion).toBeUndefined();
-
       const json = await response.json();
-      expect(json.formatVersion).toBe(1);
-      expect(json.exportedAt).toBeDefined();
-      expect(json.user).toBeDefined();
-      expect(json.user.id).toBe(userId);
-      expect(json.user.passwordHash).toBeUndefined();
-      expect(json.user.sessionVersion).toBeUndefined();
-    });
-
-    it("returns 400 when account is not found", async () => {
-      prismaMocks.findUnique.mockResolvedValue(null);
-
-      const response = await GET(createJsonRequest("GET"));
-      expect(response.status).toBe(400);
-      const json = await response.json();
-      expect(json.detail).toMatch(/Account not found/i);
+      expect(json.detail).toContain("POST /api/v1/users/account/exports");
+      expect(prismaMocks.findUnique).not.toHaveBeenCalled();
     });
   });
 

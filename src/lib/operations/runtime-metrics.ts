@@ -10,6 +10,14 @@ export const OPERATIONAL_COUNTERS = [
   "outbox_lease_lost_total",
   "email_delivery_failures_total",
   "backup_freshness_failures_total",
+  "ai_requests_total",
+  "ai_budget_rejections_total",
+  "ai_reserved_tokens_total",
+  "ai_reserved_cost_micro_usd_total",
+  "account_exports_completed_total",
+  "account_exports_failed_total",
+  "account_exports_cancelled_total",
+  "account_export_bytes_total",
 ] as const;
 
 export type OperationalCounter = (typeof OPERATIONAL_COUNTERS)[number];

@@ -14,6 +14,7 @@ import { requireAuth } from "@/lib/api/auth";
 import { errorResponse, BadRequestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
+import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 
 const logger = createLogger("users/account");
 
@@ -24,75 +25,24 @@ const deleteAccountSchema = z.object({
   }),
 });
 
-/** Export the signed-in user's portable account data without credentials or secrets. */
-export async function GET(request: NextRequest) {
-  try {
-    const { userId } = await requireAuth();
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        image: true,
-        emailVerified: true,
-        createdAt: true,
-        updatedAt: true,
-        workspaces: {
-          select: { id: true, name: true, createdAt: true, updatedAt: true },
-        },
-        canvases: {
-          select: {
-            id: true,
-            name: true,
-            workspaceId: true,
-            zoomLevel: true,
-            panX: true,
-            panY: true,
-            isPublic: true,
-            isTemplate: true,
-            templateDescription: true,
-            templateCategory: true,
-            createdAt: true,
-            updatedAt: true,
-            items: {
-              select: {
-                id: true,
-                type: true,
-                positionX: true,
-                positionY: true,
-                width: true,
-                height: true,
-                zIndex: true,
-                content: true,
-                tags: true,
-                version: true,
-                deletedAt: true,
-                createdAt: true,
-                updatedAt: true,
-              },
-            },
-            shares: {
-              select: { email: true, role: true, createdAt: true },
-            },
-          },
-        },
+/** The former synchronous export was removed because it was unbounded. */
+export async function GET() {
+  return NextResponse.json(
+    {
+      type: "https://memoria.local/errors/background-export-required",
+      title: "Background export required",
+      status: 405,
+      detail: "Create an export with POST /api/v1/users/account/exports.",
+    },
+    {
+      status: 405,
+      headers: {
+        Allow: "DELETE",
+        "Cache-Control": "private, no-store",
+        "Content-Type": "application/problem+json",
       },
-    });
-    if (!user) throw new BadRequestError("Account not found");
-
-    return NextResponse.json(
-      { exportedAt: new Date().toISOString(), formatVersion: 1, user },
-      {
-        headers: {
-          "Cache-Control": "private, no-store",
-          "Content-Disposition": `attachment; filename="memoria-account-${new Date().toISOString().slice(0, 10)}.json"`,
-        },
-      },
-    );
-  } catch (error) {
-    return errorResponse(error, request.url);
-  }
+    },
+  );
 }
 
 /**
@@ -136,11 +86,25 @@ export async function DELETE(request: NextRequest) {
       where: { userId },
       select: { id: true },
     });
+    const accountExports = await prisma.accountExport.findMany({
+      where: { userId, storageKey: { not: null } },
+      select: { id: true, storageMode: true, storageKey: true },
+    });
 
     // Use transaction for atomic deletion
     await prisma.$transaction(async (tx) => {
       for (const asset of uploadAssets) {
         await enqueueUploadDeletion(tx, asset.id);
+      }
+      for (const accountExport of accountExports) {
+        await enqueueOutboxJob(tx, {
+          type: "account-export.delete",
+          dedupeKey: `account-export.account-delete:${accountExport.id}`,
+          payload: {
+            storageMode: accountExport.storageMode,
+            storageKey: accountExport.storageKey!,
+          },
+        });
       }
       // Get all user's canvases
       const userCanvases = await tx.canvas.findMany({
