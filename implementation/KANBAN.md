@@ -11,8 +11,9 @@ Gate status, 2026-08-29: after integrating the `gemini-implementation` and
 `pnpm build`, and `pnpm check-bundle` all pass. The order-dependent unit gate
 that IMP-052 and IMP-053 addressed did not reappear across repeated runs. That
 evidence was collected on Node 22, not the Node 24 line `package.json` and CI
-pin. `pnpm test:integration`, `pnpm test:e2e`, and `pnpm smoke` are still
-unverified locally and remain gated on DEC-014.
+pin. `pnpm test:integration` now passes locally against PostgreSQL 16 (14/14)
+after the gate repair. `pnpm test:e2e` and `pnpm smoke` still need Docker and
+remain gated on DEC-014; CI exercises the E2E gate.
 
 ## DOING
 

@@ -86,6 +86,15 @@ export default async function Home() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            // Below ~350px the wordmark and both actions exceed the container.
+            // A Button cannot shrink below its label, so the row would widen
+            // the document past the viewport. Wrapping uses each item's base
+            // size rather than its min-content width, so it is scoped to the
+            // widths that actually overflow; wider phones keep one line.
+            "@media (max-width:359.95px)": {
+              flexWrap: "wrap",
+              rowGap: "12px",
+            },
             py: 2.5,
           }}
         >
