@@ -36,6 +36,12 @@ function usableSecret(value, minLength = 24) {
 function getSelfHostChoices() {
   const publicUrl = process.env.MEMORIA_PUBLIC_URL;
   const emailProvider = process.env.EMAIL_PROVIDER;
+  const emailFrom = process.env.EMAIL_FROM;
+  const emailDeliveryProbeTo = process.env.EMAIL_DELIVERY_PROBE_TO;
+  const backupBucket = process.env.BACKUP_BUCKET;
+  const backupEndpoint = process.env.BACKUP_S3_ENDPOINT;
+  const backupAccessKeyId = process.env.BACKUP_S3_ACCESS_KEY_ID;
+  const backupSecretAccessKey = process.env.BACKUP_S3_SECRET_ACCESS_KEY;
   if (!publicUrl || !/^https:\/\//i.test(publicUrl)) {
     throw new Error('Set MEMORIA_PUBLIC_URL to the public HTTPS origin before self-host setup.');
   }
@@ -47,7 +53,66 @@ function getSelfHostChoices() {
   if (!providerKey) {
     throw new Error(`Set ${emailProvider === 'sendgrid' ? 'SENDGRID_API_KEY' : 'RESEND_API_KEY'} before self-host setup.`);
   }
-  return { publicUrl: publicUrl.replace(/\/$/, ''), emailProvider, providerKey };
+  if (!emailFrom || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFrom) || /\.(local|localhost)$/i.test(emailFrom.split('@')[1] || '')) {
+    throw new Error('Set EMAIL_FROM to a verified sender on a publicly routable domain before self-host setup.');
+  }
+  if (process.env.EMAIL_SENDER_VERIFIED !== 'true') {
+    throw new Error('Verify the EMAIL_FROM sender/domain with the provider, then set EMAIL_SENDER_VERIFIED=true.');
+  }
+  if (!emailDeliveryProbeTo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDeliveryProbeTo)) {
+    throw new Error('Set EMAIL_DELIVERY_PROBE_TO to an operator-controlled mailbox before self-host setup.');
+  }
+  if (!backupBucket || !backupAccessKeyId || !backupSecretAccessKey) {
+    throw new Error('Set BACKUP_BUCKET and dedicated BACKUP_S3_ACCESS_KEY_ID/BACKUP_S3_SECRET_ACCESS_KEY credentials before self-host setup.');
+  }
+  if (backupEndpoint && /(^|\/\/)(minio|localhost|127\.0\.0\.1)(:|\/|$)/i.test(backupEndpoint)) {
+    throw new Error('BACKUP_S3_ENDPOINT must be an off-host destination, not the application MinIO service.');
+  }
+  if (process.env.BACKUP_S3_SSE === 'none') {
+    throw new Error('BACKUP_S3_SSE must enable encryption for self-host production backups.');
+  }
+  return {
+    publicUrl: publicUrl.replace(/\/$/, ''),
+    emailProvider,
+    providerKey,
+    emailFrom,
+    emailDeliveryProbeTo,
+    backupBucket,
+    backupEndpoint: backupEndpoint || '',
+    backupRegion: process.env.BACKUP_S3_REGION || 'us-east-1',
+    backupAccessKeyId,
+    backupSecretAccessKey,
+    backupSse: process.env.BACKUP_S3_SSE || 'AES256',
+  };
+}
+
+async function runEmailDeliveryProbe({ operationsBaseUrl, operationsToken, timeoutMs = 60000 }) {
+  const headers = { authorization: `Bearer ${operationsToken}` };
+  const start = await fetch(new URL('/api/operations/email/probe', operationsBaseUrl), {
+    method: 'POST',
+    headers,
+    signal: AbortSignal.timeout(5000),
+  });
+  const startPayload = await start.json().catch(() => null);
+  if (start.status !== 202 || typeof startPayload?.jobId !== 'string') {
+    throw new Error(`Email delivery probe could not be queued (HTTP ${start.status}).`);
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const status = await fetch(
+      new URL(`/api/operations/email/probe?jobId=${encodeURIComponent(startPayload.jobId)}`, operationsBaseUrl),
+      { headers, signal: AbortSignal.timeout(5000) },
+    );
+    const payload = await status.json().catch(() => null);
+    if (status.ok && payload?.status === 'COMPLETED') return startPayload.jobId;
+    if (status.ok && payload?.status === 'DEAD') {
+      throw new Error(`Email delivery probe failed: ${payload.lastError || 'provider rejected delivery'}`);
+    }
+  }
+
+  throw new Error(`Email delivery probe ${startPayload.jobId} did not complete within ${timeoutMs}ms.`);
 }
 
 function prepareEnv(targetPath, targetMode, selfHostChoices) {
@@ -77,12 +142,12 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   const operationsToken = usableSecret(currentValues.get('INTERNAL_OPERATIONS_TOKEN'), 32)
     ? currentValues.get('INTERNAL_OPERATIONS_TOKEN')
     : randomSecret(48);
+  const grafanaAdminPassword = usableSecret(currentValues.get('GRAFANA_ADMIN_PASSWORD'), 24)
+    ? currentValues.get('GRAFANA_ADMIN_PASSWORD')
+    : randomSecret(32);
   const backupHmacKey = usableSecret(currentValues.get('BACKUP_MANIFEST_HMAC_KEY'), 32)
     ? currentValues.get('BACKUP_MANIFEST_HMAC_KEY')
     : randomSecret(48);
-  const backupMinioPassword = usableSecret(currentValues.get('BACKUP_MINIO_ROOT_PASSWORD'), 24)
-    ? currentValues.get('BACKUP_MINIO_ROOT_PASSWORD')
-    : randomSecret(32);
   const appUrl = selfHostChoices?.publicUrl || 'http://localhost:3000';
   const bucket = currentValues.get('S3_BUCKET') || 'memoria-uploads';
 
@@ -109,9 +174,13 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(raw, 'NEXTAUTH_SECRET', authSecret);
   raw = upsertEnvValue(raw, 'APP_BOOTSTRAP_TOKEN', bootstrapToken);
   raw = upsertEnvValue(raw, 'INTERNAL_OPERATIONS_TOKEN', operationsToken);
+  raw = upsertEnvValue(raw, 'GRAFANA_ADMIN_PASSWORD', grafanaAdminPassword);
   raw = upsertEnvValue(raw, 'REGISTRATION_MODE', currentValues.get('REGISTRATION_MODE') || 'open');
   raw = upsertEnvValue(raw, 'AUTH_RATE_LIMIT_MAX_REQUESTS', currentValues.get('AUTH_RATE_LIMIT_MAX_REQUESTS') || '5');
   raw = upsertEnvValue(raw, 'EMAIL_PROVIDER', selfHostChoices?.emailProvider || 'console');
+  raw = upsertEnvValue(raw, 'EMAIL_FROM', selfHostChoices?.emailFrom || 'noreply@memoria.local');
+  raw = upsertEnvValue(raw, 'EMAIL_SENDER_VERIFIED', selfHostChoices ? 'true' : 'false');
+  raw = upsertEnvValue(raw, 'EMAIL_DELIVERY_PROBE_TO', selfHostChoices?.emailDeliveryProbeTo || '');
   if (selfHostChoices?.emailProvider === 'sendgrid') {
     raw = upsertEnvValue(raw, 'SENDGRID_API_KEY', selfHostChoices.providerKey);
   }
@@ -129,17 +198,21 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(raw, 'S3_SECRET_ACCESS_KEY', minioPassword);
   raw = upsertEnvValue(raw, 'MINIO_ROOT_USER', minioUser);
   raw = upsertEnvValue(raw, 'MINIO_ROOT_PASSWORD', minioPassword);
-  raw = upsertEnvValue(raw, 'BACKUP_BUCKET', currentValues.get('BACKUP_BUCKET') || 'memoria-backups');
+  raw = upsertEnvValue(raw, 'BACKUP_BUCKET', selfHostChoices?.backupBucket || currentValues.get('BACKUP_BUCKET') || 'memoria-backups');
   raw = upsertEnvValue(raw, 'BACKUP_RETENTION_DAYS', currentValues.get('BACKUP_RETENTION_DAYS') || '35');
   raw = upsertEnvValue(raw, 'BACKUP_MANIFEST_HMAC_KEY', backupHmacKey);
-  raw = upsertEnvValue(raw, 'BACKUP_MINIO_ROOT_USER', currentValues.get('BACKUP_MINIO_ROOT_USER') || 'backupadmin');
-  raw = upsertEnvValue(raw, 'BACKUP_MINIO_ROOT_PASSWORD', backupMinioPassword);
+  raw = upsertEnvValue(raw, 'BACKUP_S3_ENDPOINT', selfHostChoices?.backupEndpoint || '');
+  raw = upsertEnvValue(raw, 'BACKUP_S3_REGION', selfHostChoices?.backupRegion || 'us-east-1');
+  raw = upsertEnvValue(raw, 'BACKUP_S3_ACCESS_KEY_ID', selfHostChoices?.backupAccessKeyId || '');
+  raw = upsertEnvValue(raw, 'BACKUP_S3_SECRET_ACCESS_KEY', selfHostChoices?.backupSecretAccessKey || '');
+  raw = upsertEnvValue(raw, 'BACKUP_S3_SSE', selfHostChoices?.backupSse || 'AES256');
   raw = upsertEnvValue(raw, 'FEATURE_BOOKMARK_UNFURLING', currentValues.get('FEATURE_BOOKMARK_UNFURLING') || 'true');
   raw = upsertEnvValue(raw, 'BOOKMARK_REFRESH_INTERVAL_MS', currentValues.get('BOOKMARK_REFRESH_INTERVAL_MS') || '900000');
+  raw = upsertEnvValue(raw, 'AI_ACTION_BUDGET_DAILY', currentValues.get('AI_ACTION_BUDGET_DAILY') || '1000');
   raw = upsertEnvValue(raw, 'SMTP_PASS', '');
 
   writeEnvFile(targetPath, raw);
-  return { bootstrapToken, bucket };
+  return { bootstrapToken, operationsToken, bucket };
 }
 
 async function waitForInfrastructure(envValues, fromHost = false) {
@@ -161,7 +234,7 @@ if (!['dev', 'selfhost'].includes(mode)) {
 
 const envPath = mode === 'selfhost' ? selfHostEnvFile : defaultEnvFile;
 const selfHostChoices = mode === 'selfhost' ? getSelfHostChoices() : null;
-const { bootstrapToken, bucket } = prepareEnv(envPath, mode, selfHostChoices);
+const { bootstrapToken, operationsToken, bucket } = prepareEnv(envPath, mode, selfHostChoices);
 const envValues = readEnvFile(envPath).values;
 const composeArgs = ['compose', '--env-file', envPath, '-f', 'docker-compose.yml'];
 
@@ -201,6 +274,15 @@ if (mode === 'dev') {
     'Next command: pnpm dev',
   ]);
 } else {
+  await ensureS3Bucket({
+    endpoint: selfHostChoices.backupEndpoint || undefined,
+    region: selfHostChoices.backupRegion,
+    accessKeyId: selfHostChoices.backupAccessKeyId,
+    secretAccessKey: selfHostChoices.backupSecretAccessKey,
+    bucket: selfHostChoices.backupBucket,
+    createIfMissing: false,
+    requireVersioning: true,
+  });
   await run(docker, [...composeArgs, 'up', '-d', '--build'], { cwd: projectRoot });
   await waitForInfrastructure(envValues, true);
   await waitForPort({ host: '127.0.0.1', port: 3000, label: 'App' });
@@ -216,7 +298,9 @@ if (mode === 'dev') {
   await run(docker, [...composeArgs, 'exec', '-T', 'app', 'pnpm', 'db:migrate'], { cwd: projectRoot });
   const smokeReport = await runSmokeChecks({
     baseUrl: 'http://127.0.0.1:3000',
+    operationsBaseUrl: 'http://127.0.0.1:3002',
     requireRunningApp: true,
+    operationsToken,
   });
 
   if (smokeReport.hasFailure) {
@@ -228,6 +312,11 @@ if (mode === 'dev') {
     );
   }
 
+  const deliveryProbeId = await runEmailDeliveryProbe({
+    operationsBaseUrl: 'http://127.0.0.1:3002',
+    operationsToken,
+  });
+
   printSection('Self-Host Setup Complete', [
     `Environment file: ${envPath}`,
     `App URL: ${selfHostChoices.publicUrl}`,
@@ -235,5 +324,6 @@ if (mode === 'dev') {
     `Bootstrap token (store securely; shown once): ${bootstrapToken}`,
     'MinIO Console: bound to http://127.0.0.1:9001',
     'Smoke checks: passed',
+    `Email delivery probe: ${deliveryProbeId} completed; confirm receipt in ${selfHostChoices.emailDeliveryProbeTo}`,
   ]);
 }

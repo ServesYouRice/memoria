@@ -11,6 +11,10 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { nanoid } from "nanoid";
 import { getRedisClient } from "@/lib/cache/redis-client";
+import {
+  incrementOperationalCounter,
+  setOperationalGauge,
+} from "@/lib/operations/runtime-metrics";
 import { z } from "zod";
 import {
   AUTHORIZATION_LEASE_MS,
@@ -381,6 +385,12 @@ export function createCollaborationServer(server: any): WebSocketServer {
     maxPayload: MAX_WEBSOCKET_PAYLOAD,
   });
 
+  const rejectUpgrade = (socket: any, response: string) => {
+    incrementOperationalCounter("websocket_rejected_total");
+    socket.write(response);
+    socket.destroy();
+  };
+
   // Handle WebSocket upgrade
   server.on(
     "upgrade",
@@ -395,8 +405,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
           if (
             !isAllowedCollaborationOrigin(request.headers.origin, configuredUrl)
           ) {
-            socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 403 Forbidden\r\n\r\n");
             return;
           }
           const clientId = String(
@@ -406,16 +415,14 @@ export function createCollaborationServer(server: any): WebSocketServer {
             !consumeUpgradeBudget(clientId) ||
             getConnectionCount() >= MAX_CONNECTIONS_GLOBAL
           ) {
-            socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 429 Too Many Requests\r\n\r\n");
             return;
           }
           const pathParts = url.pathname.split("/");
           const canvasId = pathParts[pathParts.length - 1];
 
           if (!canvasId) {
-            socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 400 Bad Request\r\n\r\n");
             return;
           }
 
@@ -433,8 +440,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
           });
 
           if (!publicCanvas) {
-            socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 404 Not Found\r\n\r\n");
             return;
           }
 
@@ -442,8 +448,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             const shareToken = url.searchParams.get("shareToken");
             if (!isValidGuestShare(publicCanvas, shareToken)) {
               logger.warn("WebSocket connection attempt without token");
-              socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-              socket.destroy();
+              rejectUpgrade(socket, "HTTP/1.1 401 Unauthorized\r\n\r\n");
               return;
             }
 
@@ -470,8 +475,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             logger.error(
               "Missing NEXTAUTH_SECRET/AUTH_SECRET for WebSocket auth",
             );
-            socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 500 Internal Server Error\r\n\r\n");
             return;
           }
 
@@ -483,8 +487,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
 
           if (!decoded || !decoded.email) {
             logger.warn("Invalid token for WebSocket connection");
-            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 401 Unauthorized\r\n\r\n");
             return;
           }
 
@@ -494,8 +497,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
           });
 
           if (!user) {
-            socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 403 Forbidden\r\n\r\n");
             return;
           }
 
@@ -520,8 +522,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
               { userId: user.id, canvasId },
               `User denied access to canvas`,
             );
-            socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-            socket.destroy();
+            rejectUpgrade(socket, "HTTP/1.1 403 Forbidden\r\n\r\n");
             return;
           }
 
@@ -546,8 +547,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
           });
         } catch (error) {
           logger.error({ error }, "WebSocket upgrade error");
-          socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
-          socket.destroy();
+          rejectUpgrade(socket, "HTTP/1.1 500 Internal Server Error\r\n\r\n");
         }
       } else {
         return;
@@ -633,6 +633,7 @@ async function handleConnection(
     string | undefined;
 
   if (!user || !canvasId) {
+    incrementOperationalCounter("websocket_rejected_total");
     ws.close(1008, "Internal Error");
     return;
   }
@@ -642,6 +643,7 @@ async function handleConnection(
     canvasConnections &&
     canvasConnections.size >= MAX_COLLABORATORS_PER_CANVAS
   ) {
+    incrementOperationalCounter("websocket_rejected_total");
     ws.close(1013, "Canvas connection limit reached");
     return;
   }
@@ -652,6 +654,7 @@ async function handleConnection(
     perClient: MAX_CONNECTIONS_PER_CLIENT,
   });
   if (!admission.admitted) {
+    incrementOperationalCounter("websocket_rejected_total");
     ws.close(1013, "Connection admission limit reached");
     return;
   }
@@ -675,6 +678,11 @@ async function handleConnection(
   const clients = canvasConnections ?? new Set<ClientConnection>();
   if (!canvasConnections) connections.set(canvasId, clients);
   clients.add(connection);
+  setOperationalGauge(
+    "websocket_connections",
+    admissionCounters.totalConnections,
+  );
+  setOperationalGauge("websocket_active_canvases", connections.size);
 
   let subscribed = false;
   let closed = false;
@@ -695,6 +703,11 @@ async function handleConnection(
       connections.delete(canvasId);
       dirtyCursorCanvases.delete(canvasId);
     }
+    setOperationalGauge(
+      "websocket_connections",
+      admissionCounters.totalConnections,
+    );
+    setOperationalGauge("websocket_active_canvases", connections.size);
     if (subscribed) void unsubscribeFromCanvas(canvasId);
   });
 
@@ -703,6 +716,7 @@ async function handleConnection(
     subscribed = true;
   } catch (error) {
     logger.error({ error, canvasId }, "WebSocket Redis subscription failed");
+    incrementOperationalCounter("websocket_rejected_total");
     ws.close(1013, "Collaboration service unavailable");
     return;
   }

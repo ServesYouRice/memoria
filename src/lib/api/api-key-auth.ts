@@ -58,7 +58,14 @@ export async function authenticateApiKey(req: NextRequest) {
   const header = req.headers.get("x-api-key");
   if (!header) return null;
 
-  // Quick format check before database lookup
+  // Quick format check before database lookup.
+  //
+  // There is no legacy-key escape hatch here because there are no legacy keys:
+  // `mk_` is the only prefix this codebase has ever issued, `POST
+  // /api/v1/api-keys` is the only creation path, and no seed or migration
+  // inserts ApiKey rows. Every key the earlier generator produced was `mk_`
+  // plus at least 20 alphanumerics, so all of them still pass. Accepting
+  // anything else only fed unissuable strings to the 19 MiB Argon2 verify.
   if (!isValidApiKeyFormat(header)) {
     return null;
   }

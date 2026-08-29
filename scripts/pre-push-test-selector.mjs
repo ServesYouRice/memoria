@@ -11,7 +11,9 @@
  */
 
 import { spawnSync, execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import fs from "node:fs";
+import path from "node:path";
 
 export const ACTION_NONE = "NONE";
 export const ACTION_FULL_SUITE = "FULL_SUITE";
@@ -48,6 +50,10 @@ const DOC_PATTERNS = [
   /^\.agents\//,
 ];
 
+// Roots whose files are reachable from a Vitest module graph, so that
+// `vitest related` can find the tests covering them.
+const CODE_ROOTS = [/^src\//, /^tests\//, /^scripts\//, /^public\//];
+
 /**
  * Classifies a single file path into 'global', 'doc', or 'code'.
  */
@@ -66,7 +72,16 @@ export function classifyFilePath(filePath) {
     }
   }
 
-  return "code";
+  for (const pattern of CODE_ROOTS) {
+    if (pattern.test(normalized)) {
+      return "code";
+    }
+  }
+
+  // Everything else - CI workflows, container files, env samples - has no
+  // module graph for `vitest related` to walk. Treating it as global runs the
+  // full suite instead of silently selecting nothing.
+  return "global";
 }
 
 /**
@@ -94,7 +109,10 @@ export function determineTestAction(changedFiles) {
   }
 
   if (hasGlobal) {
-    return { action: ACTION_FULL_SUITE, reason: "global configuration changed" };
+    return {
+      action: ACTION_FULL_SUITE,
+      reason: "global configuration changed",
+    };
   }
 
   if (!hasCode) {
@@ -193,12 +211,23 @@ function defaultGitRunner(args) {
 }
 
 /**
+ * Resolves the Vitest JS entry point from this package's dependency tree.
+ */
+export function resolveVitestBin() {
+  const require = createRequire(import.meta.url);
+  const packageJsonPath = require.resolve("vitest/package.json");
+  const { bin } = require(packageJsonPath);
+  const entry = typeof bin === "string" ? bin : bin?.vitest;
+  if (!entry) {
+    throw new Error("vitest package.json declares no bin entry");
+  }
+  return path.join(path.dirname(packageJsonPath), entry);
+}
+
+/**
  * Runs the selected test action safely using spawnSync without shell string interpolation.
  */
-export function executeTestAction(
-  testAction,
-  runner = defaultCommandRunner,
-) {
+export function executeTestAction(testAction, runner = defaultVitestRunner) {
   if (testAction.action === ACTION_NONE) {
     console.log(
       `ℹ️  Skipping Vitest (${testAction.reason || "no relevant code changes"}).`,
@@ -210,30 +239,48 @@ export function executeTestAction(
     console.log(
       `🧪 Running related tests for ${testAction.files.length} changed file(s)...`,
     );
-    const code = runner("pnpm", [
-      "exec",
-      "vitest",
+    // `--passWithNoTests` keeps a green run green when a changed file has no
+    // test anywhere in its module graph. Files that could not have related
+    // tests are classified as `global` and never reach this branch, so a
+    // non-zero exit here is a real test failure. Retrying it as a full run
+    // would pay the whole suite's cost to report the same failure.
+    return runner([
       "related",
       "--run",
+      "--passWithNoTests",
       ...testAction.files,
     ]);
-    if (code === 0) {
-      return 0;
-    }
-    console.warn("⚠️  Related tests failed or errored; falling back to full unit/API suite.");
   }
 
   console.log("🧪 Running full unit/API test suite...");
-  return runner("pnpm", ["run", "test", "--", "--run"]);
+  return runner(["run"]);
 }
 
-function defaultCommandRunner(cmd, args) {
-  const isWindows = process.platform === "win32";
-  const executable = isWindows && !cmd.endsWith(".cmd") && !cmd.endsWith(".exe") ? `${cmd}.cmd` : cmd;
-  const proc = spawnSync(executable, args, {
+export function defaultVitestRunner(args) {
+  let vitestBin;
+  try {
+    vitestBin = resolveVitestBin();
+  } catch (error) {
+    console.error(
+      "❌ Could not resolve the vitest executable:",
+      error instanceof Error ? error.message : error,
+    );
+    return 1;
+  }
+
+  // Spawn the Vitest JS entry with the current Node binary rather than going
+  // through `pnpm`. Since the CVE-2024-27980 fix, Node refuses to spawn the
+  // `pnpm.cmd` shim on Windows without `shell: true`, and a shell would
+  // reinterpret the changed-file paths passed through as arguments.
+  const proc = spawnSync(process.execPath, [vitestBin, ...args], {
     stdio: "inherit",
     shell: false,
   });
+
+  if (proc.error) {
+    console.error("❌ Could not run vitest:", proc.error.message);
+    return 1;
+  }
   return proc.status ?? 1;
 }
 
@@ -268,7 +315,9 @@ async function main() {
   }
 
   if (unresolvable) {
-    console.log("ℹ️  Could not determine comparison base; running full suite (fail-safe).");
+    console.log(
+      "ℹ️  Could not determine comparison base; running full suite (fail-safe).",
+    );
     const exitCode = executeTestAction({ action: ACTION_FULL_SUITE });
     process.exit(exitCode);
   }

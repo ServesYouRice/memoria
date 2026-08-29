@@ -11,11 +11,31 @@ import {
 
 const payloadSchema = z.object({ verificationId: z.string().cuid() }).strict();
 
+const deliveryProbePayloadSchema = z
+  .object({ to: z.string().email() })
+  .strict();
+
+export function createDeliveryProbeEmailHandler(
+  send = sendEmail,
+): OutboxHandler {
+  return async (job, context) => {
+    const { to } = deliveryProbePayloadSchema.parse(job.payload);
+    await send({
+      to: { email: to },
+      subject: "Memoria delivery probe",
+      text: `Memoria successfully delivered the controlled setup probe. Delivery ID: ${job.id}`,
+      html: `<p>Memoria successfully delivered the controlled setup probe.</p><p>Delivery ID: <code>${job.id}</code></p>`,
+      deliveryId: job.id,
+      signal: context?.signal,
+    });
+  };
+}
+
 export function createVerificationEmailHandler(
   prisma: PrismaClient,
   send = sendEmailVerification,
 ): OutboxHandler {
-  return async (job) => {
+  return async (job, context) => {
     const { verificationId } = payloadSchema.parse(job.payload);
     const verification = await prisma.emailVerificationToken.findUnique({
       where: { id: verificationId },
@@ -47,6 +67,7 @@ export function createVerificationEmailHandler(
         expiresIn: "24 hours",
       },
       job.id,
+      context?.signal,
     );
   };
 }
@@ -58,7 +79,7 @@ const invitationPayloadSchema = z
 export function createShareInvitationEmailHandler(
   prisma: PrismaClient,
 ): OutboxHandler {
-  return async (job) => {
+  return async (job, context) => {
     const { invitationId } = invitationPayloadSchema.parse(job.payload);
     const invitation = await prisma.canvasShareInvitation.findUnique({
       where: { id: invitationId },
@@ -100,6 +121,7 @@ export function createShareInvitationEmailHandler(
       to: { email: invitation.email },
       ...template,
       deliveryId: job.id,
+      signal: context?.signal,
     });
   };
 }
@@ -107,7 +129,7 @@ export function createShareInvitationEmailHandler(
 export function createShareDecisionEmailHandler(
   prisma: PrismaClient,
 ): OutboxHandler {
-  return async (job) => {
+  return async (job, context) => {
     const { invitationId } = invitationPayloadSchema.parse(job.payload);
     const invitation = await prisma.canvasShareInvitation.findUnique({
       where: { id: invitationId },
@@ -143,6 +165,7 @@ export function createShareDecisionEmailHandler(
       },
       ...template,
       deliveryId: job.id,
+      signal: context?.signal,
     });
   };
 }

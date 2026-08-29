@@ -116,7 +116,12 @@ export function isPrivateIp(address: string): boolean {
 
 export async function validateUrlForSsrfWithDns(
   urlString: string,
-): Promise<{ valid: boolean; error?: string; pinnedIp?: string; targetUrl?: URL }> {
+): Promise<{
+  valid: boolean;
+  error?: string;
+  pinnedIp?: string;
+  targetUrl?: URL;
+}> {
   const base = validateUrlForSsrf(urlString);
   if (!base.valid) {
     return base;
@@ -209,6 +214,7 @@ export function pinnedHttpRequest(
     body?: string;
     timeout?: number;
     maxSize?: number;
+    signal?: AbortSignal;
   } = {},
 ): Promise<{
   status: number;
@@ -285,6 +291,16 @@ export function pinnedHttpRequest(
 
     req.on("error", (err) => reject(err));
 
+    const abort = () => req.destroy(new Error("Request aborted"));
+    if (options.signal?.aborted) {
+      abort();
+      return;
+    }
+    options.signal?.addEventListener("abort", abort, { once: true });
+    req.once("close", () =>
+      options.signal?.removeEventListener("abort", abort),
+    );
+
     if (options.body) {
       req.write(options.body);
     }
@@ -302,15 +318,24 @@ export async function safeFetch(
     maxRedirects?: number;
     timeout?: number;
     maxSize?: number;
+    signal?: AbortSignal;
   } = {},
 ): Promise<{ ok: boolean; status: number; data?: string; error?: string }> {
-  const { maxRedirects = 5, timeout = 10000, maxSize = 1024 * 1024 } = options; // 1MB default max size
+  const {
+    maxRedirects = 5,
+    timeout = 10000,
+    maxSize = 1024 * 1024,
+    signal,
+  } = options; // 1MB default max size
 
   let currentUrl = urlString;
   let redirectCount = 0;
 
   while (redirectCount <= maxRedirects) {
     // Validate current URL and resolve pinned IP
+    if (signal?.aborted) {
+      return { ok: false, status: 499, error: "Request aborted" };
+    }
     const validation = await validateUrlForSsrfWithDns(currentUrl);
     if (!validation.valid || !validation.pinnedIp || !validation.targetUrl) {
       return { ok: false, status: 400, error: validation.error };
@@ -323,6 +348,7 @@ export async function safeFetch(
         {
           timeout,
           maxSize,
+          signal,
         },
       );
 

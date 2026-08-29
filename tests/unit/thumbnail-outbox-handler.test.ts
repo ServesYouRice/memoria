@@ -58,6 +58,7 @@ describe("thumbnail outbox handler", () => {
       "thumbnails/clxxxxxxxxxxxxxxxxxxxxxxx/4.png",
       Buffer.from("png"),
       "image/png",
+      undefined,
     );
     expect(canvasUpdate).toHaveBeenCalledWith(
       expect.objectContaining({

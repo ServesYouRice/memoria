@@ -1,13 +1,16 @@
+import { existsSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   ACTION_FULL_SUITE,
   ACTION_NONE,
   ACTION_RELATED,
   classifyFilePath,
+  defaultVitestRunner,
   determineTestAction,
   executeTestAction,
   getChangedFilesFromGit,
   parsePrePushInput,
+  resolveVitestBin,
 } from "../../scripts/pre-push-test-selector.mjs";
 
 describe("Pre-push Test Selector (IMP-050)", () => {
@@ -78,6 +81,18 @@ describe("Pre-push Test Selector (IMP-050)", () => {
       );
       expect(classifyFilePath("src/file;rm -rf;.ts")).toBe("code");
     });
+
+    it.each([
+      ".github/workflows/ci.yml",
+      "Dockerfile",
+      "docker-compose.yml",
+      ".env.example",
+    ])(
+      "classifies '%s' as 'global' because it has no module graph to relate tests to",
+      (file) => {
+        expect(classifyFilePath(file)).toBe("global");
+      },
+    );
   });
 
   describe("Determine Test Action", () => {
@@ -268,40 +283,30 @@ describe("Pre-push Test Selector (IMP-050)", () => {
       );
 
       expect(code).toBe(0);
-      expect(mockRunner).toHaveBeenCalledWith("pnpm", [
-        "exec",
-        "vitest",
+      expect(mockRunner).toHaveBeenCalledWith([
         "related",
         "--run",
+        "--passWithNoTests",
         "src/file with spaces.ts",
         "src/file;dangerous$(whoami).ts",
       ]);
     });
 
-    it("falls back to full test suite when vitest related returns non-zero code", () => {
-      const mockRunner = vi
-        .fn()
-        .mockReturnValueOnce(1) // vitest related fails
-        .mockReturnValueOnce(0); // fallback full suite passes
+    it("reports a related-test failure without re-running the full suite", () => {
+      const mockRunner = vi.fn().mockReturnValue(1);
 
       const code = executeTestAction(
         { action: ACTION_RELATED, files: ["src/lib/api/auth.ts"] },
         mockRunner,
       );
 
-      expect(code).toBe(0);
-      expect(mockRunner).toHaveBeenNthCalledWith(1, "pnpm", [
-        "exec",
-        "vitest",
+      expect(code).toBe(1);
+      expect(mockRunner).toHaveBeenCalledTimes(1);
+      expect(mockRunner).toHaveBeenCalledWith([
         "related",
         "--run",
+        "--passWithNoTests",
         "src/lib/api/auth.ts",
-      ]);
-      expect(mockRunner).toHaveBeenNthCalledWith(2, "pnpm", [
-        "run",
-        "test",
-        "--",
-        "--run",
       ]);
     });
 
@@ -310,12 +315,22 @@ describe("Pre-push Test Selector (IMP-050)", () => {
       const code = executeTestAction({ action: ACTION_FULL_SUITE }, mockRunner);
 
       expect(code).toBe(0);
-      expect(mockRunner).toHaveBeenCalledWith("pnpm", [
-        "run",
-        "test",
-        "--",
-        "--run",
-      ]);
+      expect(mockRunner).toHaveBeenCalledWith(["run"]);
+    });
+  });
+
+  describe("Default Vitest Runner", () => {
+    it("resolves the vitest entry point to an existing JS file", () => {
+      const bin = resolveVitestBin();
+      expect(bin).toMatch(/\.m?js$/);
+      expect(existsSync(bin)).toBe(true);
+    });
+
+    it("spawns vitest successfully on this platform", () => {
+      // Regression guard: spawning the `pnpm.cmd` shim with `shell: false`
+      // fails with EINVAL on Windows since the CVE-2024-27980 fix, which made
+      // every pre-push run report a test failure without running any test.
+      expect(defaultVitestRunner(["--version"])).toBe(0);
     });
   });
 });

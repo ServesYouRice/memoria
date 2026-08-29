@@ -1,4 +1,7 @@
-FROM node:26.7.0-alpine AS source
+FROM node:24.20.0-alpine AS source
+
+ARG NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 
 WORKDIR /app
 RUN npm install --global pnpm@11.13.1
@@ -21,6 +24,9 @@ ENV NODE_ENV=production \
     INTERNAL_OPERATIONS_TOKEN=build-operations-token-0123456789-abcdef \
     MODEL_CREDENTIAL_ENCRYPTION_KEY=build-model-key-abcdef-0123456789 \
     EMAIL_PROVIDER=sendgrid \
+    EMAIL_FROM=build@memoria.example \
+    EMAIL_SENDER_VERIFIED=true \
+    EMAIL_DELIVERY_PROBE_TO=operator@memoria.example \
     SENDGRID_API_KEY=build-sendgrid-key \
     UPLOAD_STORAGE=s3 \
     S3_BUCKET=build \
@@ -31,7 +37,7 @@ ENV NODE_ENV=production \
 
 RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts
 
-FROM node:26.7.0-alpine AS runtime
+FROM node:24.20.0-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app

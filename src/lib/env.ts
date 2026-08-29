@@ -24,6 +24,7 @@ const emptyToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
 
 const optionalString = emptyToUndefined(z.string());
 const optionalUrl = emptyToUndefined(z.string().url());
+const optionalEmail = emptyToUndefined(z.string().email());
 const optionalInt = emptyToUndefined(z.coerce.number().int());
 const optionalPositiveInt = emptyToUndefined(
   z.coerce.number().int().positive(),
@@ -70,8 +71,10 @@ const envSchema = z
     EMAIL_PROVIDER: z
       .enum(["console", "smtp", "sendgrid", "resend"])
       .default("console"),
-    EMAIL_FROM: optionalString,
+    EMAIL_FROM: optionalEmail,
     EMAIL_FROM_NAME: optionalString,
+    EMAIL_SENDER_VERIFIED: z.enum(["true", "false"]).optional(),
+    EMAIL_DELIVERY_PROBE_TO: optionalEmail,
     SMTP_HOST: optionalString,
     SMTP_PORT: optionalInt,
     SMTP_SECURE: z.enum(["true", "false"]).optional(),
@@ -94,6 +97,7 @@ const envSchema = z
     BACKUP_BUCKET: optionalString,
     BACKUP_RETENTION_DAYS: optionalInt,
     BACKUP_MANIFEST_HMAC_KEY: optionalString,
+    AI_ACTION_BUDGET_DAILY: optionalPositiveInt,
     OPENAI_API_KEY: optionalString,
     APP_BOOTSTRAP_TOKEN: optionalString,
     DATABASE_PASSWORD: optionalString,
@@ -205,6 +209,45 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_PROVIDER"],
         message: "EMAIL_PROVIDER must be sendgrid or resend in production.",
+      });
+    }
+
+    if (validateProductionRuntime && !data.EMAIL_FROM) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_FROM"],
+        message: "EMAIL_FROM is required in production.",
+      });
+    }
+
+    if (
+      validateProductionRuntime &&
+      data.MEMORIA_E2E_MODE !== "true" &&
+      data.EMAIL_FROM &&
+      /@(localhost|[^@]+\.local)$/i.test(data.EMAIL_FROM)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_FROM"],
+        message: "EMAIL_FROM must use a verified, publicly routable domain.",
+      });
+    }
+
+    if (validateProductionRuntime && data.EMAIL_SENDER_VERIFIED !== "true") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_SENDER_VERIFIED"],
+        message:
+          "EMAIL_SENDER_VERIFIED=true is required after provider sender/domain verification.",
+      });
+    }
+
+    if (validateProductionRuntime && !data.EMAIL_DELIVERY_PROBE_TO) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_DELIVERY_PROBE_TO"],
+        message:
+          "EMAIL_DELIVERY_PROBE_TO is required for the setup delivery proof.",
       });
     }
 

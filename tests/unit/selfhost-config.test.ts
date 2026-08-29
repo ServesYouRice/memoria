@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync, writeFileSync, unlinkSync } from "fs";
 import { spawnSync } from "child_process";
+import { tmpdir } from "os";
 import path from "path";
 
 describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
@@ -104,7 +105,10 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
     }, 20000);
 
     it("scripts/doctor.mjs reports failure and exits non-zero on placeholder values in production", () => {
-      const tempEnv = path.join(rootDir, ".env.test-doctor-placeholder");
+      // Written outside the repository so an interrupted run cannot leave an
+      // untracked `.env.*` file behind: .gitignore lists specific env files,
+      // not a wildcard.
+      const tempEnv = path.join(tmpdir(), ".env.test-doctor-placeholder");
       writeFileSync(
         tempEnv,
         [
@@ -126,7 +130,7 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
           {
             env: {
               ...process.env,
-              MEMORIA_ENV_FILE: ".env.test-doctor-placeholder",
+              MEMORIA_ENV_FILE: tempEnv,
             },
             cwd: rootDir,
           },

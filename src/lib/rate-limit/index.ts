@@ -57,6 +57,7 @@ import type {
 } from "./types";
 import { MemoryRateLimitStore } from "./stores/memory";
 import { RedisRateLimitStore } from "./stores/redis";
+import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
 
 let sharedStore: RateLimitStore | null = null;
 const limiterCache = new Map<string, RateLimiter>();
@@ -105,6 +106,7 @@ export class SlidingWindowRateLimiter implements RateLimiter {
 
       return result;
     } catch (error) {
+      incrementOperationalCounter("redis_safety_failures_total");
       logger.error({ error, identifier }, "Rate limit check failed");
 
       // Production requires Redis. If that shared abuse control is unavailable,

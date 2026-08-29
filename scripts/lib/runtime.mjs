@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import {
   CreateBucketCommand,
+  GetBucketVersioningCommand,
   HeadBucketCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -169,6 +170,7 @@ export async function ensureS3Bucket({
   secretAccessKey,
   bucket,
   createIfMissing = true,
+  requireVersioning = false,
 }) {
   const client = new S3Client({
     endpoint,
@@ -188,6 +190,15 @@ export async function ensureS3Bucket({
     }
 
     await client.send(new CreateBucketCommand({ Bucket: bucket }));
+  }
+
+  if (requireVersioning) {
+    const versioning = await client.send(
+      new GetBucketVersioningCommand({ Bucket: bucket }),
+    );
+    if (versioning.Status !== 'Enabled') {
+      throw new Error(`Bucket ${bucket} must have object versioning enabled.`);
+    }
   }
 }
 

@@ -25,6 +25,7 @@ export interface SendEmailOptions {
   replyTo?: EmailAddress;
   attachments?: EmailAttachment[];
   deliveryId?: string;
+  signal?: AbortSignal;
 }
 
 export class EmailDeliveryError extends Error {

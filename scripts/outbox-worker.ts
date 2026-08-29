@@ -3,6 +3,7 @@ import { prisma } from "../src/lib/db";
 import { runOutboxWorker } from "../src/lib/outbox/worker";
 import { createUploadDeleteHandler } from "../src/lib/uploads/outbox-handler";
 import {
+  createDeliveryProbeEmailHandler,
   createShareDecisionEmailHandler,
   createShareInvitationEmailHandler,
   createVerificationEmailHandler,
@@ -30,6 +31,7 @@ await runOutboxWorker({
   prisma,
   handlers: {
     "upload.delete": createUploadDeleteHandler(prisma),
+    "email.delivery-probe": createDeliveryProbeEmailHandler(),
     "email.verification": createVerificationEmailHandler(prisma),
     "email.share-invitation": createShareInvitationEmailHandler(prisma),
     "email.share-decision": createShareDecisionEmailHandler(prisma),
@@ -43,5 +45,8 @@ await runOutboxWorker({
     "thumbnail.delete": createThumbnailDeleteHandler(),
   },
   signal: controller.signal,
+  leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
+  handlerTimeoutMs: Number(process.env.OUTBOX_HANDLER_TIMEOUT_MS || 15_000),
+  concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });
 await prisma.$disconnect();

@@ -5,12 +5,14 @@
 
 import * as Sentry from "@sentry/nextjs";
 
+const dsn = process.env.SENTRY_DSN;
+
 Sentry.init({
-    dsn: process.env.SENTRY_DSN,
+  dsn,
 
-    // Only enable in production
-    enabled: process.env.NODE_ENV === "production",
+  // Edge telemetry is opt-in through an explicit DSN.
+  enabled: process.env.NODE_ENV === "production" && Boolean(dsn),
 
-    // Adjust sample rate in production
-    tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
+  // Adjust sample rate in production
+  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
 });

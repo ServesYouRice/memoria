@@ -29,8 +29,10 @@ export default mergeConfig(
         provider: "v8",
         reporter: ["text", "json", "html", "json-summary"],
         reportsDirectory: "./coverage/routes",
+        // `mergeConfig` concatenates arrays, so the base config's coverage
+        // excludes still apply. None of them match `src/app/api/**/route.ts`,
+        // which is why `include` alone determines this denominator.
         include: ["src/app/api/**/route.ts"],
-        exclude: [],
         thresholds: {
           lines: 37,
           statements: 36,

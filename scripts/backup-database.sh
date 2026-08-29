@@ -62,8 +62,13 @@ BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 BACKUP_MANIFEST_HMAC_KEY="${BACKUP_MANIFEST_HMAC_KEY:-}"
 BACKUP_S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"
 BACKUP_S3_SSE="${BACKUP_S3_SSE:-AES256}"
+BACKUP_S3_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY_ID:-}"
+BACKUP_S3_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_ACCESS_KEY:-}"
 S3_BUCKET="${S3_BUCKET:-}"
 S3_ENDPOINT="${S3_ENDPOINT:-}"
+S3_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID:-}"
+S3_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}"
+REDIS_URL="${REDIS_URL:-}"
 
 # Backup options
 COMPRESSION="${COMPRESSION:-gzip}"
@@ -81,10 +86,34 @@ readonly NC='\033[0m' # No Color
 
 backup_aws() {
     if [[ -n "$BACKUP_S3_ENDPOINT" ]]; then
-        aws --endpoint-url "$BACKUP_S3_ENDPOINT" "$@"
+        AWS_ACCESS_KEY_ID="$BACKUP_S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY" \
+            aws --endpoint-url "$BACKUP_S3_ENDPOINT" "$@"
     else
-        aws "$@"
+        AWS_ACCESS_KEY_ID="$BACKUP_S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY" aws "$@"
     fi
+}
+
+source_aws() {
+    if [[ -n "$S3_ENDPOINT" ]]; then
+        AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
+            aws --endpoint-url "$S3_ENDPOINT" "$@"
+    else
+        AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" aws "$@"
+    fi
+}
+
+redis_command() {
+    local redis_url="$REDIS_URL"
+    if [[ "$redis_url" == redis://:* ]]; then
+        redis_url="redis://default:${redis_url#redis://:}"
+    elif [[ "$redis_url" == rediss://:* ]]; then
+        redis_url="rediss://default:${redis_url#rediss://:}"
+    fi
+    redis-cli --no-auth-warning -u "$redis_url" "$@"
 }
 
 ################################################################################
@@ -222,6 +251,21 @@ validate_prerequisites() {
         return 1
     fi
 
+    if [[ -z "$BACKUP_S3_ACCESS_KEY_ID" || -z "$BACKUP_S3_SECRET_ACCESS_KEY" ]]; then
+        log ERROR "Dedicated BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY are required"
+        return 1
+    fi
+
+    if [[ -z "$S3_ACCESS_KEY_ID" || -z "$S3_SECRET_ACCESS_KEY" ]]; then
+        log ERROR "Source object-storage credentials are required"
+        return 1
+    fi
+
+    if [[ "$ENVIRONMENT" == "prod" && -n "$BACKUP_S3_ENDPOINT" && "$BACKUP_S3_ENDPOINT" == "$S3_ENDPOINT" ]]; then
+        log ERROR "Production backup storage must be off-host and distinct from S3_ENDPOINT"
+        return 1
+    fi
+
     if [[ -z "$S3_BUCKET" ]]; then
         log ERROR "S3_BUCKET is required so uploaded assets are included"
         return 1
@@ -235,19 +279,37 @@ validate_prerequisites() {
     fi
 
     # Check AWS credentials
-    if [[ -z "$BACKUP_S3_ENDPOINT" ]] && ! aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
+    if [[ -z "$BACKUP_S3_ENDPOINT" ]] && ! backup_aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
         log ERROR "AWS credentials not configured or invalid"
         return 1
     fi
 
     # Check S3 bucket access
     if ! backup_aws s3 ls "s3://${BACKUP_BUCKET}" --region "$AWS_REGION" &>/dev/null; then
+        if [[ "$ENVIRONMENT" == "prod" ]]; then
+            log ERROR "Production backup bucket must be provisioned off-host before startup: s3://${BACKUP_BUCKET}"
+            return 1
+        fi
         log WARN "S3 bucket does not exist or is not accessible: s3://${BACKUP_BUCKET}"
         log INFO "Attempting to create bucket..."
         if ! backup_aws s3 mb "s3://${BACKUP_BUCKET}" --region "$AWS_REGION" 2>/dev/null; then
             log ERROR "Cannot create S3 bucket: s3://${BACKUP_BUCKET}"
             return 1
         fi
+    fi
+
+    local versioning_status
+    versioning_status=$(backup_aws s3api get-bucket-versioning \
+        --bucket "$BACKUP_BUCKET" --query Status --output text \
+        --region "$AWS_REGION" 2>/dev/null || true)
+    if [[ "$ENVIRONMENT" == "prod" && "$versioning_status" != "Enabled" ]]; then
+        log ERROR "Production backup bucket versioning must be Enabled"
+        return 1
+    fi
+
+    if ! source_aws s3 ls "s3://${S3_BUCKET}" --region "$AWS_REGION" &>/dev/null; then
+        log ERROR "Source object-storage bucket is not accessible: s3://${S3_BUCKET}"
+        return 1
     fi
 
     log INFO "All prerequisites validated"
@@ -305,6 +367,8 @@ perform_full_backup() {
         -d "$PGDATABASE" \
         --verbose \
         --no-password \
+        --no-owner \
+        --no-privileges \
         2>>"$LOG_FILE" | gzip $COMPRESSION_LEVEL > "$backup_file"; then
         log ERROR "Database backup failed"
         return 1
@@ -409,11 +473,9 @@ backup_object_storage() {
     local object_dir="${TEMP_DIR}/objects"
     local archive_file="${TEMP_DIR}/objects-${BACKUP_TIMESTAMP}.tar.gz"
     local inventory_file="${TEMP_DIR}/objects-${BACKUP_TIMESTAMP}.inventory.sha256"
-    local endpoint_args=()
-    [[ -n "$S3_ENDPOINT" ]] && endpoint_args+=(--endpoint-url "$S3_ENDPOINT")
-
     mkdir -p "$object_dir"
-    aws "${endpoint_args[@]}" s3 sync "s3://${S3_BUCKET}/" "$object_dir/" --only-show-errors
+    source_aws s3 sync "s3://${S3_BUCKET}/" "$object_dir/" \
+        --region "$AWS_REGION" --only-show-errors
     (
         cd "$object_dir"
         find . -type f -print0 | sort -z | xargs -0 -r sha256sum > "$inventory_file"
@@ -521,10 +583,14 @@ upload_to_s3() {
 
             log DEBUG "Backup file uploaded successfully"
 
-            for artifact in "$object_archive" "$inventory_file" "$manifest_file" "${manifest_file}.sha256" "${manifest_file}.hmac"; do
+            # The manifest is the completion marker, so publish its authenticated
+            # sidecars first and the manifest itself last.
+            for artifact in "$object_archive" "$inventory_file" "${manifest_file}.sha256" "${manifest_file}.hmac"; do
                 backup_aws s3 cp "$artifact" "s3://${BACKUP_BUCKET}/${BACKUP_PATH}/" \
                     --region "$AWS_REGION" "${sse_args[@]}" 2>>"$LOG_FILE"
             done
+            backup_aws s3 cp "$manifest_file" "s3://${BACKUP_BUCKET}/${BACKUP_PATH}/" \
+                --region "$AWS_REGION" "${sse_args[@]}" 2>>"$LOG_FILE"
 
             local end_time=$(date +%s)
             local duration=$((end_time - start_time))
@@ -542,6 +608,17 @@ upload_to_s3() {
 
     log ERROR "Failed to upload backup to S3 after $max_retries attempts"
     return 1
+}
+
+record_backup_success() {
+    [[ -n "$REDIS_URL" ]] || return 0
+    local result
+    result=$(redis_command SET \
+        memoria:operations:gauges:backup_last_success_timestamp_seconds \
+        "$(date -u +%s)" 2>/dev/null || true)
+    if [[ "$result" != "OK" ]]; then
+        log WARN "Backup completed but its Redis success gauge could not be updated"
+    fi
 }
 
 # Calculate S3 object checksum
@@ -710,6 +787,9 @@ main() {
         cleanup_temp_files
         return 1
     fi
+
+    record_backup_success
+    log INFO "Completed manifest: s3://${BACKUP_BUCKET}/${BACKUP_PATH}/$(basename "$manifest_file")"
 
     # Cleanup old backups
     if ! cleanup_old_backups; then

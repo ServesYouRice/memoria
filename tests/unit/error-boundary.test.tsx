@@ -55,7 +55,7 @@ describe("ErrorBoundary error sanitization", () => {
     spy.mockRestore();
   });
 
-  it("renders safe domain messages when recognized", () => {
+  it("does not echo a thrown message even when it looks user-facing", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(
@@ -65,7 +65,12 @@ describe("ErrorBoundary error sanitization", () => {
     );
 
     expect(
-      screen.getByText("The requested canvas could not be found."),
+      screen.queryByText("The requested canvas could not be found."),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        "An unexpected error occurred while rendering this component.",
+      ),
     ).toBeDefined();
 
     spy.mockRestore();
@@ -112,7 +117,7 @@ describe("CanvasErrorBoundary error sanitization", () => {
     spy.mockRestore();
   });
 
-  it("renders safe domain message and incident digest on canvas error", () => {
+  it("renders the incident digest instead of the thrown message", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(
@@ -125,9 +130,23 @@ describe("CanvasErrorBoundary error sanitization", () => {
     );
 
     expect(
-      screen.getByText("You do not have permission to view this canvas."),
-    ).toBeDefined();
+      screen.queryByText("You do not have permission to view this canvas."),
+    ).toBeNull();
     expect(screen.getByText("Incident ID: incident-canvas-999")).toBeDefined();
+
+    spy.mockRestore();
+  });
+
+  it("omits the incident line when the error carries no digest", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(
+      <CanvasErrorBoundary>
+        <Bomb message="boom" />
+      </CanvasErrorBoundary>,
+    );
+
+    expect(screen.queryByText(/Incident ID:/)).toBeNull();
 
     spy.mockRestore();
   });

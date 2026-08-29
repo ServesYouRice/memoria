@@ -1,0 +1,19 @@
+FROM postgres:16-alpine
+
+RUN apk add --no-cache \
+    aws-cli \
+    bash \
+    coreutils \
+    file \
+    findutils \
+    gzip \
+    openssl \
+    redis \
+    tar
+
+WORKDIR /opt/memoria
+COPY scripts/backup-database.sh scripts/check-backup-freshness.sh scripts/restore-database.sh scripts/run-backup-schedule.sh scripts/run-backup-freshness-loop.sh ./scripts/
+RUN chmod 0555 ./scripts/*.sh
+
+ENTRYPOINT []
+CMD ["./scripts/run-backup-schedule.sh"]

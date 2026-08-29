@@ -1,0 +1,78 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Ready",
+      "targets": [{ "expr": "memoria_readiness_ready" }],
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Storage",
+      "targets": [{ "expr": "memoria_storage_available" }],
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Backup age",
+      "targets": [{ "expr": "memoria_backup_age_seconds" }],
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Dead letters",
+      "targets": [{ "expr": "memoria_outbox_dead_jobs" }],
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "WebSockets",
+      "targets": [{ "expr": "memoria_websocket_connections" }],
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "AI budget",
+      "targets": [{ "expr": "memoria_ai_action_budget_utilization_ratio" }],
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP errors",
+      "targets": [
+        { "expr": "rate(memoria_http_4xx_total[5m])", "legendFormat": "4xx" },
+        { "expr": "rate(memoria_http_5xx_total[5m])", "legendFormat": "5xx" }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Delivery safety",
+      "targets": [
+        {
+          "expr": "rate(memoria_outbox_handler_timeouts_total[5m])",
+          "legendFormat": "timeouts"
+        },
+        {
+          "expr": "rate(memoria_outbox_lease_lost_total[5m])",
+          "legendFormat": "lease loss"
+        },
+        {
+          "expr": "rate(memoria_email_delivery_failures_total[5m])",
+          "legendFormat": "email"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 41,
+  "tags": ["memoria", "operations"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Memoria Operations",
+  "uid": "memoria-operations",
+  "version": 1
+}

@@ -132,7 +132,7 @@
     "vitest": "^4.1.11"
   },
   "engines": {
-    "node": ">=22.14.0",
+    "node": ">=24.20.0 <25",
     "pnpm": ">=10.24.0"
   },
   "packageManager": "pnpm@11.13.1",

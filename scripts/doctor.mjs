@@ -142,10 +142,17 @@ const authUrlValue =
   envValues.get('AUTH_URL') || envValues.get('NEXTAUTH_URL');
 let smokeReport = { results: [] };
 if (flags.has('--smoke') || authUrlValue) {
+  // `--smoke` is the operator gate against a real deployment, so it keeps the
+  // default 5s budget: a cold route or a remote host routinely needs more than
+  // a second. Without it we are only probing an app that is probably not
+  // running, and a short timeout keeps `pnpm doctor` responsive.
   smokeReport = await runSmokeChecks({
     baseUrl: authUrlValue || 'http://localhost:3000',
+    operationsBaseUrl:
+      envValues.get('OPERATIONS_BASE_URL') || authUrlValue || 'http://localhost:3000',
     requireRunningApp: flags.has('--smoke'),
-    timeoutMs: 1000,
+    operationsToken: envValues.get('INTERNAL_OPERATIONS_TOKEN'),
+    ...(flags.has('--smoke') ? {} : { timeoutMs: 1000 }),
   });
 } else {
   smokeReport = {

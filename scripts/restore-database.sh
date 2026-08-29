@@ -47,9 +47,11 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 readonly LOG_FILE="${LOG_FILE:-/var/log/db-restore.log}"
 readonly RESTORE_TIMESTAMP=$(date -u +"%Y-%m-%d-%H%M%S")
+readonly RESTORE_STARTED_AT_EPOCH=$(date -u +%s)
 
 # Configuration variables
 BACKUP_DATE=""
+RESTORE_MANIFEST_KEY="${RESTORE_MANIFEST_KEY:-}"
 TARGET_TIME=""
 TARGET_DATABASE="${TARGET_DATABASE:-postgres}"
 ENVIRONMENT="${ENVIRONMENT:-prod}"
@@ -57,6 +59,9 @@ OUTPUT_DIR="${OUTPUT_DIR:-/tmp/db-restore-${RESTORE_TIMESTAMP}}"
 DRY_RUN=false
 VERBOSE=false
 HELP=false
+RESTORE_DRILL=false
+RESTORE_MAX_RPO_SECONDS="${RESTORE_MAX_RPO_SECONDS:-3600}"
+RESTORE_MAX_RTO_SECONDS="${RESTORE_MAX_RTO_SECONDS:-14400}"
 
 # Database configuration
 PGHOST="${PGHOST:-localhost}"
@@ -70,9 +75,13 @@ SOURCE_PGPORT="${SOURCE_PGPORT:-5432}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 BACKUP_BUCKET="${BACKUP_BUCKET:-backups-${ENVIRONMENT}-${AWS_REGION}}"
 BACKUP_S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"
+BACKUP_S3_ACCESS_KEY_ID="${BACKUP_S3_ACCESS_KEY_ID:-}"
+BACKUP_S3_SECRET_ACCESS_KEY="${BACKUP_S3_SECRET_ACCESS_KEY:-}"
 BACKUP_MANIFEST_HMAC_KEY="${BACKUP_MANIFEST_HMAC_KEY:-}"
 S3_BUCKET="${S3_BUCKET:-}"
 S3_ENDPOINT="${S3_ENDPOINT:-}"
+S3_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID:-}"
+S3_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}"
 
 # Restore options
 VERIFY_CHECKSUM=true
@@ -88,9 +97,23 @@ readonly NC='\033[0m'
 
 backup_aws() {
     if [[ -n "$BACKUP_S3_ENDPOINT" ]]; then
-        aws --endpoint-url "$BACKUP_S3_ENDPOINT" "$@"
+        AWS_ACCESS_KEY_ID="$BACKUP_S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY" \
+            aws --endpoint-url "$BACKUP_S3_ENDPOINT" "$@"
     else
-        aws "$@"
+        AWS_ACCESS_KEY_ID="$BACKUP_S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY" aws "$@"
+    fi
+}
+
+target_aws() {
+    if [[ -n "$S3_ENDPOINT" ]]; then
+        AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
+            aws --endpoint-url "$S3_ENDPOINT" "$@"
+    else
+        AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" aws "$@"
     fi
 }
 
@@ -133,12 +156,14 @@ Usage: $SCRIPT_NAME [OPTIONS]
 
 Options:
     --backup-date YYYY-MM-DD         Date of backup to restore (required)
+    --manifest-key KEY               Exact daily/.../manifest-....json candidate
     --target-time YYYY-MM-DD HH:MM:SS Target recovery time (for PITR, optional)
     --target-database NAME           Database name (default: postgres)
     --environment prod|staging|dev   Environment (default: prod)
     --output-dir PATH                Directory for restored database
     --dry-run                        Preview without executing
     --verbose                        Enable verbose output
+    --drill                          Enforce isolated target and RPO/RTO objectives
     --help                           Display this help message
 
 Examples:
@@ -172,6 +197,10 @@ EOF
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --manifest-key)
+                RESTORE_MANIFEST_KEY="$2"
+                shift 2
+                ;;
             --backup-date)
                 BACKUP_DATE="$2"
                 shift 2
@@ -200,6 +229,10 @@ parse_args() {
                 VERBOSE=true
                 shift
                 ;;
+            --drill)
+                RESTORE_DRILL=true
+                shift
+                ;;
             --help)
                 HELP=true
                 shift
@@ -218,9 +251,25 @@ parse_args() {
     fi
 
     # Validate required arguments
-    if [[ -z "$BACKUP_DATE" ]]; then
-        log ERROR "Backup date is required (--backup-date YYYY-MM-DD)"
+    if [[ -n "$RESTORE_MANIFEST_KEY" ]]; then
+        if [[ ! "$RESTORE_MANIFEST_KEY" =~ ^daily/([0-9]{4}-[0-9]{2}-[0-9]{2})/manifest-[A-Za-z0-9._-]+\.json$ ]]; then
+            log ERROR "Invalid manifest key; expected daily/YYYY-MM-DD/manifest-....json"
+            exit 2
+        fi
+        BACKUP_DATE="${BASH_REMATCH[1]}"
+    elif [[ -z "$BACKUP_DATE" ]]; then
+        log ERROR "Backup date or exact --manifest-key is required"
         usage
+        exit 2
+    fi
+
+    if [[ "$RESTORE_DRILL" == "true" && -z "$RESTORE_MANIFEST_KEY" ]]; then
+        log ERROR "Restore drills require an exact --manifest-key candidate"
+        exit 2
+    fi
+
+    if [[ "$RESTORE_DRILL" == "true" && "${RESTORE_ISOLATED_ACK:-}" != "true" ]]; then
+        log ERROR "Restore drills require RESTORE_ISOLATED_ACK=true for disposable targets"
         exit 2
     fi
 
@@ -260,6 +309,21 @@ validate_prerequisites() {
         return 1
     fi
 
+    if [[ -z "$BACKUP_S3_ACCESS_KEY_ID" || -z "$BACKUP_S3_SECRET_ACCESS_KEY" ]]; then
+        log ERROR "Dedicated backup-bucket credentials are required"
+        return 1
+    fi
+
+    if [[ -z "$S3_ACCESS_KEY_ID" || -z "$S3_SECRET_ACCESS_KEY" ]]; then
+        log ERROR "Target object-storage credentials are required"
+        return 1
+    fi
+
+    if [[ "$RESTORE_DRILL" == "true" && -n "$BACKUP_S3_ENDPOINT" && "$BACKUP_S3_ENDPOINT" == "$S3_ENDPOINT" ]]; then
+        log ERROR "Restore drill target storage must differ from backup storage"
+        return 1
+    fi
+
     # Check PostgreSQL connectivity to target
     if ! PGPASSWORD="$PGPASSWORD" psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" \
         -c "SELECT version();" &>/dev/null; then
@@ -268,7 +332,7 @@ validate_prerequisites() {
     fi
 
     # Check AWS credentials
-    if [[ -z "$BACKUP_S3_ENDPOINT" ]] && ! aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
+    if [[ -z "$BACKUP_S3_ENDPOINT" ]] && ! backup_aws sts get-caller-identity --region "$AWS_REGION" &>/dev/null; then
         log ERROR "AWS credentials not configured or invalid"
         return 1
     fi
@@ -466,9 +530,14 @@ restore_logical_backup() {
 }
 
 download_and_verify_manifest() {
-    local prefix="daily/${BACKUP_DATE}"
-    local manifest_name
-    manifest_name=$(backup_aws s3 ls "s3://${BACKUP_BUCKET}/${prefix}/" --region "$AWS_REGION" | awk '/manifest-.*\.json$/ {print $NF}' | tail -1)
+    local prefix manifest_name
+    if [[ -n "$RESTORE_MANIFEST_KEY" ]]; then
+        prefix="${RESTORE_MANIFEST_KEY%/*}"
+        manifest_name="${RESTORE_MANIFEST_KEY##*/}"
+    else
+        prefix="daily/${BACKUP_DATE}"
+        manifest_name=$(backup_aws s3 ls "s3://${BACKUP_BUCKET}/${prefix}/" --region "$AWS_REGION" | awk '/manifest-.*\.json$/ {print $NF}' | tail -1)
+    fi
     [[ -n "$manifest_name" ]] || { log ERROR "Backup manifest not found"; return 1; }
 
     for suffix in "" ".sha256" ".hmac"; do
@@ -506,10 +575,8 @@ restore_object_storage() {
     mkdir -p "$object_dir"
     tar -xzf "${OUTPUT_DIR}/${archive_name}" -C "$object_dir"
     (cd "$object_dir" && sha256sum -c "${OUTPUT_DIR}/${inventory_name}") >>"$LOG_FILE" 2>&1
-    local endpoint_args=()
-    [[ -n "$S3_ENDPOINT" ]] && endpoint_args+=(--endpoint-url "$S3_ENDPOINT")
-    aws "${endpoint_args[@]}" s3 rm "s3://${S3_BUCKET}/" --recursive --only-show-errors
-    aws "${endpoint_args[@]}" s3 sync "$object_dir/" "s3://${S3_BUCKET}/" --delete --only-show-errors
+    target_aws s3 rm "s3://${S3_BUCKET}/" --recursive --only-show-errors
+    target_aws s3 sync "$object_dir/" "s3://${S3_BUCKET}/" --delete --only-show-errors
 }
 
 # Restore physical backup with PITR
@@ -640,7 +707,20 @@ EOF
 
 # Generate restore report
 generate_restore_report() {
+    local manifest_file="$1"
     local report_file="$OUTPUT_DIR/restore-report.md"
+    local completed_at_epoch backup_created_at backup_created_at_epoch rpo_seconds rto_seconds objectives_status
+
+    completed_at_epoch=$(date -u +%s)
+    backup_created_at=$(sed -n 's/.*"created_at": "\([^"]*\)".*/\1/p' "$manifest_file")
+    backup_created_at_epoch=$(date -u -d "$backup_created_at" +%s)
+    rpo_seconds=$(( RESTORE_STARTED_AT_EPOCH - backup_created_at_epoch ))
+    (( rpo_seconds < 0 )) && rpo_seconds=0
+    rto_seconds=$(( completed_at_epoch - RESTORE_STARTED_AT_EPOCH ))
+    objectives_status="PASS"
+    if (( rpo_seconds > RESTORE_MAX_RPO_SECONDS || rto_seconds > RESTORE_MAX_RTO_SECONDS )); then
+        objectives_status="FAIL"
+    fi
 
     log INFO "Generating restore report..."
 
@@ -651,6 +731,8 @@ generate_restore_report() {
 - **Restore Date:** $(date -u -Is)
 - **Restore Timestamp:** $RESTORE_TIMESTAMP
 - **Backup Date:** $BACKUP_DATE
+- **Manifest Key:** ${RESTORE_MANIFEST_KEY:-daily/${BACKUP_DATE}/$(basename "$manifest_file")}
+- **Backup Created At:** $backup_created_at
 - **Environment:** $ENVIRONMENT
 - **Target Database:** $TARGET_DATABASE
 - **Target Host:** $PGHOST:$PGPORT
@@ -661,10 +743,12 @@ generate_restore_report() {
 - **Output Directory:** $OUTPUT_DIR
 
 ## Results
-- **Status:** $([ -f "$report_file" ] && echo "SUCCESS" || echo "PENDING"
-)
-- **Start Time:** $(date -u -Is)
-- **Duration:** See logs for details
+- **Status:** SUCCESS
+- **Started At:** $(date -u -d "@$RESTORE_STARTED_AT_EPOCH" -Is)
+- **Completed At:** $(date -u -d "@$completed_at_epoch" -Is)
+- **Measured RPO:** ${rpo_seconds}s (objective <= ${RESTORE_MAX_RPO_SECONDS}s)
+- **Measured RTO:** ${rto_seconds}s (objective <= ${RESTORE_MAX_RTO_SECONDS}s)
+- **Recovery Objectives:** $objectives_status
 
 ## Validation
 - Database connectivity: ✓ Verified
@@ -687,6 +771,10 @@ Generated: $(date -u -Is)
 EOF
 
     log INFO "Report generated: $report_file"
+    if [[ "$RESTORE_DRILL" == "true" && "$objectives_status" != "PASS" ]]; then
+        log ERROR "Restore drill exceeded its RPO/RTO objectives"
+        return 1
+    fi
 }
 
 # Cleanup temporary files
@@ -778,7 +866,9 @@ main() {
     fi
 
     # Generate report
-    generate_restore_report
+    if ! generate_restore_report "$manifest_file"; then
+        return 1
+    fi
 
     # Cleanup
     cleanup_temp_files

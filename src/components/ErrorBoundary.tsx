@@ -6,6 +6,10 @@ import {
   Refresh as RefreshIcon,
   ErrorOutlined as ErrorIcon,
 } from "@mui/icons-material";
+import { getErrorDigest } from "@/lib/error-display";
+
+const GENERIC_ERROR_MESSAGE =
+  "An unexpected error occurred while rendering this component.";
 
 interface Props {
   children: ReactNode;
@@ -16,23 +20,6 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
-}
-
-const SAFE_ERROR_MESSAGES = new Set([
-  "The requested canvas could not be found.",
-  "You do not have permission to view this canvas.",
-  "Failed to load canvas data.",
-  "Failed to load note content.",
-  "Network connection lost.",
-]);
-
-function getSafeErrorMessage(error: Error | null): string {
-  if (!error)
-    return "An unexpected error occurred while rendering this component.";
-  if (SAFE_ERROR_MESSAGES.has(error.message)) {
-    return error.message;
-  }
-  return "An unexpected error occurred while rendering this component.";
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -60,7 +47,7 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback(this.state.error, this.reset);
       }
 
-      const digest = (this.state.error as any)?.digest;
+      const digest = getErrorDigest(this.state.error);
 
       return (
         <Box
@@ -119,7 +106,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 color: "text.secondary",
               }}
             >
-              {getSafeErrorMessage(this.state.error)}
+              {GENERIC_ERROR_MESSAGE}
             </Typography>
             {digest && (
               <Typography

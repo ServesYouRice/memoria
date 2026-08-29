@@ -2,24 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { Alert, CircularProgress, Stack, Typography } from "@mui/material";
-
-type Health = {
-  status: "healthy" | "degraded" | "unhealthy";
-  timestamp: string;
-  checks: Record<string, { status: string }>;
-};
+import {
+  publicStatusSchema,
+  type PublicStatus,
+} from "@/lib/operations/public-status";
 
 export function StatusSummary() {
-  const [health, setHealth] = useState<Health | null>(null);
+  const [health, setHealth] = useState<PublicStatus | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/health", { cache: "no-store", signal: controller.signal })
+    fetch("/api/status", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = (await response.json()) as Health;
-        setHealth(body);
-        setFailed(!response.ok);
+        if (!response.ok) throw new Error("status request failed");
+        const body = publicStatusSchema.safeParse(await response.json());
+        if (!body.success) throw new Error("invalid status response");
+        setHealth(body.data);
       })
       .catch((error) => {
         if (error instanceof Error && error.name !== "AbortError")
@@ -39,27 +38,29 @@ export function StatusSummary() {
     <Stack spacing={2}>
       <Alert
         severity={
-          health.status === "healthy"
+          health.status === "operational"
             ? "success"
             : health.status === "degraded"
               ? "warning"
               : "error"
         }
       >
-        Overall status: {health.status}
+        Service status: {health.status}
       </Alert>
-      {Object.entries(health.checks).map(([name, check]) => (
-        <Typography key={name}>
-          {name}: <strong>{check.status}</strong>
-        </Typography>
-      ))}
+      <Typography>
+        {health.status === "operational"
+          ? "Core services are operating normally."
+          : health.status === "degraded"
+            ? "Core service is available, but a feature is temporarily degraded."
+            : "Core service is temporarily unavailable."}
+      </Typography>
       <Typography
         variant="caption"
         sx={{
           color: "text.secondary",
         }}
       >
-        Checked {new Date(health.timestamp).toLocaleString()}
+        Checked {new Date(health.checkedAt).toLocaleString()}
       </Typography>
     </Stack>
   );

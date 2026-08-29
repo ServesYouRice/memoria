@@ -19,6 +19,7 @@ const emptyToUndefined = (value) => {
 
 const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
 const optionalUrl = z.preprocess(emptyToUndefined, z.string().url().optional());
+const optionalEmail = z.preprocess(emptyToUndefined, z.string().email().optional());
 const optionalPositiveInt = z.preprocess(
   emptyToUndefined,
   z.coerce.number().int().positive().optional(),
@@ -38,9 +39,13 @@ const envSchema = z
     AUTH_URL: z.string().url(),
     AUTH_SECRET: z.string().min(32),
     REDIS_URL: optionalUrl,
+    INTERNAL_OPERATIONS_TOKEN: optionalString,
     MEMORIA_E2E_MODE: z.enum(['true']).optional(),
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     EMAIL_PROVIDER: z.enum(['console', 'smtp', 'sendgrid', 'resend']).default('console'),
+    EMAIL_FROM: optionalEmail,
+    EMAIL_SENDER_VERIFIED: z.enum(['true', 'false']).optional(),
+    EMAIL_DELIVERY_PROBE_TO: optionalEmail,
     SMTP_HOST: optionalString,
     SMTP_PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().optional()),
     SMTP_USER: optionalString,
@@ -56,9 +61,19 @@ const envSchema = z
     S3_SECRET_ACCESS_KEY: optionalString,
     APP_BOOTSTRAP_TOKEN: optionalString,
     MODEL_CREDENTIAL_ENCRYPTION_KEY: optionalString,
+    CRON_SECRET: optionalString,
+    BACKUP_BUCKET: optionalString,
+    BACKUP_MANIFEST_HMAC_KEY: optionalString,
+    BACKUP_S3_ENDPOINT: optionalUrl,
+    BACKUP_S3_ACCESS_KEY_ID: optionalString,
+    BACKUP_S3_SECRET_ACCESS_KEY: optionalString,
+    BACKUP_S3_SSE: optionalString,
   })
   .superRefine((data, ctx) => {
-    if (data.NODE_ENV === 'production' && !data.REDIS_URL) {
+    const validateProductionRuntime =
+      data.NODE_ENV === 'production' && process.env.MEMORIA_BUILD_PHASE !== 'true';
+
+    if (validateProductionRuntime && !data.REDIS_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['REDIS_URL'],
@@ -66,7 +81,7 @@ const envSchema = z
       });
     }
 
-    if (data.NODE_ENV === 'production' && data.UPLOAD_STORAGE !== 's3') {
+    if (validateProductionRuntime && data.UPLOAD_STORAGE !== 's3') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['UPLOAD_STORAGE'],
@@ -74,7 +89,7 @@ const envSchema = z
       });
     }
 
-    if (data.NODE_ENV === 'production' && !data.APP_BOOTSTRAP_TOKEN) {
+    if (validateProductionRuntime && !data.APP_BOOTSTRAP_TOKEN) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['APP_BOOTSTRAP_TOKEN'],
@@ -83,7 +98,7 @@ const envSchema = z
     }
 
     if (
-      data.NODE_ENV === 'production' &&
+      validateProductionRuntime &&
       (!data.MODEL_CREDENTIAL_ENCRYPTION_KEY || data.MODEL_CREDENTIAL_ENCRYPTION_KEY.length < 32)
     ) {
       ctx.addIssue({
@@ -101,12 +116,77 @@ const envSchema = z
       });
     }
 
-    if (data.NODE_ENV === 'production' && !['sendgrid', 'resend'].includes(data.EMAIL_PROVIDER)) {
+    if (validateProductionRuntime && !['sendgrid', 'resend'].includes(data.EMAIL_PROVIDER)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_PROVIDER'],
         message: 'EMAIL_PROVIDER must be sendgrid or resend in production.',
       });
+    }
+
+    if (validateProductionRuntime) {
+      for (const field of [
+        'INTERNAL_OPERATIONS_TOKEN',
+        'CRON_SECRET',
+        'BACKUP_MANIFEST_HMAC_KEY',
+      ]) {
+        if (!data[field] || data[field].length < 24) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} of at least 24 characters is required in production.`,
+          });
+        }
+      }
+
+      if (!data.EMAIL_FROM || /@(localhost|[^@]+\.local)$/i.test(data.EMAIL_FROM)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_FROM'],
+          message: 'EMAIL_FROM must use a verified, publicly routable domain.',
+        });
+      }
+      if (data.EMAIL_SENDER_VERIFIED !== 'true') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_SENDER_VERIFIED'],
+          message: 'EMAIL_SENDER_VERIFIED=true is required in production.',
+        });
+      }
+      if (!data.EMAIL_DELIVERY_PROBE_TO) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_DELIVERY_PROBE_TO'],
+          message: 'EMAIL_DELIVERY_PROBE_TO is required in production.',
+        });
+      }
+      for (const field of [
+        'BACKUP_BUCKET',
+        'BACKUP_S3_ACCESS_KEY_ID',
+        'BACKUP_S3_SECRET_ACCESS_KEY',
+      ]) {
+        if (!data[field]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} is required for off-host production backups.`,
+          });
+        }
+      }
+      if (data.BACKUP_S3_SSE === 'none') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['BACKUP_S3_SSE'],
+          message: 'BACKUP_S3_SSE must enable production backup encryption.',
+        });
+      }
+      if (data.BACKUP_S3_ENDPOINT && data.BACKUP_S3_ENDPOINT === data.S3_ENDPOINT) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['BACKUP_S3_ENDPOINT'],
+          message: 'Production backup storage must be off-host.',
+        });
+      }
     }
 
     if (data.UPLOAD_STORAGE === 's3') {
