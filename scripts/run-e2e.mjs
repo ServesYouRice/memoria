@@ -12,7 +12,7 @@ const artifactsDir = join(projectRoot, 'test-results', 'services');
 const keepServices = process.argv.includes('--keep');
 const skipImageBuild =
   process.env.E2E_SKIP_IMAGE_BUILD === '1' || process.argv.includes('--skip-image-build');
-const harnessArgs = new Set(['--keep', '--skip-image-build']);
+const harnessArgs = new Set(['--', '--keep', '--skip-image-build']);
 const playwrightArgs = process.argv.slice(2).filter((argument) => !harnessArgs.has(argument));
 const composeArgs = ['compose', '-p', projectName, '-f', composeFile];
 const runtimeEnv = {

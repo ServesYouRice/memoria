@@ -17,7 +17,6 @@ happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-047](tasks/IMP-047.md) | Make operations recoverable and observable (need higher model assistance) |  |
 
 ## READY
 
