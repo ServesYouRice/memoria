@@ -34,6 +34,7 @@ describe("durable verification delivery", () => {
         verificationUrl: expect.stringContaining("raw-verification-value"),
       }),
       "cldelivery12345678901234567",
+      undefined,
     );
   });
 

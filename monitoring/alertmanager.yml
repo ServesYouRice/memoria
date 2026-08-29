@@ -1,0 +1,12 @@
+route:
+  receiver: operator-console
+  group_by: ['alertname', 'severity', 'owner']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+# The reference profile keeps alerts in Alertmanager and Grafana without
+# embedding external notification credentials. Operators should add their
+# organization receiver before exposing the stack beyond loopback.
+receivers:
+  - name: operator-console

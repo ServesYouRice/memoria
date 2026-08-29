@@ -33,6 +33,9 @@ vi.mock("@/lib/logger", () => ({
   createLogger: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }),
 }));
 
+import { POST as sendVerificationPost } from "@/app/api/v1/auth/send-verification/route";
+import { POST as verifyEmailPost } from "@/app/api/v1/auth/verify-email/route";
+
 describe("email verification API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,8 +63,7 @@ describe("email verification API", () => {
 
   it("returns the same resend response for an unknown account", async () => {
     mocks.userFindUnique.mockResolvedValue(null);
-    const { POST } = await import("@/app/api/v1/auth/send-verification/route");
-    const response = await POST(
+    const response = await sendVerificationPost(
       new Request("https://memoria.example/api/v1/auth/send-verification", {
         method: "POST",
         body: JSON.stringify({ email: "missing@example.com" }),
@@ -82,8 +84,7 @@ describe("email verification API", () => {
       name: "User",
       emailVerified: null,
     });
-    const { POST } = await import("@/app/api/v1/auth/send-verification/route");
-    const response = await POST(
+    const response = await sendVerificationPost(
       new Request("https://memoria.example/api/v1/auth/send-verification", {
         method: "POST",
         body: JSON.stringify({ email: "USER@example.com" }),
@@ -113,8 +114,7 @@ describe("email verification API", () => {
       expiresAt: new Date(Date.now() - 1_000),
       usedAt: null,
     });
-    const { POST } = await import("@/app/api/v1/auth/verify-email/route");
-    const response = await POST(
+    const response = await verifyEmailPost(
       new Request("https://memoria.example/api/v1/auth/verify-email", {
         method: "POST",
         body: JSON.stringify({ token: "expired" }),
@@ -136,8 +136,7 @@ describe("email verification API", () => {
       email: "user@example.com",
       emailVerified: null,
     });
-    const { POST } = await import("@/app/api/v1/auth/verify-email/route");
-    const response = await POST(
+    const response = await verifyEmailPost(
       new Request("https://memoria.example/api/v1/auth/verify-email", {
         method: "POST",
         body: JSON.stringify({ token: "valid" }),

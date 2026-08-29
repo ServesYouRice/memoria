@@ -61,6 +61,7 @@ import type {
 import { ConsoleEmailProvider } from "./providers/console";
 import { SendGridEmailProvider } from "./providers/sendgrid";
 import { ResendEmailProvider } from "./providers/resend";
+import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
 import {
   passwordResetTemplate,
   emailVerificationTemplate,
@@ -215,6 +216,7 @@ export async function sendEmail(
       "Email sent successfully",
     );
   } catch (error) {
+    incrementOperationalCounter("email_delivery_failures_total");
     logger.error(
       { error, to: options.to, subject: options.subject },
       "Failed to send email",
@@ -249,6 +251,7 @@ export async function sendEmailVerification(
   to: EmailAddress,
   data: EmailVerificationData,
   deliveryId?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const template = emailVerificationTemplate(data);
 
@@ -258,6 +261,7 @@ export async function sendEmailVerification(
     text: template.text,
     html: template.html,
     deliveryId,
+    signal,
   });
 
   logger.info({ email: to.email }, "Email verification sent");

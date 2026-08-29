@@ -4,8 +4,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     container_name: memoria-app
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -32,14 +36,18 @@ services:
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid or resend}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@memoria.local}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Memoria}
+      EMAIL_SENDER_VERIFIED: ${EMAIL_SENDER_VERIFIED:-false}
+      EMAIL_DELIVERY_PROBE_TO: ${EMAIL_DELIVERY_PROBE_TO:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MODEL_CREDENTIAL_ENCRYPTION_KEY: ${MODEL_CREDENTIAL_ENCRYPTION_KEY}
       CRON_SECRET: ${CRON_SECRET}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       FEATURE_BOOKMARK_UNFURLING: ${FEATURE_BOOKMARK_UNFURLING:-true}
       BOOKMARK_REFRESH_INTERVAL_MS: ${BOOKMARK_REFRESH_INTERVAL_MS:-900000}
+      AI_ACTION_BUDGET_DAILY: ${AI_ACTION_BUDGET_DAILY:-1000}
       UPLOAD_STORAGE: ${UPLOAD_STORAGE:-s3}
       UPLOAD_SCAN_URL: ${UPLOAD_SCAN_URL:-}
       UPLOAD_SCAN_REQUIRED: ${UPLOAD_SCAN_REQUIRED:-false}
@@ -53,17 +61,42 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-35}
       BACKUP_MANIFEST_HMAC_KEY: ${BACKUP_MANIFEST_HMAC_KEY:-}
     ports:
-      - '127.0.0.1:${APP_HOST_PORT:-3000}:3000'
+      - '127.0.0.1:${OPERATIONS_HOST_PORT:-3002}:3000'
     read_only: true
     tmpfs:
       - /tmp
       - /app/.next/cache
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health']
+      test: ['CMD-SHELL', 'wget -q --header="Authorization: Bearer $${INTERNAL_OPERATIONS_TOKEN}" -O /dev/null http://127.0.0.1:3000/api/ready']
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  gateway:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    init: true
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      MEMORIA_ADDRESS: :3000
+      INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - '127.0.0.1:${APP_HOST_PORT:-3000}:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /config
+      - /data
 
   migrate:
     image: ${MEMORIA_IMAGE:-memoria:local}
@@ -83,6 +116,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    init: true
     depends_on:
       app:
         condition: service_healthy
@@ -99,6 +133,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -117,6 +153,8 @@ services:
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid or resend}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@memoria.local}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Memoria}
+      EMAIL_SENDER_VERIFIED: ${EMAIL_SENDER_VERIFIED:-false}
+      EMAIL_DELIVERY_PROBE_TO: ${EMAIL_DELIVERY_PROBE_TO:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       UPLOAD_STORAGE: ${UPLOAD_STORAGE:-s3}
@@ -128,7 +166,121 @@ services:
       BACKUP_BUCKET: ${BACKUP_BUCKET:-memoria-backups}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-35}
       BACKUP_MANIFEST_HMAC_KEY: ${BACKUP_MANIFEST_HMAC_KEY:-}
+      OUTBOX_LEASE_MS: ${OUTBOX_LEASE_MS:-30000}
+      OUTBOX_HANDLER_TIMEOUT_MS: ${OUTBOX_HANDLER_TIMEOUT_MS:-15000}
+      OUTBOX_CONCURRENCY: ${OUTBOX_CONCURRENCY:-4}
     read_only: true
+
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    command: ['./scripts/run-backup-schedule.sh']
+    environment:
+      ENVIRONMENT: prod
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: memoria
+      PGDATABASE: memoria
+      PGPASSWORD: ${DATABASE_PASSWORD}
+      REDIS_URL: ${REDIS_URL}
+      AWS_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-35}
+      BACKUP_MANIFEST_HMAC_KEY: ${BACKUP_MANIFEST_HMAC_KEY:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      BACKUP_S3_SSE: ${BACKUP_S3_SSE:-AES256}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-3600}
+      S3_BUCKET: ${S3_BUCKET:-memoria-uploads}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/log
+
+  backup-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    restart: unless-stopped
+    init: true
+    command: ['./scripts/run-backup-freshness-loop.sh']
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      AWS_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      MAX_BACKUP_AGE_SECONDS: ${MAX_BACKUP_AGE_SECONDS:-5400}
+      BACKUP_FRESHNESS_INTERVAL_SECONDS: ${BACKUP_FRESHNESS_INTERVAL_SECONDS:-900}
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ['observability']
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    secrets:
+      - internal_operations_token
+    ports:
+      - '127.0.0.1:${PROMETHEUS_HOST_PORT:-9090}:9090'
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: ['observability']
+    restart: unless-stopped
+    command: ['--config.file=/etc/alertmanager/alertmanager.yml']
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - '127.0.0.1:${ALERTMANAGER_HOST_PORT:-9093}:9093'
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    profiles: ['observability']
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_started
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - '127.0.0.1:${GRAFANA_HOST_PORT:-3001}:3000'
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -179,20 +331,6 @@ services:
     volumes:
       - minio_data:/data
 
-  backup-minio:
-    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
-    profiles: ['recovery']
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${BACKUP_MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${BACKUP_MINIO_ROOT_PASSWORD}
-    ports:
-      - '127.0.0.1:9100:9000'
-      - '127.0.0.1:9101:9001'
-    volumes:
-      - backup_minio_data:/data
-
 volumes:
   postgres_data:
     driver: local
@@ -200,5 +338,13 @@ volumes:
     driver: local
   minio_data:
     driver: local
-  backup_minio_data:
+  prometheus_data:
     driver: local
+  alertmanager_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+secrets:
+  internal_operations_token:
+    environment: INTERNAL_OPERATIONS_TOKEN

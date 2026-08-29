@@ -19,6 +19,7 @@ const runtimeEnv = {
   ...process.env,
   MEMORIA_E2E_IMAGE: image,
   BASE_URL: 'http://127.0.0.1:3300',
+  OPERATIONS_BASE_URL: 'http://127.0.0.1:3302',
   E2E_EXTERNAL_SERVER: '1',
   E2E_EMAIL_CAPTURE_URL: 'http://127.0.0.1:38025',
   E2E_EMAIL_CAPTURE_TOKEN: 'memoria-e2e-email-capture-token',

@@ -17,6 +17,8 @@ x-runtime-environment: &runtime-environment
   EMAIL_PROVIDER: sendgrid
   EMAIL_FROM: e2e@memoria.local
   EMAIL_FROM_NAME: Memoria E2E
+  EMAIL_SENDER_VERIFIED: 'true'
+  EMAIL_DELIVERY_PROBE_TO: operator@memoria.local
   SENDGRID_API_KEY: memoria-e2e-email-capture-key
   SENDGRID_API_URL: http://email-capture:8025/v3/mail/send
   E2E_EMAIL_CAPTURE_TOKEN: memoria-e2e-email-capture-token
@@ -113,6 +115,8 @@ services:
 
   app:
     image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}
+    init: true
+    stop_grace_period: 30s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -124,9 +128,9 @@ services:
         condition: service_healthy
     environment: *runtime-environment
     ports:
-      - '127.0.0.1:3300:3000'
+      - '127.0.0.1:3302:3000'
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health']
+      test: ['CMD-SHELL', 'wget -q --header="Authorization: Bearer $${INTERNAL_OPERATIONS_TOKEN}" -O /dev/null http://127.0.0.1:3000/api/ready']
       interval: 3s
       timeout: 5s
       retries: 40
@@ -136,8 +140,33 @@ services:
       - /tmp
       - /app/.next/cache
 
+  gateway:
+    image: caddy:2.10.2-alpine
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      MEMORIA_ADDRESS: :3000
+      INTERNAL_OPERATIONS_TOKEN: memoria-e2e-operations-token-0123456789abcdef
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - '127.0.0.1:3300:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health']
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /config
+      - /data
+
   outbox-worker:
     image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}
+    init: true
+    stop_grace_period: 30s
     command: ['pnpm', 'worker:outbox']
     depends_on:
       migrate:

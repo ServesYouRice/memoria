@@ -3,6 +3,8 @@
   flex-direction: column;
   height: 400px;
   overflow: hidden;
+  color: inherit;
+  background: inherit;
 }
 
 .command-input-wrapper {
@@ -19,6 +21,7 @@
   font-size: 15px;
   background: transparent;
   font-family: inherit;
+  color: inherit;
 }
 
 .command-list {
@@ -60,7 +63,7 @@
   user-select: none;
 }
 
-.command-item[data-selected='true'] {
+.command-item[data-selected="true"] {
   background-color: rgba(25, 118, 210, 0.12);
   color: #1976d2;
 }
@@ -95,39 +98,34 @@
   font-weight: 500;
 }
 
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-  .command-input-wrapper {
-    border-bottom-color: rgba(255, 255, 255, 0.12);
-  }
+/* Follow the app's explicit selection, not the operating-system preference. */
+:root[data-theme="dark"] .command-input-wrapper {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
 
-  .command-empty {
-    color: rgba(255, 255, 255, 0.6);
-  }
+:root[data-theme="dark"] .command-empty,
+:root[data-theme="dark"] .command-group [cmdk-group-heading] {
+  color: rgba(255, 255, 255, 0.6);
+}
 
-  .command-group [cmdk-group-heading] {
-    color: rgba(255, 255, 255, 0.6);
-  }
+:root[data-theme="dark"] .command-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
 
-  .command-item:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-  }
+:root[data-theme="dark"] .command-item[data-selected="true"] {
+  background-color: rgba(144, 202, 249, 0.16);
+  color: #90caf9;
+}
 
-  .command-item[data-selected='true'] {
-    background-color: rgba(144, 202, 249, 0.16);
-    color: #90caf9;
-  }
+:root[data-theme="dark"] .command-separator {
+  background-color: rgba(255, 255, 255, 0.12);
+}
 
-  .command-separator {
-    background-color: rgba(255, 255, 255, 0.12);
-  }
+:root[data-theme="dark"] .command-footer {
+  border-top-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.6);
+}
 
-  .command-footer {
-    border-top-color: rgba(255, 255, 255, 0.12);
-    color: rgba(255, 255, 255, 0.6);
-  }
-
-  .command-kbd {
-    background-color: rgba(255, 255, 255, 0.12);
-  }
+:root[data-theme="dark"] .command-kbd {
+  background-color: rgba(255, 255, 255, 0.12);
 }

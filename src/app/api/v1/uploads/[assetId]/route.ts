@@ -47,9 +47,17 @@ export const GET = withApiHandler(
     ).catch(() => {
       throw notFoundError("Upload", assetId);
     });
+    // Public canvas assets are cacheable for a short window (300s) with
+    // ETag validation. This bounds Node and object storage round trips on
+    // popular public links while keeping the link-revocation and asset-deletion
+    // window to at most 5 minutes. Private canvas assets remain non-cacheable.
+    const cacheControl = asset.canvas.isPublic
+      ? "public, max-age=300, must-revalidate"
+      : "private, max-age=0, must-revalidate";
+
     const headers: Record<string, string> = {
       "content-type": asset.mimeType,
-      "cache-control": "private, max-age=0, must-revalidate",
+      "cache-control": cacheControl,
       etag: object.etag,
       "x-content-type-options": "nosniff",
       "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.filename)}`,

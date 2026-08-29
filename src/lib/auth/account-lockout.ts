@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import { createLogger } from "@/lib/logger";
+import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
 
 const logger = createLogger("account-lockout");
 const LOCKOUT_THRESHOLD = 5;
@@ -39,6 +40,7 @@ function keys(email: string, clientId: string) {
 }
 
 function redisFailure(error: unknown, operation: string): never | void {
+  incrementOperationalCounter("redis_safety_failures_total");
   logger.warn({ error, operation }, "Login attempt store unavailable");
   if (process.env.NODE_ENV === "production") {
     throw new LockoutStoreUnavailableError();

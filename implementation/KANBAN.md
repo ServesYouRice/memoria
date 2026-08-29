@@ -5,49 +5,33 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
 
-Gate status, 2026-08-24: `pnpm lint` and `pnpm type-check` pass with TypeScript
-5.9.3, and all 64 unit/API files collect. The normal test gate is still
-order-dependent: its first run failed 8 of 444 tests, `pnpm test:coverage` then
-passed 444/444, and an immediate repeat of the normal command passed 444/444.
-The focused command is also broken and nearly every server test still pays for
-happy-dom. Take [IMP-053](tasks/IMP-053.md) first, then
-[IMP-052](tasks/IMP-052.md), before relying on later test evidence.
+Gate status, 2026-08-29: after integrating the `gemini-implementation` and
+`codex-implementation` lines, `pnpm lint`, `pnpm type-check`,
+`pnpm test:coverage` (95 files, 750 tests), `pnpm test:coverage:routes`,
+`pnpm build`, and `pnpm check-bundle` all pass. The order-dependent unit gate
+that IMP-052 and IMP-053 addressed did not reappear across repeated runs. That
+evidence was collected on Node 22, not the Node 24 line `package.json` and CI
+pin. `pnpm test:integration` now passes locally against PostgreSQL 16 (14/14)
+after the gate repair. `pnpm test:e2e` and `pnpm smoke` still need Docker and
+remain gated on DEC-014; CI exercises the E2E gate.
 
 ## DOING
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-045](tasks/IMP-045.md) | Make collaboration transport truthful and bounded | In progress |
+| [IMP-047](tasks/IMP-047.md) | Make operations recoverable and observable (need higher model assistance) |  |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-053](tasks/IMP-053.md) | Make focused runs and test environments reproducible |  |
-| [IMP-046](tasks/IMP-046.md) | Make the launch surface truthful and accessible |  |
-| [IMP-047](tasks/IMP-047.md) | Make operations recoverable and observable |  |
-| [IMP-051](tasks/IMP-051.md) | Close the verified small-surface residue |  |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-052](tasks/IMP-052.md) | Make the unit and API gate reproducibly green | IMP-053 |
-| [IMP-055](tasks/IMP-055.md) | Replace test evidence that asserts nothing about the product | IMP-052, IMP-053 |
-| [IMP-056](tasks/IMP-056.md) | Cover and harden the API-key credential boundary | IMP-052, IMP-053 |
-| [IMP-057](tasks/IMP-057.md) | Cover account credential and deletion routes | IMP-052, IMP-053 |
-| [IMP-058](tasks/IMP-058.md) | Cover operator, cron, bootstrap, and CSP boundaries | IMP-052, IMP-053 |
-| [IMP-059](tasks/IMP-059.md) | Cover agent request authentication and credential modes | IMP-052, IMP-053 |
-| [IMP-060](tasks/IMP-060.md) | Cover tenant scoping for workspaces, trash, and notifications | IMP-052, IMP-053 |
-| [IMP-062](tasks/IMP-062.md) | Make nominal API suites exercise their routes | IMP-052, IMP-053 |
-| [IMP-063](tasks/IMP-063.md) | Cover API-key management routes | IMP-052, IMP-053, IMP-056 |
-| [IMP-064](tasks/IMP-064.md) | Cover AI route authorization and request boundaries | IMP-052, IMP-053 |
-| [IMP-065](tasks/IMP-065.md) | Cover comment authorization by visibility and role | IMP-052, IMP-053 |
-| [IMP-066](tasks/IMP-066.md) | Cover connection authorization and canvas binding | IMP-052, IMP-053 |
-| [IMP-050](tasks/IMP-050.md) | Make local push checks proportional and fail-safe | IMP-052, IMP-053 |
-| [IMP-061](tasks/IMP-061.md) | Ratchet explicit API-route coverage from a measured baseline | IMP-055 through IMP-060, IMP-062 through IMP-066 |
-| [IMP-048](tasks/IMP-048.md) | Bound resource cost at supported scale | IMP-045 |
-| [IMP-038](tasks/IMP-038.md) | Production browser journeys and operations smoke | IMP-045 through IMP-048, IMP-050, IMP-061, DEC-014 |
+| [IMP-048](tasks/IMP-048.md) | Bound resource cost at supported scale (need higher model assistance) | IMP-045 |
+| [IMP-038](tasks/IMP-038.md) | Production browser journeys and operations smoke (need higher model assistance) | IMP-045 through IMP-048, IMP-050, IMP-061, DEC-014 |
 
 ## USER DECISIONS
 

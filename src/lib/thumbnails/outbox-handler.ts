@@ -15,7 +15,7 @@ const deleteSchema = z
 export function createThumbnailStoreHandler(
   prisma: PrismaClient,
 ): OutboxHandler {
-  return async (job) => {
+  return async (job, context) => {
     const { candidateId } = candidateSchema.parse(job.payload);
     const candidate = await prisma.canvasThumbnailCandidate.findUnique({
       where: { id: candidateId },
@@ -43,6 +43,7 @@ export function createThumbnailStoreHandler(
       storageKey,
       candidate.bytes,
       candidate.mimeType,
+      context?.signal,
     );
     const install = await prisma.$transaction(async (tx) => {
       const currentRows = await tx.$queryRaw<Array<{ revision: bigint }>>`
@@ -76,7 +77,7 @@ export function createThumbnailStoreHandler(
       };
     });
     if (!install.installed) {
-      await deletePrivateUploadObject(storageMode, storageKey);
+      await deletePrivateUploadObject(storageMode, storageKey, context?.signal);
       return;
     }
     if (install.oldKey) {
@@ -92,11 +93,12 @@ export function createThumbnailStoreHandler(
 }
 
 export function createThumbnailDeleteHandler(): OutboxHandler {
-  return async (job) => {
+  return async (job, context) => {
     const { storageKey } = deleteSchema.parse(job.payload);
     await deletePrivateUploadObject(
       process.env.UPLOAD_STORAGE || "local",
       storageKey,
+      context?.signal,
     );
   };
 }

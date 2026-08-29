@@ -2,7 +2,10 @@ import { getPnpmCommand, projectRoot, run } from './lib/runtime.mjs';
 
 const pnpm = getPnpmCommand();
 
-await run('node', ['scripts/validate-env.mjs'], { cwd: projectRoot });
+await run('node', ['scripts/validate-env.mjs'], {
+  cwd: projectRoot,
+  env: { ...process.env, MEMORIA_BUILD_PHASE: 'true' },
+});
 await run(pnpm, ['exec', 'next', 'build', '--webpack'], {
   cwd: projectRoot,
   env: {

@@ -1,10 +1,12 @@
 import { type NextRequest } from "next/server";
+import { requireAuth } from "@/lib/api/auth";
 import { errorResponse } from "@/lib/errors";
 import { requireTemplatesEnabled } from "@/lib/templates/availability";
 
 export async function POST(request: NextRequest) {
   try {
-    requireTemplatesEnabled();
+    await requireAuth();
+    requireTemplatesEnabled("canvasDuplication");
   } catch (error) {
     return errorResponse(error, request.url);
   }

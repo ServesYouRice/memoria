@@ -8,6 +8,7 @@
 
 const CACHE_NAME = "memoria-public-v2";
 const UNSAFE_LEGACY_CACHES = new Set(["canvascollect-v1"]);
+const MEMORIA_CACHE_PREFIX = "memoria-";
 const PUBLIC_FALLBACKS = ["/offline", "/manifest.json"];
 
 function isPublicAsset(url) {
@@ -34,7 +35,10 @@ self.addEventListener("activate", (event) => {
         Promise.all(
           names
             .filter(
-              (name) => name !== CACHE_NAME || UNSAFE_LEGACY_CACHES.has(name),
+              (name) =>
+                name !== CACHE_NAME &&
+                (name.startsWith(MEMORIA_CACHE_PREFIX) ||
+                  UNSAFE_LEGACY_CACHES.has(name)),
             )
             .map((name) => caches.delete(name)),
         ),

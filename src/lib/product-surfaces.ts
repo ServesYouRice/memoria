@@ -28,6 +28,28 @@ export const MEETING_TIMER_DISCLOSURE =
   "Personal timer — runs only in your browser and is not shared with collaborators.";
 
 /**
+ * Launch feature registry (IMP-046).
+ *
+ * Keep this object client-safe: both route guards and visible UI import it, so
+ * a deliberately disabled backend can never retain a matching launch control.
+ * Item duplication is intentionally not listed here; it is a supported canvas
+ * item write, unlike whole-canvas duplication.
+ */
+export const LAUNCH_CAPABILITIES = Object.freeze({
+  templates: false,
+  canvasDuplication: false,
+  polls: false,
+});
+
+export type LaunchCapability = keyof typeof LAUNCH_CAPABILITIES;
+
+export function isLaunchCapabilityEnabled(
+  capability: LaunchCapability,
+): boolean {
+  return LAUNCH_CAPABILITIES[capability];
+}
+
+/**
  * DEC-013 — the AR canvas layer stays off until the real-device/browser matrix
  * passes. It is opt-in per deployment and labelled experimental when enabled.
  */

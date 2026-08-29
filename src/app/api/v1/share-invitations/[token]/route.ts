@@ -14,6 +14,49 @@ interface RouteContext {
   params: Promise<{ token: string }>;
 }
 
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  try {
+    const { userId } = await requireAuth();
+    const { token } = await params;
+    const tokenHash = fingerprintSecret(token);
+    const [invitation, user] = await Promise.all([
+      prisma.canvasShareInvitation.findUnique({
+        where: { tokenHash },
+        include: {
+          canvas: { select: { name: true } },
+          invitedBy: { select: { name: true, email: true } },
+        },
+      }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, emailVerified: true },
+      }),
+    ]);
+    if (
+      !invitation ||
+      invitation.respondedAt ||
+      invitation.expiresAt <= new Date()
+    ) {
+      throw new NotFoundError("Invitation is unavailable");
+    }
+    if (
+      !user?.emailVerified ||
+      user.email.toLowerCase() !== invitation.email.toLowerCase()
+    ) {
+      throw new ForbiddenError("Invitation is unavailable");
+    }
+
+    return NextResponse.json({
+      canvasName: invitation.canvas.name,
+      inviterName: invitation.invitedBy.name || invitation.invitedBy.email,
+      role: invitation.role,
+      expiresAt: invitation.expiresAt,
+    });
+  } catch (error) {
+    return errorResponse(error, request.url);
+  }
+}
+
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
     const { userId } = await requireAuth();

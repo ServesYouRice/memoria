@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -13,11 +13,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  IconButton,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
   Paper,
   TextField,
   Typography,
@@ -26,8 +21,6 @@ import {
 } from "@mui/material";
 import {
   Add as AddIcon,
-  MoreVert,
-  ContentCopy as DuplicateIcon,
   Delete as DeleteIcon,
   CheckBoxOutlineBlank,
   Close as CloseIcon,
@@ -38,7 +31,6 @@ import { formatDistanceToNow } from "date-fns";
 import {
   useCanvases,
   useCreateCanvas,
-  useDuplicateCanvas,
   canvasKeys,
 } from "@/lib/hooks/use-canvases";
 import { useWorkspace } from "@/lib/hooks/use-workspaces";
@@ -60,10 +52,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newCanvasName, setNewCanvasName] = useState("");
-  const [menuAnchor, setMenuAnchor] = useState<{
-    element: HTMLElement;
-    canvasId: string;
-  } | null>(null);
+  const createInFlightRef = useRef(false);
   const [selectedCanvasIds, setSelectedCanvasIds] = useState<Set<string>>(
     new Set(),
   );
@@ -82,7 +71,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     isFetchingNextPage,
   } = useCanvases(workspaceId || undefined);
   const createCanvas = useCreateCanvas();
-  const duplicateCanvas = useDuplicateCanvas();
   const { mode, toggleTheme } = useThemeMode();
 
   const canvases = useMemo(() => {
@@ -90,6 +78,8 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   }, [canvasesData]);
 
   const handleCreateCanvas = async () => {
+    if (createInFlightRef.current) return;
+    createInFlightRef.current = true;
     try {
       const canvas = await createCanvas.mutateAsync({
         name: newCanvasName || undefined,
@@ -100,6 +90,8 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       router.push(`/canvas/${canvas.id}`);
     } catch {
       toast.error("Failed to create canvas");
+    } finally {
+      createInFlightRef.current = false;
     }
   };
 
@@ -137,57 +129,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
     if (selectionMode) setSelectedCanvasIds(new Set());
-  };
-
-  const handleMenuOpen = (
-    event: React.MouseEvent<HTMLElement>,
-    canvasId: string,
-  ) => {
-    event.stopPropagation();
-    setMenuAnchor({ element: event.currentTarget, canvasId });
-  };
-
-  const handleMenuClose = () => setMenuAnchor(null);
-
-  const handleDuplicate = async () => {
-    if (!menuAnchor) return;
-    handleMenuClose();
-    try {
-      await duplicateCanvas.mutateAsync(menuAnchor.canvasId);
-      toast.success("Canvas duplicated");
-    } catch {
-      toast.error("Failed to duplicate canvas");
-    }
-  };
-
-  const handleBulkDuplicate = async () => {
-    const ids = Array.from(selectedCanvasIds);
-    if (ids.length === 0) return;
-
-    const results = await Promise.allSettled(
-      ids.map((id) => duplicateCanvas.mutateAsync(id)),
-    );
-
-    const succeeded = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.filter((r) => r.status === "rejected").length;
-
-    if (failed === 0) {
-      toast.success(
-        `Duplicated ${succeeded} canvas${succeeded === 1 ? "" : "es"}`,
-      );
-      setSelectedCanvasIds(new Set());
-      setSelectionMode(false);
-    } else if (succeeded > 0) {
-      toast.warning(
-        `Duplicated ${succeeded} canvas${succeeded === 1 ? "" : "es"}, ${failed} failed`,
-      );
-      const failedIds = new Set(
-        ids.filter((_, idx) => results[idx].status === "rejected"),
-      );
-      setSelectedCanvasIds(failedIds);
-    } else {
-      toast.error("Failed to duplicate selected canvases");
-    }
   };
 
   const handleBulkDelete = async () => {
@@ -348,15 +289,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                 <Button
                   size="small"
                   variant="outlined"
-                  startIcon={<DuplicateIcon />}
-                  onClick={handleBulkDuplicate}
-                  disabled={selectedCanvasIds.size === 0}
-                >
-                  Duplicate
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
                   color="error"
                   startIcon={<DeleteIcon />}
                   onClick={() => setDeleteConfirmOpen(true)}
@@ -435,21 +367,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                             p: 0.25,
                           }}
                         />
-                      ) : (
-                        <IconButton
-                          size="small"
-                          aria-label={`Actions for ${canvas.name}`}
-                          onClick={(e) => handleMenuOpen(e, canvas.id)}
-                          sx={{
-                            bgcolor: (theme) =>
-                              alpha(theme.palette.background.paper, 0.85),
-                            backdropFilter: "blur(4px)",
-                            "&:hover": { bgcolor: "background.paper" },
-                          }}
-                        >
-                          <MoreVert fontSize="small" />
-                        </IconButton>
-                      )
+                      ) : undefined
                     }
                   />
                 ))}
@@ -503,7 +421,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             onChange={(e) => setNewCanvasName(e.target.value)}
             placeholder="Untitled Canvas"
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleCreateCanvas();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleCreateCanvas();
+              }
             }}
           />
         </DialogContent>
@@ -518,20 +439,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Canvas action menu */}
-      <Menu
-        anchorEl={menuAnchor?.element}
-        open={Boolean(menuAnchor)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem onClick={handleDuplicate}>
-          <ListItemIcon>
-            <DuplicateIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Duplicate</ListItemText>
-        </MenuItem>
-      </Menu>
 
       {/* Delete confirmation dialog */}
       <Dialog

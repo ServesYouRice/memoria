@@ -7,6 +7,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { createLogger } from "@/lib/logger";
 import type { CommittedCanvasItemEvent } from "@/lib/hooks/use-canvas-items";
+import {
+  CURSOR_TICK_MS,
+  collaborationCloseDisposition,
+  reconnectDelayMs,
+} from "@/lib/collaboration/transport-policy";
 
 const logger = createLogger("collaboration");
 
@@ -30,9 +35,23 @@ export interface UseCollaborationOptions {
   name?: string;
   enabled?: boolean;
   onMessage?: (message: any) => void;
-  onCommittedEvent?: (event: CommittedCanvasItemEvent) => void | Promise<void>;
+  onCommittedEvents?: (
+    events: CommittedCanvasItemEvent[],
+  ) => void | Promise<void>;
   onSnapshotRequired?: () => void;
 }
+
+export type CollaborationOutgoingMessage =
+  | {
+      kind: "cursor_chat";
+      message: string;
+      position: { x: number; y: number };
+    }
+  | {
+      kind: "reaction";
+      emoji: string;
+      position: { x: number; y: number };
+    };
 
 export interface UseCollaborationResult {
   users: CollaborationUser[];
@@ -45,8 +64,9 @@ export interface UseCollaborationResult {
     | "reconnecting"
     | "disconnected"
     | "error";
+  connectionMessage: string | null;
   updateCursor: (x: number, y: number) => void;
-  broadcastMessage: (payload: any) => void;
+  broadcastMessage: (payload: CollaborationOutgoingMessage) => void;
 }
 
 /**
@@ -62,7 +82,7 @@ export function useCollaboration(
     name,
     enabled = true,
     onMessage,
-    onCommittedEvent,
+    onCommittedEvents,
     onSnapshotRequired,
   } = options;
 
@@ -77,6 +97,9 @@ export function useCollaboration(
     | "disconnected"
     | "error"
   >("idle");
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(
+    null,
+  );
 
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
@@ -84,28 +107,44 @@ export function useCollaboration(
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const reconnectStableTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(true);
+  const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
+  const cursorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCursorRef = useRef<bigint>(0n);
   const replayInFlightRef = useRef(false);
+  const deferredCommittedEventsRef = useRef(
+    new Map<string, CommittedCanvasItemEvent>(),
+  );
+  const pendingCommittedEventsRef = useRef<CommittedCanvasItemEvent[]>([]);
+  const committedFlushInFlightRef = useRef(false);
+  const committedBatchGenerationRef = useRef(0);
+  const committedFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const flushCommittedEventsRef = useRef<(() => void) | null>(null);
   const replayCommittedEventsRef = useRef<
     ((cursor: bigint) => Promise<void>) | null
   >(null);
   const acceptCommittedEventRef = useRef<
     ((event: CommittedCanvasItemEvent) => void) | null
   >(null);
-  const onCommittedEventRef = useRef(onCommittedEvent);
+  const onCommittedEventsRef = useRef(onCommittedEvents);
   const onSnapshotRequiredRef = useRef(onSnapshotRequired);
 
-  const BASE_RECONNECT_DELAY_MS = 1000;
-  const MAX_RECONNECT_DELAY_MS = 15000;
+  const MAX_RECONNECT_ATTEMPTS = 8;
+  const STABLE_CONNECTION_MS = 30_000;
+  const COMMITTED_EVENT_BATCH_MS = 40;
 
   // Update ref when onMessage changes
   useEffect(() => {
     onMessageRef.current = onMessage;
-    onCommittedEventRef.current = onCommittedEvent;
+    onCommittedEventsRef.current = onCommittedEvents;
     onSnapshotRequiredRef.current = onSnapshotRequired;
-  }, [onCommittedEvent, onMessage, onSnapshotRequired]);
+  }, [onCommittedEvents, onMessage, onSnapshotRequired]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -142,18 +181,72 @@ export function useCollaboration(
     }
   }, []);
 
+  const flushCommittedEvents = useCallback(() => {
+    committedFlushTimeoutRef.current = null;
+    if (committedFlushInFlightRef.current) return;
+    const events = pendingCommittedEventsRef.current.splice(0);
+    if (events.length === 0) return;
+    const generation = committedBatchGenerationRef.current;
+    committedFlushInFlightRef.current = true;
+    void Promise.resolve(onCommittedEventsRef.current?.(events))
+      .catch((error) => {
+        if (generation !== committedBatchGenerationRef.current) return;
+        logger.warn(
+          { error, eventCount: events.length },
+          "Committed event batch failed; requesting snapshot",
+        );
+        onSnapshotRequiredRef.current?.();
+      })
+      .finally(() => {
+        if (generation !== committedBatchGenerationRef.current) return;
+        committedFlushInFlightRef.current = false;
+        if (
+          pendingCommittedEventsRef.current.length > 0 &&
+          !committedFlushTimeoutRef.current
+        ) {
+          committedFlushTimeoutRef.current = setTimeout(
+            () => flushCommittedEventsRef.current?.(),
+            COMMITTED_EVENT_BATCH_MS,
+          );
+        }
+      });
+  }, []);
+
+  useEffect(() => {
+    flushCommittedEventsRef.current = flushCommittedEvents;
+  }, [flushCommittedEvents]);
+
+  const queueCommittedEvent = useCallback((event: CommittedCanvasItemEvent) => {
+    pendingCommittedEventsRef.current.push(event);
+    if (
+      !committedFlushInFlightRef.current &&
+      !committedFlushTimeoutRef.current
+    ) {
+      committedFlushTimeoutRef.current = setTimeout(
+        () => flushCommittedEventsRef.current?.(),
+        COMMITTED_EVENT_BATCH_MS,
+      );
+    }
+  }, []);
+
   const acceptCommittedEvent = useCallback(
     (event: CommittedCanvasItemEvent, detectGap = true) => {
       const cursor = BigInt(event.cursor);
       const lastCursor = lastCursorRef.current;
       if (cursor <= lastCursor) return;
+      if (detectGap && replayInFlightRef.current) {
+        deferredCommittedEventsRef.current.set(event.cursor, event);
+        return;
+      }
       if (detectGap && lastCursor > 0n && cursor > lastCursor + 1n) {
+        deferredCommittedEventsRef.current.set(event.cursor, event);
         void replayCommittedEventsRef.current?.(lastCursor);
+        return;
       }
       lastCursorRef.current = cursor;
-      void onCommittedEventRef.current?.(event);
+      queueCommittedEvent(event);
     },
-    [],
+    [queueCommittedEvent],
   );
 
   useEffect(() => {
@@ -201,6 +294,13 @@ export function useCollaboration(
         onSnapshotRequiredRef.current?.();
       } finally {
         replayInFlightRef.current = false;
+        const deferred = Array.from(
+          deferredCommittedEventsRef.current.values(),
+        ).sort((left, right) =>
+          BigInt(left.cursor) < BigInt(right.cursor) ? -1 : 1,
+        );
+        deferredCommittedEventsRef.current.clear();
+        for (const event of deferred) acceptCommittedEvent(event);
       }
     },
     [acceptCommittedEvent, canvasId],
@@ -209,6 +309,19 @@ export function useCollaboration(
   useEffect(() => {
     replayCommittedEventsRef.current = replayCommittedEvents;
   }, [replayCommittedEvents]);
+
+  useEffect(() => {
+    committedBatchGenerationRef.current += 1;
+    lastCursorRef.current = 0n;
+    replayInFlightRef.current = false;
+    deferredCommittedEventsRef.current.clear();
+    pendingCommittedEventsRef.current = [];
+    committedFlushInFlightRef.current = false;
+    if (committedFlushTimeoutRef.current) {
+      clearTimeout(committedFlushTimeoutRef.current);
+      committedFlushTimeoutRef.current = null;
+    }
+  }, [canvasId]);
 
   // Connect to WebSocket server with reconnect/backoff
   useEffect(() => {
@@ -220,6 +333,9 @@ export function useCollaboration(
     }
 
     shouldReconnectRef.current = true;
+    reconnectAttemptsRef.current = 0;
+    setConnectionMessage(null);
+    const deferredCommittedEvents = deferredCommittedEventsRef.current;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/api/collaboration/${canvasId}`;
@@ -227,25 +343,33 @@ export function useCollaboration(
     const scheduleReconnect = () => {
       if (!shouldReconnectRef.current) return;
 
-      setStatus("reconnecting");
       const attempt = reconnectAttemptsRef.current + 1;
-      reconnectAttemptsRef.current = attempt;
+      if (attempt > MAX_RECONNECT_ATTEMPTS) {
+        setStatus("error");
+        setConnectionMessage(
+          "Live collaboration could not reconnect. Check your connection and refresh to try again.",
+        );
+        return;
+      }
 
-      const delay = Math.min(
-        MAX_RECONNECT_DELAY_MS,
-        BASE_RECONNECT_DELAY_MS * Math.pow(2, attempt - 1),
-      );
-      const jitter = Math.random() * delay * 0.3;
+      setStatus("reconnecting");
+      reconnectAttemptsRef.current = attempt;
+      const delay = reconnectDelayMs(attempt);
 
       reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null;
         connect();
-      }, delay + jitter);
+      }, delay);
     };
 
     const connect = () => {
       if (!shouldReconnectRef.current) return;
 
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === WebSocket.OPEN ||
+          wsRef.current.readyState === WebSocket.CONNECTING)
+      ) {
         return;
       }
 
@@ -253,15 +377,35 @@ export function useCollaboration(
         reconnectAttemptsRef.current > 0 ? "reconnecting" : "connecting",
       );
 
-      const ws = new WebSocket(wsUrl);
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (error) {
+        logger.error({ error }, "Collaboration upgrade could not start");
+        shouldReconnectRef.current = false;
+        setStatus("error");
+        setConnectionMessage(
+          "Live collaboration access could not be established. Refresh after confirming your canvas access.",
+        );
+        return;
+      }
+      let opened = false;
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
       ws.onopen = () => {
+        opened = true;
         logger.info("Connected to collaboration server");
-        reconnectAttemptsRef.current = 0;
+        if (reconnectStableTimeoutRef.current) {
+          clearTimeout(reconnectStableTimeoutRef.current);
+        }
+        reconnectStableTimeoutRef.current = setTimeout(() => {
+          reconnectStableTimeoutRef.current = null;
+          reconnectAttemptsRef.current = 0;
+        }, STABLE_CONNECTION_MS);
         setConnected(true);
         setStatus("connected");
+        setConnectionMessage(null);
         void replayCommittedEvents(lastCursorRef.current);
       };
 
@@ -284,15 +428,33 @@ export function useCollaboration(
         setStatus("error");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         logger.info("Disconnected from collaboration server");
+        if (wsRef.current !== ws) return;
+        wsRef.current = null;
+        if (reconnectStableTimeoutRef.current) {
+          clearTimeout(reconnectStableTimeoutRef.current);
+          reconnectStableTimeoutRef.current = null;
+        }
         setConnected(false);
         setUsers([]);
         setCursors([]);
-        if (shouldReconnectRef.current) {
-          scheduleReconnect();
+        const disposition = collaborationCloseDisposition({
+          code: event.code,
+          opened,
+          intentional: !shouldReconnectRef.current,
+        });
+        if (disposition === "stop") {
+          if (shouldReconnectRef.current) {
+            shouldReconnectRef.current = false;
+            setStatus("error");
+            setConnectionMessage(terminalConnectionMessage(event.code, opened));
+          } else {
+            setConnectionMessage(null);
+            setStatus("disconnected");
+          }
         } else {
-          setStatus("disconnected");
+          scheduleReconnect();
         }
       };
     };
@@ -301,10 +463,11 @@ export function useCollaboration(
 
     const handleOnline = () => {
       if (
-        statusRef.current === "disconnected" ||
-        statusRef.current === "error"
+        shouldReconnectRef.current &&
+        (statusRef.current === "disconnected" || statusRef.current === "error")
       ) {
         reconnectAttemptsRef.current = 0;
+        setConnectionMessage(null);
         connect();
       }
     };
@@ -317,11 +480,31 @@ export function useCollaboration(
       shouldReconnectRef.current = false;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
-      wsRef.current?.close();
+      if (reconnectStableTimeoutRef.current) {
+        clearTimeout(reconnectStableTimeoutRef.current);
+        reconnectStableTimeoutRef.current = null;
+      }
+      if (cursorTimeoutRef.current) {
+        clearTimeout(cursorTimeoutRef.current);
+        cursorTimeoutRef.current = null;
+      }
+      pendingCursorRef.current = null;
+      if (committedFlushTimeoutRef.current) {
+        clearTimeout(committedFlushTimeoutRef.current);
+        committedFlushTimeoutRef.current = null;
+      }
+      pendingCommittedEventsRef.current = [];
+      committedFlushInFlightRef.current = false;
+      committedBatchGenerationRef.current += 1;
+      deferredCommittedEvents.clear();
+      const activeSocket = wsRef.current;
       wsRef.current = null;
+      activeSocket?.close();
       setConnected(false);
       setStatus("disconnected");
+      setConnectionMessage(null);
       setUsers([]);
       setCursors([]);
     };
@@ -335,37 +518,61 @@ export function useCollaboration(
     replayCommittedEvents,
   ]);
 
-  // Update cursor position
+  // Coalesce pointer movement to the same cadence as the server cursor tick.
   const updateCursor = useCallback((x: number, y: number) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "cursor",
-          position: { x, y },
-        }),
-      );
-    }
+    pendingCursorRef.current = { x, y };
+    if (cursorTimeoutRef.current) return;
+
+    cursorTimeoutRef.current = setTimeout(() => {
+      cursorTimeoutRef.current = null;
+      const position = pendingCursorRef.current;
+      pendingCursorRef.current = null;
+      if (position && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "cursor", position }));
+      }
+    }, CURSOR_TICK_MS);
   }, []);
+
   // Broadcast message (chat, reaction, etc.)
-  const broadcastMessage = useCallback((payload: any) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "message",
-          payload,
-        }),
-      );
-    }
-  }, []);
+  const broadcastMessage = useCallback(
+    (payload: CollaborationOutgoingMessage) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "message",
+            payload,
+          }),
+        );
+      }
+    },
+    [],
+  );
 
   return {
     users,
     cursors,
     connected,
     status,
+    connectionMessage,
     updateCursor,
     broadcastMessage,
   };
+}
+
+function terminalConnectionMessage(code: number, opened: boolean): string {
+  if (!opened) {
+    return "Live collaboration access could not be established. Refresh after confirming your canvas access.";
+  }
+  if (code === 1008) {
+    return "Live collaboration access was revoked. Your saved canvas changes remain available.";
+  }
+  if (code === 1009) {
+    return "Live collaboration stopped because a transport limit was exceeded. Refresh to reconnect.";
+  }
+  if (code === 1003) {
+    return "Live collaboration stopped because this client used an unsupported transport message.";
+  }
+  return "Live collaboration ended. Refresh to reconnect.";
 }
 
 function isCommittedCanvasItemEvent(

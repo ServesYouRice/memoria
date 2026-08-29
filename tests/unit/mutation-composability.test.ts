@@ -1,15 +1,30 @@
-import { describe, expect, it, vi } from "vitest";
-import { QueryClient } from "@tanstack/react-query";
-import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
+// @vitest-environment happy-dom
+import React from "react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderHook } from "@testing-library/react";
+import {
+  useCreateCanvasItem,
+  useUpdateCanvasItem,
+  canvasItemKeys,
+} from "@/lib/hooks/use-canvas-items";
 import { type CanvasItem, ItemType } from "@/types/canvas";
 
-describe("item mutation composability and recovery (IMP-044)", () => {
+describe("item mutation composability and recovery (IMP-044 / IMP-055)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("optimistic rollback isolation (DATA-02)", () => {
-    it("preserves unrelated concurrent cache entries when a create mutation fails", () => {
-      const queryClient = new QueryClient();
+    it("preserves unrelated concurrent cache entries when a create mutation fails", async () => {
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      });
       const canvasId = "canvas_123";
 
-      // Initial cache state with item A and item B
       const itemA: CanvasItem = {
         id: "item_a",
         canvasId,
@@ -44,37 +59,32 @@ describe("item mutation composability and recovery (IMP-044)", () => {
         items: [itemA, itemB],
       });
 
-      // Simulate optimistic insert of item C
-      const tempId = "temp-12345";
-      const optimisticItemC = {
-        id: tempId,
+      // Mock global fetch to reject the create mutation
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(
+        new Error("Network error during create"),
+      );
+
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          children,
+        );
+
+      const { result } = renderHook(() => useCreateCanvasItem(), { wrapper });
+
+      // Trigger create mutation which applies optimistic insert then fails
+      const mutationPromise = result.current.mutateAsync({
         canvasId,
         type: ItemType.NOTE,
         positionX: 200,
         positionY: 200,
         width: 100,
         height: 100,
-        zIndex: 3,
         content: { text: "Note C" },
-        version: 1,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        deletedAt: null,
-      };
+      });
 
-      // Apply optimistic update
-      queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.list(canvasId) },
-        (old: { items?: CanvasItem[] } | undefined) => ({
-          ...old,
-          items: [
-            ...(old?.items || []),
-            optimisticItemC as unknown as CanvasItem,
-          ],
-        }),
-      );
-
-      // Meanwhile, concurrent edit happened to item A
+      // While mutation is in flight, a concurrent edit arrives for item A
       queryClient.setQueriesData(
         { queryKey: canvasItemKeys.list(canvasId) },
         (old: { items?: CanvasItem[] } | undefined) => ({
@@ -85,29 +95,28 @@ describe("item mutation composability and recovery (IMP-044)", () => {
         }),
       );
 
-      // Now item C fails -> Targeted rollback only removes tempId
-      queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.list(canvasId) },
-        (old: { items?: CanvasItem[] } | undefined) => ({
-          ...old,
-          items: (old?.items || []).filter((i) => i.id !== tempId),
-        }),
-      );
+      // Await rejected create mutation
+      await expect(mutationPromise).rejects.toThrow();
 
       const cached = queryClient.getQueryData<{ items: CanvasItem[] }>(
         canvasItemKeys.list(canvasId),
       );
 
       expect(cached?.items.length).toBe(2);
-      // Item A's concurrent edit was NOT blown away!
       const finalItemA = cached?.items.find((i) => i.id === "item_a");
       expect(finalItemA?.positionX).toBe(999);
-      // Item C was removed
-      expect(cached?.items.find((i) => i.id === tempId)).toBeUndefined();
+      expect(
+        cached?.items.find((i) => i.id.startsWith("temp-")),
+      ).toBeUndefined();
     });
 
-    it("preserves unrelated concurrent items when an update mutation rolls back", () => {
-      const queryClient = new QueryClient();
+    it("preserves unrelated concurrent items when an update mutation rolls back", async () => {
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      });
       const canvasId = "canvas_123";
 
       const itemA: CanvasItem = {
@@ -140,29 +149,35 @@ describe("item mutation composability and recovery (IMP-044)", () => {
         updatedAt: new Date(),
       };
 
-      // Seed with setQueryData, not setQueriesData: the plural form only
-      // rewrites queries already in the cache, so on an empty cache it stores
-      // nothing and every read below comes back undefined.
-      queryClient.setQueryData(canvasItemKeys.lists(), {
+      queryClient.setQueryData(canvasItemKeys.list(canvasId), {
         items: [itemA, itemB],
       });
+      queryClient.setQueryData(canvasItemKeys.detail("item_a"), itemA);
+      queryClient.setQueryData(canvasItemKeys.detail("item_b"), itemB);
 
-      const snapshotItemA = { ...itemA };
-
-      // Optimistically update Item A
-      queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.lists() },
-        (old: { items?: CanvasItem[] } | undefined) => ({
-          ...old,
-          items: (old?.items || []).map((i) =>
-            i.id === "item_a" ? { ...i, positionX: 888 } : i,
-          ),
-        }),
+      // Mock global fetch to reject the update mutation
+      vi.spyOn(globalThis, "fetch").mockRejectedValue(
+        new Error("Update rejected by server"),
       );
 
-      // Concurrent update on Item B
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          children,
+        );
+
+      const { result } = renderHook(() => useUpdateCanvasItem(), { wrapper });
+
+      // Trigger update mutation on item A (optimistically sets positionX to 888)
+      const mutationPromise = result.current.mutateAsync({
+        itemId: "item_a",
+        data: { positionX: 888, version: 1 },
+      });
+
+      // Concurrent update on item B
       queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.lists() },
+        { queryKey: canvasItemKeys.list(canvasId) },
         (old: { items?: CanvasItem[] } | undefined) => ({
           ...old,
           items: (old?.items || []).map((i) =>
@@ -171,26 +186,20 @@ describe("item mutation composability and recovery (IMP-044)", () => {
         }),
       );
 
-      // Item A mutation fails -> Targeted rollback only resets item A
-      queryClient.setQueriesData(
-        { queryKey: canvasItemKeys.lists() },
-        (old: { items?: CanvasItem[] } | undefined) => ({
-          ...old,
-          items: (old?.items || []).map((i) =>
-            i.id === "item_a" ? snapshotItemA : i,
-          ),
-        }),
-      );
+      // Await rejected mutation
+      await expect(mutationPromise).rejects.toThrow();
 
       const cached = queryClient.getQueryData<{ items: CanvasItem[] }>(
-        canvasItemKeys.lists(),
+        canvasItemKeys.list(canvasId),
       );
 
       const finalItemA = cached?.items.find((i) => i.id === "item_a");
       const finalItemB = cached?.items.find((i) => i.id === "item_b");
 
+      // Item A is restored to 10
       expect(finalItemA?.positionX).toBe(10);
-      expect(finalItemB?.positionY).toBe(777); // Item B changes preserved!
+      // Item B's concurrent change to 777 is preserved!
+      expect(finalItemB?.positionY).toBe(777);
     });
   });
 

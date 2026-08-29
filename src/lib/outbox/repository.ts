@@ -58,6 +58,19 @@ export async function completeOutboxJob(
   return result.count === 1;
 }
 
+export async function renewOutboxLease(
+  prisma: PrismaClient,
+  jobId: string,
+  owner: string,
+  leaseMs: number,
+): Promise<boolean> {
+  const result = await prisma.outboxJob.updateMany({
+    where: { id: jobId, status: OutboxJobStatus.RUNNING, leaseOwner: owner },
+    data: { leaseExpiresAt: new Date(Date.now() + leaseMs) },
+  });
+  return result.count === 1;
+}
+
 export async function failOutboxJob(
   prisma: PrismaClient,
   job: OutboxJob,

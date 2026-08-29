@@ -39,7 +39,12 @@ async function checkSecurityHeaders(results, baseUrl, timeoutMs) {
 }
 
 async function checkOperationsSurface(results, baseUrl, timeoutMs, operationsToken) {
-  for (const pathname of ['/api/ready', '/api/metrics', '/api/operations/outbox']) {
+  for (const pathname of [
+    '/api/ready',
+    '/api/metrics',
+    '/api/operations/outbox',
+    '/api/operations/email/probe',
+  ]) {
     const hidden = await fetchRoute(new URL(pathname, baseUrl), { timeoutMs });
     if (hidden.status !== 404) {
       addResult(results, `protected:${pathname}`, 'fail', `${pathname} disclosed HTTP ${hidden.status}`);
@@ -83,6 +88,25 @@ async function checkOperationsSurface(results, baseUrl, timeoutMs, operationsTok
     'outbox-worker',
     outbox.ok && deadJobs === 0 ? 'pass' : 'fail',
     outbox.ok ? `${deadJobs} dead outbox jobs` : `Outbox control returned HTTP ${outbox.status}`,
+  );
+}
+
+async function checkPublicStatus(results, baseUrl, timeoutMs) {
+  const response = await fetchRoute(new URL('/api/status', baseUrl), { timeoutMs });
+  const payload = await response.json().catch(() => null);
+  const keys = payload && typeof payload === 'object' ? Object.keys(payload).sort() : [];
+  const sanitized =
+    response.ok &&
+    ['operational', 'degraded', 'outage'].includes(payload?.status) &&
+    typeof payload?.checkedAt === 'string' &&
+    keys.join(',') === 'checkedAt,status';
+  addResult(
+    results,
+    'public-status',
+    sanitized ? 'pass' : 'fail',
+    sanitized
+      ? `Sanitized public status reports ${payload.status}`
+      : `Public status contract failed with HTTP ${response.status}`,
   );
 }
 
@@ -208,6 +232,7 @@ async function checkCollaborationUpgrade(results, baseUrl, timeoutMs) {
 
 export async function runSmokeChecks({
   baseUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000',
+  operationsBaseUrl = process.env.OPERATIONS_BASE_URL || baseUrl,
   requireRunningApp = false,
   timeoutMs = 5000,
   operationsToken = process.env.INTERNAL_OPERATIONS_TOKEN,
@@ -215,8 +240,10 @@ export async function runSmokeChecks({
   const results = [];
 
   let normalizedBaseUrl;
+  let normalizedOperationsBaseUrl;
   try {
     normalizedBaseUrl = new URL(baseUrl).toString();
+    normalizedOperationsBaseUrl = new URL(operationsBaseUrl).toString();
   } catch {
     addResult(results, 'app-url', 'fail', `Invalid base URL: ${baseUrl}`);
     return { baseUrl, results, hasFailure: true };
@@ -254,10 +281,11 @@ export async function runSmokeChecks({
   }
 
   await checkHealthRoute(results, normalizedBaseUrl, timeoutMs);
+  await checkPublicStatus(results, normalizedBaseUrl, timeoutMs);
   await checkSecurityHeaders(results, normalizedBaseUrl, timeoutMs);
   await checkOperationsSurface(
     results,
-    normalizedBaseUrl,
+    normalizedOperationsBaseUrl,
     timeoutMs,
     operationsToken,
   );

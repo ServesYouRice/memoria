@@ -1,39 +1,58 @@
-# Reference Caddyfile for Memoria self-hosted deployment
-# Replace {$MEMORIA_DOMAIN:localhost} with your public domain (e.g. notes.example.com)
+# Reference ingress for the custom Node/WebSocket server. Compose sets
+# MEMORIA_ADDRESS=:3000; a standalone TLS deployment can set it to its domain.
 
-{$MEMORIA_DOMAIN:localhost} {
-    # Block internal operations routes from public internet access
-    @blocked_operations {
-        path /api/operations/* /api/internal/*
-    }
-    respond @blocked_operations "Forbidden" 403
+{$MEMORIA_ADDRESS:localhost} {
+	route {
+		# Internal operations stay on the loopback-only app port. Returning 404
+		# keeps their existence hidden at public ingress.
+		@blocked_operations {
+			path /api/ready /api/metrics /api/operations/* /api/internal/*
+		}
+		respond @blocked_operations "" 404
 
-    # Limit request body sizes before forwarding to Node.js / Next.js
-    @upload_paths {
-        path /api/v1/uploads /api/v1/canvases/*/thumbnail
-    }
-    request_body @upload_paths {
-        max_size 50MB
-    }
-    request_body {
-        max_size 2MB
-    }
+		header {
+			Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			-Server
+		}
 
-    # Security headers
-    header {
-        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        -Server
-    }
+		# Liveness and sanitized status remain reachable even when readiness
+		# removes the application from ordinary traffic.
+		@public_probes {
+			path /api/health /api/status
+		}
+		reverse_proxy @public_probes app:3000
 
-    # Reverse proxy to Memoria app with WebSocket upgrade and trusted forwarding
-    reverse_proxy app:3000 {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-        header_up X-Forwarded-Host {host}
-    }
+		@upload_paths {
+			path /api/v1/uploads /api/v1/canvases/*/thumbnail
+		}
+		request_body @upload_paths {
+			max_size 50MB
+		}
+		@ordinary_paths not path /api/v1/uploads /api/v1/canvases/*/thumbnail
+		request_body @ordinary_paths {
+			max_size 2MB
+		}
+
+		# Active authenticated readiness removes the sole upstream from user
+		# traffic after one failed check and restores it after one pass.
+		reverse_proxy app:3000 {
+			health_uri /api/ready
+			health_interval 5s
+			health_timeout 3s
+			health_fails 1
+			health_passes 1
+			health_status 2xx
+			health_headers {
+				Authorization "Bearer {$INTERNAL_OPERATIONS_TOKEN}"
+			}
+			fail_duration 30s
+			max_fails 1
+			unhealthy_status 5xx
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
 }

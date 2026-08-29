@@ -110,14 +110,20 @@ test("real S3 uploads, exports, and public-link revocation survive production tr
   ).toBe(200);
 
   await page.getByRole("button", { name: "Share canvas" }).click();
-  await expect(page.getByDisplayValue(firstPublic.shareUrl)).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
+  await expect(
+    page.getByRole("textbox", { name: "Public share link" }),
+  ).toHaveValue(firstPublic.shareUrl);
   const rotateResponsePromise = page.waitForResponse(
     (response) =>
       response.url().endsWith(`/api/v1/canvases/${canvas.id}/public`) &&
       response.request().method() === "PUT",
   );
   await page.getByRole("button", { name: "Rotate public link" }).click();
+  const rotateDialog = page.getByRole("dialog", {
+    name: "Rotate public link?",
+  });
+  await expect(rotateDialog).toBeVisible();
+  await rotateDialog.getByRole("button", { name: "Rotate link" }).click();
   const rotateResponse = await rotateResponsePromise;
   expect(rotateResponse.status()).toBe(200);
   const rotated = (await rotateResponse.json()) as { shareUrl: string };
@@ -131,15 +137,19 @@ test("real S3 uploads, exports, and public-link revocation survive production tr
     (await anonymousPage.request.get(`/api/v1/share/${rotatedToken}`)).status(),
   ).toBe(200);
 
-  page.once("dialog", (dialog) => dialog.accept());
   const disableResponsePromise = page.waitForResponse(
     (response) =>
       response.url().endsWith(`/api/v1/canvases/${canvas.id}/public`) &&
       response.request().method() === "DELETE",
   );
   await page
-    .getByRole("checkbox", { name: "Anyone with the link can view" })
+    .getByRole("switch", { name: "Anyone with the link can view" })
     .click();
+  const disableDialog = page.getByRole("dialog", {
+    name: "Disable public link?",
+  });
+  await expect(disableDialog).toBeVisible();
+  await disableDialog.getByRole("button", { name: "Disable link" }).click();
   expect((await disableResponsePromise).status()).toBe(200);
   expect(
     (await anonymousPage.request.get(`/api/v1/share/${rotatedToken}`)).status(),

@@ -29,7 +29,7 @@ interface BookmarkContent {
 export function createBookmarkRefreshHandler(
   prisma: PrismaClient,
 ): OutboxHandler {
-  return async (job) => {
+  return async (job, context) => {
     if (process.env.FEATURE_BOOKMARK_UNFURLING === "false") {
       return;
     }
@@ -40,7 +40,10 @@ export function createBookmarkRefreshHandler(
     if (!item) return;
     const content = item.content as BookmarkContent;
     if (!content.url) return;
-    const fetched = await safeFetch(content.url, { timeout: 5000 });
+    const fetched = await safeFetch(content.url, {
+      timeout: 5000,
+      signal: context?.signal,
+    });
     if (!fetched.ok || !fetched.data)
       throw new Error("Bookmark metadata fetch failed");
     const metadata = validateMetadata(

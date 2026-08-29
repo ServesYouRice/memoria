@@ -45,6 +45,7 @@ export async function writePrivateUploadObject(
   storageKey: string,
   body: Uint8Array,
   contentType: string,
+  signal?: AbortSignal,
 ) {
   if (storageMode === "s3") {
     const bucket = process.env.S3_BUCKET;
@@ -57,6 +58,7 @@ export async function writePrivateUploadObject(
         ContentType: contentType,
         CacheControl: "private, max-age=86400, immutable",
       }),
+      { abortSignal: signal },
     );
     return;
   }
@@ -112,12 +114,14 @@ export async function readPrivateUploadObject(
 export async function deletePrivateUploadObject(
   storageMode: string,
   storageKey: string,
+  signal?: AbortSignal,
 ) {
   if (storageMode === "s3") {
     const bucket = process.env.S3_BUCKET;
     if (!bucket) throw new Error("Private upload bucket is not configured");
     await getS3Client().send(
       new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }),
+      { abortSignal: signal },
     );
     return;
   }

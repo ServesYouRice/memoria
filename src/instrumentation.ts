@@ -60,6 +60,8 @@ async function checkNextAuthVersion(logger: LoggerLike): Promise<void> {
 
 export async function register() {
   if (process.env["NEXT_RUNTIME"] === "nodejs") {
+    const sentryEnabled =
+      process.env.NODE_ENV === "production" && Boolean(process.env.SENTRY_DSN);
     const [{ createLogger }, { validateCorsConfig }] = await Promise.all([
       import("./lib/logger"),
       import("./middleware/cors"),
@@ -68,7 +70,7 @@ export async function register() {
     const logger = createLogger("global-error-handler");
 
     await import("./lib/env");
-    await import("../sentry.server.config");
+    if (sentryEnabled) await import("../sentry.server.config");
 
     await checkNextAuthVersion(logger);
 
@@ -86,7 +88,7 @@ export async function register() {
           }),
         );
 
-        if (process.env.NODE_ENV === "production") {
+        if (sentryEnabled) {
           const Sentry = await import("@sentry/nextjs");
           Sentry.captureException(reason);
           console.error("CRITICAL: Unhandled Promise Rejection:", reason);
@@ -99,8 +101,10 @@ export async function register() {
       logger.error(JSON.stringify({ error, stack: error.stack }));
 
       if (process.env.NODE_ENV === "production") {
-        const Sentry = await import("@sentry/nextjs");
-        Sentry.captureException(error);
+        if (sentryEnabled) {
+          const Sentry = await import("@sentry/nextjs");
+          Sentry.captureException(error);
+        }
         console.error("CRITICAL: Uncaught Exception:", error);
         if (logger.fatal) {
           logger.fatal("Exiting due to uncaught exception");
@@ -120,10 +124,16 @@ export async function register() {
       );
     });
 
-    logger.info("Global error handlers registered (with Sentry integration)");
+    logger.info(
+      sentryEnabled
+        ? "Global error handlers registered with Sentry integration"
+        : "Global error handlers registered without external telemetry",
+    );
   }
 
   if (process.env["NEXT_RUNTIME"] === "edge") {
-    await import("../sentry.edge.config");
+    if (process.env.NODE_ENV === "production" && process.env.SENTRY_DSN) {
+      await import("../sentry.edge.config");
+    }
   }
 }

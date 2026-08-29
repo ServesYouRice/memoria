@@ -10,7 +10,7 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: '22.14.0'
+  NODE_VERSION: '24.20.0'
   # 11.13.0 shipped a broken @pnpm/exe build with no binary; pnpm/action-setup
   # refuses to install it, which failed every job before its first real step.
   PNPM_VERSION: '11.13.1'
@@ -78,6 +78,16 @@ jobs:
 
       - name: Run tests with coverage
         run: pnpm test:coverage
+
+      - name: Run explicit API route coverage gate
+        run: pnpm test:coverage:routes
+
+      - name: Retain route coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: route-coverage-report
+          path: coverage/routes/
 
   integration:
     name: PostgreSQL Integration Tests

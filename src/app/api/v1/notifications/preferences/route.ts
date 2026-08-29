@@ -41,5 +41,9 @@ export const PUT = withApiHandler(async (request) => {
       emailEnabled: value.emailEnabled,
     },
   });
-  return NextResponse.json(preference);
+  return NextResponse.json({
+    type: preference.type,
+    inAppEnabled: preference.inAppEnabled,
+    emailEnabled: preference.emailEnabled,
+  });
 });

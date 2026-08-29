@@ -66,6 +66,7 @@ export class SendGridEmailProvider implements EmailService {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: options.signal,
     });
 
     if (!response.ok) {

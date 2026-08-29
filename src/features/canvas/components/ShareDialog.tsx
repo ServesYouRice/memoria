@@ -5,7 +5,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -28,9 +28,12 @@ import {
   Switch,
   FormControlLabel,
   InputAdornment,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { Close, ContentCopy, Delete } from "@mui/icons-material";
 import { ApiError, apiFetch } from "@/lib/api/fetch-client";
+import { confirmDialog } from "@/stores/confirmStore";
 
 export interface ShareDialogProps {
   open: boolean;
@@ -63,6 +66,9 @@ export function ShareDialog({
   canvasId,
   canvasName,
 }: ShareDialogProps) {
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
+  const shareInFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -116,13 +122,15 @@ export function ShareDialog({
   }, [open, loadShares, checkPublicStatus]);
 
   const handleTogglePublic = async () => {
-    if (
-      isPublic &&
-      !window.confirm(
-        "Disable this public link? The current URL will be permanently invalidated and cannot be restored.",
-      )
-    ) {
-      return;
+    if (isPublic) {
+      const confirmed = await confirmDialog({
+        title: "Disable public link?",
+        message:
+          "The current URL will be permanently invalidated and cannot be restored.",
+        confirmText: "Disable link",
+        destructive: true,
+      });
+      if (!confirmed) return;
     }
     setGeneratingLink(true);
     setError(null);
@@ -168,13 +176,13 @@ export function ShareDialog({
   };
 
   const handleRotateLink = async () => {
-    if (
-      !window.confirm(
-        "Rotate this public link? The previous URL will be permanently invalidated.",
-      )
-    ) {
-      return;
-    }
+    const confirmed = await confirmDialog({
+      title: "Rotate public link?",
+      message: "The previous URL will be permanently invalidated.",
+      confirmText: "Rotate link",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setRotatingLink(true);
     setError(null);
     try {
@@ -197,11 +205,13 @@ export function ShareDialog({
   };
 
   const handleShareWithUser = async () => {
+    if (shareInFlightRef.current) return;
     if (!email.trim()) {
       setError("Please enter an email address");
       return;
     }
 
+    shareInFlightRef.current = true;
     setSharingWithUser(true);
     setError(null);
 
@@ -224,12 +234,19 @@ export function ShareDialog({
     } catch (err) {
       setError(formatShareError(err, "Failed to share canvas"));
     } finally {
+      shareInFlightRef.current = false;
       setSharingWithUser(false);
     }
   };
 
   const handleRevokeShare = async (shareId: string, shareEmail: string) => {
-    if (!window.confirm(`Revoke access for ${shareEmail}?`)) return;
+    const confirmed = await confirmDialog({
+      title: "Revoke canvas access?",
+      message: `${shareEmail} will no longer be able to open this canvas.`,
+      confirmText: "Revoke access",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setRevokingShareId(shareId);
     setError(null);
     try {
@@ -247,18 +264,30 @@ export function ShareDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        Share &quot;{canvasName}&quot;
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      fullScreen={fullScreen}
+      aria-labelledby="share-dialog-title"
+    >
+      <DialogTitle id="share-dialog-visual-title" sx={{ pr: 7 }}>
+        <span id="share-dialog-title">
+          Share <span aria-hidden="true">&quot;</span>
+          {canvasName}
+          <span aria-hidden="true">&quot;</span>
+        </span>
         <IconButton
           onClick={onClose}
+          aria-label="Close share dialog"
           sx={{ position: "absolute", right: 8, top: 8 }}
         >
           <Close />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent dividers>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {/* Success/Error Messages */}
           {success && (
@@ -307,11 +336,16 @@ export function ShareDialog({
                 size="small"
                 sx={{ mt: 2 }}
                 slotProps={{
+                  htmlInput: { "aria-label": "Public share link" },
                   input: {
                     readOnly: true,
                     endAdornment: (
                       <InputAdornment position="end">
-                        <IconButton onClick={handleCopyLink} edge="end">
+                        <IconButton
+                          onClick={handleCopyLink}
+                          edge="end"
+                          aria-label="Copy public link"
+                        >
                           <ContentCopy />
                         </IconButton>
                       </InputAdornment>
@@ -337,14 +371,29 @@ export function ShareDialog({
             <Typography variant="subtitle2" gutterBottom>
               Share with specific people
             </Typography>
-            <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: 1,
+                mb: 2,
+              }}
+            >
               <TextField
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter email address"
+                type="email"
+                label="Email address"
                 size="small"
                 fullWidth
                 disabled={sharingWithUser}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void handleShareWithUser();
+                  }
+                }}
               />
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select
@@ -353,6 +402,7 @@ export function ShareDialog({
                     setRole(e.target.value as "VIEW" | "COMMENT" | "EDIT")
                   }
                   disabled={sharingWithUser}
+                  inputProps={{ "aria-label": "Canvas access role" }}
                 >
                   <MenuItem value="VIEW">View</MenuItem>
                   <MenuItem value="COMMENT">Comment</MenuItem>
@@ -381,6 +431,7 @@ export function ShareDialog({
                     <ListItemSecondaryAction>
                       <IconButton
                         edge="end"
+                        aria-label={`Revoke access for ${share.email}`}
                         onClick={() =>
                           void handleRevokeShare(share.id, share.email)
                         }

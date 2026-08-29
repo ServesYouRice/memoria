@@ -6,8 +6,8 @@ import {
   type CanvasVersionSnapshot,
 } from "@/lib/hooks/use-canvas-versions";
 import { useCanvas, useUpdateCanvas } from "@/lib/hooks/use-canvases";
-import { type CanvasItem, ItemType } from "@/types/canvas";
-import { stripHtmlTags } from "@/lib/utils/html";
+import { type CanvasItem } from "@/types/canvas";
+import { canvasItemMatchesSearch } from "@/features/canvas/search";
 
 interface UseCanvasDataProps {
   canvasId: string;
@@ -231,36 +231,11 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
     };
   }, [allItems]);
 
-  // Filter items
+  // Tag filters intentionally narrow the working set. Text search does not:
+  // every item stays mounted so frames, arrows, and nearby content continue to
+  // communicate structure rather than appearing to have been deleted.
   const filteredItems = useMemo(() => {
     let filtered = displayedItems;
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((item) => {
-        if (item.type === ItemType.NOTE) {
-          const noteContent = item.content as { text: string };
-          const plainText = stripHtmlTags(noteContent.text || "");
-          return plainText.toLowerCase().includes(query);
-        } else if (item.type === ItemType.BOOKMARK) {
-          const bookmarkContent = item.content as any;
-          return (
-            bookmarkContent.url?.toLowerCase().includes(query) ||
-            bookmarkContent.title?.toLowerCase().includes(query) ||
-            bookmarkContent.description?.toLowerCase().includes(query) ||
-            bookmarkContent.siteName?.toLowerCase().includes(query)
-          );
-        } else if (item.type === ItemType.IMAGE) {
-          const imageContent = item.content as any;
-          return (
-            imageContent.filename?.toLowerCase().includes(query) ||
-            imageContent.alt?.toLowerCase().includes(query)
-          );
-        }
-        return false;
-      });
-    }
-
     if (selectedTags.length > 0) {
       filtered = filtered.filter((item) => {
         if (!item.tags || !Array.isArray(item.tags)) return false;
@@ -268,7 +243,17 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
       });
     }
     return filtered;
-  }, [displayedItems, searchQuery, selectedTags]);
+  }, [displayedItems, selectedTags]);
+
+  const searchMatchIds = useMemo(
+    () =>
+      new Set(
+        filteredItems
+          .filter((item) => canvasItemMatchesSearch(item, searchQuery))
+          .map((item) => item.id),
+      ),
+    [filteredItems, searchQuery],
+  );
 
   return {
     // State
@@ -290,6 +275,7 @@ export function useCanvasData({ canvasId }: UseCanvasDataProps) {
 
     // Data
     items: filteredItems,
+    searchMatchIds,
     allItems,
     versions,
     allTags,

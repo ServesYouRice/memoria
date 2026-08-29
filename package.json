@@ -23,8 +23,10 @@
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
     "test": "vitest",
+    "test:file": "vitest run",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
+    "test:coverage:routes": "vitest run --config vitest.routes-coverage.config.ts --coverage",
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:e2e:playwright": "playwright test",
     "test:integration": "node scripts/test-integration.mjs",
@@ -130,7 +132,7 @@
     "vitest": "^4.1.11"
   },
   "engines": {
-    "node": ">=22.14.0",
+    "node": ">=24.20.0 <25",
     "pnpm": ">=10.24.0"
   },
   "packageManager": "pnpm@11.13.1",

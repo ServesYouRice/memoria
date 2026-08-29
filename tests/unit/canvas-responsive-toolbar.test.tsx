@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * IMP-022 — prioritized toolbar with overflow.
  *

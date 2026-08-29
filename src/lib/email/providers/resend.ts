@@ -55,6 +55,7 @@ export class ResendEmailProvider implements EmailService {
           : {}),
       },
       body: JSON.stringify(body),
+      signal: options.signal,
     });
 
     if (!response.ok) {

@@ -117,6 +117,11 @@ const batchPositionSchema = z.object({
     .max(500),
 });
 
+const committedEventHydrationSchema = z.object({
+  canvasId: z.string().cuid(),
+  ids: z.array(z.string().cuid()).min(1).max(100),
+});
+
 /** Atomically apply a bounded layout change without leaving a partial canvas. */
 export async function PATCH(request: NextRequest) {
   try {
@@ -186,6 +191,25 @@ export async function GET(request: NextRequest) {
   try {
     const { userId, email } = await requireAuth();
     const searchParams = request.nextUrl.searchParams;
+
+    // A committed-event burst hydrates its affected records in one bounded,
+    // canvas-authorized read instead of issuing one detail request per event.
+    const encodedIds = searchParams.get("ids");
+    if (encodedIds !== null) {
+      const query = committedEventHydrationSchema.parse({
+        canvasId: searchParams.get("canvasId"),
+        ids: Array.from(new Set(encodedIds.split(",").filter(Boolean))),
+      });
+      await requireCanvasAccess(query.canvasId, userId, email, "VIEW");
+      const items = await prisma.canvasItem.findMany({
+        where: {
+          canvasId: query.canvasId,
+          id: { in: query.ids },
+          deletedAt: null,
+        },
+      });
+      return NextResponse.json({ items });
+    }
 
     // Check if viewport parameters are provided
     const hasViewportParams =

@@ -36,11 +36,13 @@ import {
   Save as SaveIcon,
   KeyOutlined as ApiKeysIcon,
   DownloadOutlined as DownloadIcon,
+  NotificationsActiveOutlined as NotificationsIcon,
 } from "@mui/icons-material";
 import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { gradients } from "@/lib/theme";
+import { NotificationPreferences } from "./NotificationPreferences";
 
 interface SettingsContentProps {
   user: {
@@ -407,6 +409,13 @@ export function SettingsContent({ user }: SettingsContentProps) {
               />
             </ListItem>
           </List>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={<NotificationsIcon color="primary" />}
+          title="Notifications"
+        >
+          <NotificationPreferences />
         </SettingsSection>
 
         {/* Keyboard shortcuts */}

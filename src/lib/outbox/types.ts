@@ -1,6 +1,15 @@
 import type { OutboxJob } from "@/generated/prisma/client";
 
-export type OutboxHandler = (job: OutboxJob) => Promise<void>;
+export interface OutboxHandlerContext {
+  signal: AbortSignal;
+  deliveryId: string;
+  deadlineAt: Date;
+}
+
+export type OutboxHandler = (
+  job: OutboxJob,
+  context?: OutboxHandlerContext,
+) => Promise<void>;
 export type OutboxHandlers = Record<string, OutboxHandler>;
 
 export interface EnqueueOutboxInput {

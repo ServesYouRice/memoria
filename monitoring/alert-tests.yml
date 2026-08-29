@@ -1,0 +1,57 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: readiness outage reaches the platform owner
+    interval: 1m
+    input_series:
+      - series: 'memoria_readiness_ready{job="memoria",instance="app:3000"}'
+        values: '0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: MemoriaUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              owner: platform
+              job: memoria
+              instance: app:3000
+            exp_annotations:
+              summary: Traffic-critical readiness is failing
+              runbook_url: /docs/operations/observability.md#readiness
+
+  - name: stale backup reaches the recovery owner
+    interval: 1m
+    input_series:
+      - series: 'memoria_backup_last_success_timestamp_seconds{job="memoria"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: MemoriaBackupMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              owner: recovery
+              job: memoria
+            exp_annotations:
+              summary: No completed off-host backup has been observed
+              runbook_url: /docs/operations/backup-recovery.md
+
+  - name: dead letters reach the delivery owner
+    interval: 1m
+    input_series:
+      - series: 'memoria_outbox_dead_jobs{job="memoria"}'
+        values: '1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: MemoriaOutboxDeadLetters
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              owner: delivery
+              job: memoria
+            exp_annotations:
+              summary: Outbox jobs require operator action
+              runbook_url: /docs/operations/observability.md#outbox

@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import {
   AppBar,
   Avatar,
+  Badge,
   Box,
   Button,
   Container,
@@ -41,6 +42,7 @@ import {
 import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { gradients } from "@/lib/theme";
+import { useUnreadNotifications } from "@/lib/hooks/use-notifications";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
@@ -75,6 +77,9 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
   const [accountAnchor, setAccountAnchor] = useState<null | HTMLElement>(null);
 
   const user = session?.user;
+  const { data: unreadNotifications = 0 } = useUnreadNotifications(
+    Boolean(user),
+  );
 
   const isActive = (href: string) =>
     pathname === href ||
@@ -91,6 +96,21 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
         bgcolor: "background.default",
       }}
     >
+      <Button
+        component="a"
+        href="#main-content"
+        sx={{
+          position: "fixed",
+          zIndex: (theme) => theme.zIndex.tooltip + 1,
+          top: 8,
+          left: 8,
+          transform: "translateY(-160%)",
+          bgcolor: "background.paper",
+          "&:focus-visible": { transform: "translateY(0)" },
+        }}
+      >
+        Skip to main content
+      </Button>
       <AppBar position="sticky">
         <Toolbar sx={{ gap: 1 }}>
           {/* Mobile menu */}
@@ -127,6 +147,8 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
 
           {/* Desktop nav */}
           <Box
+            component="nav"
+            aria-label="Primary navigation"
             sx={{ display: { xs: "none", md: "flex" }, gap: 0.5, flexGrow: 1 }}
           >
             {NAV_ITEMS.map((item) => (
@@ -134,6 +156,7 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
                 key={item.href}
                 component={Link}
                 href={item.href}
+                aria-current={isActive(item.href) ? "page" : undefined}
                 size="small"
                 startIcon={<item.icon />}
                 sx={{
@@ -169,14 +192,25 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
           </Tooltip>
           <Tooltip title="Notifications">
             <IconButton
-              aria-label="Notifications"
+              aria-label={
+                unreadNotifications > 0
+                  ? `Notifications, ${unreadNotifications} unread`
+                  : "Notifications"
+              }
               component={Link}
               href="/notifications"
               sx={{
                 color: isActive("/notifications") ? "primary.main" : undefined,
               }}
             >
-              <NotificationsIcon />
+              <Badge
+                badgeContent={unreadNotifications}
+                color="error"
+                max={99}
+                invisible={unreadNotifications === 0}
+              >
+                <NotificationsIcon />
+              </Badge>
             </IconButton>
           </Tooltip>
           <ThemeToggle />
@@ -290,6 +324,7 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
                   component={Link}
                   href={item.href}
                   selected={isActive(item.href)}
+                  aria-current={isActive(item.href) ? "page" : undefined}
                   onClick={() => setDrawerOpen(false)}
                   sx={{ borderRadius: 2, mx: 1 }}
                 >
@@ -306,12 +341,19 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
 
       {/* Page content */}
       {maxWidth === false ? (
-        <Box component="main" sx={{ flexGrow: 1 }}>
+        <Box
+          id="main-content"
+          component="main"
+          tabIndex={-1}
+          sx={{ flexGrow: 1 }}
+        >
           {children}
         </Box>
       ) : (
         <Container
           component="main"
+          id="main-content"
+          tabIndex={-1}
           maxWidth={maxWidth}
           sx={{ flexGrow: 1, py: 4 }}
         >

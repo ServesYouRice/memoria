@@ -6,6 +6,10 @@ import {
   Refresh as RefreshIcon,
   ErrorOutlined as ErrorIcon,
 } from "@mui/icons-material";
+import { getErrorDigest } from "@/lib/error-display";
+
+const GENERIC_ERROR_MESSAGE =
+  "An unexpected error occurred while rendering this component.";
 
 interface Props {
   children: ReactNode;
@@ -42,6 +46,8 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) {
         return this.props.fallback(this.state.error, this.reset);
       }
+
+      const digest = getErrorDigest(this.state.error);
 
       return (
         <Box
@@ -100,9 +106,21 @@ export class ErrorBoundary extends Component<Props, State> {
                 color: "text.secondary",
               }}
             >
-              {this.state.error.message ||
-                "An unexpected error occurred while rendering this component."}
+              {GENERIC_ERROR_MESSAGE}
             </Typography>
+            {digest && (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "block",
+                  mb: 2,
+                  color: "text.secondary",
+                  fontFamily: "monospace",
+                }}
+              >
+                Incident ID: {digest}
+              </Typography>
+            )}
             <Button
               variant="contained"
               color="primary"

@@ -1,0 +1,153 @@
+groups:
+  - name: memoria-availability
+    rules:
+      - alert: MemoriaMetricsTargetDown
+        expr: up{job="memoria"} == 0
+        for: 2m
+        labels: { severity: critical, owner: platform }
+        annotations:
+          summary: Memoria cannot be scraped
+          runbook_url: /docs/operations/observability.md#target-down
+      - alert: MemoriaUnavailable
+        expr: memoria_readiness_ready == 0
+        for: 2m
+        labels: { severity: critical, owner: platform }
+        annotations:
+          summary: Traffic-critical readiness is failing
+          runbook_url: /docs/operations/observability.md#readiness
+      - alert: MemoriaDatabaseUnavailable
+        expr: memoria_database_available == 0
+        for: 2m
+        labels: { severity: critical, owner: data }
+        annotations:
+          summary: PostgreSQL readiness is failing
+          runbook_url: /docs/operations/observability.md#database
+      - alert: MemoriaStorageUnavailable
+        expr: memoria_storage_available == 0
+        for: 5m
+        labels: { severity: warning, owner: storage }
+        annotations:
+          summary: Private uploads are degraded
+          runbook_url: /docs/operations/observability.md#storage
+      - alert: MemoriaServerErrors
+        expr: increase(memoria_http_5xx_total[5m]) > 5
+        for: 2m
+        labels: { severity: critical, owner: application }
+        annotations:
+          summary: HTTP 5xx responses exceed the error threshold
+          runbook_url: /docs/operations/observability.md#http-errors
+      - alert: MemoriaClientErrorSurge
+        expr: increase(memoria_http_4xx_total[10m]) > 100
+        for: 5m
+        labels: { severity: warning, owner: application }
+        annotations:
+          summary: HTTP 4xx responses are surging
+          runbook_url: /docs/operations/observability.md#http-errors
+
+  - name: memoria-safety-and-collaboration
+    rules:
+      - alert: MemoriaRedisUnavailable
+        expr: memoria_redis_available == 0
+        for: 2m
+        labels: { severity: critical, owner: platform }
+        annotations:
+          summary: Redis readiness is failing
+          runbook_url: /docs/operations/observability.md#redis-safety
+      - alert: MemoriaRedisSafetyFailure
+        expr: increase(memoria_redis_safety_failures_total[5m]) > 0
+        labels: { severity: critical, owner: security }
+        annotations:
+          summary: Login or rate-limit safety degraded because Redis failed
+          runbook_url: /docs/operations/observability.md#redis-safety
+      - alert: MemoriaWebSocketRejections
+        expr: increase(memoria_websocket_rejected_total[5m]) > 20
+        for: 2m
+        labels: { severity: warning, owner: collaboration }
+        annotations:
+          summary: Collaboration WebSocket rejections exceed threshold
+          runbook_url: /docs/operations/observability.md#websockets
+      - alert: MemoriaWebSocketCapacity
+        expr: memoria_websocket_connections > 4500
+        for: 5m
+        labels: { severity: warning, owner: collaboration }
+        annotations:
+          summary: WebSocket connections exceed 90 percent of supported capacity
+          runbook_url: /docs/operations/observability.md#websockets
+
+  - name: memoria-delivery
+    rules:
+      - alert: MemoriaOutboxBacklog
+        expr: memoria_outbox_oldest_pending_seconds > 300
+        for: 5m
+        labels: { severity: warning, owner: delivery }
+        annotations:
+          summary: The oldest runnable outbox job is over five minutes old
+          runbook_url: /docs/operations/observability.md#outbox
+      - alert: MemoriaOutboxDeadLetters
+        expr: memoria_outbox_dead_jobs > 0
+        for: 1m
+        labels: { severity: critical, owner: delivery }
+        annotations:
+          summary: Outbox jobs require operator action
+          runbook_url: /docs/operations/observability.md#outbox
+      - alert: MemoriaOutboxHandlerTimeout
+        expr: increase(memoria_outbox_handler_timeouts_total[10m]) > 0
+        labels: { severity: warning, owner: delivery }
+        annotations:
+          summary: An outbox provider exceeded its deadline
+          runbook_url: /docs/operations/observability.md#outbox
+      - alert: MemoriaOutboxLeaseLoss
+        expr: increase(memoria_outbox_lease_lost_total[10m]) > 0
+        labels: { severity: warning, owner: delivery }
+        annotations:
+          summary: An outbox worker lost ownership of a running job
+          runbook_url: /docs/operations/observability.md#outbox
+      - alert: MemoriaOutboxPollFailure
+        expr: increase(memoria_outbox_poll_failures_total[5m]) > 2
+        labels: { severity: critical, owner: delivery }
+        annotations:
+          summary: The outbox worker cannot claim durable work
+          runbook_url: /docs/operations/observability.md#outbox
+      - alert: MemoriaEmailDeliveryFailure
+        expr: increase(memoria_email_delivery_failures_total[10m]) > 0
+        labels: { severity: warning, owner: delivery }
+        annotations:
+          summary: The configured email provider rejected or failed a delivery
+          runbook_url: /docs/operations/observability.md#email
+
+  - name: memoria-recovery-and-cost
+    rules:
+      - alert: MemoriaBackupMissing
+        expr: memoria_backup_last_success_timestamp_seconds == 0
+        for: 15m
+        labels: { severity: critical, owner: recovery }
+        annotations:
+          summary: No completed off-host backup has been observed
+          runbook_url: /docs/operations/backup-recovery.md
+      - alert: MemoriaBackupStale
+        expr: time() - memoria_backup_last_success_timestamp_seconds > 5400
+        for: 5m
+        labels: { severity: critical, owner: recovery }
+        annotations:
+          summary: The latest completed off-host backup is over 90 minutes old
+          runbook_url: /docs/operations/backup-recovery.md
+      - alert: MemoriaBackupFreshnessCheckFailure
+        expr: increase(memoria_backup_freshness_failures_total[30m]) > 0
+        labels: { severity: critical, owner: recovery }
+        annotations:
+          summary: Independent backup freshness checks are failing
+          runbook_url: /docs/operations/backup-recovery.md
+      - alert: MemoriaAiBudgetWarning
+        expr: memoria_ai_action_budget_utilization_ratio > 0.8
+        for: 15m
+        labels: { severity: warning, owner: ai-operations }
+        annotations:
+          summary: Trailing AI action use exceeds 80 percent of the daily budget
+          runbook_url: /docs/operations/observability.md#ai-budget
+      - alert: MemoriaAiBudgetExceeded
+        expr: memoria_ai_action_budget_utilization_ratio > 1
+        for: 5m
+        labels: { severity: critical, owner: ai-operations }
+        annotations:
+          summary: Trailing AI action use exceeds the daily operations budget
+          runbook_url: /docs/operations/observability.md#ai-budget

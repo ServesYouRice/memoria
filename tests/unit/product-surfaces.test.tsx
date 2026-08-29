@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * IMP-032 — optional product-surface semantics (DEC-011 through DEC-013).
  *

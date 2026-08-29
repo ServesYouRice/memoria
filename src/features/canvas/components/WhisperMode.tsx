@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
+  Alert,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -17,12 +18,15 @@ import {
 interface WhisperModeProps {
   open: boolean;
   onClose: () => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | Promise<void>;
 }
 
 export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
   const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sendInFlightRef = useRef(false);
 
   useEffect(() => {
     if (open && inputRef.current) {
@@ -30,10 +34,24 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
     }
   }, [open]);
 
-  const handleSend = () => {
-    if (text.trim()) {
-      onSend(text);
-      setText("");
+  const handleSend = async () => {
+    if (text.trim() && !sendInFlightRef.current) {
+      sendInFlightRef.current = true;
+      setSending(true);
+      setSendError(null);
+      try {
+        await onSend(text);
+        setText("");
+      } catch (error) {
+        setSendError(
+          error instanceof Error
+            ? error.message
+            : "Failed to save quick capture.",
+        );
+      } finally {
+        sendInFlightRef.current = false;
+        setSending(false);
+      }
       // Optional: Auto-close after sending or keep open for rapid entry?
       // Keeping open for rapid entry style.
     }
@@ -42,7 +60,7 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     } else if (e.key === "Escape") {
       onClose();
     }
@@ -87,6 +105,11 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
         </Box>
       </DialogTitle>
       <DialogContent>
+        {sendError && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {sendError}
+          </Alert>
+        )}
         <TextField
           inputRef={inputRef}
           fullWidth
@@ -96,7 +119,10 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
           placeholder="Capture a thought…"
           variant="standard"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (sendError) setSendError(null);
+          }}
           onKeyDown={handleKeyDown}
           slotProps={{
             input: {
@@ -104,8 +130,8 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
               endAdornment: (
                 <IconButton
                   aria-label="Save quick capture"
-                  onClick={handleSend}
-                  disabled={!text.trim()}
+                  onClick={() => void handleSend()}
+                  disabled={!text.trim() || sending}
                   color="primary"
                   size="small"
                 >

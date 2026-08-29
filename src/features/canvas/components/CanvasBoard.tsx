@@ -20,7 +20,7 @@ import {
   useCreateCanvasItem,
   useUpdateCanvasItem,
   canvasItemKeys,
-  mergeCommittedCanvasItemEvent,
+  mergeCommittedCanvasItemEvents,
   type CommittedCanvasItemEvent,
 } from "@/lib/hooks/use-canvas-items";
 import { useQueryClient } from "@tanstack/react-query";
@@ -63,6 +63,7 @@ import { GridOverlay } from "@/features/canvas/components/GridOverlay";
 import { CursorChat } from "@/features/canvas/components/CursorChat";
 import { ReactionSelector } from "@/features/canvas/components/ReactionSelector";
 import { RemoteCursorChat } from "@/features/canvas/components/RemoteCursorChat";
+import { RemoteCursor } from "@/features/canvas/components/RemoteCursor";
 import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
 import { MainToolbar } from "@/features/canvas/components/MainToolbar";
@@ -73,6 +74,25 @@ import { isVersionConflict } from "@/lib/api/fetch-client";
 
 interface CanvasBoardProps {
   canvasId: string;
+}
+
+interface RemoteChatMessage {
+  id: string;
+  userId: string;
+  content: string;
+  x: number;
+  y: number;
+  userName: string;
+  userColor: string;
+}
+
+interface RemoteReactionMessage {
+  id: string;
+  userId: string;
+  emoji: string;
+  x: number;
+  y: number;
+  userName: string;
 }
 
 export function CanvasBoard({ canvasId }: CanvasBoardProps) {
@@ -89,6 +109,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   // Data Hook (Single source of truth for display)
   const {
     items,
+    searchMatchIds,
     allItems,
     versions,
     allTags,
@@ -208,8 +229,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const [chatPosition, setChatPosition] = useState({ x: 0, y: 0 });
   const [reactionOpen, setReactionOpen] = useState(false);
   const [reactionPosition, setReactionPosition] = useState({ x: 0, y: 0 });
-  const [remoteMessages, setRemoteMessages] = useState<any[]>([]);
-  const [remoteReactions, setRemoteReactions] = useState<any[]>([]);
+  const [remoteMessages, setRemoteMessages] = useState<RemoteChatMessage[]>([]);
+  const [remoteReactions, setRemoteReactions] = useState<
+    RemoteReactionMessage[]
+  >([]);
   const [followingUserId, setFollowingUserId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"manual" | "organizer">("manual");
 
@@ -442,27 +465,67 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   // Collaboration
   const { data: session } = useSession();
 
-  const handleRemoteMessage = useCallback((message: any) => {
-    if (message.type === "chat") {
+  const handleRemoteMessage = useCallback((message: unknown) => {
+    if (!message || typeof message !== "object") return;
+    const payload = message as Record<string, unknown>;
+    const position = payload.position as
+      { x?: unknown; y?: unknown } | undefined;
+    if (
+      payload.kind === "cursor_chat" &&
+      typeof payload.userId === "string" &&
+      typeof payload.message === "string" &&
+      typeof payload.userName === "string" &&
+      typeof payload.userColor === "string" &&
+      typeof position?.x === "number" &&
+      typeof position.y === "number"
+    ) {
       const id = Date.now().toString() + Math.random().toString();
-      setRemoteMessages((prev) => [...prev, { ...message, id }]);
+      setRemoteMessages((prev) => [
+        ...prev,
+        {
+          id,
+          userId: payload.userId as string,
+          content: payload.message as string,
+          x: position.x as number,
+          y: position.y as number,
+          userName: payload.userName as string,
+          userColor: payload.userColor as string,
+        },
+      ]);
       setTimeout(() => {
         setRemoteMessages((prev) => prev.filter((m) => m.id !== id));
       }, 5000);
-    } else if (message.type === "reaction") {
+    } else if (
+      payload.kind === "reaction" &&
+      typeof payload.userId === "string" &&
+      typeof payload.emoji === "string" &&
+      typeof payload.userName === "string" &&
+      typeof position?.x === "number" &&
+      typeof position.y === "number"
+    ) {
       const id = Date.now().toString() + Math.random().toString();
-      setRemoteReactions((prev) => [...prev, { ...message, id }]);
+      setRemoteReactions((prev) => [
+        ...prev,
+        {
+          id,
+          userId: payload.userId as string,
+          emoji: payload.emoji as string,
+          x: position.x as number,
+          y: position.y as number,
+          userName: payload.userName as string,
+        },
+      ]);
       setTimeout(() => {
         setRemoteReactions((prev) => prev.filter((r) => r.id !== id));
       }, 3000);
     }
   }, []);
 
-  const handleCommittedEvent = useCallback(
-    async (event: CommittedCanvasItemEvent) => {
-      await mergeCommittedCanvasItemEvent(queryClient, event);
+  const handleCommittedEvents = useCallback(
+    async (events: CommittedCanvasItemEvent[]) => {
+      await mergeCommittedCanvasItemEvents(queryClient, canvasId, events);
     },
-    [queryClient],
+    [canvasId, queryClient],
   );
 
   const handleCommittedSnapshotRequired = useCallback(() => {
@@ -476,6 +539,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     cursors,
     connected: collaborationConnected,
     status: collaborationStatus,
+    connectionMessage: collaborationConnectionMessage,
     broadcastMessage,
     updateCursor,
   } = useCollaboration({
@@ -484,14 +548,9 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     userId: session?.user?.id || "anon",
     email: session?.user?.email || "anon@example.com",
     onMessage: handleRemoteMessage,
-    onCommittedEvent: handleCommittedEvent,
+    onCommittedEvents: handleCommittedEvents,
     onSnapshotRequired: handleCommittedSnapshotRequired,
   });
-
-  // Server-assigned presence color, so chat bubbles match the cursor color
-  const ownPresenceColor =
-    collaborators.find((user) => user.userId === session?.user?.id)?.color ||
-    "#f00";
 
   // Follow Mode
   useEffect(() => {
@@ -1000,29 +1059,35 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         </Box>
       )}
 
+      {collaborationConnectionMessage && (
+        <Box sx={{ px: 2, py: 1 }}>
+          <Alert
+            severity="warning"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => window.location.reload()}
+              >
+                Refresh
+              </Button>
+            }
+          >
+            {collaborationConnectionMessage}
+          </Alert>
+        </Box>
+      )}
+
       <CanvasAccessiblePanel
-        items={allItems}
+        items={items}
         capabilities={capabilities}
+        searchQuery={searchQuery}
+        searchMatchIds={searchMatchIds}
         selectedItemIds={selectedItemIds}
         onSelectItem={(itemId) => handleSelectItem(itemId, false)}
-        onActivateItem={(item) => {
-          if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
-            handleNoteDoubleClick(item);
-          } else if (item.type === ItemType.BOOKMARK) {
-            handleBookmarkDoubleClick(item);
-          } else if (item.type === ItemType.IMAGE) {
-            handleImageDoubleClick(item);
-          }
-        }}
-        onNudgeItem={(item, deltaX, deltaY) => {
-          commitGeometry(item, {
-            positionX: item.positionX + deltaX,
-            positionY: item.positionY + deltaY,
-          });
-        }}
-        onDeleteItem={(item) => {
-          void deleteItem({ itemId: item.id, version: item.version });
-        }}
+        onActivateItem={handleActivateItem}
+        onNudgeItem={handleNudgeItem}
+        onDeleteItem={handleDeleteItem}
         onCreateItem={() => setNoteDialogOpen(true)}
         canvasName={canvasName}
       />
@@ -1041,7 +1106,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         <Box
           ref={stageContainerRef}
           role="region"
-          aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list follows."
+          aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list is available from the skip control."
           sx={{
             flexGrow: 1,
             position: "relative",
@@ -1051,20 +1116,6 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
           }}
         >
-          {/* IMP-022 / DEC-009: the canvas content as real DOM, always present
-              in the accessibility tree and operable without pointer or pixels. */}
-          <CanvasAccessiblePanel
-            items={allItems}
-            capabilities={capabilities}
-            canvasName={canvasName}
-            selectedItemIds={selectedItemIds}
-            onSelectItem={(id) => handleSelectItem(id, false)}
-            onActivateItem={handleActivateItem}
-            onNudgeItem={handleNudgeItem}
-            onDeleteItem={handleDeleteItem}
-            onCreateItem={() => setNoteDialogOpen(true)}
-          />
-
           {!isDrawing && !isPresentationMode && canEdit && (
             <SpeedDial
               ariaLabel="Add Item"
@@ -1165,6 +1216,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               onContextMenu={handleContextMenu}
               onActivateItem={handleActivateItem}
               onCommitGeometry={handleCommitGeometry}
+              searchActive={Boolean(searchQuery.trim())}
+              searchMatchIds={searchMatchIds}
             />
           </Stage>
 
@@ -1180,12 +1233,9 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                     const canvasX = (ptr.x - position.x) / zoom;
                     const canvasY = (ptr.y - position.y) / zoom;
                     broadcastMessage({
-                      type: "chat",
-                      content: msg,
-                      x: canvasX,
-                      y: canvasY,
-                      userName: session?.user?.name || "Anonymous",
-                      userColor: ownPresenceColor,
+                      kind: "cursor_chat",
+                      message: msg,
+                      position: { x: canvasX, y: canvasY },
                     });
                   }
                 }
@@ -1207,11 +1257,9 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                     const canvasX = (ptr.x - position.x) / zoom;
                     const canvasY = (ptr.y - position.y) / zoom;
                     broadcastMessage({
-                      type: "reaction",
+                      kind: "reaction",
                       emoji: emoji,
-                      x: canvasX,
-                      y: canvasY,
-                      userName: session?.user?.name || "Anonymous",
+                      position: { x: canvasX, y: canvasY },
                     });
                   }
                 }
@@ -1220,6 +1268,28 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               onClose={() => setReactionOpen(false)}
             />
           )}
+
+          {cursors
+            .filter((cursor) => cursor.userId !== session?.user?.id)
+            .map((cursor) => {
+              const collaborator = collaborators.find(
+                (candidate) => candidate.userId === cursor.userId,
+              );
+              const screenX = cursor.position.x * zoom + position.x;
+              const screenY = cursor.position.y * zoom + position.y;
+              return (
+                <RemoteCursor
+                  key={cursor.userId}
+                  userId={cursor.userId}
+                  name={
+                    collaborator?.name || collaborator?.email || "Collaborator"
+                  }
+                  color={cursor.color}
+                  x={screenX}
+                  y={screenY}
+                />
+              );
+            })}
 
           {remoteMessages.map((msg) => {
             const screenX = msg.x * zoom + position.x;
