@@ -5,11 +5,15 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
 
-Gate status, 2026-08-29: `pnpm test -- --run` passes 104 files and 780 tests;
-`pnpm lint`, `pnpm type-check`, `pnpm check-bundle`, and `prisma validate` also
-pass. Next's webpack compilation and route generation pass; the final server
-bundle needs the repository's Node 24.20 runtime and unrestricted filesystem.
-Schema drift additionally needs a reachable `DATABASE_URL` database.
+Gate status, 2026-08-29: on the merge of `codex-implementation` into `main`,
+`pnpm lint`, `pnpm type-check`, `pnpm test -- --run` (104 files, 780 tests),
+`pnpm build`, and `pnpm check-bundle` all pass. The integration suite passes
+14/14 against PostgreSQL 16 and `scripts/check-schema-drift.mjs` reports only
+the approved generated-tsvector exception. That evidence was collected on Node
+22, not the Node 24 line `package.json` and CI pin, and the suite ran against a
+freshly migrated database rather than through the `prisma migrate reset` step of
+`pnpm test:integration`. `pnpm test:e2e` and `pnpm smoke` still need Docker and
+remain gated on DEC-014; CI exercises the E2E gate.
 
 ## DOING
 

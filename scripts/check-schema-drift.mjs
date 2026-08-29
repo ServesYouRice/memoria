@@ -1,8 +1,7 @@
 import { readFileSync } from "fs";
 import { spawnSync } from "child_process";
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl)
+if (!process.env.DATABASE_URL)
   throw new Error("DATABASE_URL is required for schema drift checks");
 const pnpmCli = process.env.npm_execpath;
 if (!pnpmCli) throw new Error("Run this script through pnpm");
@@ -15,9 +14,9 @@ const result = spawnSync(
     "prisma",
     "migrate",
     "diff",
-    // Prisma 7 reads the connection URL from prisma.config.ts. The previous
-    // --from-url/--to-schema-datamodel flags were removed, so use the config
-    // datasource while retaining the checked-in schema as the target.
+    // Prisma 7 removed `--from-url` and `--to-schema-datamodel`.
+    // `--from-config-datasource` reads the datasource out of prisma.config.ts,
+    // which resolves `env("DATABASE_URL")` — the same URL this script asserts.
     "--from-config-datasource",
     "--to-schema",
     "prisma/schema.prisma",
