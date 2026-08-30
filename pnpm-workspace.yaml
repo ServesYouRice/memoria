@@ -10,6 +10,16 @@ overrides:
   # GHSA-7fh5-64p2-3v2j: postcss <8.5.10 XSS via unescaped </style>. Bundled by
   # next; a patch-line bump to the fixed 8.5.x is safe for the build pipeline.
   "postcss@<8.5.10": ">=8.5.10"
+  # GHSA-v2hh-gcrm-f6hx and GHSA-7p8r-x3mc-p8w7: fast-uri <3.1.5 confuses the
+  # authority when parsing a literal or a backslash introducer. Reached only
+  # transitively, through ajv under @hookform/resolvers and prisma.
+  "fast-uri@<3.1.5": ">=3.1.5 <4"
+  # GHSA-4cwx-7wf7-3272: undici <7.29.0 can disclose one user's data to another
+  # across pooled connections.
+  "undici@<7.29.0": ">=7.29.0 <8"
+  # GHSA-ggr8-5vv4-36mx: deepmerge-ts <8.0.0 exhausts the stack on a recursive
+  # object graph. Pulled in only transitively via prisma -> @prisma/config.
+  "deepmerge-ts@<8.0.0": ">=8.0.0 <9"
 
 allowBuilds:
   "@percy/core": true
