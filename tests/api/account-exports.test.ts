@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountExportStatus } from "@/generated/prisma/client";
+import { RESOURCE_BUDGETS } from "@/lib/policy/resource-budgets";
 
 const auth = vi.hoisted(() => ({ requireAuth: vi.fn() }));
 const db = vi.hoisted(() => ({
@@ -40,6 +41,9 @@ import { GET as downloadGet } from "@/app/api/v1/users/account/exports/[exportId
 const userId = "cluserxxxxxxxxxxxxxxxxxxx";
 const exportId = "clexportxxxxxxxxxxxxxxxxx";
 const now = new Date("2026-08-29T12:00:00.000Z");
+const expiresAt = new Date(
+  now.getTime() + RESOURCE_BUDGETS.accountExport.retentionMs,
+);
 
 function record(overrides: Record<string, unknown> = {}) {
   return {
@@ -56,7 +60,7 @@ function record(overrides: Record<string, unknown> = {}) {
     cancelRequestedAt: null,
     startedAt: null,
     completedAt: null,
-    expiresAt: new Date("2026-08-30T12:00:00.000Z"),
+    expiresAt,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -73,6 +77,13 @@ const context = { params: Promise.resolve({ exportId }) };
 
 describe("background account export routes", () => {
   beforeEach(() => {
+    // The download route compares `expiresAt` against `new Date()`. Without a
+    // frozen clock the fixture stops being "not yet expired" once wall-clock
+    // time passes it, so the suite would begin failing on a date rather than
+    // on a code change. Only Date is faked; timers stay real so the route's
+    // promises still settle.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
     vi.clearAllMocks();
     auth.requireAuth.mockResolvedValue({ userId, email: "owner@example.com" });
     db.transaction.mockImplementation(
@@ -86,6 +97,10 @@ describe("background account export routes", () => {
           },
         }),
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("creates one durable queued job under a per-user transaction lock", async () => {
