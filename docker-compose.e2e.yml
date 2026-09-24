@@ -11,6 +11,13 @@ x-runtime-environment: &runtime-environment
   NEXTAUTH_SECRET: memoria-e2e-auth-secret-0123456789abcdef
   REGISTRATION_MODE: open
   AUTH_RATE_LIMIT_MAX_REQUESTS: '100'
+  # The three Playwright projects drive one app instance from one container, so
+  # they share a single x-memoria-client-ip and draw down one budget between
+  # them. Production ceilings (100 requests per 15 minutes, 10 uploads per hour)
+  # are exhausted part-way through a run, which surfaces as 429s in whichever
+  # spec happens to be mid-flight rather than as a stable failure.
+  API_RATE_LIMIT_MAX_REQUESTS: '100000'
+  UPLOAD_RATE_LIMIT_MAX_REQUESTS: '10000'
   APP_BOOTSTRAP_TOKEN: memoria-e2e-bootstrap-token-0123456789
   INTERNAL_OPERATIONS_TOKEN: memoria-e2e-operations-token-0123456789abcdef
   MODEL_CREDENTIAL_ENCRYPTION_KEY: memoria-e2e-model-key-0123456789abcdef

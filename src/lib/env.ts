@@ -58,6 +58,8 @@ const envSchema = z
     MEMORIA_E2E_MODE: z.enum(["true"]).optional(),
     TRUSTED_PROXY_CIDRS: optionalString,
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    API_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    UPLOAD_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
     BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,

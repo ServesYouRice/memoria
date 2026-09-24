@@ -35,6 +35,18 @@ export const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
  */
 export const AUTH_RATE_LIMIT_MAX_REQUESTS = 5;
 
+/**
+ * Upload rate limit window in milliseconds
+ * Default: 1 hour
+ */
+export const UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Maximum uploads allowed in the upload rate limit window
+ * Default: 10 uploads per hour
+ */
+export const UPLOAD_RATE_LIMIT_MAX_REQUESTS = 10;
+
 // ============================================================================
 // Content Length Limits
 // ============================================================================

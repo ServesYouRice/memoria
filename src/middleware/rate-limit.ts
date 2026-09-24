@@ -8,6 +8,8 @@ import {
   API_RATE_LIMIT_MAX_REQUESTS,
   AUTH_RATE_LIMIT_WINDOW_MS,
   AUTH_RATE_LIMIT_MAX_REQUESTS,
+  UPLOAD_RATE_LIMIT_WINDOW_MS,
+  UPLOAD_RATE_LIMIT_MAX_REQUESTS,
 } from "@/lib/constants";
 import { createRateLimiter } from "@/lib/rate-limit";
 
@@ -96,14 +98,20 @@ export const authRateLimit = rateLimit({
 });
 
 export const apiRateLimit = rateLimit({
-  maxRequests: API_RATE_LIMIT_MAX_REQUESTS,
+  maxRequests: configuredMaxRequests(
+    "API_RATE_LIMIT_MAX_REQUESTS",
+    API_RATE_LIMIT_MAX_REQUESTS,
+  ),
   windowMs: API_RATE_LIMIT_WINDOW_MS,
   keyPrefix: "api",
 });
 
 export const uploadRateLimit = rateLimit({
-  maxRequests: 10, // 10 uploads per hour
-  windowMs: 60 * 60 * 1000,
+  maxRequests: configuredMaxRequests(
+    "UPLOAD_RATE_LIMIT_MAX_REQUESTS",
+    UPLOAD_RATE_LIMIT_MAX_REQUESTS,
+  ),
+  windowMs: UPLOAD_RATE_LIMIT_WINDOW_MS,
   keyPrefix: "upload",
 });
 
