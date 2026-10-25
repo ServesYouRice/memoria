@@ -44,6 +44,8 @@ model User {
   workspaceCheckpoints WorkspaceCheckpoint[]
   canvasViews   CanvasView[]
   agentJobs     AgentJob[]
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthTokens   OAuthToken[]
   uploadAssets  UploadAsset[]
   uploadQuota   UploadQuota?
   receivedShares CanvasShare[] @relation("ShareRecipient")
@@ -658,6 +660,8 @@ model AgentProfile {
   changeSets  ChangeSet[]
   suggestions Suggestion[]
   jobs        AgentJob[]
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthTokens OAuthToken[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -977,4 +981,63 @@ model CanvasEvent {
 
   @@index([canvasId, sequence])
   @@index([createdAt])
+}
+
+// OAuth 2.1 authorization for remote MCP clients (Claude, ChatGPT, agents).
+// Each consent creates an AgentProfile, so the existing capability rungs and
+// canvas scope govern what a connected app can do.
+model OAuthClient {
+  id                 String                   @id @default(cuid())
+  clientId           String                   @unique
+  clientName         String
+  redirectUris       String[]
+  clientUri          String?
+  // "none" for public PKCE clients; confidential clients get a hashed secret.
+  tokenEndpointAuthMethod String                   @default("none")
+  clientSecretHash        String?
+  createdAt          DateTime                 @default(now())
+  authorizationCodes OAuthAuthorizationCode[]
+  tokens             OAuthToken[]
+}
+
+model OAuthAuthorizationCode {
+  id             String       @id @default(cuid())
+  codeHash       String       @unique
+  clientId       String
+  client         OAuthClient  @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentProfileId String
+  agentProfile   AgentProfile @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  redirectUri    String
+  codeChallenge  String
+  scope          String
+  resource       String
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([expiresAt])
+}
+
+model OAuthToken {
+  id               String       @id @default(cuid())
+  accessTokenHash  String       @unique
+  refreshTokenHash String       @unique
+  clientId         String
+  client           OAuthClient  @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentProfileId   String
+  agentProfile     AgentProfile @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  scope            String
+  resource         String
+  accessExpiresAt  DateTime
+  refreshExpiresAt DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime     @default(now())
+
+  @@index([userId, revokedAt])
+  @@index([agentProfileId])
 }

@@ -121,6 +121,15 @@ Current agent limits remain intentionally conservative:
 - derived relations are canvas-scoped;
 - the organizer is a read-only derived lens.
 
+Remote MCP clients sign in with OAuth 2.1 (authorization code + PKCE, dynamic
+client registration). Discovery documents live at
+`/.well-known/oauth-protected-resource` and
+`/.well-known/oauth-authorization-server`; the MCP endpoint answers
+unauthenticated requests with HTTP 401 pointing at them. Each consent creates
+an `AgentProfile`, so capability rungs and canvas scope govern connected apps
+exactly as they govern integration tokens. Access and refresh tokens are
+stored as SHA-256 digests in `OAuthToken` and rotate on refresh.
+
 ## Security Layers
 
 - Strict environment validation with production invariants for Redis, S3, and

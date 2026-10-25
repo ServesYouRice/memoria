@@ -1,5 +1,11 @@
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { assertCanvasScope } from "@/lib/agents/policy";
+import {
+  getItemPlainText,
+  getItemTitle,
+  getItemUrl,
+} from "@/lib/agents/item-text";
 import type { AgentRequestContext } from "@/lib/agents/auth";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
 
@@ -160,6 +166,112 @@ export async function listScopedCanvasItems(
     },
     orderBy: [{ zIndex: "asc" }, { createdAt: "asc" }],
   });
+}
+
+const MAX_SEARCH_TERMS = 8;
+
+/**
+ * Word search across the boards an agent may read. Every term must appear in
+ * the item's text, title, link or tags; newest matches come first.
+ */
+export async function searchScopedItems(
+  actor: ScopedActor,
+  input: { query: string; canvasId?: string; limit: number },
+) {
+  const terms = input.query
+    .trim()
+    .split(/\s+/)
+    .filter((term) => term.length > 0)
+    .slice(0, MAX_SEARCH_TERMS);
+
+  if (terms.length === 0) {
+    throw new BadRequestError("Search query cannot be empty.");
+  }
+
+  if (input.canvasId) {
+    await requireScopedCanvas(actor, input.canvasId);
+  }
+
+  const canvasFilter = input.canvasId
+    ? Prisma.sql`AND i."canvasId" = ${input.canvasId}`
+    : actor.agentProfile
+      ? Prisma.sql`AND i."canvasId" = ANY(${actor.agentProfile.allowedCanvasIds}::text[])`
+      : Prisma.empty;
+  const haystack = Prisma.sql`concat_ws(' ',
+    i."content"->>'plainText', i."content"->>'text', i."content"->>'title',
+    i."content"->>'description', i."content"->>'url', i."content"->>'alt',
+    array_to_string(i."tags", ' '))`;
+  const termFilters = terms.map((term) => {
+    const pattern = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+    return Prisma.sql`AND ${haystack} ILIKE ${pattern} ESCAPE '\\'`;
+  });
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      canvasId: string;
+      canvasName: string;
+      type: string;
+      content: unknown;
+      tags: string[];
+      updatedAt: Date;
+    }>
+  >`
+    SELECT i."id", i."canvasId", c."name" AS "canvasName", i."type"::text AS "type",
+      i."content", i."tags", i."updatedAt"
+    FROM "CanvasItem" i
+    JOIN "Canvas" c ON c."id" = i."canvasId"
+    WHERE c."userId" = ${actor.userId}
+      AND i."deletedAt" IS NULL
+      ${canvasFilter}
+      ${Prisma.join(termFilters, " ")}
+    ORDER BY i."updatedAt" DESC
+    LIMIT ${input.limit}
+  `;
+
+  return {
+    results: rows.map((row) => ({
+      itemId: row.id,
+      canvasId: row.canvasId,
+      canvasName: row.canvasName,
+      type: row.type,
+      title: getItemTitle(row),
+      url: getItemUrl(row),
+      snippet: getItemPlainText(row).slice(0, 280),
+      tags: row.tags,
+      updatedAt: row.updatedAt,
+    })),
+  };
+}
+
+/** One item with its readable text, for agents that need the full content. */
+export async function getScopedItemDetail(actor: ScopedActor, itemId: string) {
+  const scoped = await requireScopedItem(actor, itemId);
+  const item = await prisma.canvasItem.findUniqueOrThrow({
+    where: { id: scoped.id },
+    select: {
+      id: true,
+      canvasId: true,
+      type: true,
+      content: true,
+      tags: true,
+      positionX: true,
+      positionY: true,
+      width: true,
+      height: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  return {
+    item: {
+      ...item,
+      title: getItemTitle(item),
+      url: getItemUrl(item),
+      text: getItemPlainText(item),
+    },
+  };
 }
 
 export async function listScopedKnowledgeEntities(

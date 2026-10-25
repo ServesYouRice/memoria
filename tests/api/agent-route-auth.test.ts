@@ -44,6 +44,8 @@ const prismaMocks = vi.hoisted(() => ({
 vi.mock("@/lib/agents/auth", () => ({
   resolveAgentRequestContext: authMocks.resolveAgentRequestContext,
   getOwnedAgentProfile: authMocks.getOwnedAgentProfile,
+  getBearerToken: (request: Request) =>
+    request.headers.get("authorization")?.replace(/^Bearer\s+/, "") || null,
 }));
 
 vi.mock("@/lib/agents/query-core", () => ({
@@ -103,7 +105,7 @@ import {
   POST as integrationsPost,
 } from "@/app/api/agent/v1/integrations/route";
 import { POST as ingestPost } from "@/app/api/agent/v1/integrations/ingest/route";
-import { POST as mcpPost } from "@/app/api/agent/v1/mcp/route";
+import { GET as mcpGet, POST as mcpPost } from "@/app/api/agent/v1/mcp/route";
 
 function createNextRequest(
   url: string,
@@ -436,22 +438,89 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
     });
   });
 
-  describe("MCP public vs protected protocol boundaries", () => {
-    it("handles initialize without resolving actor context", async () => {
+  describe("MCP authorization boundaries", () => {
+    const resourceMetadata =
+      'resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource/api/agent/v1/mcp"';
+
+    it.each([
+      ["initialize", { jsonrpc: "2.0", id: 1, method: "initialize" }],
+      ["tools/list", { jsonrpc: "2.0", id: 3, method: "tools/list" }],
+      [
+        "notifications/initialized",
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+      ],
+    ])(
+      "answers an unauthenticated %s with HTTP 401 that points at OAuth discovery",
+      async (_method, body) => {
+        authMocks.resolveAgentRequestContext.mockRejectedValue(
+          new UnauthorizedError("Authentication required"),
+        );
+
+        const res = await mcpPost(
+          createNextRequest("http://localhost/api/agent/v1/mcp", {
+            method: "POST",
+            body,
+          }),
+        );
+
+        expect(res.status).toBe(401);
+        expect(res.headers.get("WWW-Authenticate")).toBe(
+          `Bearer ${resourceMetadata}`,
+        );
+        expect(mcpMocks.buildMcpInitializeResult).not.toHaveBeenCalled();
+        expect(mcpMocks.listMcpTools).not.toHaveBeenCalled();
+      },
+    );
+
+    it("marks a rejected bearer token as invalid_token", async () => {
+      authMocks.resolveAgentRequestContext.mockRejectedValue(
+        new UnauthorizedError("Invalid or expired access token."),
+      );
+
       const res = await mcpPost(
         createNextRequest("http://localhost/api/agent/v1/mcp", {
           method: "POST",
-          body: { jsonrpc: "2.0", id: 1, method: "initialize" },
+          headers: { Authorization: "Bearer moa_expired" },
+          body: { jsonrpc: "2.0", id: 9, method: "initialize" },
+        }),
+      );
+
+      expect(res.status).toBe(401);
+      expect(res.headers.get("WWW-Authenticate")).toBe(
+        `Bearer ${resourceMetadata}, error="invalid_token"`,
+      );
+      const json = await res.json();
+      expect(json.error.code).toBe(-32001);
+    });
+
+    it("negotiates initialize once the caller is authenticated", async () => {
+      authMocks.resolveAgentRequestContext.mockResolvedValue(
+        mockIntegrationContext,
+      );
+
+      const res = await mcpPost(
+        createNextRequest("http://localhost/api/agent/v1/mcp", {
+          method: "POST",
+          body: {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: { protocolVersion: "2025-06-18" },
+          },
         }),
       );
 
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.result.serverInfo.name).toBe("memoria");
-      expect(authMocks.resolveAgentRequestContext).not.toHaveBeenCalled();
+      expect(mcpMocks.buildMcpInitializeResult).toHaveBeenCalledWith(
+        "2025-06-18",
+      );
     });
 
-    it("handles notifications/initialized with 202 without resolving actor context", async () => {
+    it("acknowledges notifications with 202 for authenticated callers", async () => {
+      authMocks.resolveAgentRequestContext.mockResolvedValue(mockUserContext);
+
       const res = await mcpPost(
         createNextRequest("http://localhost/api/agent/v1/mcp", {
           method: "POST",
@@ -460,38 +529,29 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
       );
 
       expect(res.status).toBe(202);
-      expect(authMocks.resolveAgentRequestContext).not.toHaveBeenCalled();
     });
 
-    it("handles ping without resolving actor context", async () => {
-      const res = await mcpPost(
+    it("handles ping and tools/list for authenticated callers", async () => {
+      authMocks.resolveAgentRequestContext.mockResolvedValue(mockUserContext);
+
+      const ping = await mcpPost(
         createNextRequest("http://localhost/api/agent/v1/mcp", {
           method: "POST",
           body: { jsonrpc: "2.0", id: 2, method: "ping" },
         }),
       );
+      expect((await ping.json()).result).toEqual({ ok: true });
 
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.result).toEqual({ ok: true });
-      expect(authMocks.resolveAgentRequestContext).not.toHaveBeenCalled();
-    });
-
-    it("handles tools/list without resolving actor context", async () => {
-      const res = await mcpPost(
+      const list = await mcpPost(
         createNextRequest("http://localhost/api/agent/v1/mcp", {
           method: "POST",
           body: { jsonrpc: "2.0", id: 3, method: "tools/list" },
         }),
       );
-
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.result.tools).toHaveLength(1);
-      expect(authMocks.resolveAgentRequestContext).not.toHaveBeenCalled();
+      expect((await list.json()).result.tools).toHaveLength(1);
     });
 
-    it("tools/call returns JSON-RPC -32001 unauthorized error on auth failure without executing tool", async () => {
+    it("tools/call returns HTTP 401 on auth failure without executing tool", async () => {
       authMocks.resolveAgentRequestContext.mockRejectedValue(
         new UnauthorizedError("Actor authentication required"),
       );
@@ -508,11 +568,29 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
         }),
       );
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(401);
       const json = await res.json();
-      expect(json.error).toBeDefined();
       expect(json.error.code).toBe(-32001);
       expect(mcpMocks.executeMcpTool).not.toHaveBeenCalled();
+    });
+
+    it("rejects malformed JSON with a JSON-RPC parse error", async () => {
+      const res = await mcpPost(
+        createNextRequest("http://localhost/api/agent/v1/mcp", {
+          method: "POST",
+          body: "{not json",
+        }),
+      );
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.code).toBe(-32700);
+      expect(authMocks.resolveAgentRequestContext).not.toHaveBeenCalled();
+    });
+
+    it("declines server-sent streams on GET", async () => {
+      const res = mcpGet();
+      expect(res.status).toBe(405);
+      expect(res.headers.get("Allow")).toBe("POST");
     });
 
     it("tools/call executes tool when actor context is successfully resolved", async () => {

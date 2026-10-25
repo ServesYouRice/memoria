@@ -40,6 +40,7 @@ import {
   Edit as EditIcon,
   EditNote as WhisperIcon,
   ViewInAr as ARIcon,
+  ViewQuilt as PilesIcon,
 } from "@mui/icons-material";
 import { ShareDialog } from "./ShareDialog";
 import type { AutosaveStatus } from "@/lib/autosave/serialized-delta-queue";
@@ -96,6 +97,7 @@ export interface CanvasHeaderProps {
 
   onSerendipity?: () => void;
   onAutopilot?: () => void;
+  onSortIntoPiles?: () => void;
   onWhisper?: () => void;
   onAR?: () => void;
   onPresentationMode?: () => void;
@@ -139,6 +141,7 @@ export function CanvasHeader({
 
   onSerendipity,
   onAutopilot,
+  onSortIntoPiles,
   onWhisper,
   onAR,
   onPresentationMode,
@@ -264,6 +267,13 @@ export function CanvasHeader({
       label: "Auto-organize canvas",
       icon: <AutopilotIcon />,
       onClick: onAutopilot,
+      color: "primary" as const,
+    },
+    onSortIntoPiles && {
+      key: "sort-into-piles",
+      label: "Sort into piles",
+      icon: <PilesIcon />,
+      onClick: onSortIntoPiles,
       color: "primary" as const,
     },
     onWhisper && {

@@ -37,6 +37,7 @@ import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
+import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
@@ -193,6 +194,10 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [serendipityOpen, setSerendipityOpen] = useState(false);
+  const [sortPilesOpen, setSortPilesOpen] = useState(false);
+  // After "Sort into piles" the board refetches; once the new bounds arrive,
+  // zoom out so the piles (placed beside existing items) are in view.
+  const [fitAfterSortFrom, setFitAfterSortFrom] = useState<string | null>(null);
   const [whisperOpen, setWhisperOpen] = useState(false);
   const [pendingAutopilotActions, setPendingAutopilotActions] = useState<
     Awaited<ReturnType<typeof calculateAutopilotLayout>>
@@ -991,6 +996,47 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
 
   const [isPresentationMode, setPresentationMode] = useState(false);
 
+  const fitToScreen = useCallback(() => {
+    if (
+      canvasBounds?.minX === null ||
+      canvasBounds?.minY === null ||
+      canvasBounds?.maxX === null ||
+      canvasBounds?.maxY === null ||
+      !canvasBounds
+    ) {
+      setZoom(1);
+      setPosition({ x: 0, y: 0 });
+      return;
+    }
+    const contentWidth = Math.max(1, canvasBounds.maxX - canvasBounds.minX);
+    const contentHeight = Math.max(1, canvasBounds.maxY - canvasBounds.minY);
+    const nextZoom = Math.max(
+      0.1,
+      Math.min(
+        1,
+        (stageSize.width - 96) / contentWidth,
+        (stageSize.height - 96) / contentHeight,
+      ),
+    );
+    setZoom(nextZoom);
+    setPosition({
+      x:
+        stageSize.width / 2 -
+        ((canvasBounds.minX + canvasBounds.maxX) / 2) * nextZoom,
+      y:
+        stageSize.height / 2 -
+        ((canvasBounds.minY + canvasBounds.maxY) / 2) * nextZoom,
+    });
+  }, [canvasBounds, setPosition, setZoom, stageSize.height, stageSize.width]);
+
+  const boundsKey = JSON.stringify(canvasBounds ?? null);
+  useEffect(() => {
+    if (fitAfterSortFrom !== null && fitAfterSortFrom !== boundsKey) {
+      setFitAfterSortFrom(null);
+      fitToScreen();
+    }
+  }, [boundsKey, fitAfterSortFrom, fitToScreen]);
+
   return (
     <Box
       ref={containerRef}
@@ -1009,44 +1055,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         onCanvasNameChange={isOwner ? updateCanvasName : () => {}}
         zoom={zoom}
         onZoomChange={setZoom}
-        onFitToScreen={() => {
-          if (
-            canvasBounds?.minX === null ||
-            canvasBounds?.minY === null ||
-            canvasBounds?.maxX === null ||
-            canvasBounds?.maxY === null ||
-            !canvasBounds
-          ) {
-            setZoom(1);
-            setPosition({ x: 0, y: 0 });
-            return;
-          }
-          const contentWidth = Math.max(
-            1,
-            canvasBounds.maxX - canvasBounds.minX,
-          );
-          const contentHeight = Math.max(
-            1,
-            canvasBounds.maxY - canvasBounds.minY,
-          );
-          const nextZoom = Math.max(
-            0.1,
-            Math.min(
-              1,
-              (stageSize.width - 96) / contentWidth,
-              (stageSize.height - 96) / contentHeight,
-            ),
-          );
-          setZoom(nextZoom);
-          setPosition({
-            x:
-              stageSize.width / 2 -
-              ((canvasBounds.minX + canvasBounds.maxX) / 2) * nextZoom,
-            y:
-              stageSize.height / 2 -
-              ((canvasBounds.minY + canvasBounds.maxY) / 2) * nextZoom,
-          });
-        }}
+        onFitToScreen={fitToScreen}
         onExport={() => setExportDialogOpen(true)}
         onVersionHistory={
           isOwner ? () => setVersionHistoryOpen(true) : undefined
@@ -1108,6 +1117,7 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
               }
             : undefined
         }
+        onSortIntoPiles={isOwner ? () => setSortPilesOpen(true) : undefined}
         onWhisper={() => setWhisperOpen(true)}
         onAR={isArCanvasEnabled() ? () => setAROpen(true) : undefined}
       />
@@ -1524,6 +1534,14 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
           onRestore={async (version) => {
             setPendingRestoreVersionId(version.id);
           }}
+        />
+      )}
+      {isOwner && (
+        <SortIntoPilesDialog
+          canvasId={canvasId}
+          open={sortPilesOpen}
+          onClose={() => setSortPilesOpen(false)}
+          onApplied={() => setFitAfterSortFrom(boundsKey)}
         />
       )}
       <ConfirmDialog
