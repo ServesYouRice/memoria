@@ -336,8 +336,13 @@ export async function GET(request: NextRequest) {
 
       // Fetch items with viewport filtering using parameterized query
       const pageSize = cursorTarget ? limit + 1 : limit;
+      // Explicit columns: the generated "searchVector" tsvector cannot be
+      // deserialized by $queryRaw, so SELECT * fails on every populated board.
       const rawItems = await prisma.$queryRaw<CanvasItem[]>`
-        SELECT *
+        SELECT "id", "canvasId", "type", "positionX", "positionY", "width",
+          "height", "zIndex", "content", "tags", "version", "deletedAt",
+          "createdById", "updatedById", "deletedById", "createdAt",
+          "updatedAt", "bookmarkRefreshedAt"
         FROM "CanvasItem"
         WHERE "canvasId" = ${query.canvasId}
           ${typeFilter}

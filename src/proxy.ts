@@ -95,7 +95,11 @@ export async function proxy(request: NextRequest) {
     if (rateLimitResponse) return rateLimitResponse;
   }
 
-  if (pathname === "/api/csp-report" || pathname.startsWith("/api/setup")) {
+  if (
+    pathname === "/api/csp-report" ||
+    pathname.startsWith("/api/setup") ||
+    pathname.startsWith("/api/oauth")
+  ) {
     specificRateLimitApplied = true;
     const rateLimitResponse = await sensitiveEndpointRateLimit(request);
     if (rateLimitResponse) return rateLimitResponse;

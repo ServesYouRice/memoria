@@ -12,6 +12,8 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "@/lib/errors";
+import { OAUTH_ACCESS_TOKEN_PREFIX } from "@/lib/oauth/crypto";
+import { resolveAccessToken } from "@/lib/oauth/service";
 
 const INTEGRATION_TOKEN_PREFIX = "mat_";
 const PREFIX_LENGTH = 8;
@@ -42,7 +44,7 @@ function getRequestedAgentProfileId(request: NextRequest) {
   );
 }
 
-function getBearerToken(request: NextRequest) {
+export function getBearerToken(request: NextRequest) {
   const authorization = request.headers.get("authorization");
   if (authorization?.startsWith("Bearer ")) {
     return authorization.slice("Bearer ".length).trim();
@@ -155,6 +157,23 @@ async function authenticateIntegrationToken(
   };
 }
 
+/** OAuth grants act exactly like an integration bound to their agent profile. */
+async function authenticateOAuthAccessToken(
+  token: string,
+): Promise<AgentRequestContext> {
+  const grant = await resolveAccessToken(token);
+  if (!grant) {
+    throw new UnauthorizedError("Invalid or expired access token.");
+  }
+
+  return {
+    actorType: "integration",
+    userId: grant.userId,
+    agentProfile: grant.agentProfile,
+    integrationAccountId: null,
+  };
+}
+
 export async function resolveAgentRequestContext(
   request: NextRequest,
   options?: {
@@ -166,6 +185,10 @@ export async function resolveAgentRequestContext(
   const requireAgentProfile = options?.requireAgentProfile ?? false;
 
   const token = getBearerToken(request);
+  if (token?.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
+    return authenticateOAuthAccessToken(token);
+  }
+
   if (token) {
     return authenticateIntegrationToken(token);
   }

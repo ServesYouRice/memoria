@@ -26,6 +26,7 @@ import {
   useAgentProviders,
   useAgentTimeline,
   useApproveSuggestion,
+  useDisableAgentProfile,
   useExecuteSuggestion,
   useRejectSuggestion,
   useRevertChangeSet,
@@ -71,6 +72,7 @@ export function AgentControlCenter() {
   const rejectSuggestion = useRejectSuggestion();
   const executeSuggestion = useExecuteSuggestion();
   const revertChangeSet = useRevertChangeSet();
+  const disableAgentProfile = useDisableAgentProfile();
 
   const [feedback, setFeedback] = useState<{
     severity: "success" | "error";
@@ -271,6 +273,24 @@ export function AgentControlCenter() {
                       {profile.integrationAccounts.length} integration
                       account(s)
                     </Typography>
+                    {profile.status === "ACTIVE" && (
+                      <Box>
+                        <Button
+                          size="small"
+                          color="inherit"
+                          disabled={disableAgentProfile.isPending}
+                          onClick={() =>
+                            void runAction(
+                              () => disableAgentProfile.mutateAsync(profile.id),
+                              `${profile.name} can no longer use Memoria.`,
+                              "Failed to turn off this agent.",
+                            )
+                          }
+                        >
+                          Turn off access
+                        </Button>
+                      </Box>
+                    )}
                   </Stack>
                 </Paper>
               ))

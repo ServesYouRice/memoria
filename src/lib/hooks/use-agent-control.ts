@@ -17,6 +17,12 @@ export interface AgentIntegrationAccount {
   updatedAt: string;
 }
 
+export interface OrganizeCanvasResponse {
+  suggestionId: string | null;
+  summary?: string;
+  piles: Array<{ title: string; itemCount: number }>;
+}
+
 export interface AgentProfileSummary {
   id: string;
   userId: string;
@@ -274,6 +280,33 @@ const api = {
     );
   },
 
+  async disableAgentProfile(agentProfileId: string) {
+    const response = await apiFetch(
+      `/api/v1/agent-profiles/${agentProfileId}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    return parseJson<Record<string, unknown>>(
+      response,
+      "Failed to turn off this agent.",
+    );
+  },
+
+  async organizeCanvas(canvasId: string) {
+    const response = await apiFetch(`/api/v1/canvases/${canvasId}/organize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    return parseJson<OrganizeCanvasResponse>(
+      response,
+      "Failed to sort the board into piles.",
+    );
+  },
+
   async revertChangeSet(changeSetId: string) {
     const response = await apiFetch("/api/agent/v1/actions", {
       method: "POST",
@@ -341,6 +374,8 @@ export function useAgentKnowledge(canvasId: string) {
 function invalidateAgentState(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: agentControlKeys.all });
   queryClient.invalidateQueries({ queryKey: canvasItemKeys.all });
+  // Board bounds, geometry and search indexes change when agent work lands.
+  queryClient.invalidateQueries({ queryKey: ["canvas-index"] });
 }
 
 export function useApproveSuggestion() {
@@ -375,6 +410,25 @@ export function useRevertChangeSet() {
 
   return useMutation({
     mutationFn: api.revertChangeSet,
+    onSuccess: () => invalidateAgentState(queryClient),
+  });
+}
+
+export function useOrganizeCanvas() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: api.organizeCanvas,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: agentControlKeys.all }),
+  });
+}
+
+export function useDisableAgentProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: api.disableAgentProfile,
     onSuccess: () => invalidateAgentState(queryClient),
   });
 }

@@ -1,13 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { ApiError, BadRequestError } from "@/lib/errors";
+import { ApiError, BadRequestError, UnauthorizedError } from "@/lib/errors";
 import { withApiHandler } from "@/lib/api/route-handler";
-import { resolveAgentRequestContext } from "@/lib/agents/auth";
+import { getBearerToken, resolveAgentRequestContext } from "@/lib/agents/auth";
 import type { McpToolCallResult } from "@/lib/agents/mcp-schema";
 import {
   buildMcpInitializeResult,
   executeMcpTool,
   listMcpTools,
 } from "@/lib/agents/mcp";
+import { getProtectedResourceMetadataUrl } from "@/lib/oauth/config";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -72,6 +73,30 @@ function createJsonRpcError(id: JsonRpcRequest["id"], error: unknown) {
   });
 }
 
+/**
+ * MCP authorization (RFC 9728): an HTTP 401 that points at the protected
+ * resource metadata is what makes clients start the OAuth sign-in.
+ */
+function createUnauthorizedResponse(
+  id: JsonRpcRequest["id"],
+  error: unknown,
+  tokenPresented: boolean,
+) {
+  const challenge = [
+    `Bearer resource_metadata="${getProtectedResourceMetadataUrl()}"`,
+    ...(tokenPresented ? ['error="invalid_token"'] : []),
+  ].join(", ");
+  const response = createJsonRpcError(id, error);
+
+  return new NextResponse(response.body, {
+    status: 401,
+    headers: {
+      "Content-Type": "application/json",
+      "WWW-Authenticate": challenge,
+    },
+  });
+}
+
 async function handleMcpRequest(request: NextRequest, body: JsonRpcRequest) {
   const method = typeof body.method === "string" ? body.method : null;
   if (!method) {
@@ -86,11 +111,20 @@ async function handleMcpRequest(request: NextRequest, body: JsonRpcRequest) {
       ? body.params
       : {};
 
+  // Every MCP request is authenticated, including initialize, so clients
+  // learn up front that this server needs sign-in.
+  const context = await resolveAgentRequestContext(request);
+
+  if (body.id === undefined && method.startsWith("notifications/")) {
+    return new NextResponse(null, { status: 202 });
+  }
+
   switch (method) {
     case "initialize":
-      return createJsonRpcSuccess(id, buildMcpInitializeResult());
-    case "notifications/initialized":
-      return new NextResponse(null, { status: 202 });
+      return createJsonRpcSuccess(
+        id,
+        buildMcpInitializeResult(params.protocolVersion),
+      );
     case "ping":
       return createJsonRpcSuccess(id, { ok: true });
     case "tools/list":
@@ -101,7 +135,6 @@ async function handleMcpRequest(request: NextRequest, body: JsonRpcRequest) {
         throw new BadRequestError("params.name is required for tools/call.");
       }
 
-      const context = await resolveAgentRequestContext(request);
       const result = await executeMcpTool(
         context,
         toolName,
@@ -118,11 +151,35 @@ async function handleMcpRequest(request: NextRequest, body: JsonRpcRequest) {
 }
 
 export const POST = withApiHandler(async (request: NextRequest) => {
-  const body = (await request.json()) as JsonRpcRequest;
+  let body: JsonRpcRequest;
+  try {
+    body = (await request.json()) as JsonRpcRequest;
+  } catch {
+    return NextResponse.json(
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32700, message: "Parse error." },
+      },
+      { status: 400 },
+    );
+  }
 
   try {
     return await handleMcpRequest(request, body);
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return createUnauthorizedResponse(
+        body?.id ?? null,
+        error,
+        Boolean(getBearerToken(request)),
+      );
+    }
     return createJsonRpcError(body?.id ?? null, error);
   }
 });
+
+/** This server answers each POST directly and offers no server-sent stream. */
+export function GET() {
+  return new NextResponse(null, { status: 405, headers: { Allow: "POST" } });
+}

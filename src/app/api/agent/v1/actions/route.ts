@@ -30,6 +30,11 @@ import {
   revertChangeSet,
 } from "@/lib/agents/service-core";
 import {
+  PILES_SUGGESTION_KIND,
+  executePilesSuggestion,
+  pilesSuggestionPayloadSchema,
+} from "@/lib/agents/piles";
+import {
   listScopedActionTimeline,
   requireScopedKnowledgeEntity,
 } from "@/lib/agents/query-core";
@@ -319,7 +324,10 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       },
     );
 
-    assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+    // Undo is always the owner's right; only agents need the write rung.
+    if (context.actorType !== "user") {
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+    }
 
     const result = await revertChangeSet({
       actor: {
@@ -543,6 +551,31 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         checkpointId:
           parsed.executionMode === "bulk" ? parsed.checkpointId : null,
         checkpointReason: suggestion.summary,
+      });
+
+      await markSuggestionExecuted({
+        userId: context.userId,
+        suggestionId: suggestion.id,
+      });
+
+      return NextResponse.json(
+        {
+          suggestionId: suggestion.id,
+          executed: result,
+        },
+        { status: 200 },
+      );
+    }
+
+    if (payloadKind === PILES_SUGGESTION_KIND) {
+      const parsed = pilesSuggestionPayloadSchema.parse(payload);
+      await verifyCanvasOwnership(context.userId, parsed.canvasId);
+
+      const result = await executePilesSuggestion({
+        actor,
+        agentProfile,
+        payload: parsed,
+        summary: suggestion.summary,
       });
 
       await markSuggestionExecuted({

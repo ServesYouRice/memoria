@@ -24,6 +24,8 @@ remain gated on DEC-014; CI exercises the E2E gate.
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
+| [IMP-067](tasks/IMP-067.md) | Clear the production dependency advisories that fail CI | |
+| [IMP-068](tasks/IMP-068.md) | Let owner approval run propose-only agents' item and knowledge suggestions | |
 
 ## WAITING
 

@@ -77,6 +77,9 @@ The first agent/control-plane slice is now in the repo. It includes:
 - audited `AgentAction`, `ChangeSet`, `ChangeRecord`, `Suggestion`, `KnowledgeEntity`, `KnowledgeRelation`, `ItemEntityLink`, `WorkspaceCheckpoint`, and `AgentJob` primitives
 - a read-only organizer tab on each canvas backed by `CanvasView`
 - a settings-side agent control center for suggestion review, execution, and change-set rollback
+- OAuth 2.1 sign-in for remote MCP clients (Claude, ChatGPT, OpenClaw, Hermes) with per-app board scope; see [docs/agents/connect-ai-apps.md](./docs/agents/connect-ai-apps.md)
+- "Sort into piles": the built-in organizer (or any connected agent) proposes titled frames for loose Inbox items, applied only after approval and undoable in one step
+- an instruction-only agent skill in [integrations/skills/memoria](./integrations/skills/memoria/SKILL.md)
 
 Current limits:
 
