@@ -1,0 +1,707 @@
+/**
+ * IMP-042: the Hocuspocus sync server against real PostgreSQL. Clients are
+ * real HocuspocusProviders over WebSockets carrying Better Auth session
+ * cookies, exactly as browsers connect.
+ */
+
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+vi.mock("@/lib/cache/redis-client", () => ({ getRedisClient: () => null }));
+
+import WebSocket from "ws";
+import * as Y from "yjs";
+import { HocuspocusProvider } from "@hocuspocus/provider";
+import { prisma } from "@/lib/db";
+import { getAuthServer } from "@/lib/auth/server";
+import { createCredentialAccount } from "@/lib/auth/credentials";
+import { hashPassword } from "@/lib/auth/password";
+import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import {
+  createSyncServer,
+  type SyncServer,
+} from "@/lib/collaboration/sync/server";
+import {
+  COLLABORATION_SYNC_PATH,
+  SYNC_CLOSE_REASONS,
+  createCanvasItemId,
+} from "@/lib/collaboration/sync/protocol";
+import {
+  applyItemState,
+  documentItems,
+  readAllItemStates,
+  readItemState,
+} from "@/lib/collaboration/sync/document-items";
+import { readPersistedCanvasDocument } from "@/lib/collaboration/sync/store";
+import { writeNoteFragment } from "@/lib/collaboration/sync/note-fragment";
+import { ItemType } from "@/types/canvas";
+import { CookieJar, TEST_ORIGIN, callAuth } from "../helpers/auth-harness";
+
+const PASSWORD = "Correct-Horse-Battery-Staple-42!";
+const testLogger = {
+  info() {},
+  warn: (...args: unknown[]) => console.warn("[sync warn]", ...args),
+  error: (...args: unknown[]) => console.error("[sync error]", ...args),
+};
+
+let counter = 0;
+const servers: SyncServer[] = [];
+const providers: HocuspocusProvider[] = [];
+
+async function createSignedInUser(label: string) {
+  counter += 1;
+  const email = `sync-${label}-${Date.now()}-${counter}@example.com`;
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name: label,
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
+    },
+  });
+  await createCredentialAccount(prisma, user.id, await hashPassword(PASSWORD));
+  const jar = new CookieJar();
+  const signIn = await callAuth(
+    getAuthServer().handler,
+    jar,
+    "/sign-in/email",
+    {
+      body: { email, password: PASSWORD },
+    },
+  );
+  expect(signIn.status).toBe(200);
+  return { user, cookie: jar.header() };
+}
+
+async function startServer(): Promise<{ server: SyncServer; url: string }> {
+  const server = createSyncServer({
+    prisma,
+    logger: testLogger,
+    port: 0,
+    address: "127.0.0.1",
+    allowedOrigin: TEST_ORIGIN,
+    authorizationRefreshMs: 150,
+    reconcileIntervalMs: 50,
+  });
+  const { port } = await server.listen();
+  servers.push(server);
+  return { server, url: `ws://127.0.0.1:${port}${COLLABORATION_SYNC_PATH}` };
+}
+
+function connect(input: {
+  url: string;
+  canvasId: string;
+  cookie?: string;
+  token?: string;
+  doc?: Y.Doc;
+}) {
+  const headers: Record<string, string> = { origin: TEST_ORIGIN };
+  if (input.cookie) headers.cookie = input.cookie;
+  class SessionWebSocket extends WebSocket {
+    constructor(address: string) {
+      super(address, { headers });
+    }
+  }
+  const closeReasons: string[] = [];
+  const authFailures: string[] = [];
+  const provider = new HocuspocusProvider({
+    url: input.url,
+    name: input.canvasId,
+    document: input.doc ?? new Y.Doc(),
+    token: input.token ?? "",
+    WebSocketPolyfill: SessionWebSocket,
+    onClose: ({ event }) => {
+      if (event.reason) closeReasons.push(event.reason);
+    },
+    onAuthenticationFailed: ({ reason }) => {
+      authFailures.push(reason);
+    },
+  });
+  providers.push(provider);
+  return { provider, doc: provider.document, closeReasons, authFailures };
+}
+
+async function waitFor(
+  check: () => boolean | Promise<boolean>,
+  timeoutMs = 5_000,
+) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await check()) return;
+    if (Date.now() > deadline)
+      throw new Error("Timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function waitForAcknowledged(provider: HocuspocusProvider) {
+  await waitFor(() => provider.isSynced && !provider.hasUnsyncedChanges);
+}
+
+async function createCanvas(ownerId: string) {
+  return prisma.canvas.create({
+    data: { name: "Sync canvas", userId: ownerId },
+  });
+}
+
+async function share(
+  canvasId: string,
+  recipient: { id: string; email: string },
+  role: "EDIT" | "VIEW" | "COMMENT",
+) {
+  return prisma.canvasShare.create({
+    data: { canvasId, email: recipient.email, recipientId: recipient.id, role },
+  });
+}
+
+function noteState(id: string, text: string, x = 10) {
+  return {
+    id,
+    type: ItemType.NOTE,
+    positionX: x,
+    positionY: 20,
+    width: 200,
+    height: 120,
+    zIndex: 1,
+    tags: [],
+    content: {
+      formatVersion: 1,
+      document: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      },
+    },
+  };
+}
+
+function noteFragment(doc: Y.Doc, itemId: string): Y.XmlFragment {
+  return (documentItems(doc).get(itemId) as Y.Map<unknown>).get(
+    "text",
+  ) as Y.XmlFragment;
+}
+
+function firstText(doc: Y.Doc, itemId: string): Y.XmlText {
+  const paragraph = noteFragment(doc, itemId).get(0) as Y.XmlElement;
+  return paragraph.get(0) as Y.XmlText;
+}
+
+let owner: Awaited<ReturnType<typeof createSignedInUser>>;
+let editor: Awaited<ReturnType<typeof createSignedInUser>>;
+let viewer: Awaited<ReturnType<typeof createSignedInUser>>;
+
+beforeAll(async () => {
+  owner = await createSignedInUser("owner");
+  editor = await createSignedInUser("editor");
+  viewer = await createSignedInUser("viewer");
+});
+
+afterEach(async () => {
+  for (const provider of providers.splice(0)) provider.destroy();
+  for (const server of servers.splice(0)) await server.destroy();
+});
+
+afterAll(async () => {
+  await prisma.$disconnect();
+});
+
+describe("collaboration sync server", () => {
+  it("converges two editors on the same item and the same note text", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    await share(canvas.id, editor.user, "EDIT");
+    const { url } = await startServer();
+    const a = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    const b = connect({ url, canvasId: canvas.id, cookie: editor.cookie });
+    await waitFor(() => a.provider.isSynced && b.provider.isSynced);
+
+    const itemId = createCanvasItemId();
+    a.doc.transact(() =>
+      applyItemState(
+        documentItems(a.doc),
+        itemId,
+        noteState(itemId, "Hello world"),
+      ),
+    );
+    await waitForAcknowledged(a.provider);
+    await waitFor(() => documentItems(b.doc).has(itemId));
+
+    // Concurrent edits: both type into the same text and move the same item.
+    firstText(a.doc, itemId).insert(0, "A: ");
+    firstText(b.doc, itemId).insert("Hello world".length, " (B)");
+    (documentItems(a.doc).get(itemId) as Y.Map<unknown>).set("positionX", 300);
+    (documentItems(b.doc).get(itemId) as Y.Map<unknown>).set("positionY", 400);
+    await waitForAcknowledged(a.provider);
+    await waitForAcknowledged(b.provider);
+
+    const expected = "A: Hello world (B)";
+    await waitFor(
+      () =>
+        (
+          readItemState(itemId, documentItems(a.doc).get(itemId)) as {
+            content: { plainText: string };
+          } | null
+        )?.content.plainText === expected &&
+        (
+          readItemState(itemId, documentItems(b.doc).get(itemId)) as {
+            content: { plainText: string };
+          } | null
+        )?.content.plainText === expected,
+    );
+    expect(Y.encodeStateVector(a.doc)).toEqual(Y.encodeStateVector(b.doc));
+    expect(readAllItemStates(a.doc)).toEqual(readAllItemStates(b.doc));
+
+    // The rows search, export, agents and the HTTP API read are in step.
+    const row = await prisma.canvasItem.findUniqueOrThrow({
+      where: { id: itemId },
+    });
+    expect(row).toMatchObject({
+      canvasId: canvas.id,
+      type: "NOTE",
+      positionX: 300,
+      positionY: 400,
+      createdById: owner.user.id,
+      deletedAt: null,
+    });
+    expect((row.content as { plainText: string }).plainText).toBe(expected);
+    const events = await prisma.canvasEvent.count({
+      where: { canvasId: canvas.id, entityId: itemId },
+    });
+    expect(events).toBeGreaterThanOrEqual(3);
+  });
+
+  it("refuses document changes from a viewer", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    await share(canvas.id, viewer.user, "VIEW");
+    const existingId = createCanvasItemId();
+    await prisma.canvasItem.create({
+      data: {
+        ...noteState(existingId, "Read only"),
+        canvasId: canvas.id,
+        createdById: owner.user.id,
+      },
+    });
+    const { server, url } = await startServer();
+    const ownerClient = connect({
+      url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+    });
+    const viewerClient = connect({
+      url,
+      canvasId: canvas.id,
+      cookie: viewer.cookie,
+    });
+    await waitFor(
+      () => ownerClient.provider.isSynced && viewerClient.provider.isSynced,
+    );
+    expect(viewerClient.provider.authorizedScope).toBe("readonly");
+    expect(documentItems(viewerClient.doc).has(existingId)).toBe(true);
+
+    const intruderId = createCanvasItemId();
+    viewerClient.doc.transact(() => {
+      applyItemState(
+        documentItems(viewerClient.doc),
+        intruderId,
+        noteState(intruderId, "nope"),
+      );
+      (documentItems(viewerClient.doc).get(existingId) as Y.Map<unknown>).set(
+        "positionX",
+        999,
+      );
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(viewerClient.provider.hasUnsyncedChanges).toBe(true);
+    expect(documentItems(ownerClient.doc).has(intruderId)).toBe(false);
+    expect(
+      (documentItems(ownerClient.doc).get(existingId) as Y.Map<unknown>).get(
+        "positionX",
+      ),
+    ).toBe(10);
+    const live = server.hocuspocus.documents.get(canvas.id);
+    expect(live && documentItems(live).has(intruderId)).toBe(false);
+    expect(
+      await prisma.canvasItem.count({ where: { canvasId: canvas.id } }),
+    ).toBe(1);
+    const row = await prisma.canvasItem.findUniqueOrThrow({
+      where: { id: existingId },
+    });
+    expect(row.positionX).toBe(10);
+  });
+
+  it("keeps every acknowledged edit across a sync server restart", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const first = await startServer();
+    const client = connect({
+      url: first.url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+    });
+    await waitFor(() => client.provider.isSynced);
+
+    const itemId = createCanvasItemId();
+    client.doc.transact(() =>
+      applyItemState(
+        documentItems(client.doc),
+        itemId,
+        noteState(itemId, "Durable"),
+      ),
+    );
+    firstText(client.doc, itemId).insert(0, "Very ");
+    await waitForAcknowledged(client.provider);
+
+    // Acknowledged means stored: the database already holds it before any
+    // shutdown hook or compaction runs.
+    const persisted = await readPersistedCanvasDocument(prisma, canvas.id);
+    expect(
+      (
+        readItemState(itemId, documentItems(persisted!.doc).get(itemId)) as {
+          content: { plainText: string };
+        }
+      ).content.plainText,
+    ).toBe("Very Durable");
+
+    client.provider.destroy();
+    await first.server.destroy();
+    servers.splice(servers.indexOf(first.server), 1);
+
+    const second = await startServer();
+    const fresh = connect({
+      url: second.url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+    });
+    await waitFor(
+      () => fresh.provider.isSynced && documentItems(fresh.doc).has(itemId),
+    );
+    expect(
+      (
+        readItemState(itemId, documentItems(fresh.doc).get(itemId)) as {
+          content: { plainText: string };
+        }
+      ).content.plainText,
+    ).toBe("Very Durable");
+  });
+
+  it("refuses an invalid update without keeping it and asks the client to resync", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const { server, url } = await startServer();
+    const client = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    const watcher = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    await waitFor(() => client.provider.isSynced && watcher.provider.isSynced);
+
+    const itemId = createCanvasItemId();
+    client.doc.transact(() => {
+      const item = new Y.Map<unknown>();
+      documentItems(client.doc).set(itemId, item);
+      item.set("type", "NOTE");
+      item.set("positionX", 0);
+      item.set("positionY", 0);
+      item.set("width", -5);
+      item.set("height", 10);
+      item.set("zIndex", 0);
+      item.set("tags", []);
+      const text = new Y.XmlFragment();
+      item.set("text", text);
+      writeNoteFragment(text, {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "bad" }] },
+        ],
+      });
+    });
+    await waitFor(() =>
+      client.closeReasons.includes(SYNC_CLOSE_REASONS.invalidUpdate),
+    );
+
+    const live = server.hocuspocus.documents.get(canvas.id);
+    expect(live && documentItems(live).has(itemId)).toBe(false);
+    expect(documentItems(watcher.doc).has(itemId)).toBe(false);
+    expect(
+      await prisma.canvasItem.count({ where: { canvasId: canvas.id } }),
+    ).toBe(0);
+
+    // Changes outside the item map are refused too.
+    const other = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    await waitFor(() => other.provider.isSynced);
+    other.doc.getMap("elsewhere").set("x", 1);
+    await waitFor(() =>
+      other.closeReasons.includes(SYNC_CLOSE_REASONS.invalidUpdate),
+    );
+
+    // A valid update from a healthy client still goes through afterwards.
+    const goodId = createCanvasItemId();
+    watcher.doc.transact(() =>
+      applyItemState(
+        documentItems(watcher.doc),
+        goodId,
+        noteState(goodId, "fine"),
+      ),
+    );
+    await waitForAcknowledged(watcher.provider);
+    expect(
+      await prisma.canvasItem.count({ where: { canvasId: canvas.id } }),
+    ).toBe(1);
+  });
+
+  it("brings HTTP and agent row writes into open documents", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const { url } = await startServer();
+    const client = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    await waitFor(() => client.provider.isSynced);
+
+    // What every HTTP item route does: lock, write the row, record the event.
+    const created = await prisma.$transaction(async (tx) => {
+      await lockCanvasForMutation(tx, canvas.id);
+      const item = await tx.canvasItem.create({
+        data: {
+          canvasId: canvas.id,
+          type: "SHAPE",
+          positionX: 5,
+          positionY: 6,
+          width: 50,
+          height: 60,
+          zIndex: 2,
+          content: { shapeType: "circle", fill: "#ff0000" },
+          tags: ["agent"],
+          createdById: owner.user.id,
+        },
+      });
+      await recordCanvasItemEvent(tx, {
+        canvasId: canvas.id,
+        actorId: owner.user.id,
+        itemId: item.id,
+        version: item.version,
+        operation: "created",
+      });
+      return item;
+    });
+    await waitFor(() => documentItems(client.doc).has(created.id));
+    expect(
+      readItemState(created.id, documentItems(client.doc).get(created.id)),
+    ).toMatchObject({
+      type: "SHAPE",
+      positionX: 5,
+      tags: ["agent"],
+      content: { shapeType: "circle", fill: "#ff0000" },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await lockCanvasForMutation(tx, canvas.id);
+      const item = await tx.canvasItem.update({
+        where: { id: created.id },
+        data: { deletedAt: new Date(), version: { increment: 1 } },
+      });
+      await recordCanvasItemEvent(tx, {
+        canvasId: canvas.id,
+        actorId: owner.user.id,
+        itemId: item.id,
+        version: item.version,
+        operation: "deleted",
+      });
+    });
+    await waitFor(() => !documentItems(client.doc).has(created.id));
+  });
+
+  it("migrates an existing canvas into a document on first open", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const noteId = createCanvasItemId();
+    await prisma.canvasItem.createMany({
+      data: [
+        {
+          id: noteId,
+          canvasId: canvas.id,
+          type: "NOTE",
+          positionX: 1,
+          positionY: 2,
+          width: 100,
+          height: 100,
+          content: { text: "<p>Legacy <strong>note</strong></p>" },
+          createdById: owner.user.id,
+        },
+        {
+          canvasId: canvas.id,
+          type: "TEXT",
+          positionX: 3,
+          positionY: 4,
+          width: 100,
+          height: 40,
+          content: { text: "Plain", fontSize: 14 },
+          createdById: owner.user.id,
+        },
+        {
+          canvasId: canvas.id,
+          type: "TEXT",
+          positionX: 3,
+          positionY: 4,
+          width: 100,
+          height: 40,
+          content: { text: "Trashed" },
+          createdById: owner.user.id,
+          deletedAt: new Date(),
+        },
+      ],
+    });
+    expect(
+      await prisma.canvasDocument.count({ where: { canvasId: canvas.id } }),
+    ).toBe(0);
+
+    const { url } = await startServer();
+    const client = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    await waitFor(
+      () => client.provider.isSynced && documentItems(client.doc).size === 2,
+    );
+    const note = readItemState(
+      noteId,
+      documentItems(client.doc).get(noteId),
+    ) as {
+      content: { plainText: string };
+    };
+    expect(note.content.plainText).toBe("Legacy note");
+    expect(
+      await prisma.canvasDocument.count({ where: { canvasId: canvas.id } }),
+    ).toBe(1);
+  });
+
+  it("disconnects a collaborator whose access is revoked", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const grant = await share(canvas.id, editor.user, "EDIT");
+    const { url } = await startServer();
+    const client = connect({ url, canvasId: canvas.id, cookie: editor.cookie });
+    await waitFor(() => client.provider.isSynced);
+    expect(client.provider.authorizedScope).toBe("read-write");
+
+    await prisma.canvasShare.delete({ where: { id: grant.id } });
+    await waitFor(() =>
+      client.closeReasons.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+
+    // A reconnect is refused outright.
+    const retry = connect({ url, canvasId: canvas.id, cookie: editor.cookie });
+    await waitFor(() =>
+      retry.authFailures.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+  });
+
+  it("turns a downgraded share read-only and disconnects a signed-out session", async () => {
+    const leaver = await createSignedInUser("leaver");
+    const canvas = await createCanvas(owner.user.id);
+    const grant = await share(canvas.id, leaver.user, "EDIT");
+    const { server, url } = await startServer();
+    const client = connect({ url, canvasId: canvas.id, cookie: leaver.cookie });
+    await waitFor(() => client.provider.isSynced);
+
+    await prisma.canvasShare.update({
+      where: { id: grant.id },
+      data: { role: "COMMENT" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const itemId = createCanvasItemId();
+    client.doc.transact(() =>
+      applyItemState(
+        documentItems(client.doc),
+        itemId,
+        noteState(itemId, "late"),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const live = server.hocuspocus.documents.get(canvas.id);
+    expect(live && documentItems(live).has(itemId)).toBe(false);
+    expect(
+      await prisma.canvasItem.count({ where: { canvasId: canvas.id } }),
+    ).toBe(0);
+
+    // Signing out (or an administrator revoking sessions) deletes the row.
+    await prisma.session.deleteMany({ where: { userId: leaver.user.id } });
+    await waitFor(() =>
+      client.closeReasons.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+  });
+
+  it("lets a public-link guest read but not write, until the link is revoked", async () => {
+    const canvas = await prisma.canvas.create({
+      data: {
+        name: "Public canvas",
+        userId: owner.user.id,
+        isPublic: true,
+        shareToken: `share-${Date.now()}-${counter}`,
+      },
+    });
+    const existingId = createCanvasItemId();
+    await prisma.canvasItem.create({
+      data: {
+        ...noteState(existingId, "Public"),
+        canvasId: canvas.id,
+        createdById: owner.user.id,
+      },
+    });
+    const { url } = await startServer();
+    const wrongToken = connect({
+      url,
+      canvasId: canvas.id,
+      token: "not-the-token",
+    });
+    await waitFor(() =>
+      wrongToken.authFailures.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+
+    const guest = connect({
+      url,
+      canvasId: canvas.id,
+      token: canvas.shareToken!,
+    });
+    await waitFor(
+      () => guest.provider.isSynced && documentItems(guest.doc).has(existingId),
+    );
+    expect(guest.provider.authorizedScope).toBe("readonly");
+    (documentItems(guest.doc).get(existingId) as Y.Map<unknown>).set(
+      "positionX",
+      500,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(
+      (await prisma.canvasItem.findUniqueOrThrow({ where: { id: existingId } }))
+        .positionX,
+    ).toBe(10);
+
+    await prisma.canvas.update({
+      where: { id: canvas.id },
+      data: { isPublic: false },
+    });
+    await waitFor(() =>
+      guest.closeReasons.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+  });
+
+  it("refuses connections without a session or from another origin", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const { url } = await startServer();
+    const anonymous = connect({ url, canvasId: canvas.id });
+    await waitFor(() =>
+      anonymous.authFailures.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+
+    const status = await new Promise<number>((resolve) => {
+      const socket = new WebSocket(url, {
+        headers: { origin: "https://evil.example", cookie: owner.cookie },
+      });
+      socket.on("unexpected-response", (_request, response) => {
+        resolve(response.statusCode ?? 0);
+        socket.terminate();
+      });
+      socket.on("open", () => {
+        resolve(101);
+        socket.close();
+      });
+      socket.on("error", () => undefined);
+    });
+    expect(status).toBe(403);
+  });
+});

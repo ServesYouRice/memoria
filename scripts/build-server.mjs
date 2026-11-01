@@ -38,6 +38,7 @@ mkdirSync(distDir, { recursive: true });
 for (const [entrypoint, output] of [
   ['server.ts', 'server.mjs'],
   [join('scripts', 'outbox-worker.ts'), 'outbox-worker.mjs'],
+  [join('scripts', 'sync-server.ts'), 'sync-server.mjs'],
 ]) {
   await run(
     esbuildBinary,
