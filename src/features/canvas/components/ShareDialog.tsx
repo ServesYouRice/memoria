@@ -34,6 +34,7 @@ import {
 import { Close, ContentCopy, Delete } from "@mui/icons-material";
 import { ApiError, apiFetch } from "@/lib/api/fetch-client";
 import { confirmDialog } from "@/stores/confirmStore";
+import { EmbedManager } from "./EmbedManager";
 
 export interface ShareDialogProps {
   open: boolean;
@@ -445,6 +446,9 @@ export function ShareDialog({
               </List>
             )}
           </Box>
+
+          {/* Signed read-only embeds for other sites */}
+          <EmbedManager canvasId={canvasId} />
         </Box>
       </DialogContent>
 

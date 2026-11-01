@@ -15,6 +15,7 @@ import { applyCors, handleCorsPreflight } from "./middleware/cors";
 import { shouldApplyStrictAuthRateLimit } from "./middleware/auth-rate-limit";
 import { getVersionHeaders, validateApiVersion } from "./lib/api/versioning";
 import { createRequestLogger } from "./lib/logger";
+import { resolveEmbedFramingOrigins } from "./lib/embeds/framing";
 
 export function isUploadWriteRequest(
   pathname: string,
@@ -167,11 +168,18 @@ export async function proxy(request: NextRequest) {
   // Apply CORS headers (Issue #15)
   applyCors(request, response);
 
+  // Only a live, verified embed page may be framed, and only by its origins.
+  const embedOrigins = await resolveEmbedFramingOrigins(pathname);
+
   // Apply security headers
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, { allowFraming: embedOrigins !== null });
 
   // Apply CSP
-  applyCSP(response, nonce);
+  applyCSP(response, nonce, embedOrigins ?? undefined);
+  if (embedOrigins) {
+    // Revocation and expiry must take effect on the next request.
+    response.headers.set("Cache-Control", "no-store, max-age=0");
+  }
 
   // Add API version headers for API routes (Issue #23)
   if (pathname.startsWith("/api/v")) {

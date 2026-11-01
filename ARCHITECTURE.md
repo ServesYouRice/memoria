@@ -71,6 +71,11 @@ The main domain objects are:
 - `CanvasItem`: normalized geometry and JSON content for notes, bookmarks,
   images, drawings, shapes, arrows, text, frames, embeds, and polls.
 - `CanvasShare`: email-based canvas access with `VIEW`, `COMMENT`, or `EDIT`.
+- `CanvasEmbed`: owner-created, signed, revocable read-only embed of a canvas
+  (token digest, allowed origins, expiry, revoked flag). Every response denies
+  framing (`X-Frame-Options: DENY`, `frame-ancestors 'none'`) except
+  `/embed/<token>` for a live token, which `src/proxy.ts` frames only from that
+  embed's origins.
 - `CanvasVersion`: point-in-time canvas snapshots for restore.
 - `Activity`: dashboard and notification events.
 - Agent models: `AgentProfile`, `ModelCredential`, `IntegrationAccount`,
