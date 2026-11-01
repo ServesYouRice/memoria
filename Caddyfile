@@ -41,6 +41,7 @@
 			path /api/collaboration/*
 		}
 		reverse_proxy @collaboration {$MEMORIA_SYNC_UPSTREAMS:sync:3001} {
+			lb_policy {$MEMORIA_SYNC_LB_POLICY:random}
 			health_uri /ready
 			health_interval 5s
 			health_timeout 3s

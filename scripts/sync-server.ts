@@ -12,7 +12,11 @@ import { createLogger } from "../src/lib/logger";
 import { getRedisClient } from "../src/lib/cache/redis-client";
 import { createSyncServer } from "../src/lib/collaboration/sync/server";
 import { COLLABORATION_SYNC_PATH } from "../src/lib/collaboration/sync/protocol";
-import { createCollaborationServer } from "../src/lib/collaboration/websocket-server";
+import {
+  createCollaborationServer,
+  getCanvasConnectionCount,
+  getConnectionCount,
+} from "../src/lib/collaboration/websocket-server";
 
 const logger = createLogger("sync-server");
 const sync = createSyncServer({
@@ -24,6 +28,22 @@ const sync = createSyncServer({
   redis: getRedisClient(),
   passUpgrade: (path) =>
     path.startsWith("/api/collaboration/") && path !== COLLABORATION_SYNC_PATH,
+  health: (url) => {
+    const counts: Record<string, unknown> = {
+      presenceConnections: getConnectionCount(),
+    };
+    // The E2E stack asks which replica serves a canvas (IMP-043); the health
+    // port is internal, but canvas ids stay out of it everywhere else.
+    const canvasId = url.searchParams.get("canvas");
+    if (process.env.MEMORIA_E2E_MODE === "true" && canvasId) {
+      counts.canvas = {
+        sync:
+          sync.hocuspocus.documents.get(canvasId)?.getConnectionsCount() ?? 0,
+        presence: getCanvasConnectionCount(canvasId),
+      };
+    }
+    return counts;
+  },
 });
 const presence = createCollaborationServer(sync.httpServer);
 

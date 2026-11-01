@@ -1033,6 +1033,10 @@ export function getConnectionCount(): number {
   return admission.totalConnections;
 }
 
+export function getCanvasConnectionCount(canvasId: string): number {
+  return connections.get(canvasId)?.size ?? 0;
+}
+
 export function getActiveCanvasCount(): number {
   return connections.size;
 }

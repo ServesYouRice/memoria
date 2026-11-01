@@ -88,6 +88,8 @@ export interface SyncServerOptions {
    * server (the presence socket); the sync server leaves them alone.
    */
   passUpgrade?: (path: string) => boolean;
+  /** Extra fields for `/health`, e.g. the presence socket's counts. */
+  health?: (url: URL) => Record<string, unknown>;
 }
 
 export interface SyncServer {
@@ -234,12 +236,14 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     websocketOptions: { maxPayload: MAX_MESSAGE_BYTES },
 
     async onRequest({ request, response }) {
-      const path = new URL(request.url ?? "/", "http://sync.local").pathname;
+      const url = new URL(request.url ?? "/", "http://sync.local");
+      const path = url.pathname;
       if (path === "/health") {
         return respond(response, 200, {
           status: "ok",
           documents: engine.loadedCanvasIds().length,
           connections: connectionCount(),
+          ...options.health?.(url),
         });
       }
       if (path === "/ready") {
