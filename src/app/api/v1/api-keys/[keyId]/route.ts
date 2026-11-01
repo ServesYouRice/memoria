@@ -5,13 +5,13 @@ import { withApiHandler } from "@/lib/api/route-handler";
 import { notFoundError, forbiddenError } from "@/lib/errors";
 
 interface RouteContext {
-  params: { keyId: string };
+  params: Promise<{ keyId: string }>;
 }
 
 export const DELETE = withApiHandler(
   async (_request: NextRequest, { params }: RouteContext) => {
     const { userId } = await requireAuth();
-    const { keyId } = params;
+    const { keyId } = await params;
 
     const apiKey = await prisma.apiKey.findUnique({
       where: { id: keyId },
