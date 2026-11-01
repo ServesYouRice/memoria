@@ -14,8 +14,14 @@ import {
   vi,
 } from "vitest";
 
-vi.mock("@/lib/cache/redis-client", () => ({ getRedisClient: () => null }));
+const routeAuth = vi.hoisted(() => ({ userId: "" }));
 
+vi.mock("@/lib/cache/redis-client", () => ({ getRedisClient: () => null }));
+vi.mock("@/lib/api/auth", () => ({
+  requireAuth: async () => ({ userId: routeAuth.userId }),
+}));
+
+import { NextRequest } from "next/server";
 import WebSocket from "ws";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
@@ -43,6 +49,8 @@ import {
 import { readPersistedCanvasDocument } from "@/lib/collaboration/sync/store";
 import { writeNoteFragment } from "@/lib/collaboration/sync/note-fragment";
 import { ItemType } from "@/types/canvas";
+import { POST as createVersion } from "@/app/api/v1/canvases/[canvasId]/versions/route";
+import { POST as restoreVersion } from "@/app/api/v1/canvases/[canvasId]/versions/[versionId]/restore/route";
 import { CookieJar, TEST_ORIGIN, callAuth } from "../helpers/auth-harness";
 
 const PASSWORD = "Correct-Horse-Battery-Staple-42!";
@@ -703,5 +711,124 @@ describe("collaboration sync server", () => {
       socket.on("error", () => undefined);
     });
     expect(status).toBe(403);
+  });
+
+  it("snapshots versions from the document and restores them into open documents", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    routeAuth.userId = owner.user.id;
+    const first = await startServer();
+    const client = connect({
+      url: first.url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+    });
+    await waitFor(() => client.provider.isSynced);
+    const noteId = createCanvasItemId();
+    client.doc.transact(() =>
+      applyItemState(
+        documentItems(client.doc),
+        noteId,
+        noteState(noteId, "Version one"),
+      ),
+    );
+    await waitForAcknowledged(client.provider);
+    client.provider.destroy();
+    await first.server.destroy();
+    servers.splice(servers.indexOf(first.server), 1);
+
+    // A row write while nobody has the canvas open is still in the snapshot.
+    const shape = await prisma.$transaction(async (tx) => {
+      await lockCanvasForMutation(tx, canvas.id);
+      const item = await tx.canvasItem.create({
+        data: {
+          canvasId: canvas.id,
+          type: "SHAPE",
+          positionX: 1,
+          positionY: 1,
+          width: 10,
+          height: 10,
+          content: { shapeType: "star" },
+          createdById: owner.user.id,
+        },
+      });
+      await recordCanvasItemEvent(tx, {
+        canvasId: canvas.id,
+        actorId: owner.user.id,
+        itemId: item.id,
+        version: item.version,
+        operation: "created",
+      });
+      return item;
+    });
+
+    const created = await createVersion(
+      new NextRequest(
+        `http://localhost/api/v1/canvases/${canvas.id}/versions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "Before edits" }),
+        },
+      ),
+      { params: Promise.resolve({ canvasId: canvas.id }) },
+    );
+    expect(created.status).toBe(201);
+    const { id: versionId } = (await created.json()) as { id: string };
+    const version = await prisma.canvasVersion.findUniqueOrThrow({
+      where: { id: versionId },
+    });
+    const snapshotItems = (
+      version.snapshot as { items: Array<{ id: string; content: any }> }
+    ).items;
+    expect(snapshotItems.map((item) => item.id).sort()).toEqual(
+      [noteId, shape.id].sort(),
+    );
+    expect(
+      snapshotItems.find((item) => item.id === noteId)!.content.plainText,
+    ).toBe("Version one");
+    const stored = new Y.Doc();
+    Y.applyUpdate(stored, version.yjsState!);
+    expect(
+      readAllItemStates(stored)
+        .map((item) => item.id)
+        .sort(),
+    ).toEqual([noteId, shape.id].sort());
+
+    // Edit after the snapshot, then restore it while a client is connected.
+    const second = await startServer();
+    const editor = connect({
+      url: second.url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+    });
+    await waitFor(
+      () => editor.provider.isSynced && documentItems(editor.doc).has(shape.id),
+    );
+    firstText(editor.doc, noteId).insert(0, "Not ");
+    documentItems(editor.doc).delete(shape.id);
+    await waitForAcknowledged(editor.provider);
+
+    const restored = await restoreVersion(
+      new NextRequest(
+        `http://localhost/api/v1/canvases/${canvas.id}/versions/${versionId}/restore`,
+        { method: "POST" },
+      ),
+      { params: Promise.resolve({ canvasId: canvas.id, versionId }) },
+    );
+    expect(restored.status).toBe(200);
+    await waitFor(() => {
+      const note = readItemState(
+        noteId,
+        documentItems(editor.doc).get(noteId),
+      ) as { content: { plainText: string } } | null;
+      return (
+        note?.content.plainText === "Version one" &&
+        documentItems(editor.doc).has(shape.id)
+      );
+    });
+    const copy = await prisma.canvasVersion.findFirstOrThrow({
+      where: { canvasId: canvas.id, name: "Restored Before edits" },
+    });
+    expect(copy.yjsState).toEqual(version.yjsState);
   });
 });

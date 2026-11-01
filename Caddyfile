@@ -25,6 +25,20 @@
 		}
 		reverse_proxy @public_probes app:3000
 
+		# Collaborative canvas documents (IMP-042) belong to the sync server
+		# process, which authenticates and authorizes every connection itself.
+		# It runs as one replica until IMP-043 adds cross-replica fan-out.
+		@sync_documents {
+			path /api/collaboration/sync
+		}
+		reverse_proxy @sync_documents sync:3001 {
+			health_uri /ready
+			health_interval 5s
+			health_timeout 3s
+			health_status 2xx
+			header_up X-Real-IP {remote_host}
+		}
+
 		@upload_paths {
 			path /api/v1/upload /api/v1/canvases/*/thumbnail
 		}

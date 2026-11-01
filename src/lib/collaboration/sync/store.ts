@@ -265,3 +265,32 @@ export async function reconcileDocumentFromEvents(
 
   return { eventSequence, events: total };
 }
+
+/**
+ * The canvas document as it stands now: the persisted state brought up to
+ * date with row writes the sync server has not reconciled yet (for example
+ * while nobody has the canvas open), or a document built from the rows when
+ * the canvas was never opened collaboratively. Read-only; call inside a
+ * transaction that holds the canvas mutation lock so no update lands midway.
+ */
+export async function readCurrentCanvasDocument(
+  tx: Prisma.TransactionClient,
+  canvasId: string,
+): Promise<Y.Doc> {
+  const persisted = await readPersistedCanvasDocument(tx, canvasId);
+  if (!persisted) {
+    const rows = await tx.canvasItem.findMany({
+      where: { canvasId, deletedAt: null },
+      select: ITEM_STATE_SELECT,
+      orderBy: { id: "asc" },
+    });
+    return createDocumentFromRows(rows.map(rowToItemState));
+  }
+  await reconcileDocumentFromEvents(tx, {
+    canvasId,
+    doc: persisted.doc,
+    afterSequence: persisted.eventSequence,
+    origin: null,
+  });
+  return persisted.doc;
+}

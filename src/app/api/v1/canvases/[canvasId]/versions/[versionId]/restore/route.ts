@@ -97,7 +97,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           seen.add(item.id);
           return {
             ...item,
-            content: parseCanvasItemContent(item.type, item.content),
+            // Co-edited notes may be stored empty (IMP-042).
+            content: parseCanvasItemContent(item.type, item.content, {
+              allowEmptyNote: true,
+            }),
           };
         });
         const ids = rows.map((item) => item.id);
@@ -191,6 +194,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             canvasId,
             name: `Restored ${version.name}`,
             snapshot: version.snapshot ?? Prisma.JsonNull,
+            yjsState: version.yjsState,
           },
         });
         const event = await tx.canvasEvent.create({

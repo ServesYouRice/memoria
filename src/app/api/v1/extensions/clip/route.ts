@@ -11,6 +11,7 @@ import {
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { Problems, notFoundError, unauthorizedError } from "@/lib/errors";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 
 export const POST = withApiHandler(
@@ -77,7 +78,7 @@ export const POST = withApiHandler(
       const item = await prisma.$transaction(async (tx) => {
         await lockCanvasForMutation(tx, targetCanvasId);
         await assertCanvasItemCapacity(tx, targetCanvasId);
-        return tx.canvasItem.create({
+        const created = await tx.canvasItem.create({
           data: {
             canvasId: targetCanvasId,
             type: ItemType.BOOKMARK,
@@ -93,6 +94,14 @@ export const POST = withApiHandler(
             createdById: user.id,
           },
         });
+        await recordCanvasItemEvent(tx, {
+          canvasId: targetCanvasId,
+          actorId: user.id,
+          itemId: created.id,
+          version: created.version,
+          operation: "created",
+        });
+        return created;
       });
 
       await invalidateCanvasCache(targetCanvasId);

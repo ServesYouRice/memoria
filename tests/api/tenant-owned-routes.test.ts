@@ -36,6 +36,10 @@ const mutationLockMocks = vi.hoisted(() => ({
   lockCanvasForMutation: vi.fn(),
 }));
 
+const eventMocks = vi.hoisted(() => ({
+  recordCanvasItemEvent: vi.fn(),
+}));
+
 vi.mock("@/lib/api/auth", () => ({
   requireAuth: authMocks.requireAuth,
   requireItemOwnership: authMocks.requireItemOwnership,
@@ -78,6 +82,10 @@ vi.mock("@/lib/cache/canvas-cache", () => ({
 
 vi.mock("@/lib/canvas/mutation-lock", () => ({
   lockCanvasForMutation: mutationLockMocks.lockCanvasForMutation,
+}));
+
+vi.mock("@/lib/collaboration/committed-events", () => ({
+  recordCanvasItemEvent: eventMocks.recordCanvasItemEvent,
 }));
 
 import {
@@ -433,6 +441,17 @@ describe("Tenant Scoping for Workspaces, Trash, and Notifications (IMP-060)", ()
           updatedById: ownerUserId,
         },
       });
+      // Open canvases and their collaborative documents pick the item up.
+      expect(eventMocks.recordCanvasItemEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          canvasId: "c-1",
+          actorId: ownerUserId,
+          itemId: validCuid,
+          version: 2,
+          operation: "created",
+        },
+      );
       expect(cacheMocks.invalidateCanvasCache).toHaveBeenCalledWith("c-1");
     });
   });
