@@ -10,6 +10,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { withEmbedAssetTokens } from "@/lib/embeds/assets";
 import { resolveEmbedToken } from "@/lib/embeds/service";
 import type { CanvasItem } from "@/types/canvas";
 import { EmbedViewer } from "./EmbedViewer";
@@ -71,7 +72,7 @@ export default async function EmbedPage({ params }: EmbedPageProps) {
       zoomLevel={canvas.zoomLevel}
       panX={canvas.panX}
       panY={canvas.panY}
-      items={items as unknown as CanvasItem[]}
+      items={withEmbedAssetTokens(items as unknown as CanvasItem[], token)}
     />
   );
 }
