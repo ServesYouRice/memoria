@@ -32,6 +32,7 @@ const GLOBAL_CONFIG_PATTERNS = [
   /^generated\//,
   /^\.husky\//,
   /^scripts\/pre-push/,
+  /^scripts\/gate\.mjs$/,
   /^next\.config\./,
   /^eslint\.config\./,
   /^\.eslintrc/,

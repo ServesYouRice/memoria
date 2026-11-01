@@ -10,7 +10,7 @@ Gate status, 2026-11-01 (Node 22 sandbox): `pnpm lint`, `pnpm type-check`,
 integration suite passes 16/16 on a freshly migrated PostgreSQL; `pnpm test:e2e`
 passes 8/8 on Chromium against the production image with real PostgreSQL,
 Redis, S3 (SeaweedFS) and captured email, and the strict operations smoke passes
-14/14. Firefox and WebKit are exercised by CI only.
+14/14. Firefox and WebKit run only through `pnpm gate e2e`.
 
 ## DOING
 
@@ -22,7 +22,6 @@ Redis, S3 (SeaweedFS) and captured email, and the strict operations smoke passes
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-039](tasks/IMP-039.md) | Cloudflare R2 as the production object store | - |
-| [IMP-040](tasks/IMP-040.md) | Local verification replaces hosted CI | - |
 | [IMP-041](tasks/IMP-041.md) | Better Auth replaces next-auth 5 beta | - |
 | [IMP-044](tasks/IMP-044.md) | Signed embeds with per-embed framing | - |
 
