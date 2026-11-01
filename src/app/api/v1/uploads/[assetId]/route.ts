@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { notFoundError, unauthorizedError } from "@/lib/errors";
 import { readPrivateUploadObject } from "@/lib/uploads/private-storage";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
+import { resolveEmbedToken } from "@/lib/embeds/service";
+import { EMBED_ASSET_TOKEN_PARAM } from "@/lib/embeds/assets";
 
 interface RouteContext {
   params: Promise<{ assetId: string }>;
@@ -28,7 +30,21 @@ export const GET = withApiHandler(
     const asset = await findAsset(assetId);
     if (asset.status !== "ACTIVE") throw notFoundError("Upload", assetId);
 
+    // A live embed token grants read access to assets of exactly its own
+    // canvas. Anything else (forged, revoked, expired, other canvas) falls
+    // through to the normal session check, so behaviour is unchanged.
+    let viaEmbed = false;
     if (!asset.canvas.isPublic) {
+      const embedToken = new URL(request.url).searchParams.get(
+        EMBED_ASSET_TOKEN_PARAM,
+      );
+      if (embedToken) {
+        const embed = await resolveEmbedToken(prisma, embedToken);
+        viaEmbed = embed?.canvasId === asset.canvasId;
+      }
+    }
+
+    if (!asset.canvas.isPublic && !viaEmbed) {
       const session = await auth();
       if (!session?.user?.id || !session.user.email) {
         throw unauthorizedError();
@@ -51,9 +67,12 @@ export const GET = withApiHandler(
     // ETag validation. This bounds Node and object storage round trips on
     // popular public links while keeping the link-revocation and asset-deletion
     // window to at most 5 minutes. Private canvas assets remain non-cacheable.
+    // Embed-token reads are never stored: revocation must take effect at once.
     const cacheControl = asset.canvas.isPublic
       ? "public, max-age=300, must-revalidate"
-      : "private, max-age=0, must-revalidate";
+      : viaEmbed
+        ? "private, no-store"
+        : "private, max-age=0, must-revalidate";
 
     const headers: Record<string, string> = {
       "content-type": asset.mimeType,
