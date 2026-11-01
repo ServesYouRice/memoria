@@ -24,6 +24,31 @@ export const API_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 export const API_RATE_LIMIT_MAX_REQUESTS = 100;
 
 /**
+ * Per-IP ceiling for general API requests that carry a session cookie
+ * (shared NAT / office networks). Anonymous requests keep the 100 budget above.
+ */
+export const API_IP_RATE_LIMIT_MAX_REQUESTS = 1500;
+
+/** Per-user general API budget per 15 minutes (session-keyed). */
+export const API_USER_RATE_LIMIT_MAX_REQUESTS = 600;
+
+/** Asset GETs (/api/v1/uploads/:id), per minute. A 150-image canvas fits. */
+export const ASSET_IP_RATE_LIMIT_MAX_REQUESTS = 1200;
+export const ASSET_USER_RATE_LIMIT_MAX_REQUESTS = 600;
+
+/** Notification list and 30s unread poll, per minute (several tabs). */
+export const NOTIFICATIONS_IP_RATE_LIMIT_MAX_REQUESTS = 120;
+export const NOTIFICATIONS_USER_RATE_LIMIT_MAX_REQUESTS = 60;
+
+/** Search, per minute. */
+export const SEARCH_IP_RATE_LIMIT_MAX_REQUESTS = 120;
+export const SEARCH_USER_RATE_LIMIT_MAX_REQUESTS = 60;
+
+/** Per-user canvas / item budgets per minute (IP budgets stay 50 / 200). */
+export const CANVASES_USER_RATE_LIMIT_MAX_REQUESTS = 100;
+export const ITEMS_USER_RATE_LIMIT_MAX_REQUESTS = 400;
+
+/**
  * Auth routes rate limit window in milliseconds
  * Default: 15 minutes (stricter than general API)
  */

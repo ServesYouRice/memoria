@@ -10,6 +10,13 @@ import {
   itemsRateLimit,
   agentRateLimit,
   sensitiveEndpointRateLimit,
+  apiSessionIpRateLimit,
+  apiUserRateLimit,
+  canvasesUserRateLimit,
+  itemsUserRateLimit,
+  classifyReadBudget,
+  readBudgetLimiters,
+  hasSessionCookie,
 } from "./middleware/rate-limit";
 import { applyCors, handleCorsPreflight } from "./middleware/cors";
 import { shouldApplyStrictAuthRateLimit } from "./middleware/auth-rate-limit";
@@ -125,7 +132,9 @@ export async function proxy(request: NextRequest) {
   // Apply rate limiting for canvas operations
   if (request.nextUrl.pathname.startsWith("/api/v1/canvases")) {
     specificRateLimitApplied = true;
-    const rateLimitResponse = await canvasesRateLimit(request);
+    const rateLimitResponse =
+      (await canvasesRateLimit(request)) ??
+      (await canvasesUserRateLimit(request));
     if (rateLimitResponse) return rateLimitResponse;
   }
 
@@ -135,8 +144,20 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/v1/items")
   ) {
     specificRateLimitApplied = true;
-    const rateLimitResponse = await itemsRateLimit(request);
+    const rateLimitResponse =
+      (await itemsRateLimit(request)) ?? (await itemsUserRateLimit(request));
     if (rateLimitResponse) return rateLimitResponse;
+  }
+
+  // Asset GETs, the notification poll and search have their own budgets, so
+  // they neither exhaust nor are starved by the general API budget.
+  const readBudget = classifyReadBudget(pathname, request.method);
+  if (readBudget && !specificRateLimitApplied) {
+    specificRateLimitApplied = true;
+    for (const limiter of readBudgetLimiters[readBudget]) {
+      const rateLimitResponse = await limiter(request);
+      if (rateLimitResponse) return rateLimitResponse;
+    }
   }
 
   // Apply rate limiting for general API routes
@@ -144,7 +165,12 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/v1") &&
     !specificRateLimitApplied
   ) {
-    const rateLimitResponse = await apiRateLimit(request);
+    // Session-bearing requests are limited per user plus a larger per-IP
+    // ceiling; requests without a session keep the strict anonymous budget.
+    const rateLimitResponse = hasSessionCookie(request)
+      ? ((await apiSessionIpRateLimit(request)) ??
+        (await apiUserRateLimit(request)))
+      : await apiRateLimit(request);
     if (rateLimitResponse) {
       return rateLimitResponse;
     }
