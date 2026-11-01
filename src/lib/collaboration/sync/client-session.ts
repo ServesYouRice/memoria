@@ -13,12 +13,23 @@
  * role changes (`memoria:reauthenticate`) it reconnects to learn the new
  * scope, discarding unsaved changes if it may no longer edit.
  *
+ * IMP-045 — with a device cache (`offline-store.ts`) the session also keeps
+ * the document on this device: every update is appended to IndexedDB, and a
+ * session that opens with a stored copy renders and edits it at once, even
+ * without a network, using the scope the server last granted. Local edits
+ * are counted until the server confirms storing them, so the count survives
+ * a reload. On reconnect the normal sync handshake sends the server whatever
+ * it lacks, through the same validation as any other update. Whenever the
+ * session discards its document (a refused change, lost edit access) or
+ * loses access, it clears the stored copy first, so a discarded change is
+ * never restored or sent again.
+ *
  * Framework-free; React binds it through `lib/hooks/use-canvas-document`.
  *
  * @module lib/collaboration/sync/client-session
  */
 
-import type * as Y from "yjs";
+import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { ItemType } from "@/types/canvas";
 import { isLaunchCapabilityEnabled } from "@/lib/product-surfaces";
@@ -44,6 +55,10 @@ import {
   SYNC_CLOSE_REASONS,
   createCanvasItemId,
 } from "./protocol";
+import type {
+  CanvasDocumentCache,
+  CanvasDocumentCacheMeta,
+} from "./offline-store";
 
 export interface CanvasDocumentEntry {
   state: CanvasItemState;
@@ -62,6 +77,18 @@ export interface CanvasDocumentSnapshot {
   connected: boolean;
   /** Local changes the sync server has not acknowledged (stored) yet. */
   pendingChanges: number;
+  /**
+   * IMP-045 — local edits the sync server has not confirmed storing,
+   * including edits kept on this device from an earlier visit.
+   */
+  unsavedChanges: number;
+  /**
+   * The document shows the copy kept on this device and has not synced with
+   * the server since it opened.
+   */
+  restored: boolean;
+  /** The canvas name kept with the device copy, for opening offline. */
+  canvasName: string | null;
   /** This client changed the document since the last reset. */
   localChanges: boolean;
   /** Access was refused or revoked; the canvas uses the HTTP API instead. */
@@ -83,6 +110,10 @@ export interface CanvasDocumentSessionOptions {
   retryDelayMs?: number;
   /** Node test clients pass a cookie-carrying WebSocket implementation. */
   WebSocketPolyfill?: unknown;
+  /** IMP-045 — this user's device copy of the canvas; none keeps no copy. */
+  cache?: CanvasDocumentCache | null;
+  /** Fold the device copy's appended updates into one after this many. */
+  cacheCompactAfter?: number;
 }
 
 /** Item fields a document write may change. */
@@ -110,6 +141,8 @@ export interface CanvasDocumentItemInput {
 
 /** Marks this client's own writes in Yjs transactions. */
 export const LOCAL_WRITE_ORIGIN = Symbol("memoria:local-write");
+/** Marks the device copy being loaded into a fresh document. */
+const CACHE_ORIGIN = Symbol("memoria:device-copy");
 
 const updateFieldsSchema = updateCanvasItemSchema.omit({ version: true });
 
@@ -138,6 +171,9 @@ export class CanvasDocumentSession {
     writable: false,
     connected: false,
     pendingChanges: 0,
+    unsavedChanges: 0,
+    restored: false,
+    canvasName: null,
     localChanges: false,
     forbidden: false,
     generation: 0,
@@ -147,12 +183,23 @@ export class CanvasDocumentSession {
   private readonly listeners = new Set<() => void>();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
+  private readonly cache: CanvasDocumentCache | null;
+  /** Writes to the device copy stopped (one failed, or access was lost). */
+  private cacheStopped = false;
+  private updatesSinceCompaction = 0;
+  private cacheWrites: Promise<unknown> = Promise.resolve();
 
   constructor(options: CanvasDocumentSessionOptions) {
     this.options = options;
     this.canvasId = options.canvasId;
+    this.cache = options.cache ?? null;
     this.attachDocument();
-    this.connect();
+    if (this.cache) void this.restore(this.cache);
+    else this.connect();
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", this.onOnline);
+      window.addEventListener("offline", this.onOffline);
+    }
   }
 
   getSnapshot = (): CanvasDocumentSnapshot => this.snapshot;
@@ -172,6 +219,19 @@ export class CanvasDocumentSession {
       this.snapshot.writable &&
       !this.snapshot.forbidden
     );
+  }
+
+  /** Settles once every device-copy write issued so far has finished. */
+  whenCached(): Promise<void> {
+    return this.cacheWrites.then(() => undefined);
+  }
+
+  /** Keep the canvas name with the device copy, for opening offline. */
+  rememberCanvasName(name: string): void {
+    if (this.destroyed || !name || this.snapshot.canvasName === name) return;
+    this.update({ canvasName: name });
+    if (this.snapshot.ready)
+      this.writeCache((cache) => cache.saveMeta(this.cacheMeta()));
   }
 
   hasItem(itemId: string): boolean {
@@ -257,11 +317,34 @@ export class CanvasDocumentSession {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.onOnline);
+      window.removeEventListener("offline", this.onOffline);
+    }
     this.clearRetry();
     this.disconnect();
     this.detachDocument();
     this.listeners.clear();
   }
+
+  /**
+   * IMP-045: when the browser loses its network, stop at once rather than
+   * wait for the socket to time out, so the board shows edits as kept on
+   * this device; reconnect as soon as the network is back (the provider
+   * would otherwise back off for up to 30 seconds between attempts).
+   */
+  private onOffline = () => {
+    const provider = this.provider;
+    if (!provider) return;
+    provider.disconnect();
+    this.update({ connected: false });
+  };
+
+  private onOnline = () => {
+    if (this.snapshot.connected || this.snapshot.forbidden || this.retryTimer)
+      return;
+    void this.provider?.connect();
+  };
 
   private assertWritable(): void {
     if (!this.acceptsWrites)
@@ -300,6 +383,18 @@ export class CanvasDocumentSession {
       ...(this.options.WebSocketPolyfill
         ? { WebSocketPolyfill: this.options.WebSocketPolyfill }
         : {}),
+      onConnect: () => {
+        // Runs before the provider sends the edits it queued while offline.
+        // Edits kept by an earlier page (a reload without a network) are in
+        // the device copy, not in that queue, and the server refuses an edit
+        // that builds on changes it lacks. Send the whole copy first: it
+        // holds every change the server may lack, and changes the server
+        // already has are no-ops.
+        if (this.provider !== provider || this.snapshot.unsavedChanges === 0)
+          return;
+        provider.documentUpdateHandler(Y.encodeStateAsUpdate(this.doc), null);
+        provider.flushPendingUpdates();
+      },
       onStatus: ({ status }) => {
         if (this.provider === provider)
           this.update({ connected: status === "connected" });
@@ -313,7 +408,9 @@ export class CanvasDocumentSession {
           this.later(() => this.reset());
           return;
         }
+        if (this.snapshot.writable === writable) return;
         this.update({ writable });
+        this.writeCache((cache) => cache.saveMeta(this.cacheMeta()));
       },
       onAuthenticationFailed: ({ reason }) => {
         if (this.provider !== provider) return;
@@ -324,11 +421,21 @@ export class CanvasDocumentSession {
         );
       },
       onSynced: ({ state }) => {
-        if (this.provider === provider && state && !this.snapshot.ready)
-          this.update({ ready: true });
+        if (this.provider !== provider || !state) return;
+        if (!this.snapshot.ready || this.snapshot.restored)
+          this.update({ ready: true, restored: false });
       },
       onUnsyncedChanges: ({ number }) => {
-        if (this.provider === provider) this.update({ pendingChanges: number });
+        if (this.provider !== provider) return;
+        // The server acknowledges only after storing, and the handshake on
+        // every (re)connect sends it whatever it lacks: at zero, every local
+        // edit made so far is stored.
+        if (number === 0 && this.snapshot.unsavedChanges > 0) {
+          this.update({ pendingChanges: 0, unsavedChanges: 0 });
+          this.writeCache((cache) => cache.saveMeta(this.cacheMeta()));
+        } else {
+          this.update({ pendingChanges: number });
+        }
       },
       onClose: ({ event }) => {
         if (this.provider !== provider) return;
@@ -388,10 +495,16 @@ export class CanvasDocumentSession {
   private forbid(): void {
     this.clearRetry();
     this.disconnect();
+    // Without access the device copy can never be stored: drop it, and keep
+    // no other.
+    this.clearCache();
+    this.cacheStopped = true;
     this.update({
       forbidden: true,
       writable: false,
       connected: false,
+      unsavedChanges: 0,
+      restored: false,
       accessRevision: this.snapshot.accessRevision + 1,
     });
   }
@@ -401,12 +514,17 @@ export class CanvasDocumentSession {
     this.clearRetry();
     this.disconnect();
     this.detachDocument();
+    // The device copy holds the discarded changes too. The clear is queued
+    // ahead of every write of the new document, so they never come back.
+    this.clearCache();
     this.attachDocument();
     this.update({
       ready: false,
       writable: false,
       connected: false,
       pendingChanges: 0,
+      unsavedChanges: 0,
+      restored: false,
       localChanges: false,
       generation: this.snapshot.generation + 1,
       items: new Map(),
@@ -415,12 +533,90 @@ export class CanvasDocumentSession {
     this.connect();
   }
 
-  private onDocumentUpdate = (_update: Uint8Array, origin: unknown) => {
+  /** Open with the device copy, if there is one, then connect. */
+  private async restore(cache: CanvasDocumentCache): Promise<void> {
+    let stored = null;
+    try {
+      stored = await cache.load();
+    } catch {
+      // IndexedDB is unavailable (private mode, quota): stay online-only.
+      this.cacheStopped = true;
+    }
+    if (this.destroyed) return;
+    if (stored && stored.updates.length > 0) {
+      try {
+        Y.applyUpdate(this.doc, Y.mergeUpdates(stored.updates), CACHE_ORIGIN);
+        this.update({
+          ready: true,
+          restored: true,
+          writable: stored.writable,
+          unsavedChanges: stored.unsavedChanges,
+          canvasName: this.snapshot.canvasName ?? stored.canvasName,
+        });
+      } catch {
+        // An unreadable copy: start again from the server's.
+        this.detachDocument();
+        this.clearCache();
+        this.attachDocument();
+        this.update({ items: new Map() });
+      }
+    }
+    this.connect();
+  }
+
+  private cacheMeta(): CanvasDocumentCacheMeta {
+    return {
+      writable: this.snapshot.writable,
+      unsavedChanges: this.snapshot.unsavedChanges,
+      canvasName: this.snapshot.canvasName,
+    };
+  }
+
+  private writeCache(
+    write: (cache: CanvasDocumentCache) => Promise<void>,
+  ): void {
+    const cache = this.cache;
+    if (!cache || this.cacheStopped) return;
+    this.cacheWrites = write(cache).catch(() => {
+      // Quota or a closed database: keep editing online-only. What is stored
+      // stays a consistent, older copy.
+      this.cacheStopped = true;
+    });
+  }
+
+  private clearCache(): void {
+    const cache = this.cache;
+    if (!cache) return;
+    this.updatesSinceCompaction = 0;
+    this.cacheWrites = cache.clear().catch(() => {
+      this.cacheStopped = true;
+    });
+  }
+
+  private persistUpdate(update: Uint8Array): void {
+    if (!this.cache || this.cacheStopped) return;
+    this.updatesSinceCompaction += 1;
+    if (
+      this.updatesSinceCompaction >= (this.options.cacheCompactAfter ?? 100)
+    ) {
+      this.updatesSinceCompaction = 0;
+      const state = Y.encodeStateAsUpdate(this.doc);
+      this.writeCache((cache) => cache.compact(state, this.cacheMeta()));
+    } else {
+      this.writeCache((cache) => cache.append(update, this.cacheMeta()));
+    }
+  }
+
+  private onDocumentUpdate = (update: Uint8Array, origin: unknown) => {
+    if (origin === CACHE_ORIGIN) return;
     // Updates applied by the provider come from the server; anything else
     // (canvas writes, the note editor) is a local change.
-    if (origin === this.provider || this.snapshot.localChanges) return;
-    if (!this.snapshot.ready) return;
-    this.update({ localChanges: true });
+    if (origin !== this.provider && this.snapshot.ready)
+      this.update({
+        localChanges: true,
+        unsavedChanges: this.snapshot.unsavedChanges + 1,
+      });
+    this.persistUpdate(update);
   };
 
   private onItemsChanged = (

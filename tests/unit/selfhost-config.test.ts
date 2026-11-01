@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync, writeFileSync, unlinkSync } from "fs";
 import { spawnSync } from "child_process";
+import { createServer } from "net";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -87,7 +88,14 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
         "path /api/v1/upload /api/v1/canvases/*/thumbnail",
       );
       expect(caddyContent).not.toContain("/api/v1/uploads ");
-      expect(caddyContent).toContain("reverse_proxy app:3000");
+      expect(caddyContent).toContain(
+        "reverse_proxy {$MEMORIA_APP_UPSTREAMS:app:3000}",
+      );
+      // Every collaboration socket goes to the realtime replicas (IMP-043).
+      expect(caddyContent).toContain("path /api/collaboration/*");
+      expect(caddyContent).toContain(
+        "reverse_proxy @collaboration {$MEMORIA_SYNC_UPSTREAMS:sync:3001}",
+      );
     });
   });
 
@@ -149,6 +157,166 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
         const output = result.stdout.toString("utf8");
         expect(output).toContain("Contains a known placeholder value");
       } finally {
+        if (existsSync(tempEnv)) {
+          unlinkSync(tempEnv);
+        }
+      }
+    }, 25000);
+  });
+
+  describe("SMTP as a production email provider (IMP-054)", () => {
+    const productionEnv: Record<string, string> = {
+      NODE_ENV: "production",
+      MEMORIA_SKIP_ENV_FILE_LOAD: "true",
+      DATABASE_URL:
+        "postgresql://memoria:strong-db-password@localhost:5432/memoria",
+      AUTH_URL: "https://memoria.example",
+      AUTH_SECRET: "auth-secret-prod-0123456789abcdefghijk",
+      APP_BOOTSTRAP_TOKEN: "bootstrap-token-prod-0123456789ab",
+      INTERNAL_OPERATIONS_TOKEN: "operations-token-prod-0123456789abcdef",
+      MODEL_CREDENTIAL_ENCRYPTION_KEY: "model-key-prod-0123456789abcdefghij",
+      CRON_SECRET: "cron-secret-prod-0123456789abcdef",
+      BACKUP_MANIFEST_HMAC_KEY: "backup-hmac-prod-0123456789abcdef",
+      REDIS_URL: "redis://redis.memoria.example:6379",
+      UPLOAD_STORAGE: "s3",
+      S3_BUCKET: "memoria-uploads",
+      S3_REGION: "us-east-1",
+      S3_ENDPOINT: "https://s3.memoria.example",
+      S3_ACCESS_KEY_ID: "uploads-access",
+      S3_SECRET_ACCESS_KEY: "uploads-secret",
+      EMAIL_PROVIDER: "smtp",
+      EMAIL_FROM: "noreply@memoria.example",
+      EMAIL_SENDER_VERIFIED: "true",
+      EMAIL_DELIVERY_PROBE_TO: "operator@memoria.example",
+      SMTP_HOST: "smtp.memoria.example",
+      SMTP_PORT: "587",
+      SMTP_SECURE: "false",
+      SMTP_USER: "mailer",
+      SMTP_PASS: "smtp-password-prod",
+    };
+
+    function validateProductionEnv(
+      overrides: Record<string, string | undefined>,
+    ) {
+      const env: Record<string, string> = {
+        ...process.env,
+        ...productionEnv,
+      } as Record<string, string>;
+      for (const [key, value] of Object.entries(overrides)) {
+        if (value === undefined) {
+          delete env[key];
+        } else {
+          env[key] = value;
+        }
+      }
+      return spawnSync("pnpm", ["exec", "tsx", "src/lib/env.ts"], {
+        env,
+        cwd: rootDir,
+        shell: true,
+      });
+    }
+
+    function outputOf(result: ReturnType<typeof spawnSync>) {
+      return (
+        (result.stderr ? result.stderr.toString("utf8") : "") +
+        (result.stdout ? result.stdout.toString("utf8") : "")
+      );
+    }
+
+    it("accepts EMAIL_PROVIDER=smtp in production when the SMTP settings are present", () => {
+      const result = validateProductionEnv({});
+
+      expect(outputOf(result)).not.toContain("EMAIL_PROVIDER must be");
+      expect(result.status).toBe(0);
+    }, 30000);
+
+    it("requires the SMTP host when EMAIL_PROVIDER=smtp in production", () => {
+      const result = validateProductionEnv({ SMTP_HOST: undefined });
+
+      expect(result.status).not.toBe(0);
+      expect(outputOf(result)).toContain(
+        "SMTP_HOST is required when EMAIL_PROVIDER=smtp.",
+      );
+    }, 30000);
+
+    it("names smtp among the production providers when console is configured", () => {
+      const result = validateProductionEnv({ EMAIL_PROVIDER: "console" });
+
+      expect(result.status).not.toBe(0);
+      expect(outputOf(result)).toContain(
+        "EMAIL_PROVIDER must be sendgrid, resend, or smtp in production.",
+      );
+    }, 30000);
+
+    it("doctor names the missing SMTP credentials for EMAIL_PROVIDER=smtp", () => {
+      const tempEnv = path.join(tmpdir(), ".env.test-doctor-smtp-missing");
+      writeFileSync(
+        tempEnv,
+        [
+          "NODE_ENV=development",
+          "EMAIL_PROVIDER=smtp",
+          "SMTP_HOST=127.0.0.1",
+          "SMTP_PORT=1",
+        ].join("\n"),
+        "utf8",
+      );
+
+      try {
+        const result = spawnSync(
+          process.execPath,
+          [path.join(rootDir, "scripts/doctor.mjs")],
+          {
+            env: { ...process.env, MEMORIA_ENV_FILE: tempEnv },
+            cwd: rootDir,
+          },
+        );
+
+        expect(outputOf(result)).toContain(
+          "FAIL email-provider: Missing SMTP_USER, SMTP_PASS for EMAIL_PROVIDER=smtp",
+        );
+      } finally {
+        if (existsSync(tempEnv)) {
+          unlinkSync(tempEnv);
+        }
+      }
+    }, 25000);
+
+    it("doctor probes the configured SMTP server port", async () => {
+      const listener = createServer();
+      await new Promise<void>((resolve) =>
+        listener.listen(0, "127.0.0.1", () => resolve()),
+      );
+      const address = listener.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const tempEnv = path.join(tmpdir(), ".env.test-doctor-smtp-reachable");
+      writeFileSync(
+        tempEnv,
+        [
+          "NODE_ENV=development",
+          "EMAIL_PROVIDER=smtp",
+          "SMTP_HOST=127.0.0.1",
+          `SMTP_PORT=${port}`,
+          "SMTP_USER=mailer",
+          "SMTP_PASS=smtp-password",
+        ].join("\n"),
+        "utf8",
+      );
+
+      try {
+        const result = spawnSync(
+          process.execPath,
+          [path.join(rootDir, "scripts/doctor.mjs")],
+          {
+            env: { ...process.env, MEMORIA_ENV_FILE: tempEnv },
+            cwd: rootDir,
+          },
+        );
+
+        expect(outputOf(result)).toContain(
+          `PASS smtp-server: 127.0.0.1:${port}`,
+        );
+      } finally {
+        await new Promise<void>((resolve) => listener.close(() => resolve()));
         if (existsSync(tempEnv)) {
           unlinkSync(tempEnv);
         }

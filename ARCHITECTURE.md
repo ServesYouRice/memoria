@@ -1,24 +1,27 @@
 # Architecture Overview
 
 Memoria is a stateful Next.js application for visual note organization. The
-production runtime is a custom Node server that hosts the Next.js App Router and
-the WebSocket presence server in the same process; collaborative document sync
-runs in a separate sync server process built from the same image.
+production runtime is a custom Node server that hosts the Next.js App Router,
+and a separate realtime process, built from the same image, that serves every
+collaboration socket: Yjs document sync and presence.
 
 ## Runtime Model
 
 ```
 Browser
-  | HTTP/JSON                         | WebSocket /api/collaboration/sync
+  | HTTP/JSON                         | WebSocket /api/collaboration/*
   v                                   v (gateway route, or proxied by server.ts)
-Custom Node server (server.ts)      Sync server (pnpm sync:server, port 3001)
-  | Next.js App Router                | Hocuspocus + Yjs canvas documents
-  | API route handlers                | auth, role checks, update validation
-  | WebSocket upgrades at             |
-  |   /api/collaboration/:canvasId    |
+Custom Node server (server.ts)      Realtime process (pnpm sync:server, 3001)
+  | Next.js App Router                | /sync: Hocuspocus + Yjs documents
+  | API route handlers                | /:canvasId: presence, cursors, chat
+  |                                   | auth, role checks, update validation
   v                                   v
 PostgreSQL + Redis + S3-compatible object storage
 ```
+
+The upgrade proxy in `server.ts` serves single-port and development setups.
+Behind it, the realtime process sees the app as the peer, so
+`TRUSTED_PROXY_CIDRS` must include the app's address for per-client limits.
 
 Production is container oriented: the target host is the owner's shared k3s
 cluster (see `AGENTS.md`, Direction). Serverless stays out because collaboration
@@ -28,15 +31,20 @@ depends on stateful WebSocket servers and shared infrastructure.
 
 The direction set by the owner's handbook, ordered by the Kanban:
 
-- **App:** Next.js + HTTP API, stateless, rolling updates.
-- **Sync server:** a separate Hocuspocus process for Yjs co-editing that saves
-  every document update to PostgreSQL (built, IMP-042; `sync` service). Run
-  exactly one replica: a second one needs cross-replica document fan-out and
-  a single writer per document (IMP-043).
-- **Worker and scheduler:** already separate processes from the same image.
+- **App:** Next.js + HTTP API, stateless, rolling updates. Rate limits live in
+  Redis; any replica can serve any request.
+- **Realtime:** the `sync` service: Hocuspocus for Yjs co-editing, saving
+  every document update to PostgreSQL (IMP-042), plus the presence socket.
+  Replicas share documents through the PostgreSQL update log and connection
+  limits through Redis (IMP-043), so any replica can take any connection.
+- **Worker and scheduler:** separate processes from the same image; the
+  outbox claims jobs with `SKIP LOCKED`.
 - **Data:** shared PostgreSQL 16, Valkey (Redis protocol), Cloudflare R2.
 
-Each process ships with one replica until its shared semantics are proven.
+Production runs one replica of each process. The `replicas` compose profile
+(`COMPOSE_PROFILES=replicas` plus `MEMORIA_APP_UPSTREAMS` and
+`MEMORIA_SYNC_UPSTREAMS`, see `docker-compose.yml`) runs two app and two
+realtime replicas behind the gateway.
 
 ## Core Services
 
@@ -157,12 +165,35 @@ note at once; Yjs merges the edits.
   synced and writable, item writes and the note editor go through the
   document, and the board renders the document's items with row metadata.
   Otherwise writes use the HTTP API.
-- **Scaling seam.** One sync replica per database: each process keeps the
-  documents it serves in memory and assumes it is their only writer. IMP-043
-  adds the Hocuspocus Redis extension for cross-replica fan-out (and must keep
-  one writer per document) before a second replica.
+- **Replicas (IMP-043).** The PostgreSQL update log is the order of record.
+  Every write (a client update, a row reconciliation, a compaction) holds the
+  canvas row lock and first applies whatever other replicas stored since this
+  one last looked, so each replica writes on top of the latest document and a
+  row change is reconciled into the log exactly once. After a write the
+  replica announces the canvas on Redis (`collaboration:sync:documents`);
+  others pull the new updates at once, and the one-second reconcile pass
+  compares update ids as a fallback. The Hocuspocus Redis extension is not
+  used: it would relay updates to other replicas before they are validated
+  and stored, breaking "acknowledged means durable". Document awareness is
+  unused (presence has its own socket).
+- **Offline edits (IMP-045).** For a signed-in user the session keeps a
+  device copy of each opened canvas in IndexedDB
+  (`client-session.ts`, `offline-store.ts`): every document update, the
+  scope the server last granted and the count of local edits it has not
+  stored. Losing the network keeps the canvas editable; a reload opens the
+  copy at once, and the service worker serves the canvas page shell (HTML
+  without user data, stored by the page) when the network is down, so a
+  canvas opened before can be opened and edited offline. On reconnect the
+  sync handshake sends what the server lacks through the normal validation.
+  A refused update, a lost edit role or lost access discards the copy before
+  anything else is written, so a refused change never returns. Copies are
+  keyed by user; a different user signing in wipes them, and sign-out clears
+  them with the cached shells. Offline the HTTP-only surfaces (comments,
+  versions, search, owner actions) stay unavailable, and an expired session
+  reads as lost access on reconnect, discarding unsynced offline edits.
 
-**Presence.** A custom `ws` server in `server.ts` carries ephemeral presence,
+**Presence.** A custom `ws` server (`websocket-server.ts`), hosted by the
+realtime process on the same port as sync, carries ephemeral presence,
 cursors, chat, and reactions, and relays committed item events so clients
 refresh rows. It:
 
@@ -171,7 +202,20 @@ refresh rows. It:
 - verifies canvas ownership or shared access;
 - broadcasts presence, cursor, chat, and reaction messages to connected clients;
 - uses Redis pub/sub when available for multi-instance fanout;
+- holds per-canvas, per-user and per-client connection limits and the
+  per-client upgrade budget across replicas in Redis (leased sorted sets,
+  renewed on the heartbeat, `shared-admission.ts`), falling back to
+  per-process limits if Redis fails;
 - does not persist collaboration messages or mutate `CanvasItem` rows.
+
+**Version history (IMP-046).** Besides manual versions, the scheduler calls
+`/api/cron/version-history` every five minutes; it enqueues an idempotent
+snapshot sweep (a canvas changed since its latest version, which is at least
+ten minutes old, gets an `AUTO` version unless its content hash is unchanged)
+and an hourly retention job that keeps every automatic version for a day,
+one per hour for a week and one per day for thirty days. Manual versions are
+never pruned automatically. Viewers can list and preview versions; restoring
+needs edit access.
 
 HTTP polling remains available for non-collaboration views and fallback
 refreshes.

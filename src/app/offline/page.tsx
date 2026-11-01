@@ -19,8 +19,9 @@ export default function OfflinePage() {
               mb: 3,
             }}
           >
-            Memoria keeps private canvases on the network path, so personal data
-            is never served from a shared browser cache. Reconnect to continue.
+            This page is not available offline. Canvases you opened while signed
+            in on this device can still be opened offline; everything else needs
+            a connection. Reconnect to continue.
           </Typography>
           <Button href="/" variant="contained">
             Try again

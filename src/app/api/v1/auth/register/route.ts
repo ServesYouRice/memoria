@@ -30,6 +30,41 @@ import {
 
 const VERIFICATION_EXPIRY_HOURS = 24;
 
+/**
+ * Every accepted registration answers no sooner than this after the request
+ * started. A new account runs a multi-write transaction that an existing email
+ * skips; the floor keeps that difference out of the response time. It sits
+ * well above the Argon2id hash plus the account transaction.
+ */
+const REGISTRATION_RESPONSE_FLOOR_MS = 500;
+
+/**
+ * The one success response for both a new account and an email that is
+ * already registered: same status, same fields, no account id. Telling the
+ * two apart would let anyone probe which emails have accounts.
+ */
+async function acceptedRegistration(
+  startedAt: number,
+  email: string,
+  name: string,
+): Promise<NextResponse> {
+  const remainingMs = startedAt + REGISTRATION_RESPONSE_FLOOR_MS - Date.now();
+  if (remainingMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remainingMs));
+  }
+  return NextResponse.json(
+    {
+      email,
+      name,
+      verificationRequired: true,
+      verificationEmailQueued: true,
+      message:
+        "If this email can be registered, a verification message is on its way.",
+    },
+    { status: 202 },
+  );
+}
+
 const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(10, "Password must be at least 10 characters"),
@@ -38,6 +73,7 @@ const registerSchema = z.object({
 });
 
 export const POST = withApiHandler(async (request: NextRequest) => {
+  const startedAt = Date.now();
   // Parse and validate request body
   const body = await request.json();
   const parseResult = registerSchema.safeParse(body);
@@ -100,23 +136,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   // Hash password with Argon2id before checking existing user to maintain constant-time path
   const passwordHash = await hashPassword(password);
 
-  // Check if user already exists
+  // An existing email gets the same accepted response as a new account.
   const existingUser = await prisma.user.findUnique({
     where: { email: normalizedEmail },
+    select: { id: true },
   });
 
   if (existingUser) {
-    return NextResponse.json(
-      {
-        id: "usr_registered",
-        email: normalizedEmail,
-        name,
-        createdAt: new Date().toISOString(),
-        verificationRequired: true,
-        verificationEmailQueued: true,
-      },
-      { status: 201 },
-    );
+    return acceptedRegistration(startedAt, normalizedEmail, name);
   }
 
   const verificationToken = nanoid(32);
@@ -134,12 +161,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
           email: normalizedEmail,
           name,
         },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          createdAt: true,
-        },
+        select: { id: true, email: true },
       });
       await createCredentialAccount(tx, createdUser.id, passwordHash);
       const workspace = await tx.workspace.create({
@@ -169,34 +191,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       return createdUser;
     });
 
-    return NextResponse.json(
-      {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        createdAt: user.createdAt.toISOString(),
-        verificationRequired: true,
-        verificationEmailQueued: true,
-      },
-      { status: 201 },
-    );
+    return acceptedRegistration(startedAt, user.email, name);
   } catch (error: any) {
     if (
       error?.code === "P2002" &&
       Array.isArray(error?.meta?.target) &&
       error.meta.target.includes("email")
     ) {
-      return NextResponse.json(
-        {
-          id: "usr_registered",
-          email: normalizedEmail,
-          name,
-          createdAt: new Date().toISOString(),
-          verificationRequired: true,
-          verificationEmailQueued: true,
-        },
-        { status: 201 },
-      );
+      return acceptedRegistration(startedAt, normalizedEmail, name);
     }
     throw error;
   }

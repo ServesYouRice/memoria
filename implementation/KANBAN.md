@@ -1,6 +1,7 @@
 # Implementation Kanban
 
-Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISIONS`.
+Rules: one `DOING` (the owner may run independent cards in parallel); take
+the first `READY`; user fills choices in `USER DECISIONS`.
 
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
@@ -23,12 +24,17 @@ documented restore drill passed (RPO 134s, RTO 16s).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-043](tasks/IMP-043.md) | Realtime split and replica-ready processes | — |
+| [IMP-047](tasks/IMP-047.md) | Real client identity behind the gateway | — |
+| [IMP-049](tasks/IMP-049.md) | Green production dependency audit | — |
+| [IMP-053](tasks/IMP-053.md) | Visible delete failures and a mobile activity feed | — |
+| [IMP-055](tasks/IMP-055.md) | Remove dead code and type escape hatches | — |
+| [IMP-057](tasks/IMP-057.md) | Image proxy so the CSP can drop `img-src https:` | — |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
+| [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster | DEC-001, IMP-047 |
 
 ## USER DECISIONS
 
@@ -37,3 +43,5 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 
 | ID | Decision | Recommended | Choice | Unblocks |
 | -- | -------- | ----------- | ------ | -------- |
+| DEC-001 | May agents add `apps/memoria/` to the infra repo (a push to its `main` deploys)? | Yes, staging first, via PR | | IMP-056 |
+

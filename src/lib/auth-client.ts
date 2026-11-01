@@ -8,6 +8,7 @@
 import { createAuthClient } from "better-auth/react";
 import { twoFactorClient } from "better-auth/client/plugins";
 import { passkeyClient } from "@better-auth/passkey/client";
+import { clearOfflineCache } from "@/lib/collaboration/sync/offline-store";
 
 export const authClient = createAuthClient({
   plugins: [twoFactorClient(), passkeyClient()],
@@ -30,5 +31,8 @@ export async function signOutAndRedirect(
   if (error && !options.navigateOnError) {
     throw new Error(error.message || "Sign out failed");
   }
+  // IMP-045: the canvases kept on this device for offline use, including
+  // edits not synced yet, leave with the user.
+  await clearOfflineCache().catch(() => {});
   window.location.assign(destination);
 }

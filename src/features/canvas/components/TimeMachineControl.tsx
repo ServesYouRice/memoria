@@ -9,7 +9,8 @@ interface TimeMachineControlProps {
   versions: any[];
   currentIndex: number;
   onChange: (index: number) => void;
-  onRestore: (version: any) => void;
+  /** Omitted for viewers: restoring needs edit access. */
+  onRestore?: (version: any) => void;
   onExit: () => void;
 }
 
@@ -84,16 +85,18 @@ export function TimeMachineControl({
         valueLabelFormat={(idx) => versions[idx]?.name || ""}
       />
 
-      <Box sx={{ display: "flex", justifyContent: "center" }}>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<Restore />}
-          onClick={() => onRestore(currentVersion)}
-        >
-          Restore This Version
-        </Button>
-      </Box>
+      {onRestore && (
+        <Box sx={{ display: "flex", justifyContent: "center" }}>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Restore />}
+            onClick={() => onRestore(currentVersion)}
+          >
+            Restore This Version
+          </Button>
+        </Box>
+      )}
     </Paper>
   );
 }

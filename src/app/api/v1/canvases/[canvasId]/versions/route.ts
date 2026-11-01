@@ -1,98 +1,50 @@
 import { type NextRequest, NextResponse } from "next/server";
-import * as Y from "yjs";
 import { z } from "zod";
-import type { Prisma } from "@/generated/prisma/client";
-import { requireAuth } from "@/lib/api/auth";
+import { CanvasVersionKind } from "@/generated/prisma/client";
+import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { prisma } from "@/lib/db";
-import {
-  NotFoundError,
-  ForbiddenError,
-  ValidationError,
-  errorResponse,
-} from "@/lib/errors";
+import { errorResponse } from "@/lib/errors";
 import { parsePagination } from "@/lib/api/pagination";
 import { assertCanvasVersionCapacity } from "@/lib/policy/capacity";
-import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
-import {
-  readCurrentCanvasDocument,
-  toBytes,
-} from "@/lib/collaboration/sync/store";
-import { readAllItemStates } from "@/lib/collaboration/sync/document-items";
+import { captureCanvasSnapshot } from "@/lib/versions/snapshot";
+import { versionSummarySelect } from "@/lib/versions/summary";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
 }
 const createVersionSchema = z
-  .object({ name: z.string().min(1).max(100).optional() })
+  .object({ name: z.string().trim().min(1).max(100).optional() })
   .strict();
+const listVersionsSchema = z.object({
+  kind: z.nativeEnum(CanvasVersionKind).optional(),
+});
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const { canvasId } = await params;
     const { name } = createVersionSchema.parse(await request.json());
     const version = await prisma.$transaction(
       async (tx) => {
         await lockCanvasForMutation(tx, canvasId);
-        const canvas = await tx.canvas.findUnique({
-          where: { id: canvasId },
-          include: { items: { where: { deletedAt: null } } },
-        });
-        if (!canvas) throw new NotFoundError("Canvas not found");
-        if (canvas.userId !== userId)
-          throw new ForbiddenError(
-            "You can only create versions of your own canvases",
-          );
-        if (canvas.items.length > LAUNCH_LIMITS.itemsPerCanvas) {
-          throw new ValidationError(
-            "Canvas exceeds the supported snapshot item limit",
-          );
-        }
+        await requireCanvasAccess(canvasId, userId, email, "EDIT", tx);
         // The snapshot is taken from the collaborative document (IMP-042),
         // brought up to date with any row write it has not absorbed yet;
         // item metadata comes from the rows.
-        const document = await readCurrentCanvasDocument(tx, canvasId);
-        const rows = new Map(canvas.items.map((item) => [item.id, item]));
-        const snapshot = {
-          schemaVersion: 1,
-          name: canvas.name,
-          zoomLevel: canvas.zoomLevel,
-          panX: canvas.panX,
-          panY: canvas.panY,
-          items: readAllItemStates(document)
-            .filter((item) => rows.has(item.id))
-            .map((item) => {
-              const row = rows.get(item.id)!;
-              return {
-                ...item,
-                content: item.content as Prisma.InputJsonValue,
-                version: row.version,
-                createdById: row.createdById,
-                updatedById: row.updatedById,
-              };
-            }),
-        };
-        const yjsState = Y.encodeStateAsUpdate(document);
-        document.destroy();
-        if (
-          Buffer.byteLength(JSON.stringify(snapshot), "utf8") >
-            LAUNCH_LIMITS.versionSnapshotBytes ||
-          yjsState.byteLength > LAUNCH_LIMITS.versionSnapshotBytes
-        ) {
-          throw new ValidationError(
-            "Canvas snapshot exceeds the supported byte limit",
-          );
-        }
+        const captured = await captureCanvasSnapshot(tx, canvasId);
         await assertCanvasVersionCapacity(tx, canvasId);
         return tx.canvasVersion.create({
           data: {
             canvasId,
+            kind: CanvasVersionKind.MANUAL,
+            createdById: userId,
             name: name || `Version ${new Date().toISOString()}`,
-            snapshot,
-            yjsState: toBytes(yjsState),
+            snapshot: captured.snapshot,
+            yjsState: captured.yjsState,
+            contentHash: captured.contentHash,
           },
-          omit: { yjsState: true },
+          select: versionSummarySelect,
         });
       },
       { maxWait: 5_000, timeout: 15_000 },
@@ -105,30 +57,29 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, email } = await requireAuth();
     const { canvasId } = await params;
-    const { limit, offset } = parsePagination(
-      new URL(request.url).searchParams,
-      { defaultLimit: 50, maxLimit: 100 },
-    );
-    const canvas = await prisma.canvas.findUnique({
-      where: { id: canvasId },
-      select: { userId: true },
+    const searchParams = new URL(request.url).searchParams;
+    const { limit, offset } = parsePagination(searchParams, {
+      defaultLimit: 50,
+      maxLimit: 100,
     });
-    if (!canvas) throw new NotFoundError("Canvas not found");
-    if (canvas.userId !== userId)
-      throw new ForbiddenError(
-        "You can only view versions of your own canvases",
-      );
+    const { kind } = listVersionsSchema.parse({
+      kind: searchParams.get("kind") || undefined,
+    });
+    // Anyone who can view the canvas can read its history; restoring is
+    // gated separately (restore route).
+    await requireCanvasAccess(canvasId, userId, email, "VIEW");
+    const where = { canvasId, ...(kind ? { kind } : {}) };
     const [versions, total] = await Promise.all([
       prisma.canvasVersion.findMany({
-        where: { canvasId },
-        orderBy: { createdAt: "desc" },
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: limit,
         skip: offset,
-        select: { id: true, name: true, createdAt: true },
+        select: versionSummarySelect,
       }),
-      prisma.canvasVersion.count({ where: { canvasId } }),
+      prisma.canvasVersion.count({ where }),
     ]);
     return NextResponse.json({
       versions,

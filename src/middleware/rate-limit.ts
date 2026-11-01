@@ -10,7 +10,18 @@ import {
   AUTH_RATE_LIMIT_MAX_REQUESTS,
   UPLOAD_RATE_LIMIT_WINDOW_MS,
   UPLOAD_RATE_LIMIT_MAX_REQUESTS,
+  API_IP_RATE_LIMIT_MAX_REQUESTS,
+  API_USER_RATE_LIMIT_MAX_REQUESTS,
+  ASSET_IP_RATE_LIMIT_MAX_REQUESTS,
+  ASSET_USER_RATE_LIMIT_MAX_REQUESTS,
+  NOTIFICATIONS_IP_RATE_LIMIT_MAX_REQUESTS,
+  NOTIFICATIONS_USER_RATE_LIMIT_MAX_REQUESTS,
+  SEARCH_IP_RATE_LIMIT_MAX_REQUESTS,
+  SEARCH_USER_RATE_LIMIT_MAX_REQUESTS,
+  CANVASES_USER_RATE_LIMIT_MAX_REQUESTS,
+  ITEMS_USER_RATE_LIMIT_MAX_REQUESTS,
 } from "@/lib/constants";
+import { createHash } from "node:crypto";
 import { createRateLimiter } from "@/lib/rate-limit";
 
 export interface RateLimitConfig {
@@ -32,6 +43,34 @@ function getClientIdentifier(request: NextRequest): string {
   // server.ts overwrites this header from req.socket.remoteAddress. Do not
   // fall back to caller-controlled forwarding headers.
   return request.headers.get("x-memoria-client-ip") || "unknown";
+}
+
+const SESSION_COOKIE_NAMES = [
+  "memoria.session_token",
+  "__Secure-memoria.session_token",
+];
+
+/**
+ * Derive a per-user bucket key from the Better Auth session cookie.
+ *
+ * The proxy does not hit the database, so the cookie is not verified here: a
+ * forged or rotated cookie only earns a fresh per-user bucket and is still
+ * counted against the per-IP budget, which is always applied as well. The raw
+ * token is hashed so it never lands in Redis keys.
+ */
+export function getSessionBucket(request: NextRequest): string | null {
+  for (const name of SESSION_COOKIE_NAMES) {
+    const value = request.cookies.get(name)?.value;
+    if (!value) continue;
+    const token = value.split(".")[0];
+    if (token.length < 8 || token.length > 512) continue;
+    return createHash("sha256").update(token).digest("hex").slice(0, 32);
+  }
+  return null;
+}
+
+export function hasSessionCookie(request: NextRequest): boolean {
+  return getSessionBucket(request) !== null;
 }
 
 function rateLimitExceeded(resetAt: number, remaining: number = 0) {
@@ -81,6 +120,32 @@ export function rateLimit(config: RateLimitConfig) {
       return rateLimitExceeded(result.resetAt, result.remaining);
     }
 
+    return null;
+  };
+}
+
+/**
+ * Like `rateLimit`, but keyed by the caller's session instead of the IP.
+ * Requests without a session cookie are not counted here (the per-IP budget
+ * is their only limit).
+ */
+export function userRateLimit(config: RateLimitConfig) {
+  const { maxRequests, windowMs, keyPrefix } = config;
+  const limiter = createRateLimiter({
+    maxRequests,
+    windowSeconds: toSeconds(windowMs),
+    keyPrefix,
+  });
+
+  return async function checkUserRateLimitMiddleware(
+    request: NextRequest,
+  ): Promise<NextResponseType | null> {
+    const bucket = getSessionBucket(request);
+    if (!bucket) return null;
+    const result = await limiter.check(bucket);
+    if (!result.allowed) {
+      return rateLimitExceeded(result.resetAt, result.remaining);
+    }
     return null;
   };
 }
@@ -138,3 +203,101 @@ export const sensitiveEndpointRateLimit = rateLimit({
   windowMs: 60 * 1000,
   keyPrefix: "sensitive",
 });
+
+const MINUTE_MS = 60 * 1000;
+
+/**
+ * Anonymous-or-unverified callers keep the strict general API budget
+ * (`apiRateLimit`). Requests that carry a session cookie are limited per user
+ * and against a larger shared-NAT-friendly per-IP ceiling instead.
+ */
+export const apiSessionIpRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests(
+    "API_IP_RATE_LIMIT_MAX_REQUESTS",
+    API_IP_RATE_LIMIT_MAX_REQUESTS,
+  ),
+  windowMs: API_RATE_LIMIT_WINDOW_MS,
+  keyPrefix: "api-session-ip",
+});
+
+export const apiUserRateLimit = userRateLimit({
+  maxRequests: configuredMaxRequests(
+    "API_USER_RATE_LIMIT_MAX_REQUESTS",
+    API_USER_RATE_LIMIT_MAX_REQUESTS,
+  ),
+  windowMs: API_RATE_LIMIT_WINDOW_MS,
+  keyPrefix: "api-user",
+});
+
+/** Asset GETs: one request per image on a canvas. */
+export const assetIpRateLimit = rateLimit({
+  maxRequests: ASSET_IP_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "asset-ip",
+});
+export const assetUserRateLimit = userRateLimit({
+  maxRequests: ASSET_USER_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "asset-user",
+});
+
+/** Unread-notification poll (30s per open tab) and notification list. */
+export const notificationsIpRateLimit = rateLimit({
+  maxRequests: NOTIFICATIONS_IP_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "notifications-ip",
+});
+export const notificationsUserRateLimit = userRateLimit({
+  maxRequests: NOTIFICATIONS_USER_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "notifications-user",
+});
+
+export const searchIpRateLimit = rateLimit({
+  maxRequests: SEARCH_IP_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "search-ip",
+});
+export const searchUserRateLimit = userRateLimit({
+  maxRequests: SEARCH_USER_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "search-user",
+});
+
+export const canvasesUserRateLimit = userRateLimit({
+  maxRequests: CANVASES_USER_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "canvases-user",
+});
+export const itemsUserRateLimit = userRateLimit({
+  maxRequests: ITEMS_USER_RATE_LIMIT_MAX_REQUESTS,
+  windowMs: MINUTE_MS,
+  keyPrefix: "items-user",
+});
+
+export type ReadBudget = "assets" | "notifications" | "search";
+
+/**
+ * Safe reads that get their own budget instead of the general API one.
+ * Matching is exact so sub-routes (e.g. notification preferences) and
+ * writes keep the general budget.
+ */
+export function classifyReadBudget(
+  pathname: string,
+  method: string,
+): ReadBudget | null {
+  if (method !== "GET") return null;
+  if (/^\/api\/v1\/uploads\/[^/]+$/.test(pathname)) return "assets";
+  if (pathname === "/api/v1/notifications") return "notifications";
+  if (pathname === "/api/v1/search") return "search";
+  return null;
+}
+
+export const readBudgetLimiters: Record<
+  ReadBudget,
+  Array<(request: NextRequest) => Promise<NextResponseType | null>>
+> = {
+  assets: [assetIpRateLimit, assetUserRateLimit],
+  notifications: [notificationsIpRateLimit, notificationsUserRateLimit],
+  search: [searchIpRateLimit, searchUserRateLimit],
+};

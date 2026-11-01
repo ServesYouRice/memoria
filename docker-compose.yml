@@ -35,13 +35,18 @@ services:
       AUTH_RATE_LIMIT_MAX_REQUESTS: ${AUTH_RATE_LIMIT_MAX_REQUESTS:-5}
       API_RATE_LIMIT_MAX_REQUESTS: ${API_RATE_LIMIT_MAX_REQUESTS:-100}
       UPLOAD_RATE_LIMIT_MAX_REQUESTS: ${UPLOAD_RATE_LIMIT_MAX_REQUESTS:-10}
-      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid or resend}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid, resend, or smtp}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@memoria.local}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Memoria}
       EMAIL_SENDER_VERIFIED: ${EMAIL_SENDER_VERIFIED:-false}
       EMAIL_DELIVERY_PROBE_TO: ${EMAIL_DELIVERY_PROBE_TO:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
       MODEL_CREDENTIAL_ENCRYPTION_KEY: ${MODEL_CREDENTIAL_ENCRYPTION_KEY}
       CRON_SECRET: ${CRON_SECRET}
       SENTRY_DSN: ${SENTRY_DSN:-}
@@ -86,6 +91,11 @@ services:
     environment:
       MEMORIA_ADDRESS: :3000
       INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
+      # Two replicas each with COMPOSE_PROFILES=replicas (IMP-043):
+      # MEMORIA_APP_UPSTREAMS="app:3000 app-2:3000"
+      # MEMORIA_SYNC_UPSTREAMS="sync:3001 sync-2:3001"
+      MEMORIA_APP_UPSTREAMS: ${MEMORIA_APP_UPSTREAMS:-app:3000}
+      MEMORIA_SYNC_UPSTREAMS: ${MEMORIA_SYNC_UPSTREAMS:-sync:3001}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     ports:
@@ -128,6 +138,7 @@ services:
       CRON_SECRET: ${CRON_SECRET}
       SCHEDULER_BASE_URL: http://app:3000
       BOOKMARK_REFRESH_INTERVAL_MS: ${BOOKMARK_REFRESH_INTERVAL_MS:-900000}
+      VERSION_HISTORY_INTERVAL_MS: ${VERSION_HISTORY_INTERVAL_MS:-300000}
     read_only: true
 
   outbox-worker:
@@ -153,13 +164,18 @@ services:
       APP_BOOTSTRAP_TOKEN: ${APP_BOOTSTRAP_TOKEN}
       INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
       MODEL_CREDENTIAL_ENCRYPTION_KEY: ${MODEL_CREDENTIAL_ENCRYPTION_KEY}
-      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid or resend}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid, resend, or smtp}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@memoria.local}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Memoria}
       EMAIL_SENDER_VERIFIED: ${EMAIL_SENDER_VERIFIED:-false}
       EMAIL_DELIVERY_PROBE_TO: ${EMAIL_DELIVERY_PROBE_TO:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
       UPLOAD_STORAGE: ${UPLOAD_STORAGE:-s3}
       S3_BUCKET: ${S3_BUCKET:-memoria-uploads}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -174,8 +190,9 @@ services:
       OUTBOX_CONCURRENCY: ${OUTBOX_CONCURRENCY:-4}
     read_only: true
 
-  # Yjs co-editing (IMP-042). Exactly one replica: documents are held in this
-  # process's memory until IMP-043 adds shared fan-out between replicas.
+  # The realtime process: Yjs document sync (IMP-042) and the presence socket.
+  # Replicas share documents through PostgreSQL and announce updates over
+  # Redis, so a second one (`replicas` profile) is safe (IMP-043).
   sync:
     image: ${MEMORIA_IMAGE:-memoria:local}
     build:
@@ -203,13 +220,18 @@ services:
       INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
       MODEL_CREDENTIAL_ENCRYPTION_KEY: ${MODEL_CREDENTIAL_ENCRYPTION_KEY}
-      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid or resend}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid, resend, or smtp}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@memoria.local}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Memoria}
       EMAIL_SENDER_VERIFIED: ${EMAIL_SENDER_VERIFIED:-false}
       EMAIL_DELIVERY_PROBE_TO: ${EMAIL_DELIVERY_PROBE_TO:-}
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
       UPLOAD_STORAGE: ${UPLOAD_STORAGE:-s3}
       S3_BUCKET: ${S3_BUCKET:-memoria-uploads}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -227,6 +249,18 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  # Second replicas for testing the multi-replica topology (IMP-043). Enable
+  # with COMPOSE_PROFILES=replicas and the gateway upstream variables above.
+  app-2:
+    extends: app
+    profiles: ['replicas']
+    container_name: memoria-app-2
+    ports: !reset []
+
+  sync-2:
+    extends: sync
+    profiles: ['replicas']
 
   backup:
     build:

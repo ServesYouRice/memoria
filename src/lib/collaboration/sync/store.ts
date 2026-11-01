@@ -67,6 +67,8 @@ export interface PersistedCanvasDocument {
   eventSequence: bigint;
   /** Update rows not yet folded into the compacted state. */
   pendingUpdates: number;
+  /** Highest `CanvasDocumentUpdate.id` the document holds. */
+  updateCursor: bigint;
 }
 
 async function migrateCanvasDocument(
@@ -127,7 +129,7 @@ export async function readPersistedCanvasDocument(
   const updates = await store.canvasDocumentUpdate.findMany({
     where: { canvasId, id: { gt: record.compactedThrough } },
     orderBy: { id: "asc" },
-    select: { update: true },
+    select: { id: true, update: true },
   });
   const doc = createCanvasYDoc();
   Y.applyUpdate(doc, record.state);
@@ -136,6 +138,60 @@ export async function readPersistedCanvasDocument(
     doc,
     eventSequence: record.eventSequence,
     pendingUpdates: updates.length,
+    updateCursor: updates.at(-1)?.id ?? record.compactedThrough,
+  };
+}
+
+export interface DocumentChanges {
+  /**
+   * The compacted state, when another replica compacted past `cursor` and
+   * deleted update rows this replica has not applied yet.
+   */
+  state: Uint8Array | null;
+  updates: Uint8Array[];
+  /** Highest update id now covered. */
+  cursor: bigint;
+  eventSequence: bigint;
+}
+
+/**
+ * IMP-043 — what other sync replicas stored after `cursor`. Writers append
+ * under the canvas row lock, so one canvas's update ids commit in order and a
+ * consistent snapshot never skips one. Returns null once the document is gone
+ * (its canvas was deleted).
+ */
+export async function readDocumentChangesSince(
+  store: Store,
+  canvasId: string,
+  cursor: bigint,
+): Promise<DocumentChanges | null> {
+  const record = await store.canvasDocument.findUnique({
+    where: { canvasId },
+    select: { compactedThrough: true, eventSequence: true },
+  });
+  if (!record) return null;
+  const compactedPast = record.compactedThrough > cursor;
+  const [state, updates] = await Promise.all([
+    compactedPast
+      ? store.canvasDocument
+          .findUnique({ where: { canvasId }, select: { state: true } })
+          .then((row) => row?.state ?? null)
+      : Promise.resolve(null),
+    store.canvasDocumentUpdate.findMany({
+      where: {
+        canvasId,
+        id: { gt: compactedPast ? record.compactedThrough : cursor },
+      },
+      orderBy: { id: "asc" },
+      select: { id: true, update: true },
+    }),
+  ]);
+  const base = compactedPast ? record.compactedThrough : cursor;
+  return {
+    state,
+    updates: updates.map((row) => row.update),
+    cursor: updates.at(-1)?.id ?? base,
+    eventSequence: record.eventSequence,
   };
 }
 
@@ -152,11 +208,12 @@ export async function loadCanvasDocument(
   return migrated;
 }
 
+/** Append an accepted update; returns its id (the new update cursor). */
 export async function appendCanvasDocumentUpdate(
   tx: Prisma.TransactionClient,
   input: { canvasId: string; update: Uint8Array; actorId: string | null },
-): Promise<void> {
-  await tx.canvasDocumentUpdate.create({
+): Promise<bigint> {
+  const row = await tx.canvasDocumentUpdate.create({
     data: {
       canvasId: input.canvasId,
       update: toBytes(input.update),
@@ -164,35 +221,31 @@ export async function appendCanvasDocumentUpdate(
     },
     select: { id: true },
   });
+  return row.id;
 }
 
 /**
- * Fold the appended updates into the compacted state. `doc` must hold exactly
- * the persisted document, which the sync server guarantees by compacting under
- * the document's lock.
+ * Fold the appended updates through `through` into the compacted state.
+ * `doc` must hold exactly the persisted document through that id, which the
+ * sync server guarantees by compacting under the canvas row lock right after
+ * applying every stored update.
  */
 export async function compactCanvasDocument(
-  prisma: PrismaClient,
+  tx: Prisma.TransactionClient,
   canvasId: string,
   doc: Y.Doc,
+  through: bigint,
 ): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    const last = await tx.canvasDocumentUpdate.findFirst({
-      where: { canvasId },
-      orderBy: { id: "desc" },
-      select: { id: true },
-    });
-    if (!last) return;
-    await tx.canvasDocument.update({
-      where: { canvasId },
-      data: {
-        state: toBytes(Y.encodeStateAsUpdate(doc)),
-        compactedThrough: last.id,
-      },
-    });
-    await tx.canvasDocumentUpdate.deleteMany({
-      where: { canvasId, id: { lte: last.id } },
-    });
+  const compacted = await tx.canvasDocument.updateMany({
+    where: { canvasId, compactedThrough: { lt: through } },
+    data: {
+      state: toBytes(Y.encodeStateAsUpdate(doc)),
+      compactedThrough: through,
+    },
+  });
+  if (compacted.count === 0) return;
+  await tx.canvasDocumentUpdate.deleteMany({
+    where: { canvasId, id: { lte: through } },
   });
 }
 

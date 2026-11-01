@@ -45,13 +45,31 @@ function getSelfHostChoices() {
   if (!publicUrl || !/^https:\/\//i.test(publicUrl)) {
     throw new Error('Set MEMORIA_PUBLIC_URL to the public HTTPS origin before self-host setup.');
   }
-  if (emailProvider !== 'sendgrid' && emailProvider !== 'resend') {
-    throw new Error('Set EMAIL_PROVIDER to sendgrid or resend before self-host setup.');
+  if (emailProvider !== 'sendgrid' && emailProvider !== 'resend' && emailProvider !== 'smtp') {
+    throw new Error('Set EMAIL_PROVIDER to sendgrid, resend, or smtp before self-host setup.');
   }
-  const providerKey =
-    emailProvider === 'sendgrid' ? process.env.SENDGRID_API_KEY : process.env.RESEND_API_KEY;
-  if (!providerKey) {
-    throw new Error(`Set ${emailProvider === 'sendgrid' ? 'SENDGRID_API_KEY' : 'RESEND_API_KEY'} before self-host setup.`);
+  let providerKey = '';
+  let smtp = null;
+  if (emailProvider === 'smtp') {
+    smtp = {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE || 'false',
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    };
+    const missing = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'].filter(
+      (name) => !process.env[name],
+    );
+    if (missing.length > 0) {
+      throw new Error(`Set ${missing.join(', ')} before self-host setup with EMAIL_PROVIDER=smtp.`);
+    }
+  } else {
+    providerKey =
+      emailProvider === 'sendgrid' ? process.env.SENDGRID_API_KEY : process.env.RESEND_API_KEY;
+    if (!providerKey) {
+      throw new Error(`Set ${emailProvider === 'sendgrid' ? 'SENDGRID_API_KEY' : 'RESEND_API_KEY'} before self-host setup.`);
+    }
   }
   if (!emailFrom || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFrom) || /\.(local|localhost)$/i.test(emailFrom.split('@')[1] || '')) {
     throw new Error('Set EMAIL_FROM to a verified sender on a publicly routable domain before self-host setup.');
@@ -75,6 +93,7 @@ function getSelfHostChoices() {
     publicUrl: publicUrl.replace(/\/$/, ''),
     emailProvider,
     providerKey,
+    smtp,
     emailFrom,
     emailDeliveryProbeTo,
     backupBucket,
@@ -209,7 +228,15 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(raw, 'FEATURE_BOOKMARK_UNFURLING', currentValues.get('FEATURE_BOOKMARK_UNFURLING') || 'true');
   raw = upsertEnvValue(raw, 'BOOKMARK_REFRESH_INTERVAL_MS', currentValues.get('BOOKMARK_REFRESH_INTERVAL_MS') || '900000');
   raw = upsertEnvValue(raw, 'AI_ACTION_BUDGET_DAILY', currentValues.get('AI_ACTION_BUDGET_DAILY') || '1000');
-  raw = upsertEnvValue(raw, 'SMTP_PASS', '');
+  if (selfHostChoices?.smtp) {
+    raw = upsertEnvValue(raw, 'SMTP_HOST', selfHostChoices.smtp.host);
+    raw = upsertEnvValue(raw, 'SMTP_PORT', selfHostChoices.smtp.port);
+    raw = upsertEnvValue(raw, 'SMTP_SECURE', selfHostChoices.smtp.secure);
+    raw = upsertEnvValue(raw, 'SMTP_USER', selfHostChoices.smtp.user);
+    raw = upsertEnvValue(raw, 'SMTP_PASS', selfHostChoices.smtp.pass);
+  } else {
+    raw = upsertEnvValue(raw, 'SMTP_PASS', '');
+  }
 
   writeEnvFile(targetPath, raw);
   return { bootstrapToken, operationsToken, bucket };

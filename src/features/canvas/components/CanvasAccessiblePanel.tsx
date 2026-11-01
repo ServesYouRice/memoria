@@ -13,13 +13,20 @@
  * accessibility tree and undo the point of the panel.
  */
 
-import React, { useId, useRef } from "react";
+import React, { useId, useMemo, useRef } from "react";
 import { Box, Button, Paper } from "@mui/material";
 import {
   CanvasItemListView,
   type CanvasItemListViewProps,
 } from "./CanvasItemListView";
 import { useAccessibleCanvasItems } from "@/lib/hooks/use-canvas-items";
+import {
+  rendersFromDocument,
+  useCanvasDocument,
+  useCanvasDocumentSnapshot,
+} from "@/lib/hooks/use-canvas-document";
+import { overlayDocumentItems } from "@/lib/collaboration/sync/canvas-view";
+import type { CanvasItem } from "@/types/canvas";
 
 type CanvasAccessiblePanelProps = Omit<CanvasItemListViewProps, "items"> & {
   canvasId?: string;
@@ -34,12 +41,45 @@ function PaginatedAccessibleItems({
   props: Omit<CanvasItemListViewProps, "items">;
 }) {
   const query = useAccessibleCanvasItems(canvasId);
-  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
-  const totalItems = query.data?.pages[0]?.total ?? items.length;
+  const rows = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data],
+  );
+  // IMP-045: without a connection the rows stop following the document, and
+  // a canvas opened offline has none. The list then shows the document's
+  // items, so it lists (and nudges from) what the board shows.
+  const session = useCanvasDocument();
+  const snapshot = useCanvasDocumentSnapshot(session);
+  const fromDocument =
+    session?.canvasId === canvasId &&
+    rendersFromDocument(snapshot) &&
+    (!snapshot.connected || snapshot.restored || !query.data);
+  const documentItems = useMemo(
+    () =>
+      fromDocument
+        ? overlayDocumentItems({
+            canvasId,
+            entries: snapshot.items,
+            queried: rows as unknown as CanvasItem[],
+          })
+        : null,
+    [canvasId, fromDocument, rows, snapshot.items],
+  );
+  if (documentItems)
+    return (
+      <CanvasItemListView
+        {...props}
+        items={documentItems}
+        totalItems={documentItems.length}
+        hasMore={false}
+      />
+    );
+
+  const totalItems = query.data?.pages[0]?.total ?? rows.length;
   return (
     <CanvasItemListView
       {...props}
-      items={items as unknown as CanvasItemListViewProps["items"]}
+      items={rows as unknown as CanvasItemListViewProps["items"]}
       totalItems={totalItems}
       hasMore={query.hasNextPage}
       loadingMore={query.isFetchingNextPage}

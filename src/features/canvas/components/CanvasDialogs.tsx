@@ -262,15 +262,14 @@ export function CanvasDialogs({
         </>
       )}
 
-      {capabilities.canManageCanvas && (
-        <>
-          <VersionHistoryDialog
-            open={versionHistoryOpen}
-            onClose={() => setVersionHistoryOpen(false)}
-            canvasId={canvasId}
-          />
-        </>
-      )}
+      {/* Anyone who can view the canvas may browse and preview its history;
+          only owners and editors are offered restore (the API enforces it). */}
+      <VersionHistoryDialog
+        open={versionHistoryOpen}
+        onClose={() => setVersionHistoryOpen(false)}
+        canvasId={canvasId}
+        canRestore={capabilities.canEditItems}
+      />
 
       <ExportDialog
         open={exportDialogOpen}

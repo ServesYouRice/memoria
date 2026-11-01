@@ -44,6 +44,9 @@
  * - `SMTP_USER`: SMTP username
  * - `SMTP_PASS`: SMTP password
  *
+ * In production SMTP must be encrypted: use `SMTP_SECURE=true` (port 465) or
+ * a server that accepts STARTTLS (port 587). Certificates are verified.
+ *
  * @see {@link EmailService} for provider interface
  * @see {@link SendEmailOptions} for email options
  */
@@ -59,6 +62,7 @@ import type {
   WelcomeEmailData,
 } from "./types";
 import { ConsoleEmailProvider } from "./providers/console";
+import { SMTPEmailProvider } from "./providers/smtp";
 import { SendGridEmailProvider } from "./providers/sendgrid";
 import { ResendEmailProvider } from "./providers/resend";
 import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
@@ -70,6 +74,7 @@ import {
 
 const SUPPORTED_EMAIL_PROVIDERS = new Set<EmailServiceConfig["provider"]>([
   "console",
+  "smtp",
   "sendgrid",
   "resend",
 ]);
@@ -97,6 +102,9 @@ function getEmailConfig(): EmailServiceConfig {
       host: process.env["SMTP_HOST"] || "localhost",
       port: parseInt(process.env["SMTP_PORT"] || "587", 10),
       secure: process.env["SMTP_SECURE"] === "true",
+      // Production never sends in cleartext; development may use a plain
+      // local capture server.
+      requireTLS: process.env.NODE_ENV === "production",
       auth: {
         user: process.env["SMTP_USER"] || "",
         pass: process.env["SMTP_PASS"] || "",
@@ -134,9 +142,8 @@ function createEmailProvider(config: EmailServiceConfig): EmailService {
       if (!config.smtp) {
         throw new Error("SMTP configuration is required for SMTP provider");
       }
-      throw new Error(
-        "SMTP provider is not supported in this build. Use console, sendgrid, or resend instead.",
-      );
+      logger.info("Using SMTP email provider");
+      return new SMTPEmailProvider(config.smtp);
 
     case "sendgrid":
       if (!config.sendgrid) {

@@ -16,20 +16,32 @@
  *   refused so the client resyncs;
  * - pulls committed row changes from HTTP routes, agents and restores into
  *   open documents;
+ * - pulls updates other sync replicas stored (IMP-043): a Redis message names
+ *   the canvas at once, and the reconcile interval compares update cursors as
+ *   a fallback, so replicas converge even if a message is lost;
+ * - can host the presence socket on the same HTTP server (`passUpgrade`), so
+ *   one realtime process serves every `/api/collaboration/*` connection;
  * - answers `/health` (liveness) and `/ready` (database reachable).
  *
  * @module lib/collaboration/sync/server
  */
 
-import type { IncomingMessage, ServerResponse } from "http";
+import type {
+  IncomingMessage,
+  Server as HttpServer,
+  ServerResponse,
+} from "http";
+import type Redis from "ioredis";
+import { nanoid } from "nanoid";
 import type { Duplex } from "stream";
 import { Server, type Connection, type Hocuspocus } from "@hocuspocus/server";
 import type { PrismaClient } from "@/generated/prisma/client";
 import {
+  AUTHORIZATION_LEASE_MS,
   AUTHORIZATION_REFRESH_INTERVAL_MS,
-  FixedWindowAdmissionBudget,
   authorizationLeaseMustClose,
 } from "@/lib/collaboration/transport-policy";
+import { SharedConnectionAdmission } from "@/lib/collaboration/shared-admission";
 import {
   deriveUpgradeClientId,
   isAllowedCollaborationOrigin,
@@ -52,6 +64,8 @@ const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_CONNECTIONS = 5_000;
 const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 const SYNC_STEP_1 = 0;
+/** Redis channel naming canvases whose stored document moved (IMP-043). */
+export const SYNC_DOCUMENTS_CHANNEL = "collaboration:sync:documents";
 
 export interface SyncServerOptions {
   prisma: PrismaClient;
@@ -64,11 +78,25 @@ export interface SyncServerOptions {
   /** How often open documents look for committed row changes. */
   reconcileIntervalMs?: number;
   compactAfterUpdates?: number;
+  /**
+   * Redis for cross-replica notifications and shared limits; null runs a
+   * single replica (other replicas would still converge through polling).
+   */
+  redis?: Redis | null;
+  /**
+   * Upgrades on these paths belong to another handler on the same HTTP
+   * server (the presence socket); the sync server leaves them alone.
+   */
+  passUpgrade?: (path: string) => boolean;
+  /** Extra fields for `/health`, e.g. the presence socket's counts. */
+  health?: (url: URL) => Record<string, unknown>;
 }
 
 export interface SyncServer {
   engine: CanvasSyncEngine;
   hocuspocus: Hocuspocus;
+  /** The HTTP server, for attaching the presence socket. */
+  httpServer: HttpServer;
   listen(): Promise<{ port: number }>;
   /** Re-check every connection now (the interval calls this). */
   refreshAuthorizations(): Promise<void>;
@@ -132,17 +160,70 @@ function closeConnection(
 
 export function createSyncServer(options: SyncServerOptions): SyncServer {
   const { prisma, logger } = options;
+  const redis = options.redis ?? null;
+  const instanceId = nanoid(10);
   const engine = new CanvasSyncEngine({
     prisma,
     logger,
     compactAfterUpdates: options.compactAfterUpdates,
     maxUpdateBytes: MAX_MESSAGE_BYTES,
+    onCommitted: (canvasId) => {
+      if (!redis) return;
+      redis
+        .publish(
+          SYNC_DOCUMENTS_CHANNEL,
+          JSON.stringify({ canvasId, instanceId }),
+        )
+        .catch((error) =>
+          logger.error({ error }, "Could not announce a document update"),
+        );
+    },
   });
-  const upgradeBudgets = new FixedWindowAdmissionBudget(
-    MAX_UPGRADES_PER_CLIENT_PER_MINUTE,
-    60_000,
-  );
+  const admission = new SharedConnectionAdmission({
+    scope: "sync",
+    // The sync server limits upgrades; documents limit themselves.
+    limits: {
+      global: MAX_CONNECTIONS,
+      perCanvas: MAX_CONNECTIONS,
+      perPrincipal: MAX_CONNECTIONS,
+      perClient: MAX_CONNECTIONS,
+    },
+    upgradesPerMinute: MAX_UPGRADES_PER_CLIENT_PER_MINUTE,
+    leaseMs: AUTHORIZATION_LEASE_MS,
+    redis,
+    logger,
+  });
   const connectionCount = () => server.hocuspocus.getConnectionsCount();
+
+  let subscriber: Redis | null = null;
+  async function subscribeToPeers(): Promise<void> {
+    if (!redis) return;
+    subscriber = redis.duplicate();
+    subscriber.on("error", (error) =>
+      logger.error({ error }, "Sync Redis subscriber error"),
+    );
+    subscriber.on("message", (_channel, message) => {
+      let parsed: { canvasId?: unknown; instanceId?: unknown };
+      try {
+        parsed = JSON.parse(message);
+      } catch {
+        return;
+      }
+      if (parsed.instanceId === instanceId) return;
+      if (typeof parsed.canvasId !== "string") return;
+      if (engine.updateCursor(parsed.canvasId) === null) return;
+      const canvasId = parsed.canvasId;
+      engine
+        .pull(canvasId)
+        .catch((error) =>
+          logger.error(
+            { error, canvasId },
+            "Could not apply another replica's document update",
+          ),
+        );
+    });
+    await subscriber.subscribe(SYNC_DOCUMENTS_CHANNEL);
+  }
 
   const server: Server = new Server({
     name: "memoria-sync",
@@ -155,12 +236,14 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     websocketOptions: { maxPayload: MAX_MESSAGE_BYTES },
 
     async onRequest({ request, response }) {
-      const path = new URL(request.url ?? "/", "http://sync.local").pathname;
+      const url = new URL(request.url ?? "/", "http://sync.local");
+      const path = url.pathname;
       if (path === "/health") {
         return respond(response, 200, {
           status: "ok",
           documents: engine.loadedCanvasIds().length,
           connections: connectionCount(),
+          ...options.health?.(url),
         });
       }
       if (path === "/ready") {
@@ -178,8 +261,10 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     async onUpgrade({ request, socket }) {
       const incoming = request as IncomingMessage;
       const path = new URL(incoming.url ?? "/", "http://sync.local").pathname;
-      if (path !== COLLABORATION_SYNC_PATH)
+      if (path !== COLLABORATION_SYNC_PATH) {
+        if (options.passUpgrade?.(path)) return handled();
         return rejectUpgrade(socket, "404 Not Found");
+      }
       if (
         !isAllowedCollaborationOrigin(
           incoming.headers.origin,
@@ -188,8 +273,8 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
       )
         return rejectUpgrade(socket, "403 Forbidden");
       if (
-        !upgradeBudgets.consume(deriveUpgradeClientId(incoming)) ||
-        connectionCount() >= MAX_CONNECTIONS
+        connectionCount() >= MAX_CONNECTIONS ||
+        !(await admission.consumeUpgrade(deriveUpgradeClientId(incoming)))
       )
         return rejectUpgrade(socket, "429 Too Many Requests");
     },
@@ -368,31 +453,42 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     const canvasIds = engine.loadedCanvasIds();
     if (canvasIds.length === 0) return;
     const latest = await prisma.$queryRaw<
-      Array<{ canvasId: string; sequence: bigint | null }>
+      Array<{
+        canvasId: string;
+        sequence: bigint | null;
+        updateId: bigint | null;
+      }>
     >`
       SELECT ids."canvasId", (
         SELECT event."sequence" FROM "CanvasEvent" event
         WHERE event."canvasId" = ids."canvasId"
         ORDER BY event."sequence" DESC LIMIT 1
-      ) AS "sequence"
+      ) AS "sequence", GREATEST(
+        (SELECT document."compactedThrough" FROM "CanvasDocument" document
+         WHERE document."canvasId" = ids."canvasId"),
+        (SELECT stored."id" FROM "CanvasDocumentUpdate" stored
+         WHERE stored."canvasId" = ids."canvasId"
+         ORDER BY stored."id" DESC LIMIT 1)
+      ) AS "updateId"
       FROM unnest(${canvasIds}::text[]) AS ids("canvasId")
     `;
     await Promise.all(
-      latest
-        .filter(({ canvasId, sequence }) => {
+      latest.map(async ({ canvasId, sequence, updateId }) => {
+        try {
+          // Another replica stored updates this one has not applied.
+          const cursor = engine.updateCursor(canvasId);
+          if (updateId !== null && cursor !== null && updateId > cursor)
+            await engine.pull(canvasId);
           const current = engine.eventSequence(canvasId);
-          return sequence !== null && current !== null && sequence > current;
-        })
-        .map(({ canvasId }) =>
-          engine
-            .catchUp(canvasId)
-            .catch((error) =>
-              logger.error(
-                { error, canvasId },
-                "Could not reconcile a canvas document with its rows",
-              ),
-            ),
-        ),
+          if (sequence !== null && current !== null && sequence > current)
+            await engine.catchUp(canvasId);
+        } catch (error) {
+          logger.error(
+            { error, canvasId },
+            "Could not reconcile a canvas document",
+          );
+        }
+      }),
     );
   }
 
@@ -403,11 +499,15 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     get hocuspocus() {
       return server.hocuspocus;
     },
+    get httpServer() {
+      return server.httpServer;
+    },
     async listen() {
+      await subscribeToPeers();
       await server.listen();
       timers.push(
         setInterval(() => {
-          upgradeBudgets.sweep();
+          admission.sweep();
           void refreshAuthorizations();
         }, options.authorizationRefreshMs ?? AUTHORIZATION_REFRESH_INTERVAL_MS),
         setInterval(() => {
@@ -427,6 +527,7 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     reconcileOpenDocuments,
     async destroy() {
       for (const timer of timers) clearInterval(timer);
+      await subscriber?.quit().catch(() => undefined);
       await reconcileInFlight;
       await server.destroy();
       await engine.drain();

@@ -122,6 +122,13 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     rendersFromDocument(documentSnapshot) &&
     documentSession?.canvasId === canvasId;
   const [documentItemCache] = useState(createDocumentItemCache);
+  // IMP-045: keep the name with the device copy, so the canvas can open
+  // offline with its name.
+  const loadedCanvasName = canvas?.name;
+  useEffect(() => {
+    if (loadedCanvasName && documentSession?.canvasId === canvasId)
+      documentSession.rememberCanvasName(loadedCanvasName);
+  }, [canvasId, documentSession, loadedCanvasName]);
   const allItems = useMemo(
     () =>
       showDocument
@@ -322,9 +329,18 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     );
   }, [deferredSearchQuery, filteredItems, searchQueryResult.data?.itemIds]);
 
+  // IMP-045: until the canvas metadata arrives (offline it never does), a
+  // rendered document shows the name kept with its device copy and the
+  // scope the sync server last granted. Owner-only actions stay hidden until
+  // the HTTP API answers; the sync server still checks every change.
+  const offlineCopy = showDocument && !canvas;
+
   return {
     // State
-    canvasName,
+    canvasName:
+      offlineCopy && documentSnapshot.canvasName
+        ? documentSnapshot.canvasName
+        : canvasName,
     zoom,
     setZoom,
     position,
@@ -333,7 +349,10 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     setSearchQuery,
     selectedTags,
     setSelectedTags,
-    canvasLoadError,
+    // A canvas opened from its device copy without a network expects the
+    // HTTP API to fail; the header already says it is offline.
+    canvasLoadError:
+      offlineCopy && documentSnapshot.restored ? null : canvasLoadError,
     clearCanvasLoadError: useCallback(() => setCanvasLoadError(null), []),
     isTimeMachineActive,
     setTimeMachineActive,
@@ -351,7 +370,9 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     canvasBounds: summaryData?.bounds ?? null,
     totalItemCount: summaryData?.count ?? data?.total ?? allItems.length,
     canvasRevision: summaryData?.revision ?? "0",
-    accessLevel: canvas?.accessLevel || "VIEW",
+    accessLevel:
+      canvas?.accessLevel ||
+      (offlineCopy && documentSnapshot.writable ? "EDIT" : "VIEW"),
 
     // Actions
     updateCanvasName,

@@ -4,7 +4,12 @@
  */
 
 import { apiFetch } from "@/lib/api/fetch-client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
 import { canvasKeys } from "@/lib/hooks/use-canvases";
 import { type ItemType } from "@/types/canvas";
@@ -57,10 +62,16 @@ async function parseJson<T>(response: Response, fallback: string) {
   return payload as T;
 }
 
+export type CanvasVersionKind = "MANUAL" | "AUTO";
+
 export interface CanvasVersion {
   id: string;
   name: string;
+  /** Saved by a person (`MANUAL`) or taken by the auto-snapshot job (`AUTO`). */
+  kind: CanvasVersionKind;
   createdAt: string;
+  /** Who saved or restored a manual version; null for automatic ones. */
+  createdBy?: { id: string; name: string | null } | null;
   snapshot?: CanvasVersionSnapshot | null;
 }
 
@@ -81,6 +92,8 @@ interface UseCanvasVersionsOptions {
 export const canvasVersionKeys = {
   all: ["canvas-versions"] as const,
   canvas: (canvasId: string) => [...canvasVersionKeys.all, canvasId] as const,
+  history: (canvasId: string, kind: CanvasVersionKind | "ALL") =>
+    [...canvasVersionKeys.canvas(canvasId), "history", kind] as const,
   list: (canvasId: string, includeSnapshot: boolean) =>
     [...canvasVersionKeys.canvas(canvasId), { includeSnapshot }] as const,
 };
@@ -112,6 +125,39 @@ export function useCanvasVersions(
   });
 }
 
+const HISTORY_PAGE_SIZE = 50;
+
+/**
+ * Page through a canvas's version history, newest first, optionally limited
+ * to manual or automatic versions.
+ */
+export function useCanvasVersionHistory(
+  canvasId: string,
+  kind: CanvasVersionKind | "ALL" = "ALL",
+  enabled = true,
+) {
+  return useInfiniteQuery<VersionsResponse>({
+    queryKey: canvasVersionKeys.history(canvasId, kind),
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: String(HISTORY_PAGE_SIZE),
+        offset: String(pageParam),
+      });
+      if (kind !== "ALL") params.set("kind", kind);
+      const response = await apiFetch(
+        `/api/v1/canvases/${canvasId}/versions?${params.toString()}`,
+      );
+      return parseJson<VersionsResponse>(response, "Failed to fetch versions");
+    },
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.hasMore
+        ? lastPage.pagination.offset + lastPage.pagination.limit
+        : undefined,
+    enabled: enabled && !!canvasId,
+  });
+}
+
 export function useCanvasVersion(
   canvasId: string,
   versionId: string | undefined,
@@ -120,8 +166,8 @@ export function useCanvasVersion(
   return useQuery<CanvasVersion>({
     queryKey: [...canvasVersionKeys.canvas(canvasId), "detail", versionId],
     queryFn: async () => {
-      const response = await fetch(
-        `/api/v1/canvases/${canvasId}/versions/${versionId}/restore`,
+      const response = await apiFetch(
+        `/api/v1/canvases/${canvasId}/versions/${versionId}`,
       );
       return parseJson<CanvasVersion>(response, "Failed to fetch version");
     },

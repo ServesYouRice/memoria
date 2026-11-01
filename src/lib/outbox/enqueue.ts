@@ -44,3 +44,25 @@ export async function enqueueOutboxJob(
     update: {},
   });
 }
+
+/**
+ * Enqueue many jobs with one statement. Keyed jobs keep `enqueueOutboxJob`'s
+ * upsert-with-empty-update semantics: an existing dedupeKey is left untouched.
+ */
+export async function enqueueOutboxJobs(
+  tx: TransactionClient,
+  inputs: EnqueueOutboxInput[],
+) {
+  if (inputs.length === 0) return;
+  for (const input of inputs) assertSafeOutboxPayload(input.payload);
+  await tx.outboxJob.createMany({
+    data: inputs.map((input) => ({
+      type: input.type,
+      payload: input.payload as Prisma.InputJsonValue,
+      dedupeKey: input.dedupeKey,
+      maxAttempts: input.maxAttempts,
+      nextRunAt: input.nextRunAt,
+    })),
+    skipDuplicates: true,
+  });
+}

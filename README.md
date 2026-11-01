@@ -6,8 +6,8 @@ Memoria is a stateful Node application for visual note organization. It combines
 
 - Runtime: stateful Node server with Next.js App Router and a custom WebSocket server
 - Required production services: PostgreSQL, Redis, S3-compatible object storage
-- Reference self-host stack: Docker Compose + MinIO
-- Primary deployment target: self-host or VPS/container hosting
+- Target platform: the owner's shared k3s cluster (PostgreSQL 16 via CloudNativePG, Valkey, Cloudflare R2); cluster configuration lives in the private `infra` repo
+- Reference self-host stack: Docker Compose, with SeaweedFS serving the S3 API under the `minio` service name; this is for local and self-host use only
 - Non-goal for v1: serverless-first deployment
 
 ## Quick Start
@@ -28,7 +28,7 @@ What `pnpm setup:dev` does:
 
 - prepares `.env` from `.env.example` without deleting existing state
 - generates local secrets and a bootstrap token if missing
-- starts PostgreSQL, Redis, and MinIO
+- starts PostgreSQL, Redis, and the S3-compatible object store (SeaweedFS under the `minio` service name)
 - ensures the default object-storage bucket exists
 - runs Prisma generate and development migrations
 - optionally supports `--seed`
@@ -103,7 +103,7 @@ Current limits:
 - Redis + ioredis
 - TanStack Query
 - Konva / react-konva
-- Yjs + ws
+- Yjs + Hocuspocus (collaborative sync server) + ws
 - Zod
 - Material UI
 
@@ -130,8 +130,7 @@ Production rules enforced by the app:
 - local uploads are rejected
 - S3-compatible storage must be configured
 - a bootstrap token must exist for first-run setup
-- SMTP is intentionally disabled in this build
-- production email requires `sendgrid` or `resend`; the `console` provider is development/test only
+- production email uses `sendgrid`, `resend`, or `smtp` (`SMTP_*` settings, TLS required); the `console` provider is development/test only
 
 ## Development Notes
 
@@ -139,7 +138,6 @@ Production rules enforced by the app:
 - `pnpm build` also emits the compiled custom server bundle at `dist/server.mjs`
 - `pnpm start` runs the compiled custom Node server in a cross-platform way
 - the collaboration server depends on the same Node runtime path as the main app
-- Vercel config may still exist in the repo, but it is no longer the primary deployment story
 
 ## Project Areas
 

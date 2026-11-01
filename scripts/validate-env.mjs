@@ -116,11 +116,11 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && !['sendgrid', 'resend'].includes(data.EMAIL_PROVIDER)) {
+    if (validateProductionRuntime && !['sendgrid', 'resend', 'smtp'].includes(data.EMAIL_PROVIDER)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_PROVIDER'],
-        message: 'EMAIL_PROVIDER must be sendgrid or resend in production.',
+        message: 'EMAIL_PROVIDER must be sendgrid, resend, or smtp in production.',
       });
     }
 

@@ -33,6 +33,7 @@ import {
   useCanvasDocumentSnapshot,
 } from "@/lib/hooks/use-canvas-document";
 import { useCanvasDocumentSession } from "@/features/canvas/hooks/use-canvas-document-session";
+import { documentSaveStatus as documentSaveStatusOf } from "@/features/canvas/save-status";
 import { useCollaboration } from "@/lib/hooks/use-collaboration";
 import { useVirtualItems } from "@/lib/hooks/use-virtual-items";
 import { useRestoreVersion } from "@/lib/hooks/use-canvas-versions"; // Only restore needed
@@ -197,29 +198,32 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // IMP-042: the collaborative document's save and access state.
   const documentSession = useCanvasDocument();
   const documentState = useCanvasDocumentSnapshot(documentSession);
-  const documentSaveStatus =
-    documentState.ready && documentState.localChanges
-      ? documentState.pendingChanges === 0
-        ? ("saved" as const)
-        : documentState.connected
-          ? ("saving" as const)
-          : ("offline/retrying" as const)
-      : undefined;
-  const documentSavingRef = useRef(false);
+  // IMP-045: offline, edits are kept on this device; the header shows how
+  // many the server has not stored yet, including any from an earlier visit.
+  const documentSaveStatus = documentSaveStatusOf(documentState);
+  const documentSavingRef = useRef({ saving: false, unsaved: false });
   useEffect(() => {
     // Rows (and so the canvas index) change once the sync server has stored
-    // the document changes this client made.
-    const saving = documentState.pendingChanges > 0;
-    if (documentSavingRef.current && !saving && documentState.localChanges) {
+    // the document changes this client made, including edits kept on this
+    // device from an earlier visit.
+    const unsaved = documentState.unsavedChanges > 0;
+    const saving = documentState.pendingChanges > 0 || unsaved;
+    const previous = documentSavingRef.current;
+    if (
+      previous.saving &&
+      !saving &&
+      (documentState.localChanges || previous.unsaved)
+    ) {
       void queryClient.invalidateQueries({
         queryKey: canvasIndexKeys.all(canvasId),
       });
     }
-    documentSavingRef.current = saving;
+    documentSavingRef.current = { saving, unsaved };
   }, [
     canvasId,
     documentState.localChanges,
     documentState.pendingChanges,
+    documentState.unsavedChanges,
     queryClient,
   ]);
   useEffect(() => {
@@ -1120,9 +1124,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onZoomChange={setZoom}
         onFitToScreen={fitToScreen}
         onExport={() => setExportDialogOpen(true)}
-        onVersionHistory={
-          isOwner ? () => setVersionHistoryOpen(true) : undefined
-        }
+        onVersionHistory={() => setVersionHistoryOpen(true)}
         onTagFilter={() => setTagFilterOpen(true)}
         onAI={canEdit ? () => setAiDialogOpen(true) : undefined}
         activeTagCount={selectedTags.length}
@@ -1157,6 +1159,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                 ? geometrySaveStatus
                 : (documentSaveStatus ??
                   (updateItemMutation.isSuccess ? "saved" : undefined))
+        }
+        offlineChanges={
+          documentSaveStatus === "offline/retrying"
+            ? documentState.unsavedChanges
+            : undefined
         }
         saveError={
           updateItemMutation.isError &&
@@ -1593,9 +1600,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           currentIndex={timeMachineIndex}
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
-          onRestore={async (version) => {
-            setPendingRestoreVersionId(version.id);
-          }}
+          onRestore={
+            canEdit
+              ? async (version) => {
+                  setPendingRestoreVersionId(version.id);
+                }
+              : undefined
+          }
         />
       )}
       {isOwner && (

@@ -32,6 +32,7 @@ model User {
   passkeys      Passkey[]
   workspaces    Workspace[]
 
+  createdVersions CanvasVersion[] @relation("VersionCreatedBy")
   createdItems  CanvasItem[] @relation("ItemCreatedBy")
   updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
   deletedItems  CanvasItem[] @relation("ItemDeletedBy")
@@ -190,6 +191,14 @@ model CanvasEmbed {
   @@index([canvasId, createdAt])
 }
 
+/// IMP-046: `MANUAL` versions are named by a person (and never expire);
+/// `AUTO` versions are taken by the `versions.auto-snapshot` job and thinned
+/// out by `versions.auto-retention`.
+enum CanvasVersionKind {
+  MANUAL
+  AUTO
+}
+
 model CanvasVersion {
   id          String   @id @default(cuid())
   canvasId    String
@@ -199,9 +208,19 @@ model CanvasVersion {
   /// Encoded Yjs state the snapshot was derived from (IMP-042); null for
   /// versions taken before the canvas had a collaborative document.
   yjsState    Bytes?
+  kind        CanvasVersionKind @default(MANUAL)
+  /// The person who saved or restored a manual version; null for automatic
+  /// snapshots and once that account is deleted.
+  createdById String?
+  createdBy   User?    @relation("VersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  /// SHA-256 of the canvas content (items, ignoring view position), used to
+  /// skip an automatic snapshot that would repeat the latest version.
+  contentHash String?
   createdAt   DateTime @default(now())
 
   @@index([canvasId, createdAt])
+  @@index([canvasId, kind, createdAt])
+  @@index([createdById])
 }
 
 model CanvasItem {

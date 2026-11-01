@@ -56,11 +56,27 @@ for (const key of ['DATABASE_URL', 'AUTH_URL', 'AUTH_SECRET']) {
 }
 
 if (emailProvider === 'smtp') {
-  addCheck(
-    'email-provider',
-    'fail',
-    'EMAIL_PROVIDER=smtp is not supported in this build. Use console, sendgrid, or resend.'
+  const missingSmtp = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'].filter(
+    (key) => !envValues.get(key) && !(key === 'SMTP_PASS' && envValues.get('SMTP_PASSWORD'))
   );
+  if (missingSmtp.length > 0) {
+    addCheck('email-provider', 'fail', `Missing ${missingSmtp.join(', ')} for EMAIL_PROVIDER=smtp`);
+  } else {
+    const smtpHost = envValues.get('SMTP_HOST');
+    const smtpPort = Number(envValues.get('SMTP_PORT'));
+    const smtpSecure = envValues.get('SMTP_SECURE') === 'true';
+    addCheck(
+      'email-provider',
+      'pass',
+      `smtp (${smtpHost}:${smtpPort}, ${smtpSecure ? 'implicit TLS' : 'STARTTLS required in production'})`
+    );
+    try {
+      await waitForPort({ host: smtpHost, port: smtpPort, label: 'SMTP', timeoutMs: 5000 });
+      addCheck('smtp-server', 'pass', `${smtpHost}:${smtpPort}`);
+    } catch (error) {
+      addCheck('smtp-server', 'fail', error instanceof Error ? error.message : 'Unreachable');
+    }
+  }
 } else {
   addCheck('email-provider', 'pass', emailProvider);
 }

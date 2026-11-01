@@ -20,9 +20,7 @@ import {
   AUTHORIZATION_LEASE_MS,
   AUTHORIZATION_REFRESH_INTERVAL_MS,
   CURSOR_TICK_MS,
-  ConnectionAdmissionCounters,
   ExpiringCanvasInstances,
-  FixedWindowAdmissionBudget,
   authorizationLeaseMustClose,
   collaborationColorForUser,
   consumeMessageBudget,
@@ -33,6 +31,7 @@ import {
   isAllowedCollaborationOrigin,
 } from "./upgrade-policy";
 import { COLLABORATION_SYNC_PATH } from "./sync/protocol";
+import { SharedConnectionAdmission } from "./shared-admission";
 
 export interface CollaborationUser {
   userId: string;
@@ -45,6 +44,8 @@ export interface CollaborationUser {
 }
 
 interface ClientConnection {
+  /** Unique per socket; names the connection in the shared admission sets. */
+  id: string;
   ws: WebSocket;
   canvasId: string;
   user: CollaborationUser;
@@ -140,21 +141,26 @@ const connections = new Map<string, Set<ClientConnection>>();
 const subscriptions = new Map<string, number>();
 const remotePresence = new ExpiringCanvasInstances<CollaborationUser[]>();
 const remoteCursors = new ExpiringCanvasInstances<CursorPosition[]>();
-const upgradeBudgets = new FixedWindowAdmissionBudget(
-  MAX_UPGRADES_PER_CLIENT_PER_MINUTE,
-  60_000,
-);
-const admissionCounters = new ConnectionAdmissionCounters();
-
 // Shared with the sync server (IMP-042); re-exported for existing callers.
 export { isAllowedCollaborationOrigin, deriveUpgradeClientId };
 
-function consumeUpgradeBudget(clientId: string): boolean {
-  return upgradeBudgets.consume(clientId);
-}
-
 const instanceId = nanoid(8);
 const redisPublisher = getRedisClient();
+// Per-canvas, per-principal and per-client limits hold across replicas
+// (IMP-043); the global cap protects this process.
+const admission = new SharedConnectionAdmission({
+  scope: "presence",
+  limits: {
+    global: MAX_CONNECTIONS_GLOBAL,
+    perCanvas: MAX_COLLABORATORS_PER_CANVAS,
+    perPrincipal: MAX_CONNECTIONS_PER_PRINCIPAL,
+    perClient: MAX_CONNECTIONS_PER_CLIENT,
+  },
+  upgradesPerMinute: MAX_UPGRADES_PER_CLIENT_PER_MINUTE,
+  leaseMs: AUTHORIZATION_LEASE_MS,
+  redis: redisPublisher,
+  logger,
+});
 const redisSubscriber = redisPublisher ? redisPublisher.duplicate() : null;
 
 if (redisSubscriber) {
@@ -317,8 +323,15 @@ async function handleRedisMessage(
     case "presence": {
       const payload = message.payload as { users?: CollaborationUser[] };
       const users = Array.isArray(payload.users) ? payload.users : [];
+      // An instance new to this canvas has not seen ours yet; answer at once
+      // instead of leaving it to wait for the next heartbeat.
+      const newInstance = !remotePresence.has(canvasId, message.instanceId);
       remotePresence.upsert(canvasId, message.instanceId, users, Date.now());
       broadcastPresence(canvasId);
+      if (newInstance) {
+        publishPresence(canvasId);
+        publishCursors(canvasId);
+      }
       break;
     }
     case "cursors": {
@@ -375,8 +388,8 @@ export function createCollaborationServer(server: any): WebSocketServer {
           }
           const clientId = deriveUpgradeClientId(request);
           if (
-            !consumeUpgradeBudget(clientId) ||
-            getConnectionCount() >= MAX_CONNECTIONS_GLOBAL
+            getConnectionCount() >= MAX_CONNECTIONS_GLOBAL ||
+            !(await admission.consumeUpgrade(clientId))
           ) {
             rejectUpgrade(socket, "HTTP/1.1 429 Too Many Requests\r\n\r\n");
             return;
@@ -528,11 +541,12 @@ export function createCollaborationServer(server: any): WebSocketServer {
       publishCursors(canvasId);
     });
 
-    upgradeBudgets.sweep(now);
+    admission.sweep(now);
+    void admission.renew(allClientConnections());
     sweepRemoteCollaborationState(now);
     closeExpiredAuthorizationLeases(now);
 
-    if (!authorizationRefreshInFlight && admissionCounters.totalConnections) {
+    if (!authorizationRefreshInFlight && admission.totalConnections) {
       authorizationRefreshInFlight = revalidateAllConnections()
         .catch(handleAuthorizationRefreshFailure)
         .finally(() => {
@@ -582,29 +596,33 @@ async function handleConnection(
     return;
   }
 
-  const canvasConnections = connections.get(canvasId);
-  if (
-    canvasConnections &&
-    canvasConnections.size >= MAX_COLLABORATORS_PER_CANVAS
-  ) {
+  const admitted = {
+    id: nanoid(16),
+    canvasId,
+    principalId: user.userId,
+    clientId,
+  };
+  const decision = await admission.admit(admitted);
+  if (!decision.admitted) {
     incrementOperationalCounter("websocket_rejected_total");
-    ws.close(1013, "Canvas connection limit reached");
+    ws.close(
+      1013,
+      decision.reason === "canvas"
+        ? "Canvas connection limit reached"
+        : "Connection admission limit reached",
+    );
     return;
   }
-
-  const admission = admissionCounters.tryAdmit(user.userId, clientId, {
-    global: MAX_CONNECTIONS_GLOBAL,
-    perPrincipal: MAX_CONNECTIONS_PER_PRINCIPAL,
-    perClient: MAX_CONNECTIONS_PER_CLIENT,
-  });
-  if (!admission.admitted) {
-    incrementOperationalCounter("websocket_rejected_total");
-    ws.close(1013, "Connection admission limit reached");
+  if (ws.readyState !== WebSocket.OPEN) {
+    // The client left while the shared limits were checked.
+    void admission.release(admitted);
     return;
   }
 
   const now = Date.now();
+  const canvasConnections = connections.get(canvasId);
   const connection: ClientConnection = {
+    id: admitted.id,
     ws,
     canvasId,
     user,
@@ -622,10 +640,7 @@ async function handleConnection(
   const clients = canvasConnections ?? new Set<ClientConnection>();
   if (!canvasConnections) connections.set(canvasId, clients);
   clients.add(connection);
-  setOperationalGauge(
-    "websocket_connections",
-    admissionCounters.totalConnections,
-  );
+  setOperationalGauge("websocket_connections", admission.totalConnections);
   setOperationalGauge("websocket_active_canvases", connections.size);
 
   let subscribed = false;
@@ -635,7 +650,7 @@ async function handleConnection(
     const activeClients = connections.get(canvasId);
     if (!activeClients?.delete(connection)) return;
 
-    admissionCounters.release(user.userId, clientId);
+    void admission.release(admitted);
     logger.info(
       { userId: user.userId, canvasId },
       "User disconnected from canvas",
@@ -647,10 +662,7 @@ async function handleConnection(
       connections.delete(canvasId);
       dirtyCursorCanvases.delete(canvasId);
     }
-    setOperationalGauge(
-      "websocket_connections",
-      admissionCounters.totalConnections,
-    );
+    setOperationalGauge("websocket_connections", admission.totalConnections);
     setOperationalGauge("websocket_active_canvases", connections.size);
     if (subscribed) void unsubscribeFromCanvas(canvasId);
   });
@@ -1013,8 +1025,23 @@ function broadcastCursors(canvasId: string): void {
   });
 }
 
+function* allClientConnections() {
+  for (const clients of connections.values())
+    for (const client of clients)
+      yield {
+        id: client.id,
+        canvasId: client.canvasId,
+        principalId: client.user.userId,
+        clientId: client.clientId,
+      };
+}
+
 export function getConnectionCount(): number {
-  return admissionCounters.totalConnections;
+  return admission.totalConnections;
+}
+
+export function getCanvasConnectionCount(canvasId: string): number {
+  return connections.get(canvasId)?.size ?? 0;
 }
 
 export function getActiveCanvasCount(): number {

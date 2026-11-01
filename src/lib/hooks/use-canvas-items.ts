@@ -526,6 +526,37 @@ function applyCommittedCanvasItemBatch(
   );
 }
 
+const OFFLINE_PLACEHOLDER = "offlinePlaceholder";
+
+/**
+ * IMP-045: a canvas reloaded without a network renders from its device copy.
+ * The item page cannot load then; an empty placeholder page keeps the
+ * suspense query from throwing the canvas into its error boundary.
+ */
+export async function listItemsOrOfflinePlaceholder(
+  canvasId: string,
+  type?: ItemType,
+  viewport?: ViewportParams,
+) {
+  try {
+    return await api.listItems(canvasId, type, viewport);
+  } catch (error) {
+    const offline =
+      typeof navigator !== "undefined" && navigator.onLine === false;
+    if (!offline || !(error instanceof TypeError)) throw error;
+    return {
+      items: [] as CanvasItem[],
+      total: 0,
+      offset: 0,
+      limit: 0,
+      nextCursor: null,
+      hasMore: false,
+      truncatedByBytes: false,
+      [OFFLINE_PLACEHOLDER]: true as const,
+    };
+  }
+}
+
 /**
  * Fetch all items for a canvas with optional type filtering and viewport pagination
  *
@@ -562,7 +593,12 @@ export function useCanvasItems(
 ) {
   return useSuspenseQuery({
     queryKey: canvasItemKeys.list(canvasId, type, viewport),
-    queryFn: () => api.listItems(canvasId, type, viewport),
+    queryFn: () => listItemsOrOfflinePlaceholder(canvasId, type, viewport),
+    // An offline placeholder is replaced as soon as the network is back.
+    staleTime: (query) =>
+      query.state.data && OFFLINE_PLACEHOLDER in query.state.data
+        ? 0
+        : 5 * 60 * 1000,
   });
 }
 
@@ -728,6 +764,20 @@ function chooseWriteRoute(
   return route;
 }
 
+/**
+ * IMP-045: a document write must run at once, also offline, where it is
+ * kept on this device until the sync server stores it. React Query would
+ * otherwise pause the mutation until the browser reports a network. With a
+ * document open, an HTTP-routed write made offline therefore fails at once
+ * (the board reports it as offline) instead of waiting unseen; without a
+ * document, item writes keep the default.
+ */
+function itemWriteNetworkMode(
+  session: CanvasDocumentSession | null,
+): "offlineFirst" | "online" {
+  return session ? "offlineFirst" : "online";
+}
+
 function findCachedItem(
   queryClient: QueryClient,
   itemId: string,
@@ -803,6 +853,7 @@ export function useCreateCanvasItem() {
   const documentSession = useCanvasDocument();
 
   return useMutation({
+    networkMode: itemWriteNetworkMode(documentSession),
     mutationFn: async (input: CreateCanvasItemInput): Promise<CanvasItem> => {
       if (writeRoutes.get(input) === "document" && documentSession) {
         const state = documentSession.createItem(input);
@@ -909,6 +960,7 @@ export function useUpdateCanvasItem() {
   const documentSession = useCanvasDocument();
 
   return useMutation({
+    networkMode: itemWriteNetworkMode(documentSession),
     mutationFn: async (variables: {
       itemId: string;
       data: UpdateCanvasItemInput;
@@ -1043,6 +1095,7 @@ export function useDeleteCanvasItem() {
   const documentSession = useCanvasDocument();
 
   return useMutation({
+    networkMode: itemWriteNetworkMode(documentSession),
     mutationFn: async (variables: {
       itemId: string;
       version: number;

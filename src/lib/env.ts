@@ -217,12 +217,14 @@ const envSchema = z
     if (
       validateProductionRuntime &&
       data.EMAIL_PROVIDER !== "sendgrid" &&
-      data.EMAIL_PROVIDER !== "resend"
+      data.EMAIL_PROVIDER !== "resend" &&
+      data.EMAIL_PROVIDER !== "smtp"
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_PROVIDER"],
-        message: "EMAIL_PROVIDER must be sendgrid or resend in production.",
+        message:
+          "EMAIL_PROVIDER must be sendgrid, resend, or smtp in production.",
       });
     }
 

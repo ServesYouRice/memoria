@@ -29,6 +29,7 @@ export function createVersionRetentionHandler(
       WITH ranked AS (
         SELECT "id", ROW_NUMBER() OVER (PARTITION BY "canvasId" ORDER BY "createdAt" DESC, "id" DESC) AS rank
         FROM "CanvasVersion"
+        WHERE "kind" = 'MANUAL'
       ), doomed AS (
         SELECT "id" FROM ranked WHERE rank > ${LAUNCH_LIMITS.versionsPerCanvas} LIMIT 500
       )
