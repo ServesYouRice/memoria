@@ -46,7 +46,10 @@ export interface EmailServiceConfig {
   smtp?: {
     host: string;
     port: number;
+    /** Implicit TLS from the first byte (port 465). */
     secure: boolean;
+    /** Require a STARTTLS upgrade before authenticating or sending. */
+    requireTLS: boolean;
     auth: {
       user: string;
       pass: string;
