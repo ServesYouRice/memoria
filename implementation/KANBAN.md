@@ -21,7 +21,6 @@ Redis, S3 (SeaweedFS) and captured email, and the strict operations smoke passes
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-039](tasks/IMP-039.md) | Cloudflare R2 as the production object store | - |
 | [IMP-041](tasks/IMP-041.md) | Better Auth replaces next-auth 5 beta | - |
 | [IMP-044](tasks/IMP-044.md) | Signed embeds with per-embed framing | - |
 
