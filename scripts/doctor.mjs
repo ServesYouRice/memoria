@@ -43,11 +43,18 @@ const envValues = readEnvFile(envFile).values;
 const emailProvider = envValues.get('EMAIL_PROVIDER') || 'console';
 const authUrl = envValues.get('AUTH_URL') || envValues.get('NEXTAUTH_URL');
 
-if (authUrl?.startsWith('https://') && !envValues.get('TRUSTED_PROXY_CIDRS')) {
+// The bundled stack (--selfhost, or a production env with an HTTPS public URL)
+// always sits behind the Caddy gateway; an empty value makes every client share
+// the gateway's address for rate limits, lockout and connection caps.
+const behindProxy =
+  flags.has('--selfhost') ||
+  authUrl?.startsWith('https://') ||
+  envValues.get('NODE_ENV') === 'production';
+if (behindProxy && !envValues.get('TRUSTED_PROXY_CIDRS')?.trim()) {
   addCheck(
     'trusted-proxy',
     'warn',
-    'HTTPS is configured without TRUSTED_PROXY_CIDRS; forwarded client addresses will be ignored.'
+    'App is behind a proxy but TRUSTED_PROXY_CIDRS is empty; all clients share the proxy address for rate limits and lockout. Run pnpm setup or set the gateway network CIDR.'
   );
 }
 
