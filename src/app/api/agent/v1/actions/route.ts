@@ -409,6 +409,10 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     const payload = suggestion.payload as Record<string, unknown>;
     const payloadKind = typeof payload.kind === "string" ? payload.kind : null;
 
+    // Owner approval is the authority for internal-organization kinds: the
+    // proposing agent needs its propose rung and canvas scope, not a
+    // direct-write rung. External webhooks below still require rung 8.
+
     if (payloadKind === "canvas-item-create") {
       const parsed = z
         .object({
@@ -421,7 +425,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
 
       await verifyCanvasOwnership(context.userId, parsed.canvasId);
       assertCanvasScope(agentProfile, parsed.canvasId);
-      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
       const result = await createCanvasItemWrite({
         actor,
@@ -449,7 +453,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       const item = await getItemCanvasScope(context.userId, parsed.itemId);
 
       assertCanvasScope(agentProfile, item.canvasId);
-      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
       const result = await createKnowledgeEntityWrite({
         actor,
@@ -496,7 +500,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       }
 
       assertCanvasScope(agentProfile, sharedCanvasId);
-      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
       const result = await createKnowledgeRelationWrite({
         actor,
@@ -540,7 +544,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
 
       await verifyCanvasOwnership(context.userId, parsed.canvasId);
       assertCanvasScope(agentProfile, parsed.canvasId);
-      assertAgentCapability(agentProfile, rung);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
       const result = await createCanvasItemBatchWrite({
         actor,

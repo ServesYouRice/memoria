@@ -15,10 +15,17 @@ const queryCoreMocks = vi.hoisted(() => ({
   listAgentCanvases: vi.fn(),
   listAgentCanvasItems: vi.fn(),
   queryAgentKnowledge: vi.fn(),
+  requireScopedKnowledgeEntity: vi.fn(),
 }));
 
 const serviceCoreMocks = vi.hoisted(() => ({
   createCanvasItemWrite: vi.fn(),
+  createCanvasItemBatchWrite: vi.fn(),
+  createKnowledgeEntityWrite: vi.fn(),
+  createKnowledgeRelationWrite: vi.fn(),
+  claimSuggestionForExecution: vi.fn(),
+  markSuggestionExecuted: vi.fn(),
+  executeExternalWebhook: vi.fn(),
   executeAgentAction: vi.fn(),
   ingestAgentKnowledge: vi.fn(),
 }));
@@ -37,6 +44,9 @@ const mcpMocks = vi.hoisted(() => ({
 
 const prismaMocks = vi.hoisted(() => ({
   canvasFindFirst: vi.fn(),
+  suggestionFindFirst: vi.fn(),
+  canvasItemFindFirst: vi.fn(),
+  integrationAccountFindFirst: vi.fn(),
   modelCredentialCreate: vi.fn(),
   integrationAccountCreate: vi.fn(),
 }));
@@ -55,10 +65,19 @@ vi.mock("@/lib/agents/query-core", () => ({
   listAgentCanvases: queryCoreMocks.listAgentCanvases,
   listAgentCanvasItems: queryCoreMocks.listAgentCanvasItems,
   queryAgentKnowledge: queryCoreMocks.queryAgentKnowledge,
+  requireScopedKnowledgeEntity: queryCoreMocks.requireScopedKnowledgeEntity,
 }));
 
 vi.mock("@/lib/agents/service-core", () => ({
   createCanvasItemWrite: serviceCoreMocks.createCanvasItemWrite,
+  createCanvasItemBatchWrite: serviceCoreMocks.createCanvasItemBatchWrite,
+  createKnowledgeEntityWrite: serviceCoreMocks.createKnowledgeEntityWrite,
+  createKnowledgeRelationWrite: serviceCoreMocks.createKnowledgeRelationWrite,
+  claimSuggestionForExecution: serviceCoreMocks.claimSuggestionForExecution,
+  markSuggestionExecuted: serviceCoreMocks.markSuggestionExecuted,
+  executeExternalWebhook: serviceCoreMocks.executeExternalWebhook,
+  normalizeAgentItemWriteData: (item: unknown) => item,
+  normalizeAgentItemWriteBatch: (items: unknown) => items,
   executeAgentAction: serviceCoreMocks.executeAgentAction,
   ingestAgentKnowledge: serviceCoreMocks.ingestAgentKnowledge,
 }));
@@ -74,11 +93,18 @@ vi.mock("@/lib/db", () => ({
     canvas: {
       findFirst: prismaMocks.canvasFindFirst,
     },
+    suggestion: {
+      findFirst: prismaMocks.suggestionFindFirst,
+    },
+    canvasItem: {
+      findFirst: prismaMocks.canvasItemFindFirst,
+    },
     modelCredential: {
       create: prismaMocks.modelCredentialCreate,
     },
     integrationAccount: {
       create: prismaMocks.integrationAccountCreate,
+      findFirst: prismaMocks.integrationAccountFindFirst,
     },
   },
 }));
@@ -435,6 +461,168 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
       expect(queryCoreMocks.listOwnedProviderCredentials).toHaveBeenCalledWith(
         "user-123",
       );
+    });
+  });
+
+  describe("Owner-approved suggestion execution (IMP-068)", () => {
+    const canvasId = "ccanvas000000000000000001";
+    const otherCanvasId = "ccanvas000000000000000002";
+    const suggestionId = "csugg00000000000000000001";
+    const itemId = "citem000000000000000000001";
+    const entityA = "cent0000000000000000000001";
+    const entityB = "cent0000000000000000000002";
+    const proposeOnlyProfile = {
+      id: "prof-propose",
+      userId: "user-123",
+      name: "Connected app",
+      status: AgentProfileStatus.ACTIVE,
+      maxCapabilityRung: 3,
+      enabledRungs: [0, 1, 2, 3],
+      allowedCanvasIds: [canvasId],
+      defaultModelCredentialId: null,
+    };
+
+    const payloads: Record<string, Record<string, unknown>> = {
+      "canvas-item-create": {
+        kind: "canvas-item-create",
+        canvasId,
+        item: { type: "NOTE", content: { text: "hi" } },
+      },
+      "canvas-item-batch-create": {
+        kind: "canvas-item-batch-create",
+        canvasId,
+        items: [{ type: "NOTE", content: { text: "hi" } }],
+      },
+      "knowledge-entity-create": {
+        kind: "knowledge-entity-create",
+        itemId,
+        entityType: "person",
+        title: "Ada",
+      },
+      "knowledge-relation-create": {
+        kind: "knowledge-relation-create",
+        sourceEntityId: entityA,
+        targetEntityId: entityB,
+        relationType: "knows",
+      },
+    };
+
+    const writeMocks: Record<string, ReturnType<typeof vi.fn>> = {
+      "canvas-item-create": serviceCoreMocks.createCanvasItemWrite,
+      "canvas-item-batch-create": serviceCoreMocks.createCanvasItemBatchWrite,
+      "knowledge-entity-create": serviceCoreMocks.createKnowledgeEntityWrite,
+      "knowledge-relation-create":
+        serviceCoreMocks.createKnowledgeRelationWrite,
+    };
+
+    function arrange(
+      payload: Record<string, unknown>,
+      overrides?: { status?: string; profile?: typeof proposeOnlyProfile },
+    ) {
+      authMocks.resolveAgentRequestContext.mockResolvedValue(mockUserContext);
+      authMocks.getOwnedAgentProfile.mockResolvedValue(
+        overrides?.profile ?? proposeOnlyProfile,
+      );
+      prismaMocks.suggestionFindFirst.mockResolvedValue({
+        id: suggestionId,
+        agentProfileId: proposeOnlyProfile.id,
+        kind: "WRITE",
+        status: overrides?.status ?? "APPROVED",
+        summary: "Suggested change",
+        payload,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      prismaMocks.canvasFindFirst.mockResolvedValue({ id: canvasId });
+      prismaMocks.canvasItemFindFirst.mockResolvedValue({
+        id: itemId,
+        canvasId,
+      });
+      queryCoreMocks.requireScopedKnowledgeEntity.mockImplementation(
+        async (_ctx: unknown, id: string) => ({ id, canvasIds: [canvasId] }),
+      );
+      for (const mock of Object.values(writeMocks)) {
+        mock.mockResolvedValue({ ok: true });
+      }
+    }
+
+    function execute() {
+      return actionsPost(
+        createNextRequest("http://localhost/api/agent/v1/actions", {
+          method: "POST",
+          body: { action: "execute-suggestion", suggestionId },
+        }),
+      );
+    }
+
+    it.each(Object.keys(payloads))(
+      "executes an approved %s suggestion for a rung 0-3 profile",
+      async (kind) => {
+        arrange(payloads[kind]);
+
+        const res = await execute();
+
+        expect(res.status).toBe(200);
+        expect(writeMocks[kind]).toHaveBeenCalledTimes(1);
+        expect(serviceCoreMocks.markSuggestionExecuted).toHaveBeenCalledTimes(
+          1,
+        );
+      },
+    );
+
+    it.each(Object.keys(payloads))(
+      "refuses an unapproved %s suggestion",
+      async (kind) => {
+        arrange(payloads[kind], { status: "PENDING" });
+
+        const res = await execute();
+
+        expect(res.status).toBe(400);
+        expect(writeMocks[kind]).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(Object.keys(payloads))(
+      "refuses a %s suggestion outside the profile's canvas scope",
+      async (kind) => {
+        arrange(payloads[kind], {
+          profile: { ...proposeOnlyProfile, allowedCanvasIds: [otherCanvasId] },
+        });
+
+        const res = await execute();
+
+        expect(res.status).toBe(403);
+        expect(writeMocks[kind]).not.toHaveBeenCalled();
+      },
+    );
+
+    it("refuses an approved suggestion when the propose rung is disabled", async () => {
+      arrange(payloads["canvas-item-create"], {
+        profile: { ...proposeOnlyProfile, enabledRungs: [0, 1, 2] },
+      });
+
+      const res = await execute();
+
+      expect(res.status).toBe(403);
+      expect(serviceCoreMocks.createCanvasItemWrite).not.toHaveBeenCalled();
+    });
+
+    it("still requires rung 8 to execute an approved external webhook", async () => {
+      arrange({
+        kind: "external-webhook",
+        integrationAccountId: "cint0000000000000000000001",
+        request: { method: "POST", body: {} },
+      });
+      prismaMocks.integrationAccountFindFirst.mockResolvedValue({
+        id: "cint0000000000000000000001",
+        agentProfileId: proposeOnlyProfile.id,
+        providerType: "WEBHOOK",
+        status: "ACTIVE",
+      });
+
+      const res = await execute();
+
+      expect(res.status).toBe(403);
+      expect(serviceCoreMocks.executeExternalWebhook).not.toHaveBeenCalled();
     });
   });
 
