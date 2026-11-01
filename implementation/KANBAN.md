@@ -19,16 +19,14 @@ documented restore drill passed (RPO 134s, RTO 16s).
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
-| [IMP-043](tasks/IMP-043.md) | Realtime split and replica-ready processes | — |
-| [IMP-045](tasks/IMP-045.md) | Offline canvas edits | — |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-047](tasks/IMP-047.md) | Real client identity behind the gateway | IMP-043 |
+| [IMP-047](tasks/IMP-047.md) | Real client identity behind the gateway | — |
 | [IMP-049](tasks/IMP-049.md) | Green production dependency audit | — |
-| [IMP-053](tasks/IMP-053.md) | Visible delete failures and a mobile activity feed | IMP-045 |
+| [IMP-053](tasks/IMP-053.md) | Visible delete failures and a mobile activity feed | — |
 | [IMP-055](tasks/IMP-055.md) | Remove dead code and type escape hatches | — |
 | [IMP-057](tasks/IMP-057.md) | Image proxy so the CSP can drop `img-src https:` | — |
 
@@ -36,7 +34,7 @@ documented restore drill passed (RPO 134s, RTO 16s).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster | DEC-001, IMP-043, IMP-047 |
+| [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster | DEC-001, IMP-047 |
 
 ## USER DECISIONS
 
