@@ -8,6 +8,8 @@ import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
 import { createCollaborationServer } from "./src/lib/collaboration/websocket-server";
+import { COLLABORATION_SYNC_PATH } from "./src/lib/collaboration/sync/protocol";
+import { proxySyncUpgrade } from "./src/lib/collaboration/sync/upgrade-proxy";
 import { logger } from "./src/lib/logger";
 import { deriveClientIp } from "./src/lib/network/client-ip";
 import { nanoid } from "nanoid";
@@ -17,6 +19,9 @@ import { recordHttpStatus } from "./src/lib/operations/runtime-metrics";
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
 const port = parseInt(process.env["PORT"] || "3000", 10);
+const syncServerUrl = new URL(
+  process.env.SYNC_SERVER_INTERNAL_URL || "http://127.0.0.1:3001",
+);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -59,6 +64,12 @@ app
 
     // Initialize WebSocket server for collaboration
     const collaborationServer = createCollaborationServer(server);
+
+    // Collaborative documents live in the sync server process (IMP-042).
+    server.on("upgrade", (req, socket, head) => {
+      if (parse(req.url || "").pathname !== COLLABORATION_SYNC_PATH) return;
+      proxySyncUpgrade(syncServerUrl, req, socket, head);
+    });
 
     let shuttingDown = false;
     const shutdown = async (signal: NodeJS.Signals) => {

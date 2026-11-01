@@ -53,6 +53,11 @@ export function useCanvasKeyboard({
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // A focused surface (such as the accessible item list) already acted on
+      // this key. Acting again would repeat the move or delete; with live
+      // co-editing no version check rejects the repeat.
+      if (e.defaultPrevented) return;
+
       // Never intercept keystrokes owned by an editor, form control, or an open
       // dialog — those surfaces handle their own keys, including Escape.
       if (shouldIgnoreGlobalShortcut(e)) {

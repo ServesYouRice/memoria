@@ -10,7 +10,6 @@ import { prisma } from "@/lib/db";
 import { getSessionFromHeaders, headersFromNode } from "@/lib/auth/session";
 import { logger } from "@/lib/logger";
 import { nanoid } from "nanoid";
-import { deriveClientIp } from "@/lib/network/client-ip";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import {
   incrementOperationalCounter,
@@ -29,6 +28,11 @@ import {
   consumeMessageBudget,
   resolveCollaborationAccess,
 } from "./transport-policy";
+import {
+  deriveUpgradeClientId,
+  isAllowedCollaborationOrigin,
+} from "./upgrade-policy";
+import { COLLABORATION_SYNC_PATH } from "./sync/protocol";
 
 export interface CollaborationUser {
   userId: string;
@@ -142,29 +146,8 @@ const upgradeBudgets = new FixedWindowAdmissionBudget(
 );
 const admissionCounters = new ConnectionAdmissionCounters();
 
-export function isAllowedCollaborationOrigin(
-  origin: string | undefined,
-  configuredUrl: string | undefined,
-): boolean {
-  if (!origin || !configuredUrl) return false;
-  try {
-    return new URL(origin).origin === new URL(configuredUrl).origin;
-  } catch {
-    return false;
-  }
-}
-
-// Upgrade requests bypass the HTTP request handler that stamps
-// x-memoria-client-ip, so derive identity here with the same trusted-proxy rules.
-export function deriveUpgradeClientId(
-  request: Pick<IncomingMessage, "socket" | "headers">,
-): string {
-  return deriveClientIp(
-    request.socket?.remoteAddress,
-    request.headers["x-forwarded-for"],
-    process.env.TRUSTED_PROXY_CIDRS,
-  );
-}
+// Shared with the sync server (IMP-042); re-exported for existing callers.
+export { isAllowedCollaborationOrigin, deriveUpgradeClientId };
 
 function consumeUpgradeBudget(clientId: string): boolean {
   return upgradeBudgets.consume(clientId);
@@ -375,8 +358,12 @@ export function createCollaborationServer(server: any): WebSocketServer {
     async (request: IncomingMessage, socket: any, head: Buffer) => {
       const url = new URL(request.url || "", `http://${request.headers.host}`);
 
-      // Only handle collaboration WebSocket connections
-      if (url.pathname.startsWith("/api/collaboration/")) {
+      // Only handle presence connections; document sync connections belong
+      // to the sync server (IMP-042).
+      if (
+        url.pathname.startsWith("/api/collaboration/") &&
+        url.pathname !== COLLABORATION_SYNC_PATH
+      ) {
         try {
           const configuredUrl =
             process.env.AUTH_URL || process.env.NEXTAUTH_URL;

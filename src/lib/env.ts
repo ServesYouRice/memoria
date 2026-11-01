@@ -60,6 +60,7 @@ const envSchema = z
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     API_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     UPLOAD_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    CANVASES_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
     BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,

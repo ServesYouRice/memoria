@@ -21,6 +21,10 @@ import { sanitizeComment } from "@/lib/sanitization";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { ItemType } from "@/types/canvas";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import {
+  recordCanvasItemEvent,
+  recordCanvasItemEventsBatch,
+} from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
@@ -466,6 +470,13 @@ export async function createCanvasItemWrite(input: {
         updatedById: input.actor.userId,
       },
     });
+    await recordCanvasItemEvent(tx, {
+      canvasId: input.canvasId,
+      actorId: input.actor.userId,
+      itemId: item.id,
+      version: item.version,
+      operation: "created",
+    });
 
     await tx.changeRecord.create({
       data: {
@@ -596,6 +607,16 @@ export async function createCanvasItemBatchWrite(input: {
 
       createdItems.push(item);
     }
+    await recordCanvasItemEventsBatch(
+      tx,
+      createdItems.map((item) => ({
+        canvasId: input.canvasId,
+        actorId: input.actor.userId,
+        itemId: item.id,
+        version: item.version,
+        operation: "created" as const,
+      })),
+    );
 
     await tx.changeRecord.createMany({
       data: createdItems.map((item) => ({
@@ -1065,7 +1086,8 @@ async function applyRevertOperation(
     });
     if (existing && existing.deletedAt === null) {
       const deletedAt = new Date();
-      await tx.canvasItem.update({
+      await lockCanvasForMutation(tx, existing.canvasId);
+      const deleted = await tx.canvasItem.update({
         where: { id: changeRecord.targetId },
         data: {
           deletedAt,
@@ -1075,6 +1097,13 @@ async function applyRevertOperation(
             increment: 1,
           },
         },
+      });
+      await recordCanvasItemEvent(tx, {
+        canvasId: deleted.canvasId,
+        actorId: userId,
+        itemId: deleted.id,
+        version: deleted.version,
+        operation: "deleted",
       });
 
       await tx.changeRecord.create({
@@ -1212,7 +1241,8 @@ async function applyRevertOperation(
       );
     }
 
-    await tx.canvasItem.update({
+    await lockCanvasForMutation(tx, existing.canvasId);
+    const reverted = await tx.canvasItem.update({
       where: { id: changeRecord.targetId },
       data: {
         positionX: snapshot.positionX,
@@ -1227,6 +1257,13 @@ async function applyRevertOperation(
         },
         updatedById: userId,
       },
+    });
+    await recordCanvasItemEvent(tx, {
+      canvasId: reverted.canvasId,
+      actorId: userId,
+      itemId: reverted.id,
+      version: reverted.version,
+      operation: "updated",
     });
 
     await tx.changeRecord.create({

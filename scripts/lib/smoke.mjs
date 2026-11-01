@@ -230,6 +230,55 @@ async function checkCollaborationUpgrade(results, baseUrl, timeoutMs) {
   });
 }
 
+// IMP-042: the document sync server sits behind /api/collaboration/sync (the
+// gateway or the app proxies it). It upgrades same-origin requests and
+// authenticates each document afterwards; 403 means it is up and refused the
+// smoke origin. A 502 or a network error means the sync server is unreachable.
+async function checkSyncUpgrade(results, baseUrl, timeoutMs) {
+  const url = toWebSocketUrl(baseUrl, '/api/collaboration/sync');
+
+  await new Promise((resolve) => {
+    let settled = false;
+    const socket = new WebSocket(url, {
+      handshakeTimeout: timeoutMs,
+      headers: { origin: new URL(baseUrl).origin },
+    });
+
+    const finish = (status, detail) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      addResult(results, 'collaboration-sync-ws', status, detail);
+      socket.removeAllListeners();
+      socket.on('error', () => {});
+      socket.terminate();
+      resolve();
+    };
+
+    socket.once('open', () => {
+      finish('pass', 'Document sync endpoint accepted a same-origin upgrade');
+    });
+
+    socket.once('unexpected-response', (_request, response) => {
+      const statusCode = response.statusCode ?? 0;
+      response.resume();
+
+      if (statusCode === 403) {
+        finish('pass', 'Document sync endpoint is up and enforces its origin');
+        return;
+      }
+
+      finish('fail', `Document sync endpoint returned HTTP ${statusCode}`);
+    });
+
+    socket.once('error', (error) => {
+      finish('fail', error instanceof Error ? error.message : 'Document sync endpoint failed');
+    });
+  });
+}
+
 export async function runSmokeChecks({
   baseUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000',
   operationsBaseUrl = process.env.OPERATIONS_BASE_URL || baseUrl,
@@ -292,6 +341,7 @@ export async function runSmokeChecks({
   await checkHtmlRoute(results, normalizedBaseUrl, '/', 'home-route', timeoutMs);
   await checkHtmlRoute(results, normalizedBaseUrl, '/auth/login', 'login-route', timeoutMs);
   await checkCollaborationUpgrade(results, normalizedBaseUrl, timeoutMs);
+  await checkSyncUpgrade(results, normalizedBaseUrl, timeoutMs);
 
   return {
     baseUrl: normalizedBaseUrl,

@@ -1,5 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
+import * as Y from "yjs";
 import { z } from "zod";
+import type { Prisma } from "@/generated/prisma/client";
 import { requireAuth } from "@/lib/api/auth";
 import { prisma } from "@/lib/db";
 import {
@@ -12,6 +14,11 @@ import { parsePagination } from "@/lib/api/pagination";
 import { assertCanvasVersionCapacity } from "@/lib/policy/capacity";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import {
+  readCurrentCanvasDocument,
+  toBytes,
+} from "@/lib/collaboration/sync/store";
+import { readAllItemStates } from "@/lib/collaboration/sync/document-items";
 
 interface RouteContext {
   params: Promise<{ canvasId: string }>;
@@ -42,30 +49,36 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             "Canvas exceeds the supported snapshot item limit",
           );
         }
+        // The snapshot is taken from the collaborative document (IMP-042),
+        // brought up to date with any row write it has not absorbed yet;
+        // item metadata comes from the rows.
+        const document = await readCurrentCanvasDocument(tx, canvasId);
+        const rows = new Map(canvas.items.map((item) => [item.id, item]));
         const snapshot = {
           schemaVersion: 1,
           name: canvas.name,
           zoomLevel: canvas.zoomLevel,
           panX: canvas.panX,
           panY: canvas.panY,
-          items: canvas.items.map((item) => ({
-            id: item.id,
-            type: item.type,
-            positionX: item.positionX,
-            positionY: item.positionY,
-            width: item.width,
-            height: item.height,
-            zIndex: item.zIndex,
-            content: item.content,
-            tags: item.tags,
-            version: item.version,
-            createdById: item.createdById,
-            updatedById: item.updatedById,
-          })),
+          items: readAllItemStates(document)
+            .filter((item) => rows.has(item.id))
+            .map((item) => {
+              const row = rows.get(item.id)!;
+              return {
+                ...item,
+                content: item.content as Prisma.InputJsonValue,
+                version: row.version,
+                createdById: row.createdById,
+                updatedById: row.updatedById,
+              };
+            }),
         };
+        const yjsState = Y.encodeStateAsUpdate(document);
+        document.destroy();
         if (
           Buffer.byteLength(JSON.stringify(snapshot), "utf8") >
-          LAUNCH_LIMITS.versionSnapshotBytes
+            LAUNCH_LIMITS.versionSnapshotBytes ||
+          yjsState.byteLength > LAUNCH_LIMITS.versionSnapshotBytes
         ) {
           throw new ValidationError(
             "Canvas snapshot exceeds the supported byte limit",
@@ -77,7 +90,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             canvasId,
             name: name || `Version ${new Date().toISOString()}`,
             snapshot,
+            yjsState: toBytes(yjsState),
           },
+          omit: { yjsState: true },
         });
       },
       { maxWait: 5_000, timeout: 15_000 },

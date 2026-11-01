@@ -25,6 +25,15 @@ import {
   readCanvasViewport,
   writeCanvasViewport,
 } from "@/features/canvas/viewport-budget";
+import {
+  rendersFromDocument,
+  useCanvasDocument,
+  useCanvasDocumentSnapshot,
+} from "@/lib/hooks/use-canvas-document";
+import {
+  createDocumentItemCache,
+  overlayDocumentItems,
+} from "@/lib/collaboration/sync/canvas-view";
 
 interface UseCanvasDataProps {
   canvasId: string;
@@ -105,7 +114,34 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     error: itemsError,
     refetch: refetchItems,
   } = useCanvasItems(canvasId, undefined, viewport);
-  const allItems = useMemo(() => data?.items ?? [], [data?.items]);
+  // IMP-042: once the collaborative document has synced, it decides which
+  // items exist and how they look; the HTTP page supplies row metadata.
+  const documentSession = useCanvasDocument();
+  const documentSnapshot = useCanvasDocumentSnapshot(documentSession);
+  const showDocument =
+    rendersFromDocument(documentSnapshot) &&
+    documentSession?.canvasId === canvasId;
+  const [documentItemCache] = useState(createDocumentItemCache);
+  const allItems = useMemo(
+    () =>
+      showDocument
+        ? overlayDocumentItems({
+            canvasId,
+            entries: documentSnapshot.items,
+            queried: data?.items ?? [],
+            window: viewport,
+            cache: documentItemCache,
+          })
+        : (data?.items ?? []),
+    [
+      canvasId,
+      data?.items,
+      documentItemCache,
+      documentSnapshot.items,
+      showDocument,
+      viewport,
+    ],
+  );
   const { data: geometryData, refetch: refetchGeometry } =
     useCanvasGeometry(canvasId);
   const { data: summaryData, refetch: refetchSummary } =

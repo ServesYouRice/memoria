@@ -5,11 +5,14 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
+import Collaboration from "@tiptap/extension-collaboration";
+import type * as Y from "yjs";
 import {
   normalizeNoteContent,
   type TiptapNode,
   type VersionedNoteContent,
 } from "@/lib/rich-text/note-format";
+import { collaborativeNoteExtensions } from "@/lib/collaboration/sync/note-schema";
 import {
   Box,
   Button,
@@ -84,6 +87,12 @@ export interface RichTextEditorProps {
   placeholder?: string;
   minHeight?: number;
   editable?: boolean;
+  /**
+   * IMP-042: edit this shared note text live instead of `content`; every
+   * keystroke reaches the canvas document. The extensions are fixed when the
+   * editor is created, so key the component by fragment.
+   */
+  collaboration?: { fragment: Y.XmlFragment };
 }
 
 export function RichTextEditor({
@@ -92,37 +101,52 @@ export function RichTextEditor({
   placeholder = "Start typing...",
   minHeight = 200,
   editable = true,
+  collaboration,
 }: RichTextEditorProps) {
   const [linkDialogOpen, setLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState("");
+  const shared = Boolean(collaboration);
   const initialDocument = React.useMemo(
     () => documentForEditor(content),
     [content],
   );
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3],
-        },
-      }),
-      Placeholder.configure({
-        placeholder,
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          target: "_blank",
-          rel: "noopener noreferrer",
-        },
-      }),
-    ],
-    content: initialDocument,
+    extensions: collaboration
+      ? [
+          // The sync server's note schema, so the editor can only produce
+          // text the server accepts.
+          ...collaborativeNoteExtensions(),
+          Placeholder.configure({ placeholder }),
+          Collaboration.configure({ fragment: collaboration.fragment }),
+        ]
+      : [
+          StarterKit.configure({
+            heading: {
+              levels: [1, 2, 3],
+            },
+          }),
+          Placeholder.configure({
+            placeholder,
+          }),
+          Link.configure({
+            openOnClick: false,
+            HTMLAttributes: {
+              target: "_blank",
+              rel: "noopener noreferrer",
+            },
+          }),
+        ],
+    ...(collaboration ? {} : { content: initialDocument }),
     editable,
     onUpdate: ({ editor }) => {
       const document = editor.getJSON() as TiptapNode;
       try {
-        onChange(normalizeNoteContent({ formatVersion: 1, document }));
+        onChange(
+          normalizeNoteContent(
+            { formatVersion: 1, document },
+            { allowEmpty: shared },
+          ),
+        );
       } catch {
         // Keep the draft versioned while it is temporarily empty. Submit
         // validation still runs normalizeNoteContent and visibly rejects it.
@@ -137,13 +161,15 @@ export function RichTextEditor({
   });
 
   React.useEffect(() => {
-    if (editor) {
+    // Shared text is never replaced from props: that would overwrite what
+    // collaborators are typing.
+    if (editor && !shared) {
       const nextDocument = documentForEditor(content);
       if (JSON.stringify(editor.getJSON()) !== JSON.stringify(nextDocument)) {
         editor.commands.setContent(nextDocument, { emitUpdate: false });
       }
     }
-  }, [editor, content]);
+  }, [editor, content, shared]);
 
   React.useEffect(() => {
     if (editor) {
