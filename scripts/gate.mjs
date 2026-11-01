@@ -131,7 +131,11 @@ function checkDeniedLicenses() {
   }
   const byLicense = JSON.parse(result.stdout);
   const hits = Object.keys(byLicense).filter((license) =>
-    DENIED_LICENSES.some((denied) => license.toUpperCase().includes(denied)),
+    // Match whole SPDX ids: a bare substring test would flag LGPL-3.0-or-later
+    // (sharp's dynamically linked libvips) as GPL-3.0.
+    DENIED_LICENSES.some((denied) =>
+      new RegExp(`(^|[^A-Z])${denied.replace(/\./g, '\\.')}`).test(license.toUpperCase()),
+    ),
   );
   for (const license of hits) {
     const names = byLicense[license].map((p) => p.name).join(', ');
