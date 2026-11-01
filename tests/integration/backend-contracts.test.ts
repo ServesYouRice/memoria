@@ -191,13 +191,15 @@ describe("completed backend contracts", () => {
       prisma.user.create({
         data: {
           email: `owner-${stamp}@example.com`,
-          emailVerified: new Date(),
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
         },
       }),
       prisma.user.create({
         data: {
           email: `recipient-${stamp}@example.com`,
-          emailVerified: new Date(),
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
         },
       }),
     ]);

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { signOutAndRedirect } from "@/lib/auth-client";
 import { toast } from "sonner";
 import {
   Box,
@@ -40,12 +40,14 @@ import {
   DownloadOutlined as DownloadIcon,
   NotificationsActiveOutlined as NotificationsIcon,
   AutoAwesomeOutlined as AiUsageIcon,
+  Shield as SecurityIcon,
 } from "@mui/icons-material";
 import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { gradients } from "@/lib/theme";
 import { NotificationPreferences } from "./NotificationPreferences";
+import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 
 interface SettingsContentProps {
   user: {
@@ -53,6 +55,7 @@ interface SettingsContentProps {
     name?: string | null;
     email?: string | null;
     image?: string | null;
+    twoFactorEnabled?: boolean;
   };
 }
 
@@ -303,7 +306,8 @@ export function SettingsContent({ user }: SettingsContentProps) {
         const error = await response.json();
         throw new Error(error.detail || "Failed to delete account");
       }
-      await signOut({ callbackUrl: "/" });
+      // The account and its sessions are gone; clear the cookie and leave.
+      await signOutAndRedirect("/", { navigateOnError: true });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to delete account",
@@ -462,6 +466,14 @@ export function SettingsContent({ user }: SettingsContentProps) {
               {savingPassword ? "Changing…" : "Change password"}
             </Button>
           </Stack>
+        </SettingsSection>
+
+        {/* Sign-in security */}
+        <SettingsSection
+          icon={<SecurityIcon color="primary" />}
+          title="Sign-in security"
+        >
+          <SecuritySettings twoFactorEnabled={Boolean(user.twoFactorEnabled)} />
         </SettingsSection>
 
         {/* Preferences */}
@@ -686,7 +698,11 @@ export function SettingsContent({ user }: SettingsContentProps) {
             <Button
               variant="outlined"
               color="error"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() =>
+                signOutAndRedirect("/").catch(() =>
+                  toast.error("Sign out failed. Please try again."),
+                )
+              }
               startIcon={<LogoutIcon />}
             >
               Sign out

@@ -6,8 +6,8 @@
 
 import { type IncomingMessage } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { decode } from "next-auth/jwt";
 import { prisma } from "@/lib/db";
+import { getSessionFromHeaders, headersFromNode } from "@/lib/auth/session";
 import { logger } from "@/lib/logger";
 import { nanoid } from "nanoid";
 import { deriveClientIp } from "@/lib/network/client-ip";
@@ -36,7 +36,8 @@ export interface CollaborationUser {
   name?: string;
   color: string;
   accessLevel?: "OWNER" | "EDIT" | "COMMENT" | "VIEW";
-  sessionVersion?: number;
+  /** Better Auth session row backing this connection (absent for guests). */
+  sessionId?: string;
 }
 
 interface ClientConnection {
@@ -67,12 +68,6 @@ const MAX_CONNECTIONS_PER_CLIENT = 30;
 const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
 const REDIS_CHANNEL_PREFIX = "collaboration:canvas:";
-const SESSION_COOKIE_NAMES = [
-  "__Secure-authjs.session-token",
-  "authjs.session-token",
-  "__Secure-next-auth.session-token",
-  "next-auth.session-token",
-] as const;
 const dirtyCursorCanvases = new Set<string>();
 
 interface CursorPosition {
@@ -189,38 +184,8 @@ if (redisSubscriber) {
   });
 }
 
-/**
- * Helper to parse cookies from header
- */
-function parseCookies(request: IncomingMessage): Record<string, string> {
-  const list: Record<string, string> = {};
-  const rc = request.headers.cookie;
-
-  if (rc) {
-    rc.split(";").forEach((cookie) => {
-      const parts = cookie.split("=");
-      const name = parts.shift()?.trim();
-      const value = decodeURIComponent(parts.join("="));
-      if (name) list[name] = value;
-    });
-  }
-
-  return list;
-}
-
 function getChannel(canvasId: string): string {
   return `${REDIS_CHANNEL_PREFIX}${canvasId}`;
-}
-
-function getSessionCookie(cookies: Record<string, string>) {
-  for (const cookieName of SESSION_COOKIE_NAMES) {
-    const value = cookies[cookieName];
-    if (value) {
-      return { name: cookieName, value };
-    }
-  }
-
-  return null;
 }
 
 async function subscribeToCanvas(canvasId: string): Promise<void> {
@@ -437,9 +402,11 @@ export function createCollaborationServer(server: any): WebSocketServer {
             return;
           }
 
-          // 1. Authentication
-          const cookies = parseCookies(request);
-          const sessionCookie = getSessionCookie(cookies);
+          // 1. Authentication: the same session helper as every HTTP route.
+          const authSession = await getSessionFromHeaders(
+            headersFromNode(request.headers),
+            { refresh: false },
+          );
 
           const publicCanvas = await prisma.canvas.findUnique({
             where: { id: canvasId },
@@ -455,10 +422,10 @@ export function createCollaborationServer(server: any): WebSocketServer {
             return;
           }
 
-          if (!sessionCookie) {
+          if (!authSession) {
             const shareToken = url.searchParams.get("shareToken");
             if (!isValidGuestShare(publicCanvas, shareToken)) {
-              logger.warn("WebSocket connection attempt without token");
+              logger.warn("WebSocket connection attempt without a session");
               rejectUpgrade(socket, "HTTP/1.1 401 Unauthorized\r\n\r\n");
               return;
             }
@@ -480,31 +447,10 @@ export function createCollaborationServer(server: any): WebSocketServer {
             return;
           }
 
-          const secret =
-            process.env["NEXTAUTH_SECRET"] || process.env["AUTH_SECRET"];
-          if (!secret) {
-            logger.error(
-              "Missing NEXTAUTH_SECRET/AUTH_SECRET for WebSocket auth",
-            );
-            rejectUpgrade(socket, "HTTP/1.1 500 Internal Server Error\r\n\r\n");
-            return;
-          }
-
-          const decoded = await decode({
-            token: sessionCookie.value,
-            secret,
-            salt: sessionCookie.name,
-          });
-
-          if (!decoded || !decoded.email) {
-            logger.warn("Invalid token for WebSocket connection");
-            rejectUpgrade(socket, "HTTP/1.1 401 Unauthorized\r\n\r\n");
-            return;
-          }
-
           // 2. Authorization
           const user = await prisma.user.findUnique({
-            where: { email: decoded.email as string },
+            where: { id: authSession.user.id },
+            select: { id: true, email: true, name: true },
           });
 
           if (!user) {
@@ -549,7 +495,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             name: user.name || undefined,
             color: collaborationColorForUser(user.id),
             accessLevel,
-            sessionVersion: user.sessionVersion,
+            sessionId: authSession.session.id,
           };
           (request as any).clientId = clientId;
 
@@ -801,10 +747,17 @@ async function revalidateAllConnections(): Promise<void> {
         .filter((userId) => !userId.startsWith("guest:")),
     ),
   );
+  const sessionIds = Array.from(
+    new Set(
+      clients
+        .map((client) => client.user.sessionId)
+        .filter((sessionId): sessionId is string => Boolean(sessionId)),
+    ),
+  );
   const canvasIds = Array.from(
     new Set(clients.map((client) => client.canvasId)),
   );
-  const [canvases, users] = await Promise.all([
+  const [canvases, sessions] = await Promise.all([
     prisma.canvas.findMany({
       where: { id: { in: canvasIds } },
       select: {
@@ -818,13 +771,18 @@ async function revalidateAllConnections(): Promise<void> {
         },
       },
     }),
-    prisma.user.findMany({
-      where: { id: { in: authenticatedIds } },
-      select: { id: true, sessionVersion: true },
+    // Revocation deletes Session rows (sign-out, password change or reset,
+    // "sign out other sessions"), so a missing or expired row closes the
+    // socket at the next refresh.
+    prisma.session.findMany({
+      where: { id: { in: sessionIds }, expiresAt: { gt: new Date() } },
+      select: { id: true, userId: true },
     }),
   ]);
 
-  const versions = new Map(users.map((user) => [user.id, user.sessionVersion]));
+  const liveSessions = new Map(
+    sessions.map((session) => [session.id, session.userId]),
+  );
   const canvasById = new Map(canvases.map((canvas) => [canvas.id, canvas]));
   const checkedAt = Date.now();
   for (const client of clients) {
@@ -836,8 +794,9 @@ async function revalidateAllConnections(): Promise<void> {
     )?.role;
     const accessLevel = resolveCollaborationAccess({
       principalId: userId,
-      expectedSessionVersion: client.user.sessionVersion,
-      persistedSessionVersion: versions.get(userId),
+      sessionActive:
+        client.user.sessionId !== undefined &&
+        liveSessions.get(client.user.sessionId) === userId,
       guestShareToken: client.guestShareToken,
       canvas: canvas
         ? {

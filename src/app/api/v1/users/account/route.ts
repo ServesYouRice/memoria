@@ -8,8 +8,9 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import * as argon2 from "argon2";
 import { prisma } from "@/lib/db";
+import { verifyPassword } from "@/lib/auth/password";
+import { getCredentialPasswordHash } from "@/lib/auth/credentials";
 import { requireAuth } from "@/lib/api/auth";
 import { errorResponse, BadRequestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
@@ -63,21 +64,15 @@ export async function DELETE(request: NextRequest) {
     // Validate input
     const data = deleteAccountSchema.parse(body);
 
-    // Get user with password
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { passwordHash: true },
-    });
+    // Get the credential password hash
+    const passwordHash = await getCredentialPasswordHash(prisma, userId);
 
-    if (!user?.passwordHash) {
+    if (!passwordHash) {
       throw new BadRequestError("Cannot delete this account type");
     }
 
     // Verify password
-    const isValidPassword = await argon2.verify(
-      user.passwordHash,
-      data.password,
-    );
+    const isValidPassword = await verifyPassword(passwordHash, data.password);
     if (!isValidPassword) {
       throw new BadRequestError("Password is incorrect");
     }
@@ -176,10 +171,17 @@ export async function DELETE(request: NextRequest) {
         where: { userId },
       });
 
-      // Delete accounts (OAuth)
+      // Delete accounts (credential and any linked providers)
       await tx.account.deleteMany({
         where: { userId },
       });
+
+      // Passkeys and two-factor secrets also cascade from the user row; the
+      // explicit deletes keep this list a complete record of what goes.
+      await tx.passkey.deleteMany({ where: { userId } });
+      await tx.twoFactor.deleteMany({ where: { userId } });
+      // Trusted-device and pending two-factor challenges store the user id.
+      await tx.verification.deleteMany({ where: { value: userId } });
 
       // Delete the user
       await tx.user.delete({

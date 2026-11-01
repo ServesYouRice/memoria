@@ -12,7 +12,10 @@ import { z } from "zod";
 import { hashPassword } from "@/lib/auth/password";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import { createHash } from "crypto";
-import { invalidateSessionVersion } from "@/lib/api/session-cache";
+import {
+  createCredentialAccount,
+  setCredentialPassword,
+} from "@/lib/auth/credentials";
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
@@ -83,16 +86,14 @@ export async function POST(request: NextRequest) {
       if (claimed.count !== 1) {
         throw new BadRequestError("Reset token has already been used");
       }
-      await tx.user.update({
-        where: { id: user.id },
-        data: {
-          passwordHash,
-          sessionVersion: { increment: 1 },
-        },
-      });
+      const updated = await setCredentialPassword(tx, user.id, passwordHash);
+      if (updated !== 1) {
+        // A reset may also give a password to an account that never had one.
+        await createCredentialAccount(tx, user.id, passwordHash);
+      }
+      // Deleting server-side sessions revokes every signed-in device.
       await tx.session.deleteMany({ where: { userId: user.id } });
     });
-    await invalidateSessionVersion(user.id);
 
     return NextResponse.json({
       message:

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Box, Paper, InputBase, Typography } from "@mui/material";
 
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/auth-client";
 
 interface CursorChatProps {
   x: number;

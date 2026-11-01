@@ -3,7 +3,7 @@
 import React from "react";
 import { Group, Rect, Text } from "react-konva";
 import { isPollContent, type CanvasItemAdapterProps } from "@/types/canvas";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/auth-client";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 
 type PollItemProps = CanvasItemAdapterProps;

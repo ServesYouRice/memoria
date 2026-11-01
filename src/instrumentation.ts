@@ -9,55 +9,6 @@
  * @see https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
  */
 
-type LoggerLike = {
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  fatal?: (...args: unknown[]) => void;
-};
-
-const APPROVED_NEXT_AUTH_VERSION = "5.0.0-beta.31";
-
-async function checkNextAuthVersion(logger: LoggerLike): Promise<void> {
-  try {
-    const packageJsonModule = await import("../package.json");
-    const packageJson = (packageJsonModule.default ?? packageJsonModule) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    const nextAuthVersion =
-      packageJson.dependencies?.["next-auth"] ??
-      packageJson.devDependencies?.["next-auth"];
-
-    if (
-      typeof nextAuthVersion === "string" &&
-      nextAuthVersion.includes("beta")
-    ) {
-      const exactPinMessage =
-        nextAuthVersion === APPROVED_NEXT_AUTH_VERSION
-          ? `Auth.js is intentionally exact-pinned to next-auth@${nextAuthVersion} because the Next.js package still ships on the beta track upstream.`
-          : `Unexpected next-auth beta version detected: next-auth@${nextAuthVersion}. Expected ${APPROVED_NEXT_AUTH_VERSION}.`;
-
-      logger.warn(exactPinMessage);
-      console.warn("");
-      console.warn("WARNING: NextAuth beta in use");
-      console.warn(`Current version: next-auth@${nextAuthVersion}`);
-      if (nextAuthVersion === APPROVED_NEXT_AUTH_VERSION) {
-        console.warn(
-          `This build intentionally exact-pins next-auth@${APPROVED_NEXT_AUTH_VERSION}. Keep auth regression coverage green before changing it.`,
-        );
-      } else {
-        console.warn(
-          `This repo expects next-auth@${APPROVED_NEXT_AUTH_VERSION}. Review auth behavior before deploying this unexpected beta.`,
-        );
-      }
-      console.warn("");
-    }
-  } catch (error) {
-    logger.warn("Failed to check NextAuth version", error);
-  }
-}
-
 export async function register() {
   if (process.env["NEXT_RUNTIME"] === "nodejs") {
     const sentryEnabled =
@@ -71,8 +22,6 @@ export async function register() {
 
     await import("./lib/env");
     if (sentryEnabled) await import("../sentry.server.config");
-
-    await checkNextAuthVersion(logger);
 
     validateCorsConfig();
 
