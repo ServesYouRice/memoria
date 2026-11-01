@@ -8,8 +8,9 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
-  S3Client,
+  type S3Client,
 } from "@aws-sdk/client-s3";
+import { createS3Client } from "./s3-client.mjs";
 
 let s3Client: S3Client | null = null;
 
@@ -21,11 +22,11 @@ function getS3Client() {
   if (!region || !accessKeyId || !secretAccessKey) {
     throw new Error("Private upload storage is not configured");
   }
-  s3Client = new S3Client({
+  s3Client = createS3Client({
     region,
     endpoint: process.env.S3_ENDPOINT,
-    forcePathStyle: Boolean(process.env.S3_ENDPOINT),
-    credentials: { accessKeyId, secretAccessKey },
+    accessKeyId,
+    secretAccessKey,
   });
   return s3Client;
 }

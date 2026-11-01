@@ -8,8 +8,8 @@ import {
   CreateBucketCommand,
   GetBucketVersioningCommand,
   HeadBucketCommand,
-  S3Client,
 } from '@aws-sdk/client-s3';
+import { createS3Client } from '../../src/lib/uploads/s3-client.mjs';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
@@ -172,14 +172,11 @@ export async function ensureS3Bucket({
   createIfMissing = true,
   requireVersioning = false,
 }) {
-  const client = new S3Client({
+  const client = createS3Client({
     endpoint,
     region,
-    forcePathStyle: Boolean(endpoint),
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
+    accessKeyId,
+    secretAccessKey,
   });
 
   try {

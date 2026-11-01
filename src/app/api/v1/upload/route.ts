@@ -17,7 +17,8 @@ import { runIdempotent, withApiHandler } from "@/lib/api/route-handler";
 import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { prisma } from "@/lib/db";
 import { ApiError, UnprocessableEntityError } from "@/lib/errors";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { type S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { createS3Client } from "@/lib/uploads/s3-client.mjs";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import {
   activateUploadAsset,
@@ -142,14 +143,11 @@ function getS3Client(): S3Client {
     );
   }
 
-  s3Client = new S3Client({
+  s3Client = createS3Client({
     region,
     endpoint,
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
-    forcePathStyle: Boolean(endpoint),
+    accessKeyId,
+    secretAccessKey,
   });
 
   return s3Client;
