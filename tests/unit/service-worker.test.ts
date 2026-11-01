@@ -12,7 +12,13 @@ import vm from "vm";
  * text, or re-declaring the filter inside the test, would keep passing if the
  * predicate in `sw.js` regressed.
  */
-function loadServiceWorker(existingCacheNames: string[]) {
+function loadServiceWorker(
+  existingCacheNames: string[],
+  options: {
+    fetch?: (request: unknown) => Promise<unknown>;
+    cached?: Record<string, Record<string, unknown>>;
+  } = {},
+) {
   const source = fs.readFileSync(
     path.resolve(import.meta.dirname, "../../public/sw.js"),
     "utf-8",
@@ -28,8 +34,13 @@ function loadServiceWorker(existingCacheNames: string[]) {
       deleted.push(name);
       return Promise.resolve(true);
     },
-    open: () => Promise.resolve({ addAll: () => Promise.resolve() }),
-    match: () => Promise.resolve(undefined),
+    open: (name: string) =>
+      Promise.resolve({
+        addAll: () => Promise.resolve(),
+        match: (key: string) => Promise.resolve(options.cached?.[name]?.[key]),
+      }),
+    match: (key: string) =>
+      Promise.resolve(options.cached?.["memoria-public-v2"]?.[key]),
   };
 
   const self = {
@@ -50,7 +61,7 @@ function loadServiceWorker(existingCacheNames: string[]) {
     self,
     caches,
     URL,
-    fetch,
+    fetch: options.fetch ?? fetch,
     console,
   };
   sandbox.globalThis = sandbox;
@@ -117,5 +128,70 @@ describe("service worker cache activation filter", () => {
     await dispatch(listeners, "activate");
 
     expect(wasClaimed()).toBe(true);
+  });
+});
+
+describe("service worker navigation fallback (IMP-045)", () => {
+  const SHELLS = "memoria-canvas-shells-v1";
+
+  it("keeps cached canvas shells across activations", async () => {
+    const { listeners, deleted } = loadServiceWorker([
+      "memoria-public-v2",
+      SHELLS,
+    ]);
+
+    await dispatch(listeners, "activate");
+
+    expect(deleted).toEqual([]);
+  });
+
+  async function navigate(
+    pathname: string,
+    options: Parameters<typeof loadServiceWorker>[1],
+  ) {
+    const { listeners } = loadServiceWorker([], options);
+    let response: Promise<unknown> | undefined;
+    listeners.get("fetch")!({
+      request: {
+        method: "GET",
+        mode: "navigate",
+        url: `https://memoria.example${pathname}`,
+      },
+      respondWith: (value: Promise<unknown>) => {
+        response = value;
+      },
+    });
+    return response;
+  }
+
+  const offline = () => Promise.reject(new TypeError("Failed to fetch"));
+  const cached = {
+    [SHELLS]: { "/canvas/cabc123": { body: "canvas shell" } },
+    "memoria-public-v2": { "/offline": { body: "offline page" } },
+  };
+
+  it("serves a canvas's cached shell when the network fails", async () => {
+    await expect(
+      navigate("/canvas/cabc123", { fetch: offline, cached }),
+    ).resolves.toEqual({ body: "canvas shell" });
+  });
+
+  it("falls back to the offline page for other pages and unknown canvases", async () => {
+    await expect(
+      navigate("/canvas/cother", { fetch: offline, cached }),
+    ).resolves.toEqual({ body: "offline page" });
+    await expect(
+      navigate("/dashboard", { fetch: offline, cached }),
+    ).resolves.toEqual({ body: "offline page" });
+  });
+
+  it("always prefers the network", async () => {
+    const live = { body: "live page" };
+    await expect(
+      navigate("/canvas/cabc123", {
+        fetch: () => Promise.resolve(live),
+        cached,
+      }),
+    ).resolves.toBe(live);
   });
 });
