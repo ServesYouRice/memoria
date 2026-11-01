@@ -3,7 +3,7 @@
 The deployment operator owns recovery. Production targets an RPO of one hour
 and an RTO of four hours. The reference stack writes database dumps, upload
 archives, inventories, and authenticated manifests to a separate backup
-account and bucket; the application MinIO service is never the backup target.
+account and bucket; the local S3-compatible service in Docker Compose is never the backup target.
 
 ## Cloudflare R2
 
