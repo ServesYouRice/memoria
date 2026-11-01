@@ -21,11 +21,17 @@ Redis, S3 (SeaweedFS) and captured email, and the strict operations smoke passes
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
+| [IMP-039](tasks/IMP-039.md) | Cloudflare R2 as the production object store | - |
+| [IMP-040](tasks/IMP-040.md) | Local verification replaces hosted CI | - |
+| [IMP-041](tasks/IMP-041.md) | Better Auth replaces next-auth 5 beta | - |
+| [IMP-044](tasks/IMP-044.md) | Signed embeds with per-embed framing | - |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
+| [IMP-042](tasks/IMP-042.md) | Real co-editing on Yjs with a Hocuspocus sync server | IMP-041 |
+| [IMP-043](tasks/IMP-043.md) | Realtime split and replica-ready processes | IMP-042 |
 
 ## USER DECISIONS
 
@@ -34,4 +40,3 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 
 | ID | Decision | Recommended | Choice | Unblocks |
 | -- | -------- | ----------- | ------ | -------- |
-| DEC-015 | Adopt the handbook platform plan for Memoria | Decide scope and order: Better Auth migration, Resend/SES or SMTP email, realtime service split for replicas, Cloudflare R2 (with checksum settings) in production |  | new cards |
