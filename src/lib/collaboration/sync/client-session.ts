@@ -383,6 +383,18 @@ export class CanvasDocumentSession {
       ...(this.options.WebSocketPolyfill
         ? { WebSocketPolyfill: this.options.WebSocketPolyfill }
         : {}),
+      onConnect: () => {
+        // Runs before the provider sends the edits it queued while offline.
+        // Edits kept by an earlier page (a reload without a network) are in
+        // the device copy, not in that queue, and the server refuses an edit
+        // that builds on changes it lacks. Send the whole copy first: it
+        // holds every change the server may lack, and changes the server
+        // already has are no-ops.
+        if (this.provider !== provider || this.snapshot.unsavedChanges === 0)
+          return;
+        provider.documentUpdateHandler(Y.encodeStateAsUpdate(this.doc), null);
+        provider.flushPendingUpdates();
+      },
       onStatus: ({ status }) => {
         if (this.provider === provider)
           this.update({ connected: status === "connected" });

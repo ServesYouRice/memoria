@@ -96,11 +96,14 @@ function openSession(input: {
   canvasId: string;
   member: SignedInUser;
   onRejectedChange?: () => void;
+  /** While `down`, every connection attempt fails, as without a network. */
+  network?: { down: boolean };
 }) {
   const headers = { origin: TEST_ORIGIN, cookie: input.member.cookie };
+  const network = input.network;
   class SessionWebSocket extends WebSocket {
     constructor(address: string) {
-      super(address, { headers });
+      super(network?.down ? OFFLINE_URL : address, { headers });
     }
   }
   const session = new CanvasDocumentSession({
@@ -134,7 +137,10 @@ async function waitFor(
   }
 }
 
-async function waitForStored(session: CanvasDocumentSession) {
+async function waitForStored(
+  session: CanvasDocumentSession,
+  timeoutMs?: number,
+) {
   await waitFor(() => {
     const snapshot = session.getSnapshot();
     return (
@@ -143,7 +149,7 @@ async function waitForStored(session: CanvasDocumentSession) {
       snapshot.pendingChanges === 0 &&
       snapshot.unsavedChanges === 0
     );
-  });
+  }, timeoutMs);
 }
 
 function noteInput(canvasId: string, text: string, positionX = 10) {
@@ -251,6 +257,37 @@ describe("offline canvas edits", () => {
       { id: created.id, positionX: 400 },
     ]);
   });
+
+  it("stores an edit made after an offline reload once the same page reconnects", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const url = await startServer();
+    const note = await visitOnline(url, canvas.id, owner);
+
+    // Offline: an edit, then a reload, still offline.
+    const first = await openOffline(canvas.id, owner);
+    first.updateItem(note.id, { positionX: 300 });
+    await reload(first);
+
+    // The reloaded page builds on that edit, then the network comes back.
+    const network = { down: true };
+    const rejected = vi.fn();
+    const page = openSession({
+      url,
+      canvasId: canvas.id,
+      member: owner,
+      network,
+      onRejectedChange: rejected,
+    });
+    await waitFor(() => page.getSnapshot().restored);
+    page.updateItem(note.id, { positionX: 350 });
+    expect(page.getSnapshot().unsavedChanges).toBe(2);
+    network.down = false;
+
+    await waitForStored(page, 20_000);
+    expect(rejected).not.toHaveBeenCalled();
+    const row = await prisma.canvasItem.findUnique({ where: { id: note.id } });
+    expect(row?.positionX).toBe(350);
+  }, 30_000);
 
   it("discards an offline change the server refuses and never sends it again", async () => {
     const canvas = await createCanvas(owner.user.id);
