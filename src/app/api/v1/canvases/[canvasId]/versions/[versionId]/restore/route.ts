@@ -1,12 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { ItemType, Prisma } from "@/generated/prisma/client";
+import { CanvasVersionKind, ItemType, Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
-import { requireAuth } from "@/lib/api/auth";
+import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { prisma } from "@/lib/db";
 import {
   ConflictError,
   NotFoundError,
-  ForbiddenError,
   ValidationError,
   errorResponse,
 } from "@/lib/errors";
@@ -19,6 +18,11 @@ import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 interface RouteContext {
   params: Promise<{ canvasId: string; versionId: string }>;
 }
+
+const paramsSchema = z.object({
+  canvasId: z.string().min(1).max(128),
+  versionId: z.string().min(1).max(128),
+});
 
 const snapshotItemSchema = z
   .object({
@@ -46,39 +50,24 @@ const snapshotSchema = z
   })
   .passthrough();
 
-export async function GET(request: NextRequest, { params }: RouteContext) {
-  try {
-    const { userId } = await requireAuth();
-    const { canvasId, versionId } = await params;
-    const version = await prisma.canvasVersion.findFirst({
-      where: { id: versionId, canvasId, canvas: { userId } },
-      select: { id: true, name: true, createdAt: true, snapshot: true },
-    });
-    if (!version) throw new NotFoundError("Version not found");
-    return NextResponse.json(version);
-  } catch (error) {
-    return errorResponse(error, request.url);
-  }
-}
-
 export async function POST(request: NextRequest, { params }: RouteContext) {
   try {
-    const { userId } = await requireAuth();
-    const { canvasId, versionId } = await params;
+    const { userId, email } = await requireAuth();
+    const { canvasId, versionId } = paramsSchema.parse(await params);
     const result = await prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '10000ms'");
         await lockCanvasForMutation(tx, canvasId);
+        // Owners and editors may restore; viewers and commenters may not.
+        await requireCanvasAccess(canvasId, userId, email, "EDIT", tx);
         const [canvas, version] = await Promise.all([
           tx.canvas.findUnique({
             where: { id: canvasId },
-            select: { userId: true, name: true },
+            select: { name: true },
           }),
           tx.canvasVersion.findFirst({ where: { id: versionId, canvasId } }),
         ]);
         if (!canvas) throw new NotFoundError("Canvas not found");
-        if (canvas.userId !== userId)
-          throw new ForbiddenError("You can only restore your own canvases");
         if (!version) throw new NotFoundError("Version not found");
         const serialized = JSON.stringify(version.snapshot);
         if (
@@ -173,12 +162,18 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           },
           select: { restoreRevision: true },
         });
+        // Only manual versions count against the cap; automatic ones are
+        // thinned by their own retention job (IMP-046).
         const versionCount = await tx.canvasVersion.count({
-          where: { canvasId },
+          where: { canvasId, kind: CanvasVersionKind.MANUAL },
         });
         if (versionCount >= LAUNCH_LIMITS.versionsPerCanvas) {
           const oldest = await tx.canvasVersion.findMany({
-            where: { canvasId, id: { not: versionId } },
+            where: {
+              canvasId,
+              kind: CanvasVersionKind.MANUAL,
+              id: { not: versionId },
+            },
             orderBy: { createdAt: "asc" },
             take: versionCount - LAUNCH_LIMITS.versionsPerCanvas + 1,
             select: { id: true },
@@ -192,7 +187,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           // admits null; map it explicitly rather than widening the write type.
           data: {
             canvasId,
-            name: `Restored ${version.name}`,
+            kind: CanvasVersionKind.MANUAL,
+            createdById: userId,
+            contentHash: version.contentHash,
+            name: `Restored ${version.name}`.slice(0, 255),
             snapshot: version.snapshot ?? Prisma.JsonNull,
             yjsState: version.yjsState,
           },

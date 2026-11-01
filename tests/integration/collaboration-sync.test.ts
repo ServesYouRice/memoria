@@ -14,11 +14,16 @@ import {
   vi,
 } from "vitest";
 
+import type * as AuthModule from "@/lib/api/auth";
+
 const routeAuth = vi.hoisted(() => ({ userId: "" }));
 
 vi.mock("@/lib/cache/redis-client", () => ({ getRedisClient: () => null }));
-vi.mock("@/lib/api/auth", () => ({
-  requireAuth: async () => ({ userId: routeAuth.userId }),
+// Version routes authorize with the real `requireCanvasAccess` (IMP-046); only
+// the session lookup is replaced.
+vi.mock("@/lib/api/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof AuthModule>()),
+  requireAuth: async () => ({ userId: routeAuth.userId, email: "" }),
 }));
 
 import { NextRequest } from "next/server";

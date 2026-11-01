@@ -78,8 +78,10 @@ export async function assertCanvasShareCapacity(
 export async function assertCanvasVersionCapacity(tx: Store, canvasId: string) {
   await lock(tx, "canvas-version", canvasId);
   if (
-    (await tx.canvasVersion.count({ where: { canvasId } })) >=
-    LAUNCH_LIMITS.versionsPerCanvas
+    // Automatic snapshots are thinned by their own retention policy (IMP-046).
+    (await tx.canvasVersion.count({
+      where: { canvasId, kind: "MANUAL" },
+    })) >= LAUNCH_LIMITS.versionsPerCanvas
   )
     exceeded("canvas versions", LAUNCH_LIMITS.versionsPerCanvas);
 }

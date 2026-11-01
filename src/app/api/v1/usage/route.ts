@@ -15,7 +15,9 @@ export const GET = withApiHandler(async () => {
         where: { canvas: { userId }, deletedAt: null },
       }),
       prisma.canvasShare.count({ where: { canvas: { userId } } }),
-      prisma.canvasVersion.count({ where: { canvas: { userId } } }),
+      prisma.canvasVersion.count({
+        where: { canvas: { userId }, kind: "MANUAL" },
+      }),
       prisma.uploadQuota.findUnique({ where: { userId } }),
       getAiUsage(userId),
     ]);

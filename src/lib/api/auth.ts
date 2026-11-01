@@ -8,6 +8,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { UnauthorizedError, ForbiddenError } from "@/lib/errors";
 import { getCachedSession } from "@/lib/api/session-cache";
 import type { CanvasAccessLevel } from "@/types/canvas";
@@ -48,8 +49,10 @@ export async function getCanvasAccess(
   canvasId: string,
   userId: string,
   _userEmail: string,
+  // A transaction client, for a check that must see what the caller's lock holds.
+  client: Pick<Prisma.TransactionClient, "canvas"> = prisma,
 ): Promise<CanvasAccessLevel> {
-  const canvas = await prisma.canvas.findUnique({
+  const canvas = await client.canvas.findUnique({
     where: { id: canvasId },
     select: {
       userId: true,
@@ -87,8 +90,9 @@ export async function requireCanvasAccess(
   userId: string,
   userEmail: string,
   requiredLevel: "VIEW" | "COMMENT" | "EDIT" | "OWNER",
+  client: Pick<Prisma.TransactionClient, "canvas"> = prisma,
 ): Promise<CanvasAccessLevel> {
-  const access = await getCanvasAccess(canvasId, userId, userEmail);
+  const access = await getCanvasAccess(canvasId, userId, userEmail, client);
 
   // Define access hierarchy
   const accessHierarchy: Record<CanvasAccessLevel, number> = {

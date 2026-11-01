@@ -17,6 +17,14 @@ import {
   createVersionRetentionHandler,
   createMaintenanceRetentionHandler,
 } from "../src/lib/retention/outbox-handler";
+import {
+  createAutoRetentionHandler,
+  createAutoSnapshotHandler,
+} from "../src/lib/versions/outbox-handler";
+import {
+  AUTO_RETENTION_JOB,
+  AUTO_SNAPSHOT_JOB,
+} from "../src/lib/versions/policy";
 import { createBookmarkRefreshHandler } from "../src/lib/bookmarks/outbox-handler";
 import {
   createThumbnailDeleteHandler,
@@ -45,6 +53,8 @@ await runOutboxWorker({
     "retention.trash": createTrashRetentionHandler(prisma),
     "retention.versions": createVersionRetentionHandler(prisma),
     "retention.maintenance": createMaintenanceRetentionHandler(prisma),
+    [AUTO_SNAPSHOT_JOB]: createAutoSnapshotHandler(prisma),
+    [AUTO_RETENTION_JOB]: createAutoRetentionHandler(prisma),
     "bookmark.refresh": createBookmarkRefreshHandler(prisma),
     "thumbnail.store": createThumbnailStoreHandler(prisma),
     "thumbnail.delete": createThumbnailDeleteHandler(),
