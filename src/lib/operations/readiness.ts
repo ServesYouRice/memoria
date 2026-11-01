@@ -116,3 +116,35 @@ export async function evaluateReadiness(
     checks: results,
   };
 }
+
+/**
+ * Share one readiness evaluation across callers for `ttlMs`. Concurrent
+ * callers while an evaluation runs wait for that same run, so a burst of
+ * requests costs one set of dependency checks per window. A run that throws
+ * is not cached.
+ */
+export function createCachedReadiness(
+  evaluate: () => Promise<ReadinessSnapshot>,
+  ttlMs: number,
+  now: () => number = Date.now,
+): () => Promise<ReadinessSnapshot> {
+  let cached: { snapshot: ReadinessSnapshot; expiresAt: number } | null = null;
+  let inflight: Promise<ReadinessSnapshot> | null = null;
+
+  return () => {
+    if (cached && cached.expiresAt > now()) {
+      return Promise.resolve(cached.snapshot);
+    }
+    if (!inflight) {
+      inflight = evaluate()
+        .then((snapshot) => {
+          cached = { snapshot, expiresAt: now() + ttlMs };
+          return snapshot;
+        })
+        .finally(() => {
+          inflight = null;
+        });
+    }
+    return inflight;
+  };
+}

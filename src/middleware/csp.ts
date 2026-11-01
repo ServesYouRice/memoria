@@ -8,6 +8,41 @@ export function generateNonce(): string {
   return nanoid(32);
 }
 
+function originOf(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The WebSocket origin of the app itself. Browsers that follow CSP Level 3
+ * already let 'self' cover same-host ws/wss, but older engines do not, so the
+ * collaboration (/api/collaboration/*) and sync sockets are named explicitly.
+ */
+function appSocketOrigin(): string | null {
+  const origin = originOf(process.env.AUTH_URL ?? process.env.NEXTAUTH_URL);
+  return origin ? origin.replace(/^http/, "ws") : null;
+}
+
+/** The Sentry ingest host the browser SDK posts envelopes to, if enabled. */
+function sentryIngestOrigin(): string | null {
+  return originOf(process.env.NEXT_PUBLIC_SENTRY_DSN);
+}
+
+/** A public upload bucket (S3/R2) that serves images straight to browsers. */
+function publicUploadsOrigin(): string | null {
+  return originOf(process.env.UPLOADS_PUBLIC_URL);
+}
+
+function present(values: Array<string | null>): string[] {
+  return [...new Set(values.filter((value): value is string => !!value))];
+}
+
 /**
  * Build a strict Content Security Policy with nonce-based script/style allowlist
  * Following ADR-0002: Nonce-Based Strict CSP
@@ -26,9 +61,20 @@ export function buildCSP(
         : ["'strict-dynamic'"]),
     ],
     "style-src": ["'self'", "'nonce-" + nonce + "'"],
-    "img-src": ["'self'", "data:", "blob:", "https:"],
+    // Bookmark favicons and preview images, external image items, and OAuth
+    // avatars are arbitrary third-party HTTPS images the browser loads
+    // directly, so img-src keeps https: until those go through an image proxy.
+    "img-src": present([
+      "'self'",
+      "data:",
+      "blob:",
+      publicUploadsOrigin(),
+      "https:",
+    ]),
     "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
-    "connect-src": ["'self'", "wss:", "https:"],
+    // Browser code only talks to this app (HTTP and its WebSockets) and,
+    // when configured, Sentry. No other host may receive data.
+    "connect-src": present(["'self'", appSocketOrigin(), sentryIngestOrigin()]),
     "frame-ancestors": frameAncestors.length > 0 ? frameAncestors : ["'none'"],
     "frame-src": ["'none'"],
     "object-src": ["'none'"],
