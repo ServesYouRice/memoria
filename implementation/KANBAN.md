@@ -24,7 +24,6 @@ remain gated on DEC-014; CI exercises the E2E gate.
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-067](tasks/IMP-067.md) | Clear the production dependency advisories that fail CI | |
 
 ## WAITING
 
