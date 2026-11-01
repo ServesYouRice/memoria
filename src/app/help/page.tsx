@@ -23,9 +23,12 @@ export default function HelpPage() {
         keyboard-shortcut reference.
       </InfoSection>
       <InfoSection title="Sharing roles">
-        Viewers can read, commenters can participate in comments, editors can
-        change items, and owners manage sharing, versions, thumbnails, and
-        deletion.
+        Viewers can read and can preview earlier versions in Version History,
+        commenters can participate in comments, editors can change items and
+        restore or save versions, and owners manage sharing, thumbnails, and
+        deletion. Memoria saves an automatic snapshot of a canvas you are
+        editing at most every ten minutes, and thins out old automatic snapshots
+        over time; versions you save yourself are kept.
       </InfoSection>
       <InfoSection title="Embeds, timer, and AR">
         Embedded links are shown as previews: Memoria displays where the link

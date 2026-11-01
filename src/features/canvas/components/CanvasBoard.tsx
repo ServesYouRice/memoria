@@ -1120,9 +1120,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onZoomChange={setZoom}
         onFitToScreen={fitToScreen}
         onExport={() => setExportDialogOpen(true)}
-        onVersionHistory={
-          isOwner ? () => setVersionHistoryOpen(true) : undefined
-        }
+        onVersionHistory={() => setVersionHistoryOpen(true)}
         onTagFilter={() => setTagFilterOpen(true)}
         onAI={canEdit ? () => setAiDialogOpen(true) : undefined}
         activeTagCount={selectedTags.length}
@@ -1593,9 +1591,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           currentIndex={timeMachineIndex}
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
-          onRestore={async (version) => {
-            setPendingRestoreVersionId(version.id);
-          }}
+          onRestore={
+            canEdit
+              ? async (version) => {
+                  setPendingRestoreVersionId(version.id);
+                }
+              : undefined
+          }
         />
       )}
       {isOwner && (
