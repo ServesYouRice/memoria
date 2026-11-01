@@ -77,6 +77,15 @@ describe("collaboration peer leases and authorization", () => {
     expect(presence.values("canvas-1")).toEqual([]);
   });
 
+  it("tells a known peer from a new or expired one", () => {
+    const presence = new ExpiringCanvasInstances<string[]>();
+    expect(presence.has("canvas-1", "instance-a", 0)).toBe(false);
+    presence.upsert("canvas-1", "instance-a", ["alice"], 0, 1_000);
+    expect(presence.has("canvas-1", "instance-a", 500)).toBe(true);
+    expect(presence.has("canvas-2", "instance-a", 500)).toBe(false);
+    expect(presence.has("canvas-1", "instance-a", 1_000)).toBe(false);
+  });
+
   it("fails closed for rotated guest links and revoked sessions", () => {
     const canvas = {
       userId: "owner",

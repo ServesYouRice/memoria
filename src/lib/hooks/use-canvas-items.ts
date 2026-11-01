@@ -526,6 +526,37 @@ function applyCommittedCanvasItemBatch(
   );
 }
 
+const OFFLINE_PLACEHOLDER = "offlinePlaceholder";
+
+/**
+ * IMP-045: a canvas reloaded without a network renders from its device copy.
+ * The item page cannot load then; an empty placeholder page keeps the
+ * suspense query from throwing the canvas into its error boundary.
+ */
+export async function listItemsOrOfflinePlaceholder(
+  canvasId: string,
+  type?: ItemType,
+  viewport?: ViewportParams,
+) {
+  try {
+    return await api.listItems(canvasId, type, viewport);
+  } catch (error) {
+    const offline =
+      typeof navigator !== "undefined" && navigator.onLine === false;
+    if (!offline || !(error instanceof TypeError)) throw error;
+    return {
+      items: [] as CanvasItem[],
+      total: 0,
+      offset: 0,
+      limit: 0,
+      nextCursor: null,
+      hasMore: false,
+      truncatedByBytes: false,
+      [OFFLINE_PLACEHOLDER]: true as const,
+    };
+  }
+}
+
 /**
  * Fetch all items for a canvas with optional type filtering and viewport pagination
  *
@@ -562,7 +593,12 @@ export function useCanvasItems(
 ) {
   return useSuspenseQuery({
     queryKey: canvasItemKeys.list(canvasId, type, viewport),
-    queryFn: () => api.listItems(canvasId, type, viewport),
+    queryFn: () => listItemsOrOfflinePlaceholder(canvasId, type, viewport),
+    // An offline placeholder is replaced as soon as the network is back.
+    staleTime: (query) =>
+      query.state.data && OFFLINE_PLACEHOLDER in query.state.data
+        ? 0
+        : 5 * 60 * 1000,
   });
 }
 

@@ -181,6 +181,11 @@ export class ExpiringCanvasInstances<T> {
     instances.set(instanceId, { value, expiresAt: now + leaseMs });
   }
 
+  has(canvasId: string, instanceId: string, now = Date.now()): boolean {
+    const entry = this.canvases.get(canvasId)?.get(instanceId);
+    return entry !== undefined && entry.expiresAt > now;
+  }
+
   values(canvasId: string, now = Date.now()): T[] {
     const instances = this.canvases.get(canvasId);
     if (!instances) return [];

@@ -323,8 +323,15 @@ async function handleRedisMessage(
     case "presence": {
       const payload = message.payload as { users?: CollaborationUser[] };
       const users = Array.isArray(payload.users) ? payload.users : [];
+      // An instance new to this canvas has not seen ours yet; answer at once
+      // instead of leaving it to wait for the next heartbeat.
+      const newInstance = !remotePresence.has(canvasId, message.instanceId);
       remotePresence.upsert(canvasId, message.instanceId, users, Date.now());
       broadcastPresence(canvasId);
+      if (newInstance) {
+        publishPresence(canvasId);
+        publishCursors(canvasId);
+      }
       break;
     }
     case "cursors": {
