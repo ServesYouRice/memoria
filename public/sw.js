@@ -2,11 +2,19 @@
  * Privacy-preserving service worker.
  *
  * Authenticated documents and API responses are deliberately network-only.
- * Cache Storage is limited to public, immutable application assets and a
- * dedicated offline document that contains no user data.
+ * Cache Storage is limited to public, immutable application assets, a
+ * dedicated offline document that contains no user data, and (IMP-045) the
+ * shells of canvas pages a signed-in user opened. A canvas shell is the same
+ * HTML for everyone and holds no user data; the page itself stores it
+ * (`rememberCanvasShell` in `src/lib/collaboration/sync/offline-store.ts`)
+ * and deletes it on sign-out. It is served only when the network fails, so
+ * the canvas can open its device copy from IndexedDB.
  */
 
 const CACHE_NAME = "memoria-public-v2";
+// Keep in step with CANVAS_SHELL_CACHE in offline-store.ts.
+const CANVAS_SHELL_CACHE = "memoria-canvas-shells-v1";
+const CANVAS_PAGE = /^\/canvas\/[a-z0-9]+$/;
 const UNSAFE_LEGACY_CACHES = new Set(["canvascollect-v1"]);
 const MEMORIA_CACHE_PREFIX = "memoria-";
 const PUBLIC_FALLBACKS = ["/offline", "/manifest.json"];
@@ -37,6 +45,7 @@ self.addEventListener("activate", (event) => {
             .filter(
               (name) =>
                 name !== CACHE_NAME &&
+                name !== CANVAS_SHELL_CACHE &&
                 (name.startsWith(MEMORIA_CACHE_PREFIX) ||
                   UNSAFE_LEGACY_CACHES.has(name)),
             )
@@ -54,7 +63,16 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/offline")));
+    event.respondWith(
+      fetch(request).catch(() =>
+        (CANVAS_PAGE.test(url.pathname)
+          ? caches
+              .open(CANVAS_SHELL_CACHE)
+              .then((cache) => cache.match(url.pathname))
+          : Promise.resolve(undefined)
+        ).then((shell) => shell || caches.match("/offline")),
+      ),
+    );
     return;
   }
 

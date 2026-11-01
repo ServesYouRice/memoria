@@ -44,6 +44,7 @@ import {
 } from "@mui/icons-material";
 import { ShareDialog } from "./ShareDialog";
 import type { AutosaveStatus } from "@/lib/autosave/serialized-delta-queue";
+import { describeSaveStatus } from "@/features/canvas/save-status";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MeetingTimer } from "./MeetingTimer";
@@ -105,6 +106,11 @@ export interface CanvasHeaderProps {
   canManageCanvas?: boolean;
   saveStatus?: AutosaveStatus;
   saveError?: string | null;
+  /**
+   * IMP-045: with an offline status from the collaborative document, the
+   * edits kept on this device that the server has not stored yet.
+   */
+  offlineChanges?: number;
 }
 
 const ZOOM_STEP = 0.1;
@@ -149,6 +155,7 @@ export function CanvasHeader({
   canManageCanvas = true,
   saveStatus,
   saveError,
+  offlineChanges,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -511,29 +518,11 @@ export function CanvasHeader({
           <Tooltip
             title={
               saveError ||
-              (
-                {
-                  saving: "Changes are being saved",
-                  saved: "Changes saved",
-                  "offline/retrying": "Offline; changes will retry",
-                  conflict: "This change conflicts with a newer server version",
-                  failed: "Changes were not saved",
-                } satisfies Record<AutosaveStatus, string>
-              )[saveStatus]
+              describeSaveStatus(saveStatus, offlineChanges).tooltip
             }
           >
             <Chip
-              label={
-                (
-                  {
-                    saving: "Saving…",
-                    saved: "Saved",
-                    "offline/retrying": "Offline · retrying",
-                    conflict: "Conflict",
-                    failed: "Not saved",
-                  } satisfies Record<AutosaveStatus, string>
-                )[saveStatus]
-              }
+              label={describeSaveStatus(saveStatus, offlineChanges).label}
               size="small"
               color={
                 saveStatus === "saved"

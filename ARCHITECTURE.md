@@ -176,6 +176,21 @@ note at once; Yjs merges the edits.
   used: it would relay updates to other replicas before they are validated
   and stored, breaking "acknowledged means durable". Document awareness is
   unused (presence has its own socket).
+- **Offline edits (IMP-045).** For a signed-in user the session keeps a
+  device copy of each opened canvas in IndexedDB
+  (`client-session.ts`, `offline-store.ts`): every document update, the
+  scope the server last granted and the count of local edits it has not
+  stored. Losing the network keeps the canvas editable; a reload opens the
+  copy at once, and the service worker serves the canvas page shell (HTML
+  without user data, stored by the page) when the network is down, so a
+  canvas opened before can be opened and edited offline. On reconnect the
+  sync handshake sends what the server lacks through the normal validation.
+  A refused update, a lost edit role or lost access discards the copy before
+  anything else is written, so a refused change never returns. Copies are
+  keyed by user; a different user signing in wipes them, and sign-out clears
+  them with the cached shells. Offline the HTTP-only surfaces (comments,
+  versions, search, owner actions) stay unavailable, and an expired session
+  reads as lost access on reconnect, discarding unsynced offline edits.
 
 **Presence.** A custom `ws` server (`websocket-server.ts`), hosted by the
 realtime process on the same port as sync, carries ephemeral presence,

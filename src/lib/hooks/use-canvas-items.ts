@@ -728,6 +728,20 @@ function chooseWriteRoute(
   return route;
 }
 
+/**
+ * IMP-045: a document write must run at once, also offline, where it is
+ * kept on this device until the sync server stores it. React Query would
+ * otherwise pause the mutation until the browser reports a network. With a
+ * document open, an HTTP-routed write made offline therefore fails at once
+ * (the board reports it as offline) instead of waiting unseen; without a
+ * document, item writes keep the default.
+ */
+function itemWriteNetworkMode(
+  session: CanvasDocumentSession | null,
+): "offlineFirst" | "online" {
+  return session ? "offlineFirst" : "online";
+}
+
 function findCachedItem(
   queryClient: QueryClient,
   itemId: string,
@@ -803,6 +817,7 @@ export function useCreateCanvasItem() {
   const documentSession = useCanvasDocument();
 
   return useMutation({
+    networkMode: itemWriteNetworkMode(documentSession),
     mutationFn: async (input: CreateCanvasItemInput): Promise<CanvasItem> => {
       if (writeRoutes.get(input) === "document" && documentSession) {
         const state = documentSession.createItem(input);
@@ -909,6 +924,7 @@ export function useUpdateCanvasItem() {
   const documentSession = useCanvasDocument();
 
   return useMutation({
+    networkMode: itemWriteNetworkMode(documentSession),
     mutationFn: async (variables: {
       itemId: string;
       data: UpdateCanvasItemInput;
@@ -1043,6 +1059,7 @@ export function useDeleteCanvasItem() {
   const documentSession = useCanvasDocument();
 
   return useMutation({
+    networkMode: itemWriteNetworkMode(documentSession),
     mutationFn: async (variables: {
       itemId: string;
       version: number;
