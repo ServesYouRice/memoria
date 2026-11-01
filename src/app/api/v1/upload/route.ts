@@ -26,9 +26,14 @@ import {
   reserveUploadAsset,
 } from "@/lib/uploads/lifecycle";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import { boundRequestBody, payloadTooLarge } from "@/lib/uploads/body-limit";
+import { checkImageBounds } from "@/lib/uploads/image-bounds";
 
 // Maximum file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+// Multipart framing (boundaries, headers, canvasId field) on top of the file.
+const MULTIPART_OVERHEAD_ALLOWANCE = 64 * 1024;
+const MAX_REQUEST_BODY_BYTES = MAX_FILE_SIZE + MULTIPART_OVERHEAD_ALLOWANCE;
 const MAX_FILES_PER_USER = LAUNCH_LIMITS.uploadsPerUser;
 const MAX_TOTAL_BYTES_PER_USER = LAUNCH_LIMITS.uploadBytesPerUser;
 
@@ -291,8 +296,12 @@ async function runMalwareScan(
   }
 }
 
-export const POST = withApiHandler(async (request: NextRequest) => {
+export const POST = withApiHandler(async (rawRequest: NextRequest) => {
   const { userId, email } = await requireAuth();
+
+  // Enforce the cap before anything buffers the body: formData() and the
+  // idempotency hash (req.clone().arrayBuffer()) both read it whole.
+  const request = await boundRequestBody(rawRequest, MAX_REQUEST_BODY_BYTES);
 
   return runIdempotent(request, userId, async () => {
     const formData = await request.formData();
@@ -320,12 +329,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     await requireCanvasAccess(canvasId, userId, email, "EDIT");
 
     if (file.size > MAX_FILE_SIZE) {
-      throw new ApiError(
-        400,
-        "https://memoria.local/errors/upload",
-        "Bad Request",
-        `File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`,
-      );
+      throw payloadTooLarge(MAX_FILE_SIZE);
     }
 
     const bytes = await file.arrayBuffer();
@@ -339,6 +343,11 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         "Bad Request",
         "Invalid or unsupported image format",
       );
+    }
+
+    const bounds = checkImageBounds(buffer, detectedType.mime);
+    if (!bounds.ok) {
+      throw new UnprocessableEntityError(bounds.reason);
     }
 
     if (file.type && file.type !== detectedType.mime) {
