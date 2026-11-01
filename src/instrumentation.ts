@@ -13,10 +13,12 @@ export async function register() {
   if (process.env["NEXT_RUNTIME"] === "nodejs") {
     const sentryEnabled =
       process.env.NODE_ENV === "production" && Boolean(process.env.SENTRY_DSN);
-    const [{ createLogger }, { validateCorsConfig }] = await Promise.all([
-      import("./lib/logger"),
-      import("./middleware/cors"),
-    ]);
+    const [{ createLogger }, { validateCorsConfig }, { isClientAbortError }] =
+      await Promise.all([
+        import("./lib/logger"),
+        import("./middleware/cors"),
+        import("./lib/network/client-abort"),
+      ]);
 
     const logger = createLogger("global-error-handler");
 
@@ -46,6 +48,11 @@ export async function register() {
     );
 
     process.on("uncaughtException", async (error: Error) => {
+      if (isClientAbortError(error)) {
+        logger.warn("Client aborted a request before its body was consumed");
+        return;
+      }
+
       logger.error("Uncaught Exception");
       logger.error(JSON.stringify({ error, stack: error.stack }));
 
