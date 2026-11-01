@@ -33,6 +33,18 @@ describe("backup and recovery scripts", () => {
     expect(backup).not.toContain("read -r date time size file");
   });
 
+  it("pins the backup client to the PostgreSQL server major", () => {
+    const backupImage = readFileSync("Dockerfile.backup", "utf8");
+    const clientMajor = /^FROM postgres:(\d+)/m.exec(backupImage)?.[1];
+    const serverMajors = [compose, restoreCompose].map(
+      (file) => /pgvector\/pgvector:pg(\d+)/.exec(file)?.[1],
+    );
+    expect(clientMajor).toBeDefined();
+    for (const serverMajor of serverMajors) {
+      expect(serverMajor).toBe(clientMajor);
+    }
+  });
+
   it("fails closed before restore and stops on SQL errors", () => {
     expect(restore).toContain("Backup manifest authentication failed");
     expect(restore).toContain("-v ON_ERROR_STOP=1");

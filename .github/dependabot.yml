@@ -37,3 +37,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # The backup client major must match the PostgreSQL server major.
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
