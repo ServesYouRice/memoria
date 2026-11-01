@@ -10,6 +10,7 @@ import { decode } from "next-auth/jwt";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { nanoid } from "nanoid";
+import { deriveClientIp } from "@/lib/network/client-ip";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import {
   incrementOperationalCounter,
@@ -156,6 +157,18 @@ export function isAllowedCollaborationOrigin(
   } catch {
     return false;
   }
+}
+
+// Upgrade requests bypass the HTTP request handler that stamps
+// x-memoria-client-ip, so derive identity here with the same trusted-proxy rules.
+export function deriveUpgradeClientId(
+  request: Pick<IncomingMessage, "socket" | "headers">,
+): string {
+  return deriveClientIp(
+    request.socket?.remoteAddress,
+    request.headers["x-forwarded-for"],
+    process.env.TRUSTED_PROXY_CIDRS,
+  );
 }
 
 function consumeUpgradeBudget(clientId: string): boolean {
@@ -408,9 +421,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             rejectUpgrade(socket, "HTTP/1.1 403 Forbidden\r\n\r\n");
             return;
           }
-          const clientId = String(
-            request.headers["x-memoria-client-ip"] || "unknown",
-          );
+          const clientId = deriveUpgradeClientId(request);
           if (
             !consumeUpgradeBudget(clientId) ||
             getConnectionCount() >= MAX_CONNECTIONS_GLOBAL

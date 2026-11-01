@@ -82,6 +82,11 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
 
       expect(caddyContent).toContain("/api/operations/*");
       expect(caddyContent).toContain("max_size 50MB");
+      // The 50MB allowance must cover the real upload routes, not /uploads.
+      expect(caddyContent).toContain(
+        "path /api/v1/upload /api/v1/canvases/*/thumbnail",
+      );
+      expect(caddyContent).not.toContain("/api/v1/uploads ");
       expect(caddyContent).toContain("reverse_proxy app:3000");
     });
   });

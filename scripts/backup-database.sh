@@ -651,14 +651,15 @@ cleanup_old_backups() {
 
     local cutoff_date=$(date -u -d "$BACKUP_RETENTION_DAYS days ago" +"%Y-%m-%d" 2>/dev/null || date -u -v-${BACKUP_RETENTION_DAYS}d +"%Y-%m-%d")
 
-    # List and delete old backups
-    backup_aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | while read -r date time size file; do
-        if [[ -n "$file" ]]; then
-            if [[ "$date" < "$cutoff_date" ]]; then
-                log DEBUG "Deleting old backup: s3://${BACKUP_BUCKET}/daily/$file"
-                backup_aws s3 rm "s3://${BACKUP_BUCKET}/daily/$file" \
+    # Backups live under daily/<YYYY-MM-DD>/, so `s3 ls` returns "PRE <date>/"
+    # prefix lines; delete whole expired date prefixes.
+    backup_aws s3 ls "s3://${BACKUP_BUCKET}/daily/" --region "$AWS_REGION" | while read -r marker prefix _; do
+        if [[ "$marker" == "PRE" && "$prefix" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}/$ ]]; then
+            if [[ "${prefix%/}" < "$cutoff_date" ]]; then
+                log DEBUG "Deleting old backup: s3://${BACKUP_BUCKET}/daily/$prefix"
+                backup_aws s3 rm "s3://${BACKUP_BUCKET}/daily/$prefix" --recursive \
                     --region "$AWS_REGION" 2>>"$LOG_FILE" || {
-                    log WARN "Failed to delete old backup: $file"
+                    log WARN "Failed to delete old backup: $prefix"
                 }
             fi
         fi

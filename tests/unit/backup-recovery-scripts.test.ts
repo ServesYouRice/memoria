@@ -25,6 +25,14 @@ describe("backup and recovery scripts", () => {
     );
   });
 
+  it("retention deletes expired daily/<date>/ prefixes recursively", () => {
+    expect(backup).toContain('"$marker" == "PRE"');
+    expect(backup).toContain(
+      'backup_aws s3 rm "s3://${BACKUP_BUCKET}/daily/$prefix" --recursive',
+    );
+    expect(backup).not.toContain("read -r date time size file");
+  });
+
   it("fails closed before restore and stops on SQL errors", () => {
     expect(restore).toContain("Backup manifest authentication failed");
     expect(restore).toContain("-v ON_ERROR_STOP=1");

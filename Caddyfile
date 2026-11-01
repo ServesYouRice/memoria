@@ -26,12 +26,12 @@
 		reverse_proxy @public_probes app:3000
 
 		@upload_paths {
-			path /api/v1/uploads /api/v1/canvases/*/thumbnail
+			path /api/v1/upload /api/v1/canvases/*/thumbnail
 		}
 		request_body @upload_paths {
 			max_size 50MB
 		}
-		@ordinary_paths not path /api/v1/uploads /api/v1/canvases/*/thumbnail
+		@ordinary_paths not path /api/v1/upload /api/v1/canvases/*/thumbnail
 		request_body @ordinary_paths {
 			max_size 2MB
 		}
