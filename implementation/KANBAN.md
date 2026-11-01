@@ -5,32 +5,28 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
 
-Gate status, 2026-11-01 (Node 22 sandbox): `pnpm lint`, `pnpm type-check`,
-`pnpm test -- --run` (110 files, 873 tests) and `pnpm build` pass; the
-integration suite passes 16/16 on a freshly migrated PostgreSQL; `pnpm test:e2e`
-passes 8/8 on Chromium against the production image with real PostgreSQL,
-Redis, S3 (SeaweedFS) and captured email, and the strict operations smoke passes
-14/14. Firefox and WebKit are exercised by CI only.
+`pnpm lint`, `pnpm type-check` and `pnpm test -- --run` (975 tests) pass;
+`pnpm test:e2e` passes 10/10 on Chromium (including real-browser embed framing) against the production image with real
+PostgreSQL, Redis, S3 (SeaweedFS) and captured email, and the strict
+operations smoke passes 14/14. Firefox and WebKit run only through
+`pnpm gate e2e` and were not run here. A backup to SeaweedFS and the
+documented restore drill passed (RPO 134s, RTO 16s).
 
 ## DOING
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
+| [IMP-042](tasks/IMP-042.md) | Real co-editing on Yjs with a Hocuspocus sync server | in progress |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-039](tasks/IMP-039.md) | Cloudflare R2 as the production object store | - |
-| [IMP-040](tasks/IMP-040.md) | Local verification replaces hosted CI | - |
-| [IMP-041](tasks/IMP-041.md) | Better Auth replaces next-auth 5 beta | - |
-| [IMP-044](tasks/IMP-044.md) | Signed embeds with per-embed framing | - |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-042](tasks/IMP-042.md) | Real co-editing on Yjs with a Hocuspocus sync server | IMP-041 |
 | [IMP-043](tasks/IMP-043.md) | Realtime split and replica-ready processes | IMP-042 |
 
 ## USER DECISIONS

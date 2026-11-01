@@ -23,4 +23,13 @@ describe("reference-stack readiness gating", () => {
     );
     expect(caddy).toContain("path /api/health /api/status");
   });
+
+  it("denies framing at the gateway everywhere except signed embed pages", () => {
+    // A gateway DENY on /embed/<token> would override the per-embed CSP
+    // frame-ancestors the app sends and block the allowed host sites.
+    const caddy = readFileSync("Caddyfile", "utf8");
+    expect(caddy.match(/X-Frame-Options/g)).toHaveLength(1);
+    expect(caddy).toContain("@not_embed not path /embed/*");
+    expect(caddy).toContain('header @not_embed X-Frame-Options "DENY"');
+  });
 });

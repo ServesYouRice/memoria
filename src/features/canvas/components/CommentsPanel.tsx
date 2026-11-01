@@ -29,7 +29,7 @@ import {
   useDeleteComment,
   useUpdateComment,
 } from "@/lib/hooks/use-comments";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/auth-client";
 import { formatDistanceToNow } from "date-fns";
 
 export interface CommentsPanelProps {

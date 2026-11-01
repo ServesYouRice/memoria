@@ -40,20 +40,37 @@ describe("request-boundary security", () => {
     expect(() => validateCorsConfig()).toThrow(/cannot allow credentials/i);
   });
 
-  it("limits credential mutations but not Auth.js background reads", () => {
-    expect(
-      shouldApplyStrictAuthRateLimit("/api/auth/callback/credentials", "POST"),
-    ).toBe(true);
-    expect(
-      shouldApplyStrictAuthRateLimit("/api/v1/auth/reset-password", "POST"),
-    ).toBe(true);
-    expect(shouldApplyStrictAuthRateLimit("/api/auth/session", "GET")).toBe(
+  it("limits credential, passkey, and two-factor checks but not session reads", () => {
+    for (const pathname of [
+      "/api/auth/sign-in/email",
+      "/api/auth/two-factor/verify-totp",
+      "/api/auth/two-factor/verify-backup-code",
+      "/api/auth/two-factor/enable",
+      "/api/auth/two-factor/disable",
+      "/api/auth/passkey/verify-authentication",
+      "/api/auth/passkey/verify-registration",
+      "/api/v1/auth/reset-password",
+      "/api/v1/auth/register",
+    ]) {
+      expect(shouldApplyStrictAuthRateLimit(pathname, "POST"), pathname).toBe(
+        true,
+      );
+    }
+    expect(shouldApplyStrictAuthRateLimit("/api/auth/get-session", "GET")).toBe(
       false,
     );
-    expect(shouldApplyStrictAuthRateLimit("/api/auth/providers", "GET")).toBe(
+    expect(shouldApplyStrictAuthRateLimit("/api/auth/sign-out", "POST")).toBe(
       false,
     );
-    expect(shouldApplyStrictAuthRateLimit("/api/auth/csrf", "GET")).toBe(false);
+    expect(
+      shouldApplyStrictAuthRateLimit(
+        "/api/auth/passkey/generate-authenticate-options",
+        "GET",
+      ),
+    ).toBe(false);
+    expect(
+      shouldApplyStrictAuthRateLimit("/api/auth/sign-in/email", "GET"),
+    ).toBe(false);
   });
 
   it("fails closed in production when the shared limiter is unavailable", async () => {

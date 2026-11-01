@@ -7,7 +7,6 @@
  *
  * Wraps the application with necessary providers:
  * - ErrorBoundary for React error handling
- * - SessionProvider for authentication
  * - QueryClientProvider for server state
  * - ThemeModeProvider for dark mode state
  * - ThemeProvider for MUI theming (with CSP nonce)
@@ -17,7 +16,6 @@
 "use client";
 
 import React from "react";
-import { SessionProvider } from "next-auth/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
@@ -92,13 +90,11 @@ interface ProvidersProps {
 export function Providers({ children, nonce }: ProvidersProps) {
   return (
     <ErrorBoundary>
-      <SessionProvider>
-        <QueryClientProvider client={queryClient}>
-          <ThemeModeProvider>
-            <ThemedProviders nonce={nonce}>{children}</ThemedProviders>
-          </ThemeModeProvider>
-        </QueryClientProvider>
-      </SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeModeProvider>
+          <ThemedProviders nonce={nonce}>{children}</ThemedProviders>
+        </ThemeModeProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

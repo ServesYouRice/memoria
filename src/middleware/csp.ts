@@ -12,7 +12,10 @@ export function generateNonce(): string {
  * Build a strict Content Security Policy with nonce-based script/style allowlist
  * Following ADR-0002: Nonce-Based Strict CSP
  */
-export function buildCSP(nonce: string): string {
+export function buildCSP(
+  nonce: string,
+  frameAncestors: readonly string[] = ["'none'"],
+): string {
   const directives = {
     "default-src": ["'self'"],
     "script-src": [
@@ -26,7 +29,7 @@ export function buildCSP(nonce: string): string {
     "img-src": ["'self'", "data:", "blob:", "https:"],
     "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
     "connect-src": ["'self'", "wss:", "https:"],
-    "frame-ancestors": ["'none'"],
+    "frame-ancestors": frameAncestors.length > 0 ? frameAncestors : ["'none'"],
     "frame-src": ["'none'"],
     "object-src": ["'none'"],
     "base-uri": ["'self'"],
@@ -47,8 +50,12 @@ export function buildCSP(nonce: string): string {
 /**
  * Middleware to add CSP header with nonce
  */
-export function applyCSP(response: NextResponse, nonce: string): void {
+export function applyCSP(
+  response: NextResponse,
+  nonce: string,
+  frameAncestors?: readonly string[],
+): void {
   response.headers.set("x-nonce", nonce);
-  const csp = buildCSP(nonce);
+  const csp = buildCSP(nonce, frameAncestors);
   response.headers.set("Content-Security-Policy", csp);
 }

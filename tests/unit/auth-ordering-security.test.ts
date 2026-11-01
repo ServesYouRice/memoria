@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as argon2 from "argon2";
 import type * as Argon2Module from "argon2";
-import { authConfig } from "@/lib/auth";
 import {
   isAccountLocked,
   recordFailedAttempt,
   resetInMemoryLockoutForTests,
 } from "@/lib/auth/account-lockout";
 import { prisma } from "@/lib/db";
+import { callAuth, CookieJar } from "../helpers/auth-harness";
+import {
+  addCredentialUser,
+  buildMemoryAuth,
+  signInWithPassword,
+  TEST_CLIENT_IP,
+} from "../helpers/memory-auth";
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -47,161 +53,213 @@ vi.mock("argon2", async (importOriginal) => {
 import { GET as canvasGet } from "@/app/api/v1/canvases/[canvasId]/route";
 import { requireAuth } from "@/lib/api/auth";
 
+const CLIENT_IP = TEST_CLIENT_IP;
+const buildAuth = buildMemoryAuth;
+const addUser = addCredentialUser;
+const signIn = signInWithPassword;
+
 describe("auth ordering and capability handling (IMP-041)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetInMemoryLockoutForTests();
   });
 
-  const credentialsProvider = authConfig.providers[0] as any;
-  // CredentialsProvider keeps the application's authorize under `options` and
-  // puts its own no-op stub on the provider itself. Reading the top-level one
-  // returns that stub, which resolves null without touching the database, so
-  // every assertion below would pass or fail for the wrong reason.
-  const authorize =
-    credentialsProvider.options?.authorize ?? credentialsProvider.authorize;
-
   describe("login authorization and lockout ordering", () => {
     it("rejects locked account immediately without invoking Argon2 verification", async () => {
+      const { auth, db } = buildAuth();
+      await addUser(db, {
+        id: "usr_locked",
+        email: "locked@example.com",
+        password: "Password123!",
+        emailVerified: true,
+      });
       // Simulate account lockout for this client pair
       for (let i = 0; i < 5; i++) {
-        await recordFailedAttempt("locked@example.com", "127.0.0.1");
+        await recordFailedAttempt("locked@example.com", CLIENT_IP);
       }
-      expect(await isAccountLocked("locked@example.com", "127.0.0.1")).toBe(
-        true,
-      );
+      expect(await isAccountLocked("locked@example.com", CLIENT_IP)).toBe(true);
+      vi.mocked(argon2.verify).mockClear();
+      vi.mocked(argon2.hash).mockClear();
 
-      const argonVerifySpy = vi.mocked(argon2.verify);
+      const result = await signIn(auth, "locked@example.com", "Password123!");
 
-      const req = {
-        headers: new Headers({ "x-memoria-client-ip": "127.0.0.1" }),
-      };
-
-      await expect(
-        authorize(
-          { email: "locked@example.com", password: "Password123!" },
-          req,
-        ),
-      ).rejects.toThrowError();
-
-      // Argon2 verify must NOT have been called for a locked attempt
-      expect(argonVerifySpy).not.toHaveBeenCalled();
+      expect(result.status).toBe(429);
+      expect(result.body.code).toBe("ACCOUNT_LOCKED");
+      // Argon2 must NOT run for a locked attempt
+      expect(argon2.verify).not.toHaveBeenCalled();
+      expect(argon2.hash).not.toHaveBeenCalled();
+      expect(db.session).toHaveLength(0);
     });
 
-    it("spends Argon2 work on unknown user and returns null", async () => {
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+    it("spends Argon2 work on unknown user and returns the generic error", async () => {
+      const { auth } = buildAuth();
 
-      const argonVerifySpy = vi.mocked(argon2.verify);
-      const req = {
-        headers: new Headers({ "x-memoria-client-ip": "127.0.0.1" }),
-      };
+      const result = await signIn(auth, "unknown@example.com", "Password123!");
 
-      const result = await authorize(
-        { email: "unknown@example.com", password: "Password123!" },
-        req,
+      expect(result.status).toBe(401);
+      expect(result.body.code).toBe("INVALID_EMAIL_OR_PASSWORD");
+      expect(argon2.hash).toHaveBeenCalled();
+      // The miss counts towards the lockout like a wrong password does.
+      for (let i = 0; i < 4; i++) {
+        await signIn(auth, "unknown@example.com", "Password123!");
+      }
+      expect(await isAccountLocked("unknown@example.com", CLIENT_IP)).toBe(
+        true,
       );
-
-      expect(result).toBeNull();
-      expect(argonVerifySpy).toHaveBeenCalled();
     });
 
     it("does not expose unverified email state when password is wrong", async () => {
-      const mockUser = {
+      const { auth, db } = buildAuth({ requireEmailVerification: true });
+      await addUser(db, {
         id: "usr_123",
         email: "unverified@example.com",
-        passwordHash: await argon2.hash("CorrectPassword123!"),
-        emailVerified: null,
-        name: "Test User",
-        image: null,
-        sessionVersion: 1,
-      };
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as any);
-
-      const req = {
-        headers: new Headers({ "x-memoria-client-ip": "127.0.0.1" }),
-      };
-
-      // Attacker guessing wrong password for an unverified account
-      const result = await authorize(
-        { email: "unverified@example.com", password: "WrongPassword123!" },
-        req,
-      );
-
-      // Must return null instead of throwing EmailNotVerifiedError
-      expect(result).toBeNull();
-    });
-
-    it("throws EmailNotVerifiedError in production only when password is correct", async () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
-
-      try {
-        const correctPassword = "CorrectPassword123!";
-        const mockUser = {
-          id: "usr_123",
-          email: "unverified@example.com",
-          passwordHash: await argon2.hash(correctPassword),
-          emailVerified: null,
-          name: "Test User",
-          image: null,
-          sessionVersion: 1,
-        };
-        vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as any);
-
-        const req = {
-          headers: new Headers({ "x-memoria-client-ip": "127.0.0.1" }),
-        };
-
-        // When correct password is provided, EmailNotVerifiedError is thrown
-        await expect(
-          authorize(
-            { email: "unverified@example.com", password: correctPassword },
-            req,
-          ),
-        ).rejects.toThrowError();
-      } finally {
-        process.env.NODE_ENV = originalEnv;
-      }
-    });
-
-    it("clears failed attempts on successful login with valid credentials", async () => {
-      const correctPassword = "CorrectPassword123!";
-      const mockUser = {
-        id: "usr_123",
-        email: "verified@example.com",
-        passwordHash: await argon2.hash(correctPassword),
-        emailVerified: new Date(),
-        name: "Verified User",
-        image: null,
-        sessionVersion: 1,
-      };
-      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser as any);
-
-      // Record a few failed attempts first
-      await recordFailedAttempt("verified@example.com", "127.0.0.1");
-      await recordFailedAttempt("verified@example.com", "127.0.0.1");
-
-      const req = {
-        headers: new Headers({ "x-memoria-client-ip": "127.0.0.1" }),
-      };
-
-      const result = await authorize(
-        { email: "verified@example.com", password: correctPassword },
-        req,
-      );
-
-      expect(result).toEqual({
-        id: "usr_123",
-        email: "verified@example.com",
-        name: "Verified User",
-        image: null,
-        sessionVersion: 1,
+        password: "CorrectPassword123!",
+        emailVerified: false,
       });
 
+      // Attacker guessing wrong password for an unverified account
+      const result = await signIn(
+        auth,
+        "unverified@example.com",
+        "WrongPassword123!",
+      );
+
+      // Must be the generic error instead of EMAIL_NOT_VERIFIED
+      expect(result.status).toBe(401);
+      expect(result.body.code).toBe("INVALID_EMAIL_OR_PASSWORD");
+    });
+
+    it("rejects an unverified email only when the password is correct and verification is required", async () => {
+      const verifiedRequired = buildAuth({ requireEmailVerification: true });
+      await addUser(verifiedRequired.db, {
+        id: "usr_123",
+        email: "unverified@example.com",
+        password: "CorrectPassword123!",
+        emailVerified: false,
+      });
+
+      const rejected = await signIn(
+        verifiedRequired.auth,
+        "unverified@example.com",
+        "CorrectPassword123!",
+      );
+      expect(rejected.status).toBe(403);
+      expect(rejected.body.code).toBe("EMAIL_NOT_VERIFIED");
+      expect(verifiedRequired.db.session).toHaveLength(0);
+
+      // Development keeps the previous behaviour: verification is advisory.
+      const development = buildAuth({ requireEmailVerification: false });
+      await addUser(development.db, {
+        id: "usr_123",
+        email: "unverified@example.com",
+        password: "CorrectPassword123!",
+        emailVerified: false,
+      });
+      const allowed = await signIn(
+        development.auth,
+        "unverified@example.com",
+        "CorrectPassword123!",
+      );
+      expect(allowed.status).toBe(200);
+    });
+
+    it("clears failed attempts on successful login and issues a server-side session cookie", async () => {
+      const { auth, db } = buildAuth({ requireEmailVerification: true });
+      await addUser(db, {
+        id: "usr_123",
+        email: "verified@example.com",
+        password: "CorrectPassword123!",
+        emailVerified: true,
+        name: "Verified User",
+      });
+
+      // Record a few failed attempts first
+      await recordFailedAttempt("verified@example.com", CLIENT_IP);
+      await recordFailedAttempt("verified@example.com", CLIENT_IP);
+
+      const jar = new CookieJar();
+      const result = await signIn(
+        auth,
+        "Verified@Example.com",
+        "CorrectPassword123!",
+        jar,
+      );
+
+      expect(result.status).toBe(200);
+      expect(result.body.user).toMatchObject({
+        id: "usr_123",
+        email: "verified@example.com",
+        name: "Verified User",
+      });
+      expect(result.body.user.password).toBeUndefined();
+      expect(db.session).toHaveLength(1);
+      const setCookie = result.response.headers
+        .getSetCookie()
+        .find((cookie) => cookie.startsWith("memoria.session_token="));
+      expect(setCookie).toMatch(/HttpOnly/i);
+      expect(setCookie).toMatch(/SameSite=Lax/i);
+
+      // The cookie resolves to the same user through the session endpoint.
+      const session = await callAuth(auth.handler, jar, "/get-session");
+      expect(session.body.user.id).toBe("usr_123");
+
       // Attempts should be cleared
-      expect(await isAccountLocked("verified@example.com", "127.0.0.1")).toBe(
+      for (let i = 0; i < 4; i++) {
+        await signIn(auth, "verified@example.com", "WrongPassword123!");
+      }
+      expect(await isAccountLocked("verified@example.com", CLIENT_IP)).toBe(
         false,
       );
+    });
+
+    it("keeps an Argon2id hash created before the migration valid", async () => {
+      const { auth, db } = buildAuth({ requireEmailVerification: true });
+      // A fixed hash produced before the migration with the argon2 package
+      // defaults (m=64 MiB, t=3, p=4), unlike today's hashPassword parameters
+      // (m=19 MiB, t=2, p=1). It is stored verbatim; nothing rehashes it.
+      const legacyHash =
+        "$argon2id$v=19$m=65536,p=4,t=3$0GobO6eZTvZaWo8yUmJZKw$XKDYV3jjgfjWlYvomjUR0IeKZDpf9JA4J13AEkUiVhw";
+      await addUser(db, {
+        id: "usr_legacy",
+        email: "legacy@example.com",
+        passwordHash: legacyHash,
+        emailVerified: true,
+        name: "Legacy",
+      });
+
+      const result = await signIn(
+        auth,
+        "legacy@example.com",
+        "Legacy-Password-42!",
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.user.id).toBe("usr_legacy");
+    });
+
+    it("lets credential and account endpoints outside the allowlist return 404", async () => {
+      const { auth } = buildAuth();
+      const jar = new CookieJar();
+      for (const path of [
+        "/sign-up/email",
+        "/request-password-reset",
+        "/reset-password",
+        "/reset-password/some-token",
+        "/change-password",
+        "/update-user",
+        "/delete-user",
+        "/verify-password",
+        "/verify-email",
+        "/callback/github",
+        "/sign-in/social",
+        "/two-factor/get-totp-uri",
+        "/two-factor/send-otp",
+      ]) {
+        const result = await callAuth(auth.handler, jar, path, {
+          method: "POST",
+          body: {},
+        });
+        expect(result.status, path).toBe(404);
+      }
     });
   });
 

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { isBootstrapAvailable } from "@/lib/bootstrap";
 import { hashPassword } from "@/lib/auth/password";
+import { createCredentialAccount } from "@/lib/auth/credentials";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import { timingSafeEqual } from "crypto";
 import {
@@ -76,8 +77,8 @@ export async function POST(request: NextRequest) {
           data: {
             email: normalizedEmail,
             name: payload.name.trim(),
-            passwordHash,
-            emailVerified: new Date(),
+            emailVerified: true,
+            emailVerifiedAt: new Date(),
           },
           select: {
             id: true,
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
             name: true,
           },
         });
+        await createCredentialAccount(tx, user.id, passwordHash);
 
         const workspace = await tx.workspace.create({
           data: {

@@ -45,10 +45,15 @@ Each process ships with one replica until its shared semantics are proven.
 - **S3-compatible object storage** is required in production for uploads.
   Production targets Cloudflare R2; the local and self-host stack runs
   SeaweedFS under the `minio` host name.
-- **Auth.js / NextAuth** (5 beta) provides session handling with credentials
-  auth, argon2 password verification, email verification, reset tokens, and
-  account lockout logic. It is a dead end; the target is Better Auth with the
-  same policy plus passkeys and authenticator-app two-factor.
+- **Better Auth** (exact-pinned) owns sign-in and server-side database
+  sessions under `/api/auth/*`: Argon2 password sign-in, passkeys
+  (user verification required), and authenticator-app two-factor with backup
+  codes. Its endpoints are allowlisted in `src/lib/auth/server.ts`; Memoria
+  keeps its own registration, email verification, reset tokens, account
+  lockout, and Redis-backed auth rate limits. Every session read (proxy,
+  route handlers, server components, WebSocket upgrades) goes through
+  `src/lib/auth/session.ts`, and revoking a session deletes its row. The MCP
+  OAuth 2.1 server (`OAuthToken`, `.well-known`) is separate.
 
 ## Application Areas
 
@@ -71,6 +76,11 @@ The main domain objects are:
 - `CanvasItem`: normalized geometry and JSON content for notes, bookmarks,
   images, drawings, shapes, arrows, text, frames, embeds, and polls.
 - `CanvasShare`: email-based canvas access with `VIEW`, `COMMENT`, or `EDIT`.
+- `CanvasEmbed`: owner-created, signed, revocable read-only embed of a canvas
+  (token digest, allowed origins, expiry, revoked flag). Every response denies
+  framing (`X-Frame-Options: DENY`, `frame-ancestors 'none'`) except
+  `/embed/<token>` for a live token, which `src/proxy.ts` frames only from that
+  embed's origins.
 - `CanvasVersion`: point-in-time canvas snapshots for restore.
 - `Activity`: dashboard and notification events.
 - Agent models: `AgentProfile`, `ModelCredential`, `IntegrationAccount`,
@@ -106,7 +116,8 @@ persisted by a dedicated Hocuspocus sync server, with server-side authorization
 and validation of every update) is the target and is not built yet. The
 current server:
 
-- authenticates upgrades from Auth.js/NextAuth session cookies;
+- authenticates upgrades from Better Auth session cookies and closes
+  connections whose session row was revoked or expired;
 - verifies canvas ownership or shared access;
 - broadcasts presence, cursor, chat, and reaction messages to connected clients;
 - uses Redis pub/sub when available for multi-instance fanout;

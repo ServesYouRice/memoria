@@ -21,6 +21,9 @@ const prismaMocks = vi.hoisted(() => ({
   txActivityDeleteMany: vi.fn(),
   txSessionDeleteMany: vi.fn(),
   txAccountDeleteMany: vi.fn(),
+  txPasskeyDeleteMany: vi.fn(),
+  txTwoFactorDeleteMany: vi.fn(),
+  txVerificationDeleteMany: vi.fn(),
   txUserDelete: vi.fn(),
 }));
 
@@ -38,7 +41,8 @@ const lifecycleMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    user: {
+    // The password hash lives on the Better Auth credential Account row.
+    account: {
       findUnique: prismaMocks.findUnique,
     },
     uploadAsset: {
@@ -132,6 +136,15 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
         account: {
           deleteMany: prismaMocks.txAccountDeleteMany,
         },
+        passkey: {
+          deleteMany: prismaMocks.txPasskeyDeleteMany,
+        },
+        twoFactor: {
+          deleteMany: prismaMocks.txTwoFactorDeleteMany,
+        },
+        verification: {
+          deleteMany: prismaMocks.txVerificationDeleteMany,
+        },
         user: {
           delete: prismaMocks.txUserDelete,
         },
@@ -168,8 +181,8 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
       expect(prismaMocks.$transaction).not.toHaveBeenCalled();
     });
 
-    it("rejects accounts without a passwordHash", async () => {
-      prismaMocks.findUnique.mockResolvedValue({ passwordHash: null });
+    it("rejects accounts without a credential password", async () => {
+      prismaMocks.findUnique.mockResolvedValue(null);
 
       const response = await DELETE(
         createJsonRequest("DELETE", {
@@ -186,7 +199,8 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
 
     it("rejects when password verification fails without opening a transaction", async () => {
       prismaMocks.findUnique.mockResolvedValue({
-        passwordHash: "$argon2id$storedHash",
+        userId,
+        password: "$argon2id$storedHash",
       });
       argon2Mocks.verify.mockResolvedValue(false);
 
@@ -209,7 +223,8 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
 
     it("reassigns foreign items to canvas owners and deletes user data atomically", async () => {
       prismaMocks.findUnique.mockResolvedValue({
-        passwordHash: "$argon2id$storedHash",
+        userId,
+        password: "$argon2id$storedHash",
       });
       argon2Mocks.verify.mockResolvedValue(true);
 
@@ -277,6 +292,19 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
       });
       expect(prismaMocks.txSessionDeleteMany).toHaveBeenCalledWith({
         where: { userId },
+      });
+      // Credentials, passkeys, and two-factor material go with the account.
+      expect(prismaMocks.txAccountDeleteMany).toHaveBeenCalledWith({
+        where: { userId },
+      });
+      expect(prismaMocks.txPasskeyDeleteMany).toHaveBeenCalledWith({
+        where: { userId },
+      });
+      expect(prismaMocks.txTwoFactorDeleteMany).toHaveBeenCalledWith({
+        where: { userId },
+      });
+      expect(prismaMocks.txVerificationDeleteMany).toHaveBeenCalledWith({
+        where: { value: userId },
       });
       expect(prismaMocks.txUserDelete).toHaveBeenCalledWith({
         where: { id: userId },

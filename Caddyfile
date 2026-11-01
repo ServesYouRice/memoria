@@ -13,10 +13,16 @@
 		header {
 			Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 			X-Content-Type-Options "nosniff"
-			X-Frame-Options "DENY"
 			Referrer-Policy "strict-origin-when-cross-origin"
 			-Server
 		}
+
+		# Framing stays denied everywhere except signed embed pages, whose
+		# CSP frame-ancestors (set by the app per embed) is the allow-list.
+		# A gateway-level DENY here would override it and block allowed hosts;
+		# the app still sends DENY itself for invalid or revoked embed tokens.
+		@not_embed not path /embed/*
+		header @not_embed X-Frame-Options "DENY"
 
 		# Liveness and sanitized status remain reachable even when readiness
 		# removes the application from ordinary traffic.

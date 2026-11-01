@@ -29,6 +29,7 @@ describe("Pre-push Test Selector (IMP-050)", () => {
       "generated/prisma/client/index.js",
       ".husky/pre-push",
       "scripts/pre-push-test-selector.mjs",
+      "scripts/gate.mjs",
       "next.config.mjs",
       "eslint.config.js",
       ".eslintrc.json",
@@ -83,7 +84,7 @@ describe("Pre-push Test Selector (IMP-050)", () => {
     });
 
     it.each([
-      ".github/workflows/ci.yml",
+      ".github/dependabot.yml",
       "Dockerfile",
       "docker-compose.yml",
       ".env.example",

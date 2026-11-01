@@ -94,7 +94,7 @@ Current limits:
 - Next.js 16.3.1
 - TypeScript
 - Prisma + PostgreSQL
-- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.32`; upstream still exposes the Next.js package on the beta track
+- Better Auth exact-pinned to `1.7.14` (with `@better-auth/passkey`): Argon2 credentials, passkeys, and authenticator-app two-factor on database sessions
 - Redis + ioredis
 - TanStack Query
 - Konva / react-konva
@@ -154,12 +154,19 @@ available from Git history rather than retained beside live work.
 
 ## Verification
 
-Recommended checks before shipping:
+Verification is local; there is no hosted CI. `pnpm gate` is the single entry
+point (`scripts/gate.mjs` also pins the Node and pnpm versions):
 
 ```bash
-pnpm doctor
-pnpm lint
-pnpm type-check
-pnpm build
-pnpm test -- --run
+pnpm gate                # fast: install, prisma generate, lint, type-check, coverage, route coverage
+pnpm gate build          # production build + bundle budgets
+pnpm gate audit          # prod dependency audit, license inventory, GPL/AGPL denial
+pnpm gate integration    # PostgreSQL integration + schema drift (TEST_DATABASE_URL, a *test* DB)
+pnpm gate container      # clean image build + CycloneDX SBOM (docker, syft)
+pnpm gate e2e            # production-image E2E + ops smoke: chromium, firefox, webkit (docker)
+pnpm gate all            # every stage above
+pnpm gate --list         # stage descriptions
 ```
+
+Set `GATE_STRICT_RUNTIME=1` to fail (instead of warn) when the local Node or
+pnpm differs from the pinned versions. Run `pnpm doctor` for environment checks.

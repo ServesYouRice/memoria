@@ -1,11 +1,11 @@
 "use client";
 
 import { Button, type ButtonProps } from "@mui/material";
-import { signOut } from "next-auth/react";
+import { signOutAndRedirect } from "@/lib/auth-client";
 
 export function LogoutButton(props: ButtonProps) {
   const handleLogout = async () => {
-    await signOut({ callbackUrl: "/auth/login" });
+    await signOutAndRedirect("/auth/login");
   };
 
   return (

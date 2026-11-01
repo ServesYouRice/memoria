@@ -18,20 +18,14 @@ export interface CollaborationAuthorizationCanvas {
 /** Pure authorization decision shared by the batched refresh and its tests. */
 export function resolveCollaborationAccess(options: {
   principalId: string;
-  expectedSessionVersion?: number;
-  persistedSessionVersion?: number;
+  /** The connection's session row still exists, is unexpired, and is theirs. */
+  sessionActive?: boolean;
   guestShareToken?: string;
   canvas: CollaborationAuthorizationCanvas | null;
   sharedRole?: Exclude<CollaborationAccessLevel, "OWNER">;
 }): CollaborationAccessLevel | null {
-  const {
-    principalId,
-    expectedSessionVersion,
-    persistedSessionVersion,
-    guestShareToken,
-    canvas,
-    sharedRole,
-  } = options;
+  const { principalId, sessionActive, guestShareToken, canvas, sharedRole } =
+    options;
   if (!canvas) return null;
 
   if (principalId.startsWith("guest:")) {
@@ -42,12 +36,7 @@ export function resolveCollaborationAccess(options: {
       : null;
   }
 
-  if (
-    expectedSessionVersion === undefined ||
-    persistedSessionVersion !== expectedSessionVersion
-  ) {
-    return null;
-  }
+  if (sessionActive !== true) return null;
   if (canvas.userId === principalId) return "OWNER";
   return sharedRole || (canvas.isPublic ? "VIEW" : null);
 }

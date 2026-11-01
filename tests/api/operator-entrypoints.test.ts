@@ -469,17 +469,23 @@ describe("Operator, Cron, Bootstrap, and CSP boundaries (IMP-058)", () => {
       });
       passwordMocks.hashPassword.mockResolvedValue("$argon2id$hashedAdminPass");
 
+      const userCreate = vi.fn().mockResolvedValue({
+        id: "u-1",
+        email: "admin@example.com",
+        name: "Admin",
+      });
+      const accountCreate = vi.fn().mockResolvedValue({ id: "acct-1" });
       prismaMocks.$transaction.mockImplementation(
         async (callback: any, options: any) => {
           expect(options).toEqual({ isolationLevel: "Serializable" });
           const tx = {
             user: {
               count: vi.fn().mockResolvedValue(0),
-              create: vi.fn().mockResolvedValue({
-                id: "u-1",
-                email: "admin@example.com",
-                name: "Admin",
-              }),
+              create: userCreate,
+            },
+            // Better Auth reads the password from the credential Account row.
+            account: {
+              create: accountCreate,
             },
             workspace: {
               create: vi
@@ -507,6 +513,25 @@ describe("Operator, Cron, Bootstrap, and CSP boundaries (IMP-058)", () => {
         }),
       );
       expect(resDev.status).toBe(201);
+      // The operator account is verified and signs in with Better Auth.
+      expect(userCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            email: "admin@example.com",
+            emailVerified: true,
+          }),
+        }),
+      );
+      expect(accountCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            userId: "u-1",
+            accountId: "u-1",
+            providerId: "credential",
+            password: "$argon2id$hashedAdminPass",
+          },
+        }),
+      );
 
       // Under production, localhost request without valid token is rejected with 401
       process.env.NODE_ENV = "production";

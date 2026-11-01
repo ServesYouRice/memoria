@@ -97,15 +97,37 @@ describe("collaboration peer leases and authorization", () => {
         canvas,
       }),
     ).toBe("VIEW");
+    // A revoked or expired Better Auth session row closes member access.
     expect(
       resolveCollaborationAccess({
         principalId: "member",
-        expectedSessionVersion: 3,
-        persistedSessionVersion: 4,
+        sessionActive: false,
         canvas,
         sharedRole: "EDIT",
       }),
     ).toBeNull();
+    expect(
+      resolveCollaborationAccess({
+        principalId: "member",
+        canvas,
+        sharedRole: "EDIT",
+      }),
+    ).toBeNull();
+    expect(
+      resolveCollaborationAccess({
+        principalId: "member",
+        sessionActive: true,
+        canvas,
+        sharedRole: "EDIT",
+      }),
+    ).toBe("EDIT");
+    expect(
+      resolveCollaborationAccess({
+        principalId: "owner",
+        sessionActive: true,
+        canvas,
+      }),
+    ).toBe("OWNER");
   });
 
   it("allows two refresh failures but closes on the third or lease expiry", () => {

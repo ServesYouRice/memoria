@@ -56,6 +56,19 @@ PGPASSWORD="${PGPASSWORD:-}"
 
 # AWS configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
+# Cloudflare R2 requires region "auto" and rejects the AWS CLI's default
+# CRC32 checksums, so only send/validate checksums when an operation requires
+# them (matches src/lib/uploads/s3-client.mjs).
+export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+is_r2_endpoint() {
+    local host="${1#*://}"
+    host="${host%%[/:?#]*}"
+    [[ "$host" == *.r2.cloudflarestorage.com ]]
+}
+if is_r2_endpoint "${BACKUP_S3_ENDPOINT:-}" || is_r2_endpoint "${S3_ENDPOINT:-}"; then
+    AWS_REGION="auto"
+fi
 BACKUP_BUCKET="${BACKUP_BUCKET:-backups-${ENVIRONMENT}-${AWS_REGION}}"
 BACKUP_PATH="daily/${BACKUP_DATE}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
