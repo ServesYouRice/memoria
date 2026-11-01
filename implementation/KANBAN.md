@@ -28,14 +28,11 @@ documented restore drill passed (RPO 134s, RTO 16s).
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-047](tasks/IMP-047.md) | Real client identity behind the gateway | IMP-043 |
-| [IMP-048](tasks/IMP-048.md) | Rate-limit budgets per user and per route | — |
 | [IMP-049](tasks/IMP-049.md) | Green production dependency audit | — |
-| [IMP-050](tasks/IMP-050.md) | Upload body and image bounds | — |
-| [IMP-051](tasks/IMP-051.md) | Close small security leaks | — |
-| [IMP-052](tasks/IMP-052.md) | Fast batch layout writes | — |
 | [IMP-053](tasks/IMP-053.md) | Visible delete failures and a mobile activity feed | IMP-045 |
 | [IMP-054](tasks/IMP-054.md) | Plain SMTP email in production | — |
 | [IMP-055](tasks/IMP-055.md) | Remove dead code and type escape hatches | — |
+| [IMP-057](tasks/IMP-057.md) | Image proxy so the CSP can drop `img-src https:` | — |
 
 ## WAITING
 
@@ -51,3 +48,4 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | ID | Decision | Recommended | Choice | Unblocks |
 | -- | -------- | ----------- | ------ | -------- |
 | DEC-001 | May agents add `apps/memoria/` to the infra repo (a push to its `main` deploys)? | Yes, staging first, via PR | | IMP-056 |
+

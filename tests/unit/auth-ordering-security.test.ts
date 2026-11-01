@@ -58,6 +58,10 @@ const buildAuth = buildMemoryAuth;
 const addUser = addCredentialUser;
 const signIn = signInWithPassword;
 
+// These tests run real Argon2id hashes (production parameters, several per
+// test); on a loaded machine that alone can pass the default 5 s timeout.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("auth ordering and capability handling (IMP-041)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

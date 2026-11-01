@@ -58,6 +58,10 @@ async function enrolTotp(auth: MemoryAuth, jar: CookieJar) {
   return { totpURI, backupCodes: enable.body.backupCodes as string[] };
 }
 
+// These tests run real Argon2id hashes (production parameters, several per
+// test); on a loaded machine that alone can pass the default 5 s timeout.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("authenticator-app two-factor (IMP-041)", () => {
   beforeEach(() => resetInMemoryLockoutForTests());
 
