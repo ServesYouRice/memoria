@@ -61,7 +61,12 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 # them (matches src/lib/uploads/s3-client.mjs).
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
 export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
-if [[ "${BACKUP_S3_ENDPOINT:-}" == *.r2.cloudflarestorage.com* || "${S3_ENDPOINT:-}" == *.r2.cloudflarestorage.com* ]]; then
+is_r2_endpoint() {
+    local host="${1#*://}"
+    host="${host%%[/:?#]*}"
+    [[ "$host" == *.r2.cloudflarestorage.com ]]
+}
+if is_r2_endpoint "${BACKUP_S3_ENDPOINT:-}" || is_r2_endpoint "${S3_ENDPOINT:-}"; then
     AWS_REGION="auto"
 fi
 BACKUP_BUCKET="${BACKUP_BUCKET:-backups-${ENVIRONMENT}-${AWS_REGION}}"

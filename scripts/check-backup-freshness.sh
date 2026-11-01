@@ -5,6 +5,19 @@ set -euo pipefail
 : "${BACKUP_S3_ACCESS_KEY_ID:?BACKUP_S3_ACCESS_KEY_ID is required}"
 : "${BACKUP_S3_SECRET_ACCESS_KEY:?BACKUP_S3_SECRET_ACCESS_KEY is required}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
+# Cloudflare R2 requires region "auto" and rejects the AWS CLI's default
+# CRC32 checksums, so only send/validate checksums when an operation requires
+# them (matches src/lib/uploads/s3-client.mjs).
+export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+is_r2_endpoint() {
+    local host="${1#*://}"
+    host="${host%%[/:?#]*}"
+    [[ "$host" == *.r2.cloudflarestorage.com ]]
+}
+if is_r2_endpoint "${BACKUP_S3_ENDPOINT:-}" || is_r2_endpoint "${S3_ENDPOINT:-}"; then
+    AWS_REGION="auto"
+fi
 MAX_BACKUP_AGE_SECONDS="${MAX_BACKUP_AGE_SECONDS:-5400}"
 BACKUP_S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"
 REDIS_URL="${REDIS_URL:-}"

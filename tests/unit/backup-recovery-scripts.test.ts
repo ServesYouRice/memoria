@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -77,5 +78,81 @@ describe("backup and recovery scripts", () => {
     expect(restoreCompose).toContain("restore-postgres:");
     expect(restoreCompose).toContain("RESTORE_ISOLATED_ACK: 'true'");
     expect(restoreCompose).not.toContain("postgres:5432");
+  });
+
+  describe("S3 client settings for Cloudflare R2", () => {
+    // Evaluate the script's own settings block (from the AWS_REGION default to
+    // the end of the R2 region switch) in bash, so the test fails if the
+    // exports or the endpoint match drift, not just if the text changes.
+    function awsSettings(script: string, env: Record<string, string>) {
+      const start = script.indexOf('AWS_REGION="${AWS_REGION:-us-east-1}"');
+      const endMarker = '    AWS_REGION="auto"\nfi\n';
+      const end = script.indexOf(endMarker, start) + endMarker.length;
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          `set -euo pipefail\n${script.slice(start, end)}\n` +
+            'echo "$AWS_REGION|${AWS_REQUEST_CHECKSUM_CALCULATION:-}|${AWS_RESPONSE_CHECKSUM_VALIDATION:-}"',
+        ],
+        {
+          encoding: "utf8",
+          env: { PATH: process.env["PATH"] ?? "", ...env },
+        },
+      );
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      const [region, request, response] = result.stdout.trim().split("|");
+      return { region, request, response };
+    }
+
+    const scripts = { backup, restore, freshness };
+
+    for (const [name, script] of Object.entries(scripts)) {
+      it(`${name} sends checksums only when required`, () => {
+        const settings = awsSettings(script, {});
+        expect(settings.request).toBe("when_required");
+        expect(settings.response).toBe("when_required");
+      });
+
+      it(`${name} selects region auto only for R2 endpoints`, () => {
+        const r2 = "https://abc123.r2.cloudflarestorage.com";
+        expect(awsSettings(script, { BACKUP_S3_ENDPOINT: r2 }).region).toBe(
+          "auto",
+        );
+        expect(awsSettings(script, { S3_ENDPOINT: `${r2}/` }).region).toBe(
+          "auto",
+        );
+        expect(
+          awsSettings(script, { BACKUP_S3_ENDPOINT: "http://seaweedfs:8333" })
+            .region,
+        ).toBe("us-east-1");
+        expect(
+          awsSettings(script, {
+            S3_ENDPOINT: "https://r2.cloudflarestorage.com.example.test",
+          }).region,
+        ).toBe("us-east-1");
+        expect(
+          awsSettings(script, {
+            S3_ENDPOINT: "https://example.test/x.r2.cloudflarestorage.com",
+          }).region,
+        ).toBe("us-east-1");
+        expect(
+          awsSettings(script, {
+            AWS_REGION: "eu-west-1",
+            S3_ENDPOINT: "http://seaweedfs:8333",
+          }).region,
+        ).toBe("eu-west-1");
+      });
+    }
+  });
+
+  it("documents the restore drill so a finished init job cannot abort it", () => {
+    const doc = readFileSync("docs/operations/backup-recovery.md", "utf8");
+    expect(doc).toContain(
+      "--exit-code-from restore-runner \\\n  --attach restore-runner",
+    );
   });
 });
