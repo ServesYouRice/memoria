@@ -10,6 +10,7 @@ import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Circle, Text, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import { isImageContent, type CanvasItemAdapterProps } from "@/types/canvas";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
 type ImageItemProps = CanvasItemAdapterProps;
 
@@ -55,7 +56,9 @@ export function ImageItem({
 
   // Load the image
   useEffect(() => {
-    if (content.url) {
+    // Remote image URLs load through the same-origin image proxy (IMP-057).
+    const imageSrc = toImageProxyUrl(content.url);
+    if (imageSrc) {
       const img = new window.Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
@@ -67,7 +70,7 @@ export function ImageItem({
         setImage(null);
         setImageFailed(true);
       };
-      img.src = content.url;
+      img.src = imageSrc;
     } else {
       setImageFailed(true);
     }

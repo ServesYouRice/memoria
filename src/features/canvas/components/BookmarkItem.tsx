@@ -20,6 +20,7 @@ import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Text, Circle, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import { isBookmarkContent, type CanvasItemAdapterProps } from "@/types/canvas";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
 type BookmarkItemProps = CanvasItemAdapterProps;
 
@@ -61,9 +62,10 @@ function BookmarkItemComponent({
     setLocalSize({ width: item.width, height: item.height });
   }, [item.positionX, item.positionY, item.width, item.height]);
 
-  // Load favicon if available
+  // Load favicon if available (remote favicons go through the image proxy)
   useEffect(() => {
-    if (content.favicon) {
+    const faviconSrc = toImageProxyUrl(content.favicon);
+    if (faviconSrc) {
       const img = new window.Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
@@ -72,7 +74,7 @@ function BookmarkItemComponent({
       img.onerror = () => {
         console.error("Failed to load favicon:", content.favicon);
       };
-      img.src = content.favicon;
+      img.src = faviconSrc;
     } else {
       setFavicon(null);
     }

@@ -26,6 +26,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
 import { type CanvasItem, isImageContent } from "@/types/canvas";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { TagInput } from "./TagInput";
 
 interface EditImageDialogProps {
@@ -128,7 +129,7 @@ export function EditImageDialog({ open, onClose, item }: EditImageDialogProps) {
             <Card variant="outlined">
               <CardMedia
                 component="img"
-                image={content.url}
+                image={toImageProxyUrl(content.url)}
                 alt={content.alt || content.filename}
                 sx={{
                   maxHeight: 300,

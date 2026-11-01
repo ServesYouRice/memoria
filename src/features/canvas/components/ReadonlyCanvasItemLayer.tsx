@@ -29,6 +29,7 @@ import {
   isTextContent,
 } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import {
   EMBED_PREVIEW_LABEL,
   describeEmbedTarget,
@@ -47,7 +48,7 @@ function ReadonlyBookmarkImage({
   width: number;
   height: number;
 }) {
-  const [image] = useImage(src, "anonymous");
+  const [image] = useImage(toImageProxyUrl(src) ?? "", "anonymous");
 
   if (!image) {
     return null;
@@ -58,7 +59,10 @@ function ReadonlyBookmarkImage({
 
 function ReadonlyImageItem({ item }: { item: CanvasItem }) {
   const imageContent = isImageContent(item.content) ? item.content : null;
-  const [image] = useImage(imageContent?.url || "", "anonymous");
+  const [image] = useImage(
+    toImageProxyUrl(imageContent?.url) ?? "",
+    "anonymous",
+  );
 
   if (!imageContent) {
     return null;

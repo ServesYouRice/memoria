@@ -17,6 +17,7 @@ import {
   classifyReadBudget,
   readBudgetLimiters,
   hasSessionCookie,
+  imageProxyRateLimit,
 } from "./middleware/rate-limit";
 import { applyCors, handleCorsPreflight } from "./middleware/cors";
 import { shouldApplyStrictAuthRateLimit } from "./middleware/auth-rate-limit";
@@ -110,6 +111,12 @@ export async function proxy(request: NextRequest) {
   ) {
     specificRateLimitApplied = true;
     const rateLimitResponse = await sensitiveEndpointRateLimit(request);
+    if (rateLimitResponse) return rateLimitResponse;
+  }
+
+  if (pathname === "/api/v1/image-proxy") {
+    specificRateLimitApplied = true;
+    const rateLimitResponse = await imageProxyRateLimit(request);
     if (rateLimitResponse) return rateLimitResponse;
   }
 
