@@ -126,6 +126,7 @@ model Canvas {
   shareInvitations CanvasShareInvitation[]
   notifications Notification[]
   versions    CanvasVersion[]
+  embeds      CanvasEmbed[]
 
   zoomLevel   Float       @default(1.0)
   panX        Float       @default(0)
@@ -165,6 +166,22 @@ model Canvas {
   @@index([isTemplate, templateCategory])
   @@index([isTemplate, usageCount, createdAt])
   @@index([workspaceId])
+}
+
+/// Signed, revocable read-only embed of a canvas. Only the SHA-256 digest of
+/// the token is stored; the token itself is shown once at creation.
+model CanvasEmbed {
+  id             String   @id @default(cuid())
+  canvasId       String
+  canvas         Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  label          String   @default("")
+  tokenDigest    String   @unique
+  allowedOrigins String[]
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([canvasId, createdAt])
 }
 
 model CanvasVersion {
