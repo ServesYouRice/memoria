@@ -5,12 +5,12 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
 
-Gate status, 2026-11-01 (Node 22 sandbox, after IMP-039/040/041/044 merged):
-`pnpm lint`, `pnpm type-check` and `pnpm test -- --run` (965 tests) pass;
-`pnpm test:e2e` passes 9/9 on Chromium against the production image with real
+`pnpm lint`, `pnpm type-check` and `pnpm test -- --run` (975 tests) pass;
+`pnpm test:e2e` passes 10/10 on Chromium (including real-browser embed framing) against the production image with real
 PostgreSQL, Redis, S3 (SeaweedFS) and captured email, and the strict
 operations smoke passes 14/14. Firefox and WebKit run only through
-`pnpm gate e2e` and were not run here.
+`pnpm gate e2e` and were not run here. A backup to SeaweedFS and the
+documented restore drill passed (RPO 134s, RTO 16s).
 
 ## DOING
 
@@ -22,8 +22,6 @@ operations smoke passes 14/14. Firefox and WebKit run only through
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-039](tasks/IMP-039.md) | R2 client merged; backup/restore against S3 still to prove | - |
-| [IMP-044](tasks/IMP-044.md) | Embeds merged; real-browser framing still to prove | - |
 
 ## WAITING
 
