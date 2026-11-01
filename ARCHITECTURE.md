@@ -18,9 +18,22 @@ Custom Node server (server.ts)
 PostgreSQL + Redis + S3-compatible object storage
 ```
 
-Production is self-host/VPS/container oriented. Serverless-first deployment is
-not the primary target because collaboration depends on a stateful WebSocket
-server and shared infrastructure.
+Production is container oriented: the target host is the owner's shared k3s
+cluster (see `AGENTS.md`, Direction). Serverless stays out because collaboration
+depends on stateful WebSocket servers and shared infrastructure.
+
+### Target topology
+
+The direction set by the owner's handbook, ordered by the Kanban:
+
+- **App:** Next.js + HTTP API, stateless, rolling updates.
+- **Sync server:** a separate Hocuspocus process for Yjs co-editing that saves
+  every document update to PostgreSQL. A second replica uses Hocuspocus's Redis
+  extension so edits reach clients on either copy.
+- **Worker and scheduler:** already separate processes from the same image.
+- **Data:** shared PostgreSQL 16, Valkey (Redis protocol), Cloudflare R2.
+
+Each process ships with one replica until its shared semantics are proven.
 
 ## Core Services
 
@@ -29,11 +42,13 @@ server and shared infrastructure.
   graph primitives.
 - **Redis** is required in production for cache/shared-state support and
   collaboration fanout across instances.
-- **S3-compatible object storage** is required in production for uploads. The
-  reference self-host stack uses MinIO.
-- **Auth.js / NextAuth** provides session handling with credentials auth,
-  argon2 password verification, email verification, reset tokens, and account
-  lockout logic.
+- **S3-compatible object storage** is required in production for uploads.
+  Production targets Cloudflare R2; the local and self-host stack runs
+  SeaweedFS under the `minio` host name.
+- **Auth.js / NextAuth** (5 beta) provides session handling with credentials
+  auth, argon2 password verification, email verification, reset tokens, and
+  account lockout logic. It is a dead end; the target is Better Auth with the
+  same policy plus passkeys and authenticator-app two-factor.
 
 ## Application Areas
 
@@ -84,10 +99,12 @@ Errors use RFC 7807-style problem JSON via shared error helpers.
 
 ## Collaboration
 
-Real-time collaboration uses a custom `ws` WebSocket server for ephemeral
-presence, cursors, chat, and reactions. Canvas item writes continue through the
-validated HTTP API; untrusted Yjs document persistence is intentionally
-disabled. The server:
+Today, real-time collaboration uses a custom `ws` WebSocket server for
+ephemeral presence, cursors, chat, and reactions, and canvas item writes go
+through the validated HTTP API. Real co-editing (Yjs documents served and
+persisted by a dedicated Hocuspocus sync server, with server-side authorization
+and validation of every update) is the target and is not built yet. The
+current server:
 
 - authenticates upgrades from Auth.js/NextAuth session cookies;
 - verifies canvas ownership or shared access;
