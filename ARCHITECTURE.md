@@ -2,19 +2,21 @@
 
 Memoria is a stateful Next.js application for visual note organization. The
 production runtime is a custom Node server that hosts the Next.js App Router and
-the WebSocket collaboration server in the same process.
+the WebSocket presence server in the same process; collaborative document sync
+runs in a separate sync server process built from the same image.
 
 ## Runtime Model
 
 ```
 Browser
-  | HTTP/JSON
-  v
-Custom Node server (server.ts)
-  | Next.js App Router
-  | API route handlers
-  | WebSocket upgrades at /api/collaboration/:canvasId
-  v
+  | HTTP/JSON                         | WebSocket /api/collaboration/sync
+  v                                   v (gateway route, or proxied by server.ts)
+Custom Node server (server.ts)      Sync server (pnpm sync:server, port 3001)
+  | Next.js App Router                | Hocuspocus + Yjs canvas documents
+  | API route handlers                | auth, role checks, update validation
+  | WebSocket upgrades at             |
+  |   /api/collaboration/:canvasId    |
+  v                                   v
 PostgreSQL + Redis + S3-compatible object storage
 ```
 
@@ -28,8 +30,9 @@ The direction set by the owner's handbook, ordered by the Kanban:
 
 - **App:** Next.js + HTTP API, stateless, rolling updates.
 - **Sync server:** a separate Hocuspocus process for Yjs co-editing that saves
-  every document update to PostgreSQL. A second replica uses Hocuspocus's Redis
-  extension so edits reach clients on either copy.
+  every document update to PostgreSQL (built, IMP-042; `sync` service). Run
+  exactly one replica: a second one needs cross-replica document fan-out and
+  a single writer per document (IMP-043).
 - **Worker and scheduler:** already separate processes from the same image.
 - **Data:** shared PostgreSQL 16, Valkey (Redis protocol), Cloudflare R2.
 
@@ -81,7 +84,11 @@ The main domain objects are:
   framing (`X-Frame-Options: DENY`, `frame-ancestors 'none'`) except
   `/embed/<token>` for a live token, which `src/proxy.ts` frames only from that
   embed's origins.
-- `CanvasVersion`: point-in-time canvas snapshots for restore.
+- `CanvasVersion`: point-in-time canvas snapshots for restore, with the Yjs
+  state of the canvas document they were taken from.
+- `CanvasDocument` / `CanvasDocumentUpdate`: the collaborative Yjs document
+  of a canvas (compacted state, the updates accepted since, and the last
+  `CanvasEvent` folded in). See Collaboration.
 - `Activity`: dashboard and notification events.
 - Agent models: `AgentProfile`, `ModelCredential`, `IntegrationAccount`,
   `AgentAction`, `ChangeSet`, `ChangeRecord`, `Suggestion`,
@@ -102,6 +109,10 @@ under `/api/agent/v1/*`. Operational endpoints include:
 - `POST /api/csp-report`: CSP violation reports.
 - `GET /api/collaboration/:canvasId`: WebSocket upgrade path handled by
   `server.ts`, not by a serverless route.
+- `GET /api/collaboration/sync`: WebSocket upgrade to the sync server (the
+  gateway routes it there; `server.ts` proxies it to
+  `SYNC_SERVER_INTERNAL_URL` otherwise). The sync server's own `/health` and
+  `/ready` stay on the internal network.
 
 Versioned API responses receive `X-API-Version`,
 `X-API-Version-Prefix`, and `X-API-Deprecated` headers from middleware.
@@ -109,12 +120,51 @@ Errors use RFC 7807-style problem JSON via shared error helpers.
 
 ## Collaboration
 
-Today, real-time collaboration uses a custom `ws` WebSocket server for
-ephemeral presence, cursors, chat, and reactions, and canvas item writes go
-through the validated HTTP API. Real co-editing (Yjs documents served and
-persisted by a dedicated Hocuspocus sync server, with server-side authorization
-and validation of every update) is the target and is not built yet. The
-current server:
+Two WebSocket services work side by side.
+
+**Co-editing (IMP-042).** Each canvas has one Yjs document, named by the
+canvas id and served by the sync server (`src/lib/collaboration/sync/`). Its
+root map `items` holds one map per live item: `type`, geometry, `tags`, and
+either JSON `content` or, for notes, a `text` XML fragment that TipTap edits
+(`protocol.ts`). Several people can move the same item and type into the same
+note at once; Yjs merges the edits.
+
+- **Auth.** Every document connection is authenticated from the Better Auth
+  session cookie (`src/lib/auth/session.ts`), or a public share token for
+  guests, and authorized against ownership and shares. Viewers, commenters
+  and guests are read-only connections. Access is re-checked on the presence
+  socket's 30-second interval: a revoked share, link or session closes the
+  connection (`memoria:forbidden`), and a role change makes the client
+  authenticate again (`memoria:reauthenticate`).
+- **Validation.** The server never trusts a client document. Each update is
+  applied first to a private copy, every touched item is read back and
+  validated with the item Zod schemas (note text against the note schema),
+  capacity limits and poll gating; anything else in the update (another root,
+  key, type change, foreign item id) refuses the whole update
+  (`memoria:invalid-update`), and the client discards its copy and resyncs.
+- **Persistence and direction.** Document to rows is synchronous: in one
+  PostgreSQL transaction under the canvas lock, the sync server appends the
+  update (`CanvasDocumentUpdate`), projects the touched fields onto
+  `CanvasItem` rows and records `CanvasEvent`s, then applies the update to
+  the live document and acknowledges it. An acknowledged edit is durable, so a
+  restart loses none. Rows to document is asynchronous: HTTP, agent, trash and
+  restore writes keep going through their routes, and the sync server folds
+  their `CanvasEvent`s into open documents within about a second (field-level,
+  last commit wins). Canvases migrate lazily on first open. `CanvasItem` rows
+  stay the source for search, export, agents, the HTTP API and the accessible
+  item list; version snapshots also store the document's Yjs state.
+- **Client.** `CanvasBoard` opens a `CanvasDocumentSession`; while it is
+  synced and writable, item writes and the note editor go through the
+  document, and the board renders the document's items with row metadata.
+  Otherwise writes use the HTTP API.
+- **Scaling seam.** One sync replica per database: each process keeps the
+  documents it serves in memory and assumes it is their only writer. IMP-043
+  adds the Hocuspocus Redis extension for cross-replica fan-out (and must keep
+  one writer per document) before a second replica.
+
+**Presence.** A custom `ws` server in `server.ts` carries ephemeral presence,
+cursors, chat, and reactions, and relays committed item events so clients
+refresh rows. It:
 
 - authenticates upgrades from Better Auth session cookies and closes
   connections whose session row was revoked or expired;

@@ -18,7 +18,10 @@ if (envFile) {
 composeArgs.push('-f', 'docker-compose.yml');
 
 if (action === 'up') {
-  const services = flags.has('--app') ? ['app', 'postgres', 'redis', 'minio'] : ['postgres', 'redis', 'minio'];
+  // `sync` (IMP-042) stores collaborative canvas edits; the app proxies to it.
+  const services = flags.has('--app')
+    ? ['app', 'sync', 'postgres', 'redis', 'minio']
+    : ['postgres', 'redis', 'minio'];
   await run(docker, [...composeArgs, 'up', '-d', ...services], { cwd: projectRoot });
 } else if (action === 'down') {
   await run(docker, [...composeArgs, 'down'], { cwd: projectRoot });

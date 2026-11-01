@@ -17,7 +17,12 @@ Memoria is a stateful Node application for visual note organization. It combines
 ```bash
 pnpm setup:dev
 pnpm dev
+pnpm sync:dev   # in a second terminal: the collaborative document sync server
 ```
+
+`pnpm dev` proxies `/api/collaboration/sync` to the sync server on port 3001
+(`SYNC_SERVER_INTERNAL_URL`). Without it the canvas still works, but saves
+through the HTTP API instead of editing live with collaborators.
 
 What `pnpm setup:dev` does:
 
