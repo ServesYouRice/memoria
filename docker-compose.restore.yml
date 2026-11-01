@@ -13,30 +13,36 @@ services:
     volumes:
       - restore_postgres_data:/var/lib/postgresql/data
 
+  # S3-compatible stand-in (MinIO's images were withdrawn from Docker Hub).
   restore-minio:
-    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
-    command: server /data
-    environment:
-      MINIO_ROOT_USER: memoriarestore
-      MINIO_ROOT_PASSWORD: memoria-isolated-restore-password
+    image: chrislusf/seaweedfs:4.51
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >-
+        printf '{"identities":[{"name":"memoria","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "memoriarestore" "memoria-isolated-restore-password" > /tmp/s3.json &&
+        exec weed server -dir=/data -s3 -s3.port=9000 -s3.config=/tmp/s3.json
     healthcheck:
-      test: ['CMD-SHELL', 'curl --fail --silent http://127.0.0.1:9000/minio/health/live']
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:9000/healthz']
       interval: 2s
       timeout: 3s
-      retries: 30
+      retries: 60
     volumes:
       - restore_minio_data:/data
 
   restore-minio-init:
-    image: minio/mc:RELEASE.2025-02-08T19-14-21Z
+    image: amazon/aws-cli:2.39.3
     depends_on:
       restore-minio:
         condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: memoriarestore
+      AWS_SECRET_ACCESS_KEY: memoria-isolated-restore-password
+      AWS_DEFAULT_REGION: us-east-1
     entrypoint: ['/bin/sh', '-c']
     command:
       - >-
-        mc alias set restore http://restore-minio:9000 memoriarestore memoria-isolated-restore-password &&
-        mc mb --ignore-existing restore/memoria-restore
+        aws --endpoint-url http://restore-minio:9000 s3api head-bucket --bucket memoria-restore ||
+        aws --endpoint-url http://restore-minio:9000 s3 mb s3://memoria-restore
     restart: 'no'
 
   restore-runner:

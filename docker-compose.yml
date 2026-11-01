@@ -319,26 +319,33 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
 
+  # Local S3-compatible storage for self-hosting; the managed deployment uses
+  # Cloudflare R2. MinIO's images were withdrawn from Docker Hub, so SeaweedFS
+  # serves the S3 API under the existing `minio` host name and credentials.
+  # It cannot read old MinIO volumes: copy objects with `aws s3 sync` first.
   minio:
-    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
+    image: chrislusf/seaweedfs:4.51
     container_name: memoria-minio
     restart: unless-stopped
-    command: server /data --console-address ":9001"
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >-
+        printf '{"identities":[{"name":"memoria","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" > /tmp/s3.json &&
+        exec weed server -dir=/data -s3 -s3.port=9000 -s3.config=/tmp/s3.json
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - '127.0.0.1:9000:9000'
-      - '127.0.0.1:9001:9001'
     volumes:
-      - minio_data:/data
+      - s3_data:/data
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
-  minio_data:
+  s3_data:
     driver: local
   prometheus_data:
     driver: local
