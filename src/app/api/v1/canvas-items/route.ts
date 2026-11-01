@@ -27,7 +27,10 @@ import {
 import type { CanvasItem } from "@/generated/prisma/client";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { requirePollsEnabled } from "@/lib/polls/availability";
-import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
+import {
+  recordCanvasItemEvent,
+  recordCanvasItemEventsBatch,
+} from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import {
   boundedItemsResponse,
@@ -131,34 +134,50 @@ export async function PATCH(request: NextRequest) {
 
     await prisma.$transaction(async (tx) => {
       await lockCanvasForMutation(tx, data.canvasId);
-      for (const item of data.items) {
-        const updated = await tx.canvasItem.updateMany({
-          where: {
-            id: item.id,
-            canvasId: data.canvasId,
-            version: item.version,
-            deletedAt: null,
-          },
-          data: {
-            positionX: item.positionX,
-            positionY: item.positionY,
-            version: { increment: 1 },
-            updatedById: userId,
-          },
-        });
-        if (updated.count !== 1) {
-          throw new ConflictError(
-            "Canvas changed while the layout was being prepared. Refresh and try again.",
-          );
-        }
-        await recordCanvasItemEvent(tx, {
+      // One UPDATE applies every per-item version check. A row that is
+      // missing, soft-deleted, on another canvas or at a different version
+      // simply does not match, so any shortfall is a conflict and the whole
+      // transaction rolls back.
+      const ids = data.items.map((item) => item.id);
+      const versions = data.items.map((item) => item.version);
+      const xs = data.items.map((item) => item.positionX);
+      const ys = data.items.map((item) => item.positionY);
+      const updated = await tx.$queryRaw<Array<{ id: string }>>`
+        UPDATE "CanvasItem" AS ci
+        SET "positionX" = v."positionX",
+            "positionY" = v."positionY",
+            "version" = ci."version" + 1,
+            "updatedById" = ${userId},
+            "updatedAt" = CURRENT_TIMESTAMP
+        FROM unnest(
+          ${ids}::text[],
+          ${versions}::int[],
+          ${xs}::double precision[],
+          ${ys}::double precision[]
+        ) AS v("id", "version", "positionX", "positionY")
+        WHERE ci."id" = v."id"
+          AND ci."canvasId" = ${data.canvasId}
+          AND ci."version" = v."version"
+          AND ci."deletedAt" IS NULL
+        RETURNING ci."id"
+      `;
+      // A repeated id matches at most once, so duplicates also conflict, as
+      // the sequential implementation did.
+      if (updated.length !== data.items.length) {
+        throw new ConflictError(
+          "Canvas changed while the layout was being prepared. Refresh and try again.",
+        );
+      }
+      await recordCanvasItemEventsBatch(
+        tx,
+        data.items.map((item) => ({
           canvasId: data.canvasId,
           actorId: userId,
           itemId: item.id,
           version: item.version + 1,
-          operation: "updated",
-        });
-      }
+          operation: "updated" as const,
+        })),
+      );
     });
 
     await invalidateCanvasCache(data.canvasId);

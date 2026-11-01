@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { z } from "zod";
-import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { enqueueOutboxJob, enqueueOutboxJobs } from "@/lib/outbox/enqueue";
 
 type Store = Prisma.TransactionClient | PrismaClient;
 export const committedEventEnvelopeSchema = z
@@ -59,24 +59,25 @@ export async function recordCanvasItemEventsBatch(
   }>,
 ) {
   if (events.length === 0) return [];
-  const created = [];
-  for (const input of events) {
-    const event = await tx.canvasEvent.create({
-      data: {
-        canvasId: input.canvasId,
-        actorId: input.actorId,
-        entityId: input.itemId,
-        entityVersion: input.version,
-        operation: input.operation,
-      },
-    });
-    await enqueueOutboxJob(tx, {
+  // Two statements regardless of batch size: one INSERT ... RETURNING for the
+  // events (rows come back in input order) and one for their publish jobs.
+  const created = await tx.canvasEvent.createManyAndReturn({
+    data: events.map((input) => ({
+      canvasId: input.canvasId,
+      actorId: input.actorId,
+      entityId: input.itemId,
+      entityVersion: input.version,
+      operation: input.operation,
+    })),
+  });
+  await enqueueOutboxJobs(
+    tx,
+    created.map((event) => ({
       type: "canvas.event.publish",
       payload: { eventId: event.id },
       dedupeKey: `canvas.event.publish:${event.id}`,
-    });
-    created.push(event);
-  }
+    })),
+  );
   return created;
 }
 
