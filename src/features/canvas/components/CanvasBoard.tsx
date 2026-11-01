@@ -773,11 +773,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   const handleDeleteItem = (item: CanvasItem) => {
     if (!capabilities.canDeleteItems) return;
+    // The hook rolls back and shows the failure toast.
     deleteItem({
       itemId: item.id,
       version: item.version,
       canvasId: item.canvasId,
-    });
+    }).catch(() => {});
   };
 
   const generateThumbnail = useCallback(
@@ -882,7 +883,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         itemId: selectedItemId,
         version: selectedItem.version,
         canvasId: selectedItem.canvasId,
-      });
+      }).catch(() => {});
     }
   };
 
