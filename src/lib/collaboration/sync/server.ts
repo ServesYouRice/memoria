@@ -349,7 +349,17 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
         now +
         (options.authorizationRefreshMs ?? AUTHORIZATION_REFRESH_INTERVAL_MS) *
           3;
-      connection.readOnly = !canWriteDocument(access);
+      const writable = canWriteDocument(access);
+      if (writable === connection.readOnly) {
+        // The role moved between editing and read-only. Apply it at once,
+        // then make the client authenticate again to learn its new scope.
+        connection.readOnly = !writable;
+        closeConnection(
+          connection,
+          SYNC_CLOSE_CODES.reauthenticate,
+          SYNC_CLOSE_REASONS.reauthenticate,
+        );
+      }
     }
   }
 

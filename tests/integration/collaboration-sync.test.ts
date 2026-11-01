@@ -48,6 +48,7 @@ import {
 } from "@/lib/collaboration/sync/document-items";
 import { readPersistedCanvasDocument } from "@/lib/collaboration/sync/store";
 import { writeNoteFragment } from "@/lib/collaboration/sync/note-fragment";
+import { CanvasDocumentSession } from "@/lib/collaboration/sync/client-session";
 import { ItemType } from "@/types/canvas";
 import { POST as createVersion } from "@/app/api/v1/canvases/[canvasId]/versions/route";
 import { POST as restoreVersion } from "@/app/api/v1/canvases/[canvasId]/versions/[versionId]/restore/route";
@@ -63,6 +64,7 @@ const testLogger = {
 let counter = 0;
 const servers: SyncServer[] = [];
 const providers: HocuspocusProvider[] = [];
+const sessions: CanvasDocumentSession[] = [];
 
 async function createSignedInUser(label: string) {
   counter += 1;
@@ -212,6 +214,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  for (const session of sessions.splice(0)) session.destroy();
   for (const provider of providers.splice(0)) provider.destroy();
   for (const server of servers.splice(0)) await server.destroy();
 });
@@ -610,7 +613,16 @@ describe("collaboration sync server", () => {
       where: { id: grant.id },
       data: { role: "COMMENT" },
     });
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    // The server applies the new role and asks the client to authenticate
+    // again; the provider reconnects with a read-only scope.
+    await waitFor(() =>
+      client.closeReasons.includes(SYNC_CLOSE_REASONS.reauthenticate),
+    );
+    await waitFor(
+      () =>
+        client.provider.isSynced &&
+        client.provider.authorizedScope === "readonly",
+    );
     const itemId = createCanvasItemId();
     client.doc.transact(() =>
       applyItemState(
@@ -830,5 +842,185 @@ describe("collaboration sync server", () => {
       where: { canvasId: canvas.id, name: "Restored Before edits" },
     });
     expect(copy.yjsState).toEqual(version.yjsState);
+  });
+});
+
+/** The browser's document session, connected the way a browser connects. */
+function openSession(input: {
+  url: string;
+  canvasId: string;
+  cookie: string;
+  onRejectedChange?: () => void;
+}) {
+  const headers = { origin: TEST_ORIGIN, cookie: input.cookie };
+  class SessionWebSocket extends WebSocket {
+    constructor(address: string) {
+      super(address, { headers });
+    }
+  }
+  const session = new CanvasDocumentSession({
+    canvasId: input.canvasId,
+    url: input.url,
+    WebSocketPolyfill: SessionWebSocket,
+    retryDelayMs: 50,
+    onRejectedChange: input.onRejectedChange,
+  });
+  sessions.push(session);
+  return session;
+}
+
+function noteInput(canvasId: string, text: string) {
+  const { id: _id, ...state } = noteState("unused", text);
+  return { ...state, canvasId };
+}
+
+function sessionText(session: CanvasDocumentSession, itemId: string) {
+  const entry = session.getSnapshot().items.get(itemId);
+  return (entry?.state.content as { plainText?: string } | undefined)
+    ?.plainText;
+}
+
+async function waitForStored(session: CanvasDocumentSession) {
+  await waitFor(() => {
+    const snapshot = session.getSnapshot();
+    return snapshot.connected && snapshot.pendingChanges === 0;
+  });
+}
+
+describe("canvas document session", () => {
+  it("writes through the document, keeps rows in step and converges", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    await share(canvas.id, editor.user, "EDIT");
+    const { url } = await startServer();
+    const a = openSession({ url, canvasId: canvas.id, cookie: owner.cookie });
+    const b = openSession({ url, canvasId: canvas.id, cookie: editor.cookie });
+    await waitFor(() => a.acceptsWrites && b.acceptsWrites);
+
+    const note = a.createItem(noteInput(canvas.id, "Hello"));
+    expect(a.getSnapshot().items.get(note.id)?.state.positionX).toBe(10);
+    await waitFor(() => b.getSnapshot().items.has(note.id));
+
+    // Both edit the same note text and the same item at once.
+    const textA = (a.noteFragment(note.id)!.get(0) as Y.XmlElement).get(
+      0,
+    ) as Y.XmlText;
+    const textB = (b.noteFragment(note.id)!.get(0) as Y.XmlElement).get(
+      0,
+    ) as Y.XmlText;
+    textA.insert(5, " world");
+    textB.insert(0, "Oh, ");
+    a.updateItem(note.id, { width: 260 });
+    b.updateItem(note.id, { positionX: 40, tags: ["shared"] });
+    await waitForStored(a);
+    await waitForStored(b);
+
+    const expected = "Oh, Hello world";
+    await waitFor(
+      () =>
+        sessionText(a, note.id) === expected &&
+        sessionText(b, note.id) === expected,
+    );
+    await waitFor(async () => {
+      const row = await prisma.canvasItem.findUnique({
+        where: { id: note.id },
+      });
+      return (row?.content as { plainText?: string })?.plainText === expected;
+    });
+    expect(
+      await prisma.canvasItem.findUniqueOrThrow({ where: { id: note.id } }),
+    ).toMatchObject({
+      canvasId: canvas.id,
+      positionX: 40,
+      width: 260,
+      tags: ["shared"],
+      createdById: owner.user.id,
+      updatedById: expect.any(String),
+    });
+    expect(a.getSnapshot().items.get(note.id)?.state).toEqual(
+      b.getSnapshot().items.get(note.id)?.state,
+    );
+
+    b.deleteItem(note.id);
+    await waitFor(() => !a.getSnapshot().items.has(note.id));
+    await waitFor(
+      async () =>
+        (await prisma.canvasItem.findUniqueOrThrow({ where: { id: note.id } }))
+          .deletedAt !== null,
+    );
+  });
+
+  it("reloads the document when the server refuses a change", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const { url } = await startServer();
+    let rejected = 0;
+    const session = openSession({
+      url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+      onRejectedChange: () => {
+        rejected += 1;
+      },
+    });
+    await waitFor(() => session.acceptsWrites);
+    const note = session.createItem(noteInput(canvas.id, "Kept"));
+    await waitForStored(session);
+
+    // Markup the note schema does not allow, written past the editor.
+    const fragment = session.noteFragment(note.id)!;
+    fragment.doc!.transact(() =>
+      fragment.insert(0, [new Y.XmlElement("script")]),
+    );
+    await waitFor(() => rejected === 1);
+    expect(session.getSnapshot().generation).toBe(1);
+    await waitFor(() => session.acceptsWrites);
+    expect(session.noteFragment(note.id)!.toString()).not.toContain("script");
+    expect(sessionText(session, note.id)).toBe("Kept");
+
+    // The reloaded document keeps working.
+    session.updateItem(note.id, { positionY: 99 });
+    await waitFor(
+      async () =>
+        (await prisma.canvasItem.findUniqueOrThrow({ where: { id: note.id } }))
+          .positionY === 99,
+    );
+  });
+
+  it("follows role changes and stops when access is revoked", async () => {
+    const member = await createSignedInUser("member");
+    const canvas = await createCanvas(owner.user.id);
+    const grant = await share(canvas.id, member.user, "VIEW");
+    const { url } = await startServer();
+    const session = openSession({
+      url,
+      canvasId: canvas.id,
+      cookie: member.cookie,
+    });
+    await waitFor(() => session.getSnapshot().ready);
+    expect(session.acceptsWrites).toBe(false);
+    expect(() => session.createItem(noteInput(canvas.id, "No"))).toThrow();
+
+    await prisma.canvasShare.update({
+      where: { id: grant.id },
+      data: { role: "EDIT" },
+    });
+    await waitFor(() => session.acceptsWrites);
+    expect(session.getSnapshot().accessRevision).toBeGreaterThan(0);
+    const note = session.createItem(noteInput(canvas.id, "Editor now"));
+    await waitForStored(session);
+
+    await prisma.canvasShare.update({
+      where: { id: grant.id },
+      data: { role: "VIEW" },
+    });
+    await waitFor(() => {
+      const snapshot = session.getSnapshot();
+      return snapshot.generation === 1 && snapshot.ready && !snapshot.writable;
+    });
+    expect(session.hasItem(note.id)).toBe(true);
+    expect(session.acceptsWrites).toBe(false);
+
+    await prisma.canvasShare.delete({ where: { id: grant.id } });
+    await waitFor(() => session.getSnapshot().forbidden);
+    expect(session.getSnapshot().connected).toBe(false);
   });
 });

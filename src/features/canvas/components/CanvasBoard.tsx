@@ -25,7 +25,14 @@ import {
 } from "@/lib/hooks/use-canvas-items";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSelectionBox } from "@/lib/hooks/use-selection-box";
-import { useUpdateCanvasThumbnail } from "@/lib/hooks/use-canvases";
+import { canvasKeys, useUpdateCanvasThumbnail } from "@/lib/hooks/use-canvases";
+import { canvasIndexKeys } from "@/lib/hooks/use-canvas-index";
+import {
+  CanvasDocumentContext,
+  useCanvasDocument,
+  useCanvasDocumentSnapshot,
+} from "@/lib/hooks/use-canvas-document";
+import { useCanvasDocumentSession } from "@/features/canvas/hooks/use-canvas-document-session";
 import { useCollaboration } from "@/lib/hooks/use-collaboration";
 import { useVirtualItems } from "@/lib/hooks/use-virtual-items";
 import { useRestoreVersion } from "@/lib/hooks/use-canvas-versions"; // Only restore needed
@@ -96,7 +103,26 @@ interface RemoteReactionMessage {
   userName: string;
 }
 
+/**
+ * IMP-042: the board opens the canvas's collaborative document and edits it
+ * live while it is available; item writes fall back to the HTTP API
+ * otherwise (see `lib/collaboration/sync/client-session`).
+ */
 export function CanvasBoard({ canvasId }: CanvasBoardProps) {
+  const documentSession = useCanvasDocumentSession(canvasId, {
+    onRejectedChange: () =>
+      toast.error(
+        "A change could not be saved and was undone. The canvas now shows the latest saved state.",
+      ),
+  });
+  return (
+    <CanvasDocumentContext.Provider value={documentSession}>
+      <CanvasBoardContent canvasId={canvasId} />
+    </CanvasDocumentContext.Provider>
+  );
+}
+
+function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // Refs
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -167,6 +193,43 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
     setSnapToGrid: setSnapToGridEnabled,
     activeTool,
   } = useCanvasStore();
+
+  // IMP-042: the collaborative document's save and access state.
+  const documentSession = useCanvasDocument();
+  const documentState = useCanvasDocumentSnapshot(documentSession);
+  const documentSaveStatus =
+    documentState.ready && documentState.localChanges
+      ? documentState.pendingChanges === 0
+        ? ("saved" as const)
+        : documentState.connected
+          ? ("saving" as const)
+          : ("offline/retrying" as const)
+      : undefined;
+  const documentSavingRef = useRef(false);
+  useEffect(() => {
+    // Rows (and so the canvas index) change once the sync server has stored
+    // the document changes this client made.
+    const saving = documentState.pendingChanges > 0;
+    if (documentSavingRef.current && !saving && documentState.localChanges) {
+      void queryClient.invalidateQueries({
+        queryKey: canvasIndexKeys.all(canvasId),
+      });
+    }
+    documentSavingRef.current = saving;
+  }, [
+    canvasId,
+    documentState.localChanges,
+    documentState.pendingChanges,
+    queryClient,
+  ]);
+  useEffect(() => {
+    // The sync server reported a change in access: reload the canvas role
+    // so every surface follows it.
+    if (documentState.accessRevision === 0) return;
+    void queryClient.invalidateQueries({
+      queryKey: canvasKeys.detail(canvasId),
+    });
+  }, [canvasId, documentState.accessRevision, queryClient]);
 
   // Mutations
   const { mutateAsync: deleteItem } = useDeleteCanvasItem();
@@ -1092,9 +1155,8 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
                   : "failed"
               : geometrySaveStatus !== "saved"
                 ? geometrySaveStatus
-                : updateItemMutation.isSuccess
-                  ? "saved"
-                  : undefined
+                : (documentSaveStatus ??
+                  (updateItemMutation.isSuccess ? "saved" : undefined))
         }
         saveError={
           updateItemMutation.isError &&
@@ -1551,6 +1613,33 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         confirmLabel="Apply layout"
         onClose={() => setPendingAutopilotActions([])}
         onConfirm={async () => {
+          if (
+            documentSession?.acceptsWrites &&
+            pendingAutopilotActions.every((action) =>
+              documentSession.hasItem(action.itemId),
+            )
+          ) {
+            // One document change, stored by the sync server in one
+            // transaction like the batch request below.
+            try {
+              documentSession.updateItems(
+                pendingAutopilotActions.map((action) => ({
+                  itemId: action.itemId,
+                  changes: {
+                    positionX: action.newPosition.x,
+                    positionY: action.newPosition.y,
+                  },
+                })),
+              );
+            } catch {
+              toast.error(
+                "The layout could not be applied. Refresh and try again.",
+              );
+              return;
+            }
+            setPendingAutopilotActions([]);
+            return;
+          }
           const itemsToUpdate = pendingAutopilotActions.flatMap((action) => {
             const item = allItems.find(
               (candidate) => candidate.id === action.itemId,

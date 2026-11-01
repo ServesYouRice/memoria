@@ -56,6 +56,8 @@ export const SYNC_CLOSE_REASONS = {
   forbidden: "memoria:forbidden",
   /** Persisting failed transiently: reconnect and resend local changes. */
   unavailable: "memoria:unavailable",
+  /** The role changed (edit <-> read-only): reconnect to learn the new scope. */
+  reauthenticate: "memoria:reauthenticate",
 } as const;
 
 export type SyncCloseReason =
@@ -65,6 +67,7 @@ export type SyncCloseReason =
 export const SYNC_CLOSE_CODES = {
   invalidUpdate: 4400,
   forbidden: 4403,
+  reauthenticate: 4409,
   unavailable: 4503,
 } as const;
 
