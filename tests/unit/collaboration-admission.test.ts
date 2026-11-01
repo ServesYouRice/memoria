@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canBroadcastSocial,
+  deriveUpgradeClientId,
   isAllowedCollaborationOrigin,
   isValidGuestShare,
   parseCollaborationMessage,
@@ -58,5 +59,33 @@ describe("collaboration capabilities and schemas", () => {
         },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("deriveUpgradeClientId", () => {
+  const req = (remote: string, xff?: string) =>
+    ({
+      socket: { remoteAddress: remote },
+      headers: xff ? { "x-forwarded-for": xff } : {},
+    }) as never;
+
+  it("keys per client address", () => {
+    delete process.env.TRUSTED_PROXY_CIDRS;
+    expect(deriveUpgradeClientId(req("203.0.113.5"))).toBe("203.0.113.5");
+    expect(deriveUpgradeClientId(req("203.0.113.6"))).toBe("203.0.113.6");
+  });
+
+  it("honors X-Forwarded-For only from trusted proxies", () => {
+    process.env.TRUSTED_PROXY_CIDRS = "10.0.0.0/8";
+    try {
+      expect(deriveUpgradeClientId(req("10.0.0.2", "198.51.100.7"))).toBe(
+        "198.51.100.7",
+      );
+      expect(deriveUpgradeClientId(req("203.0.113.5", "198.51.100.7"))).toBe(
+        "203.0.113.5",
+      );
+    } finally {
+      delete process.env.TRUSTED_PROXY_CIDRS;
+    }
   });
 });

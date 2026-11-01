@@ -95,6 +95,75 @@ describe("committed client item recovery", () => {
     });
   });
 
+  it("keeps the paged accessible item list in step with live events", async () => {
+    const queryClient = new QueryClient();
+    const accessibleKey = [...canvasItemKeys.list(item.canvasId), "accessible"];
+    queryClient.setQueryData(accessibleKey, {
+      pages: [{ items: [item], total: 1, hasMore: false, nextCursor: null }],
+      pageParams: [null],
+    });
+    const created = { ...item, id: "clitem-created-000000000000", version: 1 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ items: [created] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await mergeCommittedCanvasItemEvents(queryClient, item.canvasId, [
+      {
+        schemaVersion: 1,
+        cursor: "11",
+        operation: "created",
+        entity: { type: "canvas-item", id: created.id, version: 1 },
+      },
+      {
+        schemaVersion: 1,
+        cursor: "12",
+        operation: "deleted",
+        entity: { type: "canvas-item", id: item.id, version: 2 },
+      },
+    ]);
+
+    expect(queryClient.getQueryData(accessibleKey)).toMatchObject({
+      pages: [{ items: [{ id: created.id }], total: 1 }],
+    });
+  });
+
+  it("leaves unseen items to the next page fetch while pages remain", async () => {
+    const queryClient = new QueryClient();
+    const accessibleKey = [...canvasItemKeys.list(item.canvasId), "accessible"];
+    const pageData = {
+      pages: [{ items: [item], total: 2, hasMore: true, nextCursor: "c1" }],
+      pageParams: [null],
+    };
+    queryClient.setQueryData(accessibleKey, pageData);
+    const created = { ...item, id: "clitem-created-000000000000", version: 1 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ items: [created] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await mergeCommittedCanvasItemEvents(queryClient, item.canvasId, [
+      {
+        schemaVersion: 1,
+        cursor: "13",
+        operation: "created",
+        entity: { type: "canvas-item", id: created.id, version: 1 },
+      },
+    ]);
+
+    expect(queryClient.getQueryData(accessibleKey)).toBe(pageData);
+  });
+
   it("hydrates a committed update burst with one bounded HTTP read", async () => {
     const queryClient = new QueryClient();
     const existingItems = Array.from({ length: 50 }, (_, index) => ({

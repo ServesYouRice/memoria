@@ -433,30 +433,84 @@ function applyCommittedCanvasItemBatch(
     }
   }
 
+  const mergeItems = (items: CanvasItem[], seen: Set<string>) => {
+    let changed = false;
+    let removed = 0;
+    const merged = items.flatMap((item) => {
+      seen.add(item.id);
+      const tombstoneVersion = tombstones.get(item.id);
+      if (tombstoneVersion !== undefined && item.version <= tombstoneVersion) {
+        changed = true;
+        removed += 1;
+        return [];
+      }
+      const replacement = incoming.get(item.id);
+      if (replacement && item.version <= replacement.version) {
+        if (replacement !== item) changed = true;
+        return [replacement];
+      }
+      return [item];
+    });
+    return { items: merged, changed, removed };
+  };
+
   queryClient.setQueriesData(
     { queryKey: canvasItemKeys.lists() },
-    (old: { items?: CanvasItem[] } | undefined) => {
-      if (!old?.items) return old;
+    (
+      old:
+        | { items?: CanvasItem[] }
+        | {
+            pages?: Array<{
+              items: CanvasItem[];
+              total?: number;
+              hasMore?: boolean;
+            }>;
+            pageParams?: unknown[];
+          }
+        | undefined,
+    ) => {
       const seen = new Set<string>();
-      let changed = false;
-      const items = old.items.flatMap((item) => {
-        seen.add(item.id);
-        const tombstoneVersion = tombstones.get(item.id);
-        if (
-          tombstoneVersion !== undefined &&
-          item.version <= tombstoneVersion
-        ) {
-          changed = true;
-          return [];
-        }
-        const replacement = incoming.get(item.id);
-        if (replacement && item.version <= replacement.version) {
-          if (replacement !== item) changed = true;
-          return [replacement];
-        }
-        return [item];
-      });
 
+      // The accessible item list is an infinite (cursor-paged) query; keep it
+      // in step with live events like the board's flat list.
+      if (old && "pages" in old && Array.isArray(old.pages)) {
+        let changed = false;
+        let removed = 0;
+        const pages = old.pages.map((page) => {
+          const result = mergeItems(page.items, seen);
+          changed ||= result.changed;
+          removed += result.removed;
+          return result.changed ? { ...page, items: result.items } : page;
+        });
+        const added = [...incoming.values()].filter(
+          (item) => !seen.has(item.id),
+        );
+        const last = pages[pages.length - 1];
+        // Unseen items belong at the end; only append once every page is
+        // loaded, otherwise the next page fetch will return them.
+        const appended = last && !last.hasMore ? added.length : 0;
+        if (last && appended > 0) {
+          pages[pages.length - 1] = {
+            ...last,
+            items: [...last.items, ...added],
+          };
+          changed = true;
+        }
+        if (!changed) return old;
+        const first = pages[0];
+        if (first && typeof first.total === "number") {
+          pages[0] = {
+            ...first,
+            total: Math.max(0, first.total + added.length - removed),
+          };
+        }
+        return { ...old, pages };
+      }
+
+      if (!old || !("items" in old) || !old.items) return old;
+      const result = mergeItems(old.items, seen);
+      const items = result.items;
+      let changed = result.changed;
       for (const item of incoming.values()) {
         if (!seen.has(item.id)) {
           items.push(item);
