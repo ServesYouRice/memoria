@@ -44,6 +44,7 @@ describe("rate limit environment overrides", () => {
   it("falls back to the production ceilings when nothing is set", async () => {
     delete process.env.API_RATE_LIMIT_MAX_REQUESTS;
     delete process.env.UPLOAD_RATE_LIMIT_MAX_REQUESTS;
+    delete process.env.CANVASES_RATE_LIMIT_MAX_REQUESTS;
 
     const ceilings = await loadCeilings();
 
@@ -55,26 +56,34 @@ describe("rate limit environment overrides", () => {
       maxRequests: 10,
       windowSeconds: 60 * 60,
     });
+    expect(ceilings.get("canvases")).toMatchObject({
+      maxRequests: 50,
+      windowSeconds: 60,
+    });
   });
 
   it("honours the configured ceilings so a test stack can lift them", async () => {
     process.env.API_RATE_LIMIT_MAX_REQUESTS = "100000";
     process.env.UPLOAD_RATE_LIMIT_MAX_REQUESTS = "10000";
+    process.env.CANVASES_RATE_LIMIT_MAX_REQUESTS = "100000";
 
     const ceilings = await loadCeilings();
 
     expect(ceilings.get("api")?.maxRequests).toBe(100_000);
     expect(ceilings.get("upload")?.maxRequests).toBe(10_000);
+    expect(ceilings.get("canvases")?.maxRequests).toBe(100_000);
   });
 
   it("keeps the window fixed when only the ceiling is raised", async () => {
     process.env.API_RATE_LIMIT_MAX_REQUESTS = "100000";
     process.env.UPLOAD_RATE_LIMIT_MAX_REQUESTS = "10000";
+    process.env.CANVASES_RATE_LIMIT_MAX_REQUESTS = "100000";
 
     const ceilings = await loadCeilings();
 
     expect(ceilings.get("api")?.windowSeconds).toBe(15 * 60);
     expect(ceilings.get("upload")?.windowSeconds).toBe(60 * 60);
+    expect(ceilings.get("canvases")?.windowSeconds).toBe(60);
   });
 
   it.each(["0", "-1", "not-a-number", "1.5", ""])(
@@ -82,11 +91,13 @@ describe("rate limit environment overrides", () => {
     async (value) => {
       process.env.API_RATE_LIMIT_MAX_REQUESTS = value;
       process.env.UPLOAD_RATE_LIMIT_MAX_REQUESTS = value;
+      process.env.CANVASES_RATE_LIMIT_MAX_REQUESTS = value;
 
       const ceilings = await loadCeilings();
 
       expect(ceilings.get("api")?.maxRequests).toBe(100);
       expect(ceilings.get("upload")?.maxRequests).toBe(10);
+      expect(ceilings.get("canvases")?.maxRequests).toBe(50);
     },
   );
 

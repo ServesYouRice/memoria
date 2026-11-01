@@ -116,7 +116,7 @@ export const uploadRateLimit = rateLimit({
 });
 
 export const canvasesRateLimit = rateLimit({
-  maxRequests: 50,
+  maxRequests: configuredMaxRequests("CANVASES_RATE_LIMIT_MAX_REQUESTS", 50),
   windowMs: 60 * 1000,
   keyPrefix: "canvases",
 });
