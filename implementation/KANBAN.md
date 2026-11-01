@@ -5,15 +5,12 @@ Rules: one `DOING`; take the first `READY`; user fills choices in `USER DECISION
 Only rows below and their linked task files are current. Completed cards and
 superseded plans live in Git history; gaps in card numbering are intentional.
 
-Gate status, 2026-08-29: on the merge of `codex-implementation` into `main`,
-`pnpm lint`, `pnpm type-check`, `pnpm test -- --run` (104 files, 780 tests),
-`pnpm build`, and `pnpm check-bundle` all pass. The integration suite passes
-14/14 against PostgreSQL 16 and `scripts/check-schema-drift.mjs` reports only
-the approved generated-tsvector exception. That evidence was collected on Node
-22, not the Node 24 line `package.json` and CI pin, and the suite ran against a
-freshly migrated database rather than through the `prisma migrate reset` step of
-`pnpm test:integration`. `pnpm test:e2e` and `pnpm smoke` still need Docker and
-remain gated on DEC-014; CI exercises the E2E gate.
+Gate status, 2026-11-01 (Node 22 sandbox): `pnpm lint`, `pnpm type-check`,
+`pnpm test -- --run` (110 files, 873 tests) and `pnpm build` pass; the
+integration suite passes 16/16 on a freshly migrated PostgreSQL; `pnpm test:e2e`
+passes 8/8 on Chromium against the production image with real PostgreSQL,
+Redis, S3 (SeaweedFS) and captured email, and the strict operations smoke passes
+14/14. Firefox and WebKit are exercised by CI only.
 
 ## DOING
 
@@ -29,7 +26,6 @@ remain gated on DEC-014; CI exercises the E2E gate.
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-038](tasks/IMP-038.md) | Production browser journeys and operations smoke (need higher model assistance) | DEC-014 |
 
 ## USER DECISIONS
 
@@ -38,4 +34,4 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 
 | ID | Decision | Recommended | Choice | Unblocks |
 | -- | -------- | ----------- | ------ | -------- |
-| DEC-014 | Final production-gate execution | Grant or run unrestricted Docker/esbuild verification: `pnpm test:e2e`, real-PostgreSQL `pnpm test:integration`, `pnpm build`, and `pnpm smoke` |  | IMP-038 |
+| DEC-015 | Adopt the handbook platform plan for Memoria | Decide scope and order: Better Auth migration, Resend/SES or SMTP email, realtime service split for replicas, Cloudflare R2 (with checksum settings) in production |  | new cards |
