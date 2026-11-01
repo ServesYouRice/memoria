@@ -32,6 +32,12 @@ overrides:
   "source-map-js@<1.2.2": ">=1.2.2 <2"
   "dompurify@<3.4.17": ">=3.4.17 <4"
   "sharp@<0.35.5": ">=0.35.5 <1"
+  # GHSA-p6vx-979v-rg4c and later seroval advisories (deserialization invokes
+  # attacker-chosen callables): patched in 1.6.8. Reached only transitively via
+  # solid-js under better-auth and the devtools; this app does not deserialize
+  # untrusted seroval payloads.
+  "seroval@<1.6.8": ">=1.6.8 <2"
+  "seroval-plugins@<1.6.8": ">=1.6.8 <2"
 
 allowBuilds:
   "@percy/core": true
