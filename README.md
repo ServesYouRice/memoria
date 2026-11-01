@@ -130,7 +130,7 @@ Production rules enforced by the app:
 - local uploads are rejected
 - S3-compatible storage must be configured
 - a bootstrap token must exist for first-run setup
-- production email requires `sendgrid` or `resend`; `smtp` (`SMTP_*` settings) works outside production only, and the `console` provider is development/test only
+- production email uses `sendgrid`, `resend`, or `smtp` (`SMTP_*` settings, TLS required); the `console` provider is development/test only
 
 ## Development Notes
 
