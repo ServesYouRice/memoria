@@ -60,6 +60,10 @@ describe("rate limit environment overrides", () => {
       maxRequests: 50,
       windowSeconds: 60,
     });
+    expect(ceilings.get("image-proxy")).toMatchObject({
+      maxRequests: 300,
+      windowSeconds: 60,
+    });
   });
 
   it("honours the configured ceilings so a test stack can lift them", async () => {

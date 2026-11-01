@@ -7,6 +7,7 @@ import {
   boundedItemsResponse,
   decodeItemCursor,
 } from "@/lib/api/bounded-response";
+import { withSignedImageProxyUrls } from "@/lib/images/signed-proxy";
 
 const querySchema = z
   .object({
@@ -91,7 +92,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       LIMIT ${query.limit} ${paginationFragment}
     `;
     const total = Number(countRows[0]?.count ?? 0n);
-    return boundedItemsResponse(items, {
+    // Anonymous viewers have no session for the image proxy, so remote image
+    // URLs are handed out pre-signed (IMP-057).
+    return boundedItemsResponse(withSignedImageProxyUrls(items), {
       canvas: {
         id: canvas.id,
         name: canvas.name,

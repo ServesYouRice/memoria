@@ -138,3 +138,17 @@ export const sensitiveEndpointRateLimit = rateLimit({
   windowMs: 60 * 1000,
   keyPrefix: "sensitive",
 });
+
+/**
+ * Same-origin image proxy (IMP-057). A canvas with many bookmarks requests a
+ * favicon per item, so it has its own budget instead of draining the general
+ * API limit; the cap still bounds use of the server as a fetch relay.
+ */
+export const imageProxyRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests(
+    "IMAGE_PROXY_RATE_LIMIT_MAX_REQUESTS",
+    300,
+  ),
+  windowMs: 60 * 1000,
+  keyPrefix: "image-proxy",
+});

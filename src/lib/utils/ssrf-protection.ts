@@ -114,9 +114,7 @@ export function isPrivateIp(address: string): boolean {
   return true;
 }
 
-export async function validateUrlForSsrfWithDns(
-  urlString: string,
-): Promise<{
+export async function validateUrlForSsrfWithDns(urlString: string): Promise<{
   valid: boolean;
   error?: string;
   pinnedIp?: string;
@@ -220,6 +218,7 @@ export function pinnedHttpRequest(
   status: number;
   headers: http.IncomingHttpHeaders;
   body: string;
+  rawBody: Buffer;
   ok: boolean;
 }> {
   return new Promise((resolve, reject) => {
@@ -278,6 +277,7 @@ export function pinnedHttpRequest(
           ok: (res.statusCode || 200) >= 200 && (res.statusCode || 200) < 300,
           headers: res.headers,
           body: bodyBuffer.toString("utf8"),
+          rawBody: bodyBuffer,
         });
       });
 
@@ -308,24 +308,35 @@ export function pinnedHttpRequest(
   });
 }
 
+export interface SafeFetchOptions {
+  maxRedirects?: number;
+  timeout?: number;
+  maxSize?: number;
+  signal?: AbortSignal;
+  /** Extra request headers, e.g. an `Accept` suited to the expected body. */
+  headers?: Record<string, string>;
+}
+
 /**
- * Fetch a URL with SSRF protection and connection pinning
- * Follows redirects but validates and pins each redirect URL
+ * Fetch a URL with SSRF protection and connection pinning, keeping the body
+ * as raw bytes. Follows redirects but validates and pins each redirect URL.
  */
-export async function safeFetch(
+export async function safeFetchBuffer(
   urlString: string,
-  options: {
-    maxRedirects?: number;
-    timeout?: number;
-    maxSize?: number;
-    signal?: AbortSignal;
-  } = {},
-): Promise<{ ok: boolean; status: number; data?: string; error?: string }> {
+  options: SafeFetchOptions = {},
+): Promise<{
+  ok: boolean;
+  status: number;
+  body?: Buffer;
+  headers?: http.IncomingHttpHeaders;
+  error?: string;
+}> {
   const {
     maxRedirects = 5,
     timeout = 10000,
     maxSize = 1024 * 1024,
     signal,
+    headers,
   } = options; // 1MB default max size
 
   let currentUrl = urlString;
@@ -349,6 +360,7 @@ export async function safeFetch(
           timeout,
           maxSize,
           signal,
+          headers,
         },
       );
 
@@ -379,7 +391,12 @@ export async function safeFetch(
         };
       }
 
-      return { ok: true, status: response.status, data: response.body };
+      return {
+        ok: true,
+        status: response.status,
+        body: response.rawBody,
+        headers: response.headers,
+      };
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("timeout")) {
@@ -395,4 +412,23 @@ export async function safeFetch(
   }
 
   return { ok: false, status: 310, error: "Too many redirects" };
+}
+
+/**
+ * Fetch a URL with SSRF protection and connection pinning
+ * Follows redirects but validates and pins each redirect URL
+ */
+export async function safeFetch(
+  urlString: string,
+  options: Omit<SafeFetchOptions, "headers"> = {},
+): Promise<{ ok: boolean; status: number; data?: string; error?: string }> {
+  const result = await safeFetchBuffer(urlString, options);
+  if (!result.ok) {
+    return { ok: false, status: result.status, error: result.error };
+  }
+  return {
+    ok: true,
+    status: result.status,
+    data: (result.body ?? Buffer.alloc(0)).toString("utf8"),
+  };
 }

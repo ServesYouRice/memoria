@@ -9,6 +9,25 @@ export function generateNonce(): string {
 }
 
 /**
+ * Origins that may serve images directly, besides Memoria itself.
+ *
+ * Remote images (favicons, link previews, image items, avatars) load through
+ * the same-origin `/api/v1/image-proxy` (IMP-057), so `img-src` never lists a
+ * scheme-wide `https:`. The only extra origin is the configured public upload
+ * bucket, when one is set.
+ */
+export function storageImageOrigins(): string[] {
+  const publicUrl = process.env.UPLOADS_PUBLIC_URL;
+  if (!publicUrl) return [];
+  try {
+    const { protocol, origin } = new URL(publicUrl);
+    return protocol === "https:" || protocol === "http:" ? [origin] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Build a strict Content Security Policy with nonce-based script/style allowlist
  * Following ADR-0002: Nonce-Based Strict CSP
  */
@@ -26,7 +45,7 @@ export function buildCSP(
         : ["'strict-dynamic'"]),
     ],
     "style-src": ["'self'", "'nonce-" + nonce + "'"],
-    "img-src": ["'self'", "data:", "blob:", "https:"],
+    "img-src": ["'self'", "data:", "blob:", ...storageImageOrigins()],
     "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
     "connect-src": ["'self'", "wss:", "https:"],
     "frame-ancestors": frameAncestors.length > 0 ? frameAncestors : ["'none'"],

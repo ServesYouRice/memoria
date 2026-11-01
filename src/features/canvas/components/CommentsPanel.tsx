@@ -31,6 +31,7 @@ import {
 } from "@/lib/hooks/use-comments";
 import { useSession } from "@/lib/auth-client";
 import { formatDistanceToNow } from "date-fns";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
 export interface CommentsPanelProps {
   open: boolean;
@@ -239,7 +240,7 @@ export function CommentsPanel({
                   {index > 0 && <Divider sx={{ my: 2 }} />}
                   <ListItem alignItems="flex-start" sx={{ px: 0 }}>
                     <Avatar
-                      src={comment.user.image || undefined}
+                      src={toImageProxyUrl(comment.user.image)}
                       alt={comment.user.name || "User"}
                       sx={{ mr: 2, mt: 0.5 }}
                     >

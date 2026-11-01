@@ -27,6 +27,7 @@ import {
 } from "@/lib/hooks/use-notifications";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
 function NotificationSkeleton() {
   return (
@@ -116,7 +117,7 @@ export function NotificationsContent() {
                   }}
                 >
                   <ListItemAvatar>
-                    <Avatar src={notification.actor.image || undefined}>
+                    <Avatar src={toImageProxyUrl(notification.actor.image)}>
                       {actorName.charAt(0).toUpperCase()}
                     </Avatar>
                   </ListItemAvatar>
