@@ -193,6 +193,15 @@ refresh rows. It:
   per-process limits if Redis fails;
 - does not persist collaboration messages or mutate `CanvasItem` rows.
 
+**Version history (IMP-046).** Besides manual versions, the scheduler calls
+`/api/cron/version-history` every five minutes; it enqueues an idempotent
+snapshot sweep (a canvas changed since its latest version, which is at least
+ten minutes old, gets an `AUTO` version unless its content hash is unchanged)
+and an hourly retention job that keeps every automatic version for a day,
+one per hour for a week and one per day for thirty days. Manual versions are
+never pruned automatically. Viewers can list and preview versions; restoring
+needs edit access.
+
 HTTP polling remains available for non-collaboration views and fallback
 refreshes.
 

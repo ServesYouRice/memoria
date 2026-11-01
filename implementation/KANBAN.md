@@ -21,7 +21,6 @@ documented restore drill passed (RPO 134s, RTO 16s).
 | ---- | ------- | -------- |
 | [IMP-043](tasks/IMP-043.md) | Realtime split and replica-ready processes | — |
 | [IMP-045](tasks/IMP-045.md) | Offline canvas edits | — |
-| [IMP-046](tasks/IMP-046.md) | Version history from snapshots | — |
 
 ## READY
 
@@ -30,7 +29,6 @@ documented restore drill passed (RPO 134s, RTO 16s).
 | [IMP-047](tasks/IMP-047.md) | Real client identity behind the gateway | IMP-043 |
 | [IMP-049](tasks/IMP-049.md) | Green production dependency audit | — |
 | [IMP-053](tasks/IMP-053.md) | Visible delete failures and a mobile activity feed | IMP-045 |
-| [IMP-054](tasks/IMP-054.md) | Plain SMTP email in production | — |
 | [IMP-055](tasks/IMP-055.md) | Remove dead code and type escape hatches | — |
 | [IMP-057](tasks/IMP-057.md) | Image proxy so the CSP can drop `img-src https:` | — |
 
