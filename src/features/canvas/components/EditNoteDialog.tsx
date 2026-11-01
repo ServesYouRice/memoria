@@ -21,7 +21,12 @@ import {
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import type * as Y from "yjs";
 import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import {
+  useCanvasDocument,
+  useCanvasDocumentSnapshot,
+} from "@/lib/hooks/use-canvas-document";
 import { type CanvasItem, isNoteContent } from "@/types/canvas";
 import { TagInput } from "./TagInput";
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -35,6 +40,98 @@ interface EditNoteDialogProps {
   open: boolean;
   onClose: () => void;
   item: CanvasItem | null;
+}
+
+// One editor per shared fragment: a reloaded document brings new fragments.
+const fragmentKeys = new WeakMap<Y.XmlFragment, number>();
+let nextFragmentKey = 0;
+function fragmentKey(fragment: Y.XmlFragment): number {
+  let key = fragmentKeys.get(fragment);
+  if (key === undefined) {
+    key = ++nextFragmentKey;
+    fragmentKeys.set(fragment, key);
+  }
+  return key;
+}
+
+/**
+ * IMP-042: while the canvas document is open and writable, the note text is
+ * edited live with everyone who has the canvas open, and tag changes apply at
+ * once; there is nothing to submit.
+ */
+function SharedNoteDialog({
+  open,
+  onClose,
+  item,
+  fragment,
+  tags,
+}: {
+  open: boolean;
+  onClose: () => void;
+  item: CanvasItem;
+  fragment: Y.XmlFragment;
+  tags: string[];
+}) {
+  const updateItem = useUpdateCanvasItem();
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Edit Note</DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Typography variant="body2" sx={{ color: "text.secondary" }}>
+            Changes save as you type and appear for everyone on this canvas.
+          </Typography>
+          <Box>
+            <Typography variant="subtitle2" gutterBottom sx={{ mb: 1 }}>
+              Note Content
+            </Typography>
+            <RichTextEditor
+              key={fragmentKey(fragment)}
+              content={null}
+              onChange={() => {}}
+              collaboration={{ fragment }}
+              placeholder="Enter your note..."
+              minHeight={200}
+            />
+          </Box>
+          <TagInput
+            tags={tags}
+            onChange={(nextTags) => {
+              setError(null);
+              updateItem.mutate(
+                {
+                  itemId: item.id,
+                  data: { version: item.version, tags: nextTags },
+                },
+                {
+                  onError: (err) =>
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : "Failed to update tags",
+                    ),
+                },
+              );
+            }}
+            placeholder="Add tags..."
+            size="small"
+          />
+          {error && (
+            <Alert severity="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="contained" onClick={onClose}>
+          Done
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 }
 
 const formSchema = z.object({
@@ -52,6 +149,16 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [legacyNormalized, setLegacyNormalized] = useState(false);
   const updateItem = useUpdateCanvasItem();
+  const documentSession = useCanvasDocument();
+  const documentState = useCanvasDocumentSnapshot(documentSession);
+  const sharedEntry = item ? documentState.items.get(item.id) : undefined;
+  const sharedFragment =
+    item &&
+    sharedEntry &&
+    documentSession?.acceptsWrites &&
+    documentState.writable
+      ? documentSession.noteFragment(item.id)
+      : null;
 
   const {
     control,
@@ -116,6 +223,18 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
 
   if (!item) {
     return null;
+  }
+
+  if (sharedFragment && sharedEntry) {
+    return (
+      <SharedNoteDialog
+        open={open}
+        onClose={handleClose}
+        item={item}
+        fragment={sharedFragment}
+        tags={sharedEntry.state.tags}
+      />
+    );
   }
 
   return (

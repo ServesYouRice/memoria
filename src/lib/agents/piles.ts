@@ -18,6 +18,7 @@ import {
 } from "@/lib/agents/service-core";
 import { getItemPlainText, getItemUrl } from "@/lib/agents/item-text";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { ItemType } from "@/types/canvas";
@@ -504,6 +505,13 @@ export async function applyCanvasPiles(input: {
         },
       });
       frames.push(created);
+      await recordCanvasItemEvent(tx, {
+        canvasId: input.canvasId,
+        actorId: input.actor.userId,
+        itemId: created.id,
+        version: created.version,
+        operation: "created",
+      });
       await tx.changeRecord.create({
         data: {
           changeSetId: changeSet.id,
@@ -528,6 +536,13 @@ export async function applyCanvasPiles(input: {
           version: { increment: 1 },
           updatedById: input.actor.userId,
         },
+      });
+      await recordCanvasItemEvent(tx, {
+        canvasId: input.canvasId,
+        actorId: input.actor.userId,
+        itemId: updated.id,
+        version: updated.version,
+        operation: "updated",
       });
       await tx.changeRecord.create({
         data: {

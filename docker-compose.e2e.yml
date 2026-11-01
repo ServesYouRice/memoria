@@ -13,11 +13,13 @@ x-runtime-environment: &runtime-environment
   AUTH_RATE_LIMIT_MAX_REQUESTS: '100'
   # The three Playwright projects drive one app instance from one container, so
   # they share a single x-memoria-client-ip and draw down one budget between
-  # them. Production ceilings (100 requests per 15 minutes, 10 uploads per hour)
-  # are exhausted part-way through a run, which surfaces as 429s in whichever
-  # spec happens to be mid-flight rather than as a stable failure.
+  # them. Production ceilings (100 requests per 15 minutes, 10 uploads per hour,
+  # 50 canvas requests per minute) are exhausted part-way through a run, which
+  # surfaces as 429s in whichever spec happens to be mid-flight rather than as a
+  # stable failure.
   API_RATE_LIMIT_MAX_REQUESTS: '100000'
   UPLOAD_RATE_LIMIT_MAX_REQUESTS: '10000'
+  CANVASES_RATE_LIMIT_MAX_REQUESTS: '100000'
   APP_BOOTSTRAP_TOKEN: memoria-e2e-bootstrap-token-0123456789
   INTERNAL_OPERATIONS_TOKEN: memoria-e2e-operations-token-0123456789abcdef
   MODEL_CREDENTIAL_ENCRYPTION_KEY: memoria-e2e-model-key-0123456789abcdef
@@ -38,6 +40,7 @@ x-runtime-environment: &runtime-environment
   UPLOAD_SCAN_REQUIRED: 'false'
   CRON_SECRET: memoria-e2e-cron-secret-0123456789
   CORS_ALLOWED_ORIGINS: http://127.0.0.1:3300
+  SYNC_SERVER_INTERNAL_URL: http://sync:3001
 
 services:
   postgres:
@@ -159,6 +162,8 @@ services:
     depends_on:
       app:
         condition: service_healthy
+      sync:
+        condition: service_healthy
     environment:
       MEMORIA_ADDRESS: :3000
       INTERNAL_OPERATIONS_TOKEN: memoria-e2e-operations-token-0123456789abcdef
@@ -176,6 +181,29 @@ services:
     tmpfs:
       - /config
       - /data
+
+  sync:
+    image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}
+    init: true
+    stop_grace_period: 30s
+    command: ['pnpm', 'sync:server']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *runtime-environment
+      SYNC_SERVER_PORT: '3001'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3001/ready']
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp
 
   outbox-worker:
     image: ${MEMORIA_E2E_IMAGE:-memoria:e2e}

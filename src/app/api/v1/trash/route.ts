@@ -6,6 +6,7 @@ import { parsePagination } from "@/lib/api/pagination";
 import { ConflictError, errorResponse } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 
 const restoreSchema = z
   .object({
@@ -60,7 +61,7 @@ export async function PATCH(request: NextRequest) {
     const item = await requireItemOwnership(data.itemId, userId);
     const result = await prisma.$transaction(async (tx) => {
       await lockCanvasForMutation(tx, item.canvasId);
-      return tx.canvasItem.updateMany({
+      const restored = await tx.canvasItem.updateMany({
         where: {
           id: data.itemId,
           version: data.version,
@@ -73,6 +74,16 @@ export async function PATCH(request: NextRequest) {
           updatedById: userId,
         },
       });
+      // Open canvases (and their collaborative documents) pick the item up.
+      if (restored.count === 1)
+        await recordCanvasItemEvent(tx, {
+          canvasId: item.canvasId,
+          actorId: userId,
+          itemId: data.itemId,
+          version: data.version + 1,
+          operation: "created",
+        });
+      return restored;
     });
     if (result.count !== 1)
       throw new ConflictError("Item changed before it could be restored");

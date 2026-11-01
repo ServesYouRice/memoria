@@ -6,7 +6,10 @@
 import { z } from "zod";
 import { ItemType } from "@/types/canvas";
 import { sanitizeUrl } from "@/lib/sanitization";
-import { normalizeNoteContent } from "@/lib/rich-text/note-format";
+import {
+  type NormalizeNoteOptions,
+  normalizeNoteContent,
+} from "@/lib/rich-text/note-format";
 import {
   MAX_URL_LENGTH,
   MAX_ZINDEX,
@@ -41,17 +44,24 @@ const urlSchema = z
  * Note content validation
  * Sanitizes text to prevent XSS attacks
  */
-export const noteContentSchema = z.unknown().transform((value, ctx) => {
-  try {
-    return normalizeNoteContent(value);
-  } catch (error) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: error instanceof Error ? error.message : "Invalid note content.",
-    });
-    return z.NEVER;
-  }
-});
+function noteContentSchemaWith(options: NormalizeNoteOptions) {
+  return z.unknown().transform((value, ctx) => {
+    try {
+      return normalizeNoteContent(value, options);
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          error instanceof Error ? error.message : "Invalid note content.",
+      });
+      return z.NEVER;
+    }
+  });
+}
+
+export const noteContentSchema = noteContentSchemaWith({});
+/** Stored note content: collaborative editing may leave a note empty (IMP-042). */
+const storedNoteContentSchema = noteContentSchemaWith({ allowEmpty: true });
 
 /**
  * Bookmark content validation
@@ -216,8 +226,15 @@ export const canvasItemContentSchemas = {
   [ItemType.POLL]: pollContentSchema,
 } as const;
 
-export function parseCanvasItemContent(type: string, content: unknown) {
-  const schema = canvasItemContentSchemas[type as ItemType];
+export function parseCanvasItemContent(
+  type: string,
+  content: unknown,
+  options: { allowEmptyNote?: boolean } = {},
+) {
+  const schema =
+    options.allowEmptyNote && type === ItemType.NOTE
+      ? storedNoteContentSchema
+      : canvasItemContentSchemas[type as ItemType];
   if (!schema) {
     throw new z.ZodError([
       {
@@ -229,7 +246,9 @@ export function parseCanvasItemContent(type: string, content: unknown) {
   }
 
   const serialized = JSON.stringify(content ?? null);
-  if (Buffer.byteLength(serialized, "utf8") > MAX_ITEM_CONTENT_BYTES) {
+  if (
+    new TextEncoder().encode(serialized).byteLength > MAX_ITEM_CONTENT_BYTES
+  ) {
     throw new z.ZodError([
       {
         code: "custom",

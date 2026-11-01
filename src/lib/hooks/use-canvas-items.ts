@@ -66,6 +66,9 @@ import {
   type CanvasItemListResponse,
 } from "@/lib/api/response-schemas";
 import { canvasIndexKeys } from "@/lib/hooks/use-canvas-index";
+import { useCanvasDocument } from "@/lib/hooks/use-canvas-document";
+import type { CanvasDocumentSession } from "@/lib/collaboration/sync/client-session";
+import type { CanvasItemState } from "@/lib/collaboration/sync/document-items";
 import { RESOURCE_BUDGETS } from "@/lib/policy/resource-budgets";
 
 /**
@@ -697,6 +700,73 @@ export function useCanvasItemsWithPolling(
 }
 
 /**
+ * IMP-042: while the canvas's collaborative document is open and writable,
+ * item writes go through the document; the sync server validates and stores
+ * each change, keeps the rows in step, and records the committed events that
+ * refresh these caches. Without a writable document, and for items the
+ * document does not hold yet, writes use the HTTP API.
+ *
+ * Each mutation picks its route once, in `onMutate`, and `mutationFn` reads
+ * it back through the variables object.
+ */
+type WriteRoute = "document" | "http";
+const writeRoutes = new WeakMap<object, WriteRoute>();
+
+function chooseWriteRoute(
+  variables: object,
+  session: CanvasDocumentSession | null,
+  target: { canvasId: string } | { itemId: string },
+): WriteRoute {
+  const route: WriteRoute =
+    session?.acceptsWrites &&
+    ("itemId" in target
+      ? session.hasItem(target.itemId)
+      : target.canvasId === session.canvasId)
+      ? "document"
+      : "http";
+  writeRoutes.set(variables, route);
+  return route;
+}
+
+function findCachedItem(
+  queryClient: QueryClient,
+  itemId: string,
+): CanvasItem | undefined {
+  return (
+    queryClient.getQueryData<CanvasItem>(canvasItemKeys.detail(itemId)) ||
+    queryClient
+      .getQueriesData<{ items?: CanvasItem[] }>({
+        queryKey: canvasItemKeys.lists(),
+      })
+      .flatMap(([, data]) => data?.items || [])
+      .find((item) => item.id === itemId)
+  );
+}
+
+/** The item a document write produced, with row metadata from the cache. */
+function documentItem(
+  canvasId: string,
+  state: CanvasItemState,
+  base: CanvasItem | undefined,
+): CanvasItem {
+  const now = new Date();
+  return {
+    ...(base ?? {
+      version: 1,
+      deletedAt: null,
+      createdById: "",
+      updatedById: null,
+      deletedById: null,
+      createdAt: now,
+    }),
+    ...state,
+    canvasId,
+    content: state.content as CanvasItem["content"],
+    updatedAt: now,
+  };
+}
+
+/**
  * Create a new canvas item
  *
  * OPTIMIZED: Issue #29 - Optimistic updates for better UX
@@ -730,10 +800,27 @@ export function useCanvasItemsWithPolling(
  */
 export function useCreateCanvasItem() {
   const queryClient = useQueryClient();
+  const documentSession = useCanvasDocument();
 
   return useMutation({
-    mutationFn: api.createItem,
+    mutationFn: async (input: CreateCanvasItemInput): Promise<CanvasItem> => {
+      if (writeRoutes.get(input) === "document" && documentSession) {
+        const state = documentSession.createItem(input);
+        return documentItem(input.canvasId, state, undefined);
+      }
+      return api.createItem(input);
+    },
     onMutate: async (newItem) => {
+      if (
+        chooseWriteRoute(newItem, documentSession, {
+          canvasId: newItem.canvasId,
+        }) === "document"
+      ) {
+        // The document renders the item at once; the committed event of the
+        // stored row brings it into these caches.
+        return { canvasId: newItem.canvasId, route: "document" as const };
+      }
+
       // Scope cancellation to this canvas's list queries
       await queryClient.cancelQueries({
         queryKey: canvasItemKeys.list(newItem.canvasId),
@@ -761,9 +848,10 @@ export function useCreateCanvasItem() {
         }),
       );
 
-      return { tempId, canvasId: newItem.canvasId };
+      return { tempId, canvasId: newItem.canvasId, route: "http" as const };
     },
     onSuccess: (newItem, _variables, context) => {
+      if (context?.route === "document") return;
       // Replace temporary item with real server item in place
       queryClient.setQueriesData(
         {
@@ -818,16 +906,29 @@ export function useCreateCanvasItem() {
  */
 export function useUpdateCanvasItem() {
   const queryClient = useQueryClient();
+  const documentSession = useCanvasDocument();
 
   return useMutation({
-    mutationFn: ({
-      itemId,
-      data,
-    }: {
+    mutationFn: async (variables: {
       itemId: string;
       data: UpdateCanvasItemInput;
-    }) => api.updateItem(itemId, data),
-    onMutate: async ({ itemId, data }) => {
+    }): Promise<CanvasItem> => {
+      const { itemId, data } = variables;
+      if (writeRoutes.get(variables) === "document" && documentSession) {
+        // The document merges concurrent edits; versions guard HTTP writes.
+        const { version: _version, ...changes } = data;
+        const state = documentSession.updateItem(itemId, changes);
+        return documentItem(
+          documentSession.canvasId,
+          state,
+          findCachedItem(queryClient, itemId),
+        );
+      }
+      return api.updateItem(itemId, data);
+    },
+    onMutate: async (variables) => {
+      const { itemId, data } = variables;
+      const route = chooseWriteRoute(variables, documentSession, { itemId });
       // Find previous item snapshot specifically for this item
       const previousItem =
         queryClient.getQueryData<CanvasItem>(canvasItemKeys.detail(itemId)) ||
@@ -867,9 +968,9 @@ export function useUpdateCanvasItem() {
         );
       }
 
-      return { previousItem, itemId };
+      return { previousItem, itemId, route };
     },
-    onSuccess: (updatedItem) => {
+    onSuccess: (updatedItem, _variables, context) => {
       queryClient.setQueryData(
         canvasItemKeys.detail(updatedItem.id),
         updatedItem,
@@ -886,6 +987,9 @@ export function useUpdateCanvasItem() {
           };
         },
       );
+      // A document write is not stored yet; the board refreshes the index
+      // once the sync server has acknowledged it.
+      if (context?.route === "document") return;
       queryClient.invalidateQueries({
         queryKey: canvasIndexKeys.all(updatedItem.canvasId),
       });
@@ -936,17 +1040,23 @@ export function useUpdateCanvasItem() {
  */
 export function useDeleteCanvasItem() {
   const queryClient = useQueryClient();
+  const documentSession = useCanvasDocument();
 
   return useMutation({
-    mutationFn: ({
-      itemId,
-      version,
-    }: {
+    mutationFn: async (variables: {
       itemId: string;
       version: number;
       canvasId?: string;
-    }) => api.deleteItem(itemId, { version }),
-    onMutate: async ({ itemId, canvasId }) => {
+    }) => {
+      if (writeRoutes.get(variables) === "document" && documentSession) {
+        documentSession.deleteItem(variables.itemId);
+        return { success: true };
+      }
+      return api.deleteItem(variables.itemId, { version: variables.version });
+    },
+    onMutate: async (variables) => {
+      const { itemId, canvasId } = variables;
+      const route = chooseWriteRoute(variables, documentSession, { itemId });
       const deletedItem =
         queryClient.getQueryData<CanvasItem>(canvasItemKeys.detail(itemId)) ||
         queryClient
@@ -975,6 +1085,7 @@ export function useDeleteCanvasItem() {
         deletedItem,
         itemId,
         canvasId: canvasId || deletedItem?.canvasId,
+        route,
       };
     },
     onError: (_err, _variables, context) => {
@@ -997,6 +1108,9 @@ export function useDeleteCanvasItem() {
       }
     },
     onSuccess: (_result, _variables, context) => {
+      // A document deletion is not stored yet: refetching now could bring
+      // the row back. Its committed event updates these caches instead.
+      if (context?.route === "document") return;
       queryClient.invalidateQueries({
         queryKey: canvasItemKeys.lists(),
       });

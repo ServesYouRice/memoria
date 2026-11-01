@@ -1,8 +1,11 @@
 import { existsSync, mkdirSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { projectRoot, run } from './lib/runtime.mjs';
 
-const distDir = join(projectRoot, 'dist');
+// SERVER_BUNDLE_OUT_DIR lets tests build the bundles outside dist/.
+const distDir = process.env.SERVER_BUNDLE_OUT_DIR
+  ? resolve(process.env.SERVER_BUNDLE_OUT_DIR)
+  : join(projectRoot, 'dist');
 
 // Locate the native esbuild binary for the current platform inside pnpm's
 // store (works on any OS/arch without relying on postinstall bin shims).
@@ -38,6 +41,7 @@ mkdirSync(distDir, { recursive: true });
 for (const [entrypoint, output] of [
   ['server.ts', 'server.mjs'],
   [join('scripts', 'outbox-worker.ts'), 'outbox-worker.mjs'],
+  [join('scripts', 'sync-server.ts'), 'sync-server.mjs'],
 ]) {
   await run(
     esbuildBinary,
@@ -47,6 +51,10 @@ for (const [entrypoint, output] of [
       '--platform=node',
       '--format=esm',
       '--packages=external',
+      // Packages stay external, so Node's ESM loader resolves them at start.
+      // next ships no `exports` map: `next/server` (src/lib/errors.ts) only
+      // resolves with its file name.
+      '--alias:next/server=next/server.js',
       `--outfile=${join(distDir, output)}`,
       `--tsconfig=${join(projectRoot, 'tsconfig.json')}`,
     ],

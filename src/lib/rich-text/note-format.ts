@@ -1,9 +1,9 @@
 import { stripHtml, sanitizeNoteHtml, sanitizeUrl } from "@/lib/sanitization";
 import { MAX_NOTE_TEXT_LENGTH } from "@/lib/constants";
 
-const MAX_DOCUMENT_BYTES = 50_000;
-const MAX_DOCUMENT_DEPTH = 12;
-const MAX_DOCUMENT_NODES = 1_000;
+export const MAX_DOCUMENT_BYTES = 50_000;
+export const MAX_DOCUMENT_DEPTH = 12;
+export const MAX_DOCUMENT_NODES = 1_000;
 const BLOCK_TYPES = new Set([
   "paragraph",
   "heading",
@@ -213,7 +213,19 @@ function extractText(node: TiptapNode): string {
   return (node.content || []).map(extractText).join(separator);
 }
 
-export function normalizeNoteContent(input: unknown): VersionedNoteContent {
+export interface NormalizeNoteOptions {
+  /**
+   * Accept a document without text. Collaborative editing (IMP-042) passes
+   * through empty states while people type, so the sync server projects them;
+   * the HTTP API keeps rejecting empty notes.
+   */
+  allowEmpty?: boolean;
+}
+
+export function normalizeNoteContent(
+  input: unknown,
+  options: NormalizeNoteOptions = {},
+): VersionedNoteContent {
   if (!input || typeof input !== "object" || Array.isArray(input))
     return fail("Invalid note content.");
   if (JSON.stringify(input).length > MAX_DOCUMENT_BYTES)
@@ -224,7 +236,8 @@ export function normalizeNoteContent(input: unknown): VersionedNoteContent {
     if (document.type !== "doc")
       return fail("Rich-text document root must be doc.");
     const plainText = extractText(document).trim();
-    if (!plainText) return fail("Note text cannot be empty.");
+    if (!plainText && !options.allowEmpty)
+      return fail("Note text cannot be empty.");
     if (plainText.length > MAX_NOTE_TEXT_LENGTH)
       return fail("Note text is too long.");
     return {

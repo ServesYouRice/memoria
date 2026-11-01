@@ -43,7 +43,10 @@ export function NoteItem({
   let readableText = "Invalid note";
   if (content) {
     try {
-      readableText = normalizeNoteContent(content).plainText;
+      // Co-edited notes may be empty for a while (IMP-042).
+      readableText = normalizeNoteContent(content, {
+        allowEmpty: true,
+      }).plainText;
     } catch {
       readableText = stripHtmlTags(content.text || "Unsupported note content");
     }

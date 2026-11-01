@@ -131,6 +131,7 @@ model Canvas {
   shareInvitations CanvasShareInvitation[]
   notifications Notification[]
   versions    CanvasVersion[]
+  document    CanvasDocument?
   embeds      CanvasEmbed[]
 
   zoomLevel   Float       @default(1.0)
@@ -195,6 +196,9 @@ model CanvasVersion {
   canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
   name        String
   snapshot    Json     // Complete canvas state including items
+  /// Encoded Yjs state the snapshot was derived from (IMP-042); null for
+  /// versions taken before the canvas had a collaborative document.
+  yjsState    Bytes?
   createdAt   DateTime @default(now())
 
   @@index([canvasId, createdAt])
@@ -1034,6 +1038,38 @@ model OutboxJob {
   @@index([status, nextRunAt])
   @@index([status, leaseExpiresAt])
   @@index([completedAt])
+}
+
+/// IMP-042: one Yjs document per canvas, owned by the sync server process
+/// (`scripts/sync-server.ts`). `state` holds the compacted document; accepted
+/// updates since the last compaction are appended to `CanvasDocumentUpdate` in
+/// the same transaction that projects them onto `CanvasItem` rows.
+model CanvasDocument {
+  canvasId      String   @id
+  canvas        Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  /// `Y.encodeStateAsUpdate` of the document through `compactedThrough`.
+  state         Bytes
+  /// Highest `CanvasDocumentUpdate.id` folded into `state`.
+  compactedThrough BigInt @default(0)
+  /// Highest `CanvasEvent.sequence` reconciled from rows into the document.
+  eventSequence BigInt   @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  updates       CanvasDocumentUpdate[]
+}
+
+/// Append-only Yjs updates accepted by the sync server since the last
+/// compaction. `actorId` is the editing user, or null for updates the sync
+/// server derived from committed `CanvasItem` row changes.
+model CanvasDocumentUpdate {
+  id        BigInt   @id @default(autoincrement())
+  canvasId  String
+  document  CanvasDocument @relation(fields: [canvasId], references: [canvasId], onDelete: Cascade)
+  update    Bytes
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  @@index([canvasId, id])
 }
 
 model CanvasEvent {
