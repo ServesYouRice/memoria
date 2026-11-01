@@ -1,5 +1,7 @@
 # Reference ingress for the custom Node/WebSocket server. Compose sets
 # MEMORIA_ADDRESS=:3000; a standalone TLS deployment can set it to its domain.
+# MEMORIA_APP_UPSTREAMS and MEMORIA_SYNC_UPSTREAMS list the replicas
+# (space-separated); the `replicas` compose profile sets two of each (IMP-043).
 
 {$MEMORIA_ADDRESS:localhost} {
 	route {
@@ -29,15 +31,16 @@
 		@public_probes {
 			path /api/health /api/status
 		}
-		reverse_proxy @public_probes app:3000
+		reverse_proxy @public_probes {$MEMORIA_APP_UPSTREAMS:app:3000}
 
-		# Collaborative canvas documents (IMP-042) belong to the sync server
-		# process, which authenticates and authorizes every connection itself.
-		# It runs as one replica until IMP-043 adds cross-replica fan-out.
-		@sync_documents {
-			path /api/collaboration/sync
+		# Every collaboration socket (document sync and presence) belongs to the
+		# realtime process, which authenticates and authorizes each connection
+		# itself. Replicas share state through PostgreSQL and Redis, so any
+		# replica can take any connection (IMP-043).
+		@collaboration {
+			path /api/collaboration/*
 		}
-		reverse_proxy @sync_documents sync:3001 {
+		reverse_proxy @collaboration {$MEMORIA_SYNC_UPSTREAMS:sync:3001} {
 			health_uri /ready
 			health_interval 5s
 			health_timeout 3s
@@ -56,9 +59,9 @@
 			max_size 2MB
 		}
 
-		# Active authenticated readiness removes the sole upstream from user
-		# traffic after one failed check and restores it after one pass.
-		reverse_proxy app:3000 {
+		# Active authenticated readiness removes an upstream from user traffic
+		# after one failed check and restores it after one pass.
+		reverse_proxy {$MEMORIA_APP_UPSTREAMS:app:3000} {
 			health_uri /api/ready
 			health_interval 5s
 			health_timeout 3s

@@ -87,7 +87,14 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
         "path /api/v1/upload /api/v1/canvases/*/thumbnail",
       );
       expect(caddyContent).not.toContain("/api/v1/uploads ");
-      expect(caddyContent).toContain("reverse_proxy app:3000");
+      expect(caddyContent).toContain(
+        "reverse_proxy {$MEMORIA_APP_UPSTREAMS:app:3000}",
+      );
+      // Every collaboration socket goes to the realtime replicas (IMP-043).
+      expect(caddyContent).toContain("path /api/collaboration/*");
+      expect(caddyContent).toContain(
+        "reverse_proxy @collaboration {$MEMORIA_SYNC_UPSTREAMS:sync:3001}",
+      );
     });
   });
 

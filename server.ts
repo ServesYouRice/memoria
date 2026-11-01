@@ -1,14 +1,12 @@
 /**
- * Custom Next.js Server with WebSocket Support
- * Following ADR-0010: Real-Time Collaboration Strategy
+ * Custom Next.js server. Collaboration sockets are proxied to the realtime
+ * process (`scripts/sync-server.ts`).
  */
 
 import "./src/lib/env";
 import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
-import { createCollaborationServer } from "./src/lib/collaboration/websocket-server";
-import { COLLABORATION_SYNC_PATH } from "./src/lib/collaboration/sync/protocol";
 import { proxySyncUpgrade } from "./src/lib/collaboration/sync/upgrade-proxy";
 import { logger } from "./src/lib/logger";
 import { deriveClientIp } from "./src/lib/network/client-ip";
@@ -62,12 +60,13 @@ app
       }
     });
 
-    // Initialize WebSocket server for collaboration
-    const collaborationServer = createCollaborationServer(server);
-
-    // Collaborative documents live in the sync server process (IMP-042).
+    // Every collaboration socket (document sync and presence) belongs to the
+    // realtime process (IMP-042, IMP-043). A gateway routes them there
+    // directly; this proxy serves single-port and development setups.
     server.on("upgrade", (req, socket, head) => {
-      if (parse(req.url || "").pathname !== COLLABORATION_SYNC_PATH) return;
+      const pathname = parse(req.url || "").pathname || "";
+      // Other upgrades (Next.js development HMR) are Next's own.
+      if (!pathname.startsWith("/api/collaboration/")) return;
       proxySyncUpgrade(syncServerUrl, req, socket, head);
     });
 
@@ -83,10 +82,6 @@ app
       }, 20_000);
       deadline.unref();
 
-      collaborationServer.clients.forEach((client) =>
-        client.close(1001, "Server shutting down"),
-      );
-      collaborationServer.close();
       await new Promise<void>((resolvePromise) =>
         server.close(() => resolvePromise()),
       );
@@ -100,7 +95,6 @@ app
 
     server.listen(port, () => {
       logger.info({ hostname, port }, "Server ready");
-      logger.info("WebSocket server ready for collaboration");
     });
   })
   .catch((error) => {

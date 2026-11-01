@@ -86,6 +86,11 @@ services:
     environment:
       MEMORIA_ADDRESS: :3000
       INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
+      # Two replicas each with COMPOSE_PROFILES=replicas (IMP-043):
+      # MEMORIA_APP_UPSTREAMS="app:3000 app-2:3000"
+      # MEMORIA_SYNC_UPSTREAMS="sync:3001 sync-2:3001"
+      MEMORIA_APP_UPSTREAMS: ${MEMORIA_APP_UPSTREAMS:-app:3000}
+      MEMORIA_SYNC_UPSTREAMS: ${MEMORIA_SYNC_UPSTREAMS:-sync:3001}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     ports:
@@ -174,8 +179,9 @@ services:
       OUTBOX_CONCURRENCY: ${OUTBOX_CONCURRENCY:-4}
     read_only: true
 
-  # Yjs co-editing (IMP-042). Exactly one replica: documents are held in this
-  # process's memory until IMP-043 adds shared fan-out between replicas.
+  # The realtime process: Yjs document sync (IMP-042) and the presence socket.
+  # Replicas share documents through PostgreSQL and announce updates over
+  # Redis, so a second one (`replicas` profile) is safe (IMP-043).
   sync:
     image: ${MEMORIA_IMAGE:-memoria:local}
     build:
@@ -227,6 +233,18 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  # Second replicas for testing the multi-replica topology (IMP-043). Enable
+  # with COMPOSE_PROFILES=replicas and the gateway upstream variables above.
+  app-2:
+    extends: app
+    profiles: ['replicas']
+    container_name: memoria-app-2
+    ports: !reset []
+
+  sync-2:
+    extends: sync
+    profiles: ['replicas']
 
   backup:
     build:

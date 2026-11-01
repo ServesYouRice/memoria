@@ -1,13 +1,18 @@
 /**
- * IMP-042: the collaboration sync server process (Hocuspocus). Runs from the
+ * The realtime process (IMP-042, IMP-043): Hocuspocus document sync at
+ * `/api/collaboration/sync` and the presence socket (cursors, chat,
+ * reactions) at `/api/collaboration/:canvasId`, on one port. Runs from the
  * application image like the outbox worker: `pnpm sync:server` after
- * `pnpm build`, or `pnpm sync:dev` from source. Run exactly one replica per
- * database until IMP-043 adds cross-replica document fan-out.
+ * `pnpm build`, or `pnpm sync:dev` from source. Any number of replicas may
+ * share one database and Redis; production runs one until a second is needed.
  */
 import "../src/lib/env";
 import { prisma } from "../src/lib/db";
 import { createLogger } from "../src/lib/logger";
+import { getRedisClient } from "../src/lib/cache/redis-client";
 import { createSyncServer } from "../src/lib/collaboration/sync/server";
+import { COLLABORATION_SYNC_PATH } from "../src/lib/collaboration/sync/protocol";
+import { createCollaborationServer } from "../src/lib/collaboration/websocket-server";
 
 const logger = createLogger("sync-server");
 const sync = createSyncServer({
@@ -16,7 +21,11 @@ const sync = createSyncServer({
   port: Number(process.env.SYNC_SERVER_PORT || 3001),
   address: process.env.SYNC_SERVER_ADDRESS || "0.0.0.0",
   allowedOrigin: process.env.AUTH_URL || process.env.NEXTAUTH_URL,
+  redis: getRedisClient(),
+  passUpgrade: (path) =>
+    path.startsWith("/api/collaboration/") && path !== COLLABORATION_SYNC_PATH,
 });
+const presence = createCollaborationServer(sync.httpServer);
 
 const { port } = await sync.listen();
 logger.info({ port }, "Collaboration sync server ready");
@@ -33,6 +42,10 @@ async function shutdown(signal: NodeJS.Signals) {
   deadline.unref();
   // Every acknowledged update is already in PostgreSQL; shutting down only
   // waits for updates in flight and compacts the documents it unloads.
+  presence.clients.forEach((client) =>
+    client.close(1001, "Server shutting down"),
+  );
+  presence.close();
   await sync.destroy();
   await prisma.$disconnect();
   clearTimeout(deadline);
