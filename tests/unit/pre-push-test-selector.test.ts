@@ -83,7 +83,7 @@ describe("Pre-push Test Selector (IMP-050)", () => {
     });
 
     it.each([
-      ".github/workflows/ci.yml",
+      ".github/dependabot.yml",
       "Dockerfile",
       "docker-compose.yml",
       ".env.example",

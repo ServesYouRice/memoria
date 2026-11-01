@@ -45,7 +45,7 @@
     "audit": "pnpm audit --audit-level=moderate",
     "check-bundle": "node scripts/check-bundle-size.mjs",
     "check-schema-drift": "node scripts/check-schema-drift.mjs",
-    "ci": "pnpm run lint && pnpm run type-check && pnpm run test:coverage && pnpm run audit && pnpm run build && pnpm run test:e2e",
+    "gate": "node scripts/gate.mjs",
     "lint-staged": "lint-staged",
     "prepare": "husky"
   },

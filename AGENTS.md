@@ -81,7 +81,13 @@ pnpm type-check
 pnpm test -- --run
 pnpm build
 pnpm smoke
+pnpm gate [build|audit|integration|container|e2e|all]
 ```
+
+There is no hosted CI: `pnpm gate` (fast stage by default) is the local gate,
+and service-backed or browser stages are explicit opt-ins. Run `build` for
+build-affecting changes, `integration` for schema, SQL, or transaction changes,
+and `e2e` for runtime, auth, or UI flow changes.
 
 Report commands that were not run or did not pass; never infer success.
 
