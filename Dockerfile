@@ -55,6 +55,8 @@ COPY --from=build --chown=memoria:memoria /app/prisma ./prisma
 # `migrate` service needs it inside the runtime image.
 COPY --from=build --chown=memoria:memoria /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build --chown=memoria:memoria /app/scripts ./scripts
+# Runtime scripts import this plain-JS module from src/ (shared with the app).
+COPY --from=build --chown=memoria:memoria /app/src/lib/uploads/s3-client.mjs ./src/lib/uploads/s3-client.mjs
 
 USER memoria
 EXPOSE 3000
