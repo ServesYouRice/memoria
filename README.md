@@ -1,6 +1,6 @@
 # Memoria
 
-Memoria is a stateful Node application for visual note organization. It combines a free-form canvas with versioned canvases, templates, sharing, comments, and real-time collaboration, and it is being hardened toward a self-host-friendly production model.
+Memoria is a stateful Node application for visual note organization. It combines a free-form canvas with versioned canvases, sharing, comments, and real-time collaboration, and it is being hardened toward a self-host-friendly production model. Templates and canvas duplication are implemented but disabled for this release.
 
 ## Production Model
 

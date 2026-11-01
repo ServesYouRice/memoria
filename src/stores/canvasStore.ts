@@ -59,7 +59,7 @@ import { devtools, persist } from "zustand/middleware";
 export type CanvasTool =
   "select" | "pan" | "note" | "bookmark" | "draw" | "shape" | "arrow" | "text";
 
-export interface DrawingState {
+interface DrawingState {
   color: string;
   strokeWidth: number;
   opacity: number;

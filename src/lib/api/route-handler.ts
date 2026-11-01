@@ -12,6 +12,7 @@ import {
 import { getCachedSession, runWithSessionCache } from "@/lib/api/session-cache";
 import { createHash } from "crypto";
 import { getRequestId } from "@/lib/api/request-context";
+import type { Prisma } from "@/generated/prisma/client";
 
 const logger = createLogger("api");
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -22,13 +23,14 @@ interface ErrorResponse {
   details?: unknown;
 }
 
-/** Next.js route context with params */
-type RouteContext = { params?: Record<string, string | string[]> } | any;
-
-/** Route handler that returns NextResponse or Response */
-type RouteHandler<T = unknown> = (
+/**
+ * Route handler that returns NextResponse or Response. `C` is the context
+ * the route declares (for example `{ params: Promise<{ canvasId: string }> }`),
+ * so each handler keeps its own parameter types.
+ */
+type RouteHandler<T = unknown, C = unknown> = (
   req: NextRequest,
-  context?: RouteContext,
+  context: C,
 ) => Promise<NextResponse<T | ErrorResponse> | Response>;
 
 /** Session type from auth() */
@@ -37,24 +39,26 @@ interface AuthSession {
 }
 
 /** Authenticated route handler with session */
-type AuthenticatedRouteHandler<T = unknown> = (
+type AuthenticatedRouteHandler<T = unknown, C = unknown> = (
   req: NextRequest,
   session: AuthSession,
-  context?: RouteContext,
+  context: C,
 ) => Promise<NextResponse<T | ErrorResponse> | Response>;
 
 /**
  * Wrapper for API route handlers to provide centralized error handling
  */
-export function withApiHandler<T>(handler: RouteHandler<T>): RouteHandler<T> {
-  return async (req: NextRequest, context?: RouteContext) => {
+export function withApiHandler<T, C = unknown>(
+  handler: RouteHandler<T, C>,
+): RouteHandler<T, C> {
+  return async (req: NextRequest, context: C) => {
     return runWithSessionCache(async () => {
       try {
         return await handler(req, context);
       } catch (error) {
         const requestId = req.headers.get("x-request-id") || getRequestId();
         logger.error({ error, requestId }, "API Error");
-        return errorResponse(error, req.url) as any;
+        return errorResponse(error, req.url);
       }
     });
   };
@@ -63,10 +67,10 @@ export function withApiHandler<T>(handler: RouteHandler<T>): RouteHandler<T> {
 /**
  * Wrapper for API route handlers that require authentication
  */
-export function withAuth<T>(
-  handler: AuthenticatedRouteHandler<T>,
-): RouteHandler<T> {
-  return withApiHandler(async (req: NextRequest, context?: RouteContext) => {
+export function withAuth<T, C = unknown>(
+  handler: AuthenticatedRouteHandler<T, C>,
+): RouteHandler<T, C> {
+  return withApiHandler<T, C>(async (req: NextRequest, context: C) => {
     const session = await getCachedSession();
 
     if (!session || !session.user?.id) {
@@ -87,15 +91,15 @@ export function withAuth<T>(
 /**
  * Wrapper for request validation
  */
-export function withValidation<T>(
+export function withValidation<T, C = unknown>(
   schema: ZodSchema<T>,
   handler: (
     data: T,
     req: NextRequest,
-    context?: RouteContext,
+    context?: C,
   ) => Promise<NextResponse | Response>,
-): RouteHandler {
-  return async (req: NextRequest, context?: RouteContext) => {
+): RouteHandler<unknown, C> {
+  return async (req: NextRequest, context: C) => {
     let body: unknown;
     try {
       body = await req.json();
@@ -116,32 +120,18 @@ export function withValidation<T>(
 }
 
 /**
- * Wrapper for Idempotency
- * Must be used INSIDE withAuth
- */
-export function withIdempotency<T>(
-  handler: AuthenticatedRouteHandler<T>,
-): AuthenticatedRouteHandler<T> {
-  return async (req: NextRequest, session: any, context?: any) => {
-    return runIdempotent(req, session.user.id, () =>
-      handler(req, session, context),
-    );
-  };
-}
-
-/**
  * Wrapper for API route handlers that require BOTH authentication AND validation
  */
-export function withAuthValidation<T>(
+export function withAuthValidation<T, C = unknown>(
   schema: ZodSchema<T>,
   handler: (
     data: T,
     req: NextRequest,
-    session: any,
-    context?: any,
+    session: AuthSession,
+    context?: C,
   ) => Promise<NextResponse | Response>,
-): RouteHandler {
-  return withAuth(async (req, session, context) => {
+): RouteHandler<unknown, C> {
+  return withAuth<unknown, C>(async (req, session, context) => {
     let body: unknown;
     try {
       body = await req.json();
@@ -256,7 +246,7 @@ export async function runIdempotent<T>(
         existing.responseCode,
         existing.responseBody,
         true,
-      ) as any;
+      );
     }
 
     // If an in-flight lease has expired without completion, recover it
@@ -292,7 +282,7 @@ export async function runIdempotent<T>(
         raced.responseCode,
         raced.responseBody,
         true,
-      ) as any;
+      );
     }
 
     throw new ConflictError("Idempotency key conflict");
@@ -307,7 +297,7 @@ export async function runIdempotent<T>(
         where: { key_userId_method_path: scope },
         data: {
           responseCode: response.status,
-          responseBody: body as any,
+          responseBody: body as Prisma.InputJsonValue,
         },
       })
       .catch((error) =>
@@ -327,7 +317,7 @@ export async function runIdempotent<T>(
         where: { key_userId_method_path: scope },
         data: {
           responseCode: failureResponse.status,
-          responseBody: body as any,
+          responseBody: body as Prisma.InputJsonValue,
         },
       })
       .catch(() => {});
