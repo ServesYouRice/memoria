@@ -383,15 +383,15 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           )}
         </Box>
 
-        {/* Activity feed */}
+        {/* Activity feed: stacked below the canvases on small screens */}
         <Paper
           variant="outlined"
+          data-testid="activity-feed-panel"
           sx={{
             p: 2.5,
-            position: "sticky",
+            position: { xs: "static", md: "sticky" },
             top: 80,
             borderRadius: 3,
-            display: { xs: "none", md: "block" },
           }}
         >
           <ActivityFeed limit={15} />

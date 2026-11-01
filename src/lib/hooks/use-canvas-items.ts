@@ -49,6 +49,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { nanoid } from "nanoid";
+import { toast } from "sonner";
 import { type ItemType, type CanvasItem } from "@/types/canvas";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -1142,6 +1143,8 @@ export function useDeleteCanvasItem() {
       };
     },
     onError: (_err, _variables, context) => {
+      // One place for every delete path (button, keyboard, menu, bulk)
+      toast.error("Failed to delete item. It has been restored.");
       // Targeted rollback: re-insert the deleted item back into list caches
       if (context?.deletedItem) {
         queryClient.setQueryData(
