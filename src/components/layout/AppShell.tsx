@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { toast } from "sonner";
+import { useSession, signOutAndRedirect } from "@/lib/auth-client";
 import {
   AppBar,
   Avatar,
@@ -283,7 +284,9 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
             <MenuItem
               onClick={() => {
                 closeAccountMenu();
-                signOut({ callbackUrl: "/" });
+                void signOutAndRedirect("/").catch(() => {
+                  toast.error("Sign out failed. Please try again.");
+                });
               }}
             >
               <ListItemIcon>

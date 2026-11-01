@@ -174,6 +174,7 @@ async function buildArchive(
         id: true,
         email: true,
         emailVerified: true,
+        emailVerifiedAt: true,
         name: true,
         image: true,
         createdAt: true,

@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       }
       await tx.user.update({
         where: { id: user.id },
-        data: { emailVerified: new Date() },
+        data: { emailVerified: true, emailVerifiedAt: new Date() },
       });
     });
 

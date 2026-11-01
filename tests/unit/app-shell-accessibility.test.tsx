@@ -25,11 +25,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: navigationMocks.push }),
 }));
 
-vi.mock("next-auth/react", () => ({
+vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
     data: { user: { name: "Ada", email: "ada@example.com", image: null } },
   }),
-  signOut: vi.fn(),
+  signOutAndRedirect: vi.fn(),
 }));
 
 vi.mock("@/lib/hooks/use-notifications", () => ({

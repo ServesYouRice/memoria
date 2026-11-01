@@ -10,6 +10,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
+import { createCredentialAccount } from "@/lib/auth/credentials";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import {
   problemToResponse,
@@ -131,7 +132,6 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       const createdUser = await tx.user.create({
         data: {
           email: normalizedEmail,
-          passwordHash,
           name,
         },
         select: {
@@ -141,6 +141,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
           createdAt: true,
         },
       });
+      await createCredentialAccount(tx, createdUser.id, passwordHash);
       const workspace = await tx.workspace.create({
         data: { name: "Personal", userId: createdUser.id },
         select: { id: true },

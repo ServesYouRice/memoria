@@ -6,6 +6,7 @@
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/lib/auth/password";
+import { createCredentialAccount } from "../src/lib/auth/credentials";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -33,17 +34,17 @@ async function main() {
     data: {
       email: "alice@example.com",
       name: "Alice Johnson",
-      passwordHash: testPassword,
     },
   });
+  await createCredentialAccount(prisma, alice.id, testPassword);
 
   const bob = await prisma.user.create({
     data: {
       email: "bob@example.com",
       name: "Bob Smith",
-      passwordHash: testPassword,
     },
   });
+  await createCredentialAccount(prisma, bob.id, testPassword);
 
   console.log(`Created users: ${alice.email}, ${bob.email}`);
 

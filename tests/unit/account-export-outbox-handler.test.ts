@@ -89,7 +89,8 @@ function fakePrisma(
       findUnique: vi.fn().mockResolvedValue({
         id: userId,
         email: "owner@example.com",
-        emailVerified: new Date("2026-01-01T00:00:00.000Z"),
+        emailVerified: true,
+        emailVerifiedAt: new Date("2026-01-01T00:00:00.000Z"),
         name: "Owner",
         image: null,
         createdAt: new Date("2026-01-01T00:00:00.000Z"),

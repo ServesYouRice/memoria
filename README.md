@@ -94,7 +94,7 @@ Current limits:
 - Next.js 16.3.1
 - TypeScript
 - Prisma + PostgreSQL
-- Auth.js / NextAuth v5 exact-pinned to `5.0.0-beta.32`; upstream still exposes the Next.js package on the beta track
+- Better Auth exact-pinned to `1.7.14` (with `@better-auth/passkey`): Argon2 credentials, passkeys, and authenticator-app two-factor on database sessions
 - Redis + ioredis
 - TanStack Query
 - Konva / react-konva

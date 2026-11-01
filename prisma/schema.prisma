@@ -11,20 +11,25 @@ datasource db {
   provider = "postgresql"
 }
 
+// Better Auth owns User, Session, Account, Verification, TwoFactor, and
+// Passkey (IMP-041). The password hash lives on the `credential` Account row;
+// Argon2id hashing and verification stay in `src/lib/auth/password.ts`.
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String?
-  emailVerified DateTime? // null = not verified, DateTime = verified at
-  name          String?
-  image         String?
-  sessionVersion Int      @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  email            String    @unique
+  emailVerified    Boolean   @default(false)
+  emailVerifiedAt  DateTime?
+  name             String?
+  image            String?
+  twoFactorEnabled Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   canvases      Canvas[]
   sessions      Session[]
   accounts      Account[]
+  twoFactors    TwoFactor[]
+  passkeys      Passkey[]
   workspaces    Workspace[]
 
   createdItems  CanvasItem[] @relation("ItemCreatedBy")
@@ -352,35 +357,82 @@ model NotificationPreference {
 }
 
 model Session {
-  id           String    @id @default(cuid())
-  sessionToken String    @unique
-  userId       String
-  expires      DateTime
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  deviceInfo   String?
-  revokedAt    DateTime?
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([expires])
+  @@index([expiresAt])
 }
 
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String? @db.Text
-  access_token       String? @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String? @db.Text
-  session_state      String?
-  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+// Short-lived Better Auth values: passkey challenges, two-factor sign-in
+// challenges, and trusted-device records. Identifiers are stored hashed.
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@index([expiresAt])
+}
+
+model TwoFactor {
+  id                      String    @id @default(cuid())
+  userId                  String
+  secret                  String
+  backupCodes             String    @db.Text
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([secret])
+}
+
+model Passkey {
+  id           String    @id @default(cuid())
+  userId       String
+  name         String?
+  publicKey    String    @db.Text
+  credentialID String    @unique
+  counter      Int
+  deviceType   String
+  backedUp     Boolean
+  transports   String?
+  aaguid       String?
+  createdAt    DateTime? @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 

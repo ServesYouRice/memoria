@@ -16,7 +16,10 @@ import {
   validatePasswordStrength,
 } from "@/lib/validation/password";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import { invalidateSessionVersion } from "@/lib/api/session-cache";
+import {
+  getCredentialPasswordHash,
+  setCredentialPassword,
+} from "@/lib/auth/credentials";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -42,18 +45,21 @@ export async function POST(request: NextRequest) {
     const data = changePasswordSchema.parse(body);
 
     // Get user with current password
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { passwordHash: true, email: true, name: true },
-    });
+    const [user, passwordHash] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true },
+      }),
+      getCredentialPasswordHash(prisma, userId),
+    ]);
 
-    if (!user?.passwordHash) {
+    if (!user || !passwordHash) {
       throw new BadRequestError("Cannot change password for this account type");
     }
 
     // Verify current password
     const isValidPassword = await verifyPassword(
-      user.passwordHash,
+      passwordHash,
       data.currentPassword,
     );
     if (!isValidPassword) {
@@ -61,10 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prevent using the same password
-    const isSamePassword = await verifyPassword(
-      user.passwordHash,
-      data.newPassword,
-    );
+    const isSamePassword = await verifyPassword(passwordHash, data.newPassword);
     if (isSamePassword) {
       throw new BadRequestError(
         "New password must be different from current password",
@@ -88,19 +91,17 @@ export async function POST(request: NextRequest) {
     // Hash new password
     const hashedPassword = await hashPassword(data.newPassword);
 
-    // Rotate the security stamp and remove database sessions in the same
-    // transaction so every existing cookie is invalid after this change.
+    // Replace the hash and delete every server-side session in the same
+    // transaction so no existing cookie (or WebSocket) survives the change.
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          passwordHash: hashedPassword,
-          sessionVersion: { increment: 1 },
-        },
-      });
+      const updated = await setCredentialPassword(tx, userId, hashedPassword);
+      if (updated !== 1) {
+        throw new BadRequestError(
+          "Cannot change password for this account type",
+        );
+      }
       await tx.session.deleteMany({ where: { userId } });
     });
-    await invalidateSessionVersion(userId);
 
     return NextResponse.json({ message: "Password changed successfully" });
   } catch (error) {

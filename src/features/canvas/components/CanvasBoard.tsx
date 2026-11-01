@@ -13,7 +13,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { NoteAdd, Bookmark, Image as ImageIcon } from "@mui/icons-material";
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/auth-client";
 import { useSearchParams } from "next/navigation";
 import {
   useDeleteCanvasItem,

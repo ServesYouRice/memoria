@@ -3,7 +3,8 @@ import { type NextRequest } from "next/server";
 
 const prismaMocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
-  userUpdate: vi.fn(),
+  accountFindUnique: vi.fn(),
+  accountUpdateMany: vi.fn(),
   sessionDeleteMany: vi.fn(),
   $transaction: vi.fn(),
 }));
@@ -18,14 +19,14 @@ const passwordMocks = vi.hoisted(() => ({
   validatePasswordStrength: vi.fn(),
 }));
 
-const sessionCacheMocks = vi.hoisted(() => ({
-  invalidateSessionVersion: vi.fn(),
-}));
-
 vi.mock("@/lib/db", () => ({
   prisma: {
     user: {
       findUnique: prismaMocks.findUnique,
+    },
+    // The password hash lives on the Better Auth credential Account row.
+    account: {
+      findUnique: prismaMocks.accountFindUnique,
     },
     $transaction: prismaMocks.$transaction,
   },
@@ -45,10 +46,6 @@ vi.mock("@/lib/validation/password", () => ({
   validatePasswordStrength: passwordMocks.validatePasswordStrength,
 }));
 
-vi.mock("@/lib/api/session-cache", () => ({
-  invalidateSessionVersion: sessionCacheMocks.invalidateSessionVersion,
-}));
-
 import { POST } from "@/app/api/v1/users/change-password/route";
 
 function createJsonRequest(body: unknown): NextRequest {
@@ -64,7 +61,10 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
   const userRecord = {
     email: "user@example.com",
     name: "Alice",
-    passwordHash: "$argon2id$existingHash",
+  };
+  const credentialAccount = {
+    userId,
+    password: "$argon2id$existingHash",
   };
 
   beforeEach(() => {
@@ -74,6 +74,8 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
       email: "user@example.com",
     });
     prismaMocks.findUnique.mockResolvedValue({ ...userRecord });
+    prismaMocks.accountFindUnique.mockResolvedValue({ ...credentialAccount });
+    prismaMocks.accountUpdateMany.mockResolvedValue({ count: 1 });
     passwordMocks.verifyPassword.mockResolvedValue(false);
     passwordMocks.validatePasswordStrength.mockResolvedValue({
       isValid: true,
@@ -83,7 +85,7 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
     passwordMocks.hashPassword.mockResolvedValue("$argon2id$newHashedPassword");
     prismaMocks.$transaction.mockImplementation(async (callback: any) => {
       const tx = {
-        user: { update: prismaMocks.userUpdate },
+        account: { updateMany: prismaMocks.accountUpdateMany },
         session: { deleteMany: prismaMocks.sessionDeleteMany },
       };
       return callback(tx);
@@ -95,8 +97,8 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
       prismaMocks.findUnique.mockResolvedValue({
         email: "oauth@example.com",
         name: "OAuth User",
-        passwordHash: null,
       });
+      prismaMocks.accountFindUnique.mockResolvedValue(null);
 
       const response = await POST(
         createJsonRequest({
@@ -178,7 +180,7 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
   });
 
   describe("successful password change and session invalidation", () => {
-    it("updates passwordHash, increments sessionVersion, deletes DB sessions, and invalidates session version cache", async () => {
+    it("updates the credential hash and deletes every server-side session in one transaction", async () => {
       passwordMocks.verifyPassword
         .mockResolvedValueOnce(true) // current password correct
         .mockResolvedValueOnce(false); // new password is distinct
@@ -197,24 +199,35 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
       // Assert transaction was executed
       expect(prismaMocks.$transaction).toHaveBeenCalledTimes(1);
 
-      // Effect 1: Password hash updated and sessionVersion incremented
-      expect(prismaMocks.userUpdate).toHaveBeenCalledWith({
-        where: { id: userId },
-        data: {
-          passwordHash: "$argon2id$newHashedPassword",
-          sessionVersion: { increment: 1 },
-        },
+      // Effect 1: The credential Account row receives the new hash
+      expect(prismaMocks.accountUpdateMany).toHaveBeenCalledWith({
+        where: { userId, accountId: userId, providerId: "credential" },
+        data: { password: "$argon2id$newHashedPassword" },
       });
 
-      // Effect 2: DB sessions for user deleted inside transaction
+      // Effect 2: Every server-side session (this one included) is deleted
+      // inside the same transaction, which revokes all cookies and closes
+      // WebSockets at their next authorization refresh.
       expect(prismaMocks.sessionDeleteMany).toHaveBeenCalledWith({
         where: { userId },
       });
+    });
 
-      // Effect 3: Redis/In-memory session version cache invalidated
-      expect(sessionCacheMocks.invalidateSessionVersion).toHaveBeenCalledWith(
-        userId,
+    it("refuses to report success when no credential row was updated", async () => {
+      passwordMocks.verifyPassword
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false);
+      prismaMocks.accountUpdateMany.mockResolvedValue({ count: 0 });
+
+      const response = await POST(
+        createJsonRequest({
+          currentPassword: "OldPassword123!",
+          newPassword: "BrandNewSecurePassword123!",
+        }),
       );
+
+      expect(response.status).toBe(400);
+      expect(prismaMocks.sessionDeleteMany).not.toHaveBeenCalled();
     });
   });
 });
