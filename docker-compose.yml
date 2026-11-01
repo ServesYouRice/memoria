@@ -19,6 +19,9 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+    networks:
+      - default
+      - edge
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
@@ -96,6 +99,10 @@ services:
       # MEMORIA_SYNC_UPSTREAMS="sync:3001 sync-2:3001"
       MEMORIA_APP_UPSTREAMS: ${MEMORIA_APP_UPSTREAMS:-app:3000}
       MEMORIA_SYNC_UPSTREAMS: ${MEMORIA_SYNC_UPSTREAMS:-sync:3001}
+    # Only on the edge network so app and sync always see the gateway at an
+    # address inside TRUSTED_PROXY_CIDRS (IMP-047).
+    networks:
+      - edge
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     ports:
@@ -163,6 +170,7 @@ services:
       AUTH_SECRET: ${AUTH_SECRET}
       APP_BOOTSTRAP_TOKEN: ${APP_BOOTSTRAP_TOKEN}
       INTERNAL_OPERATIONS_TOKEN: ${INTERNAL_OPERATIONS_TOKEN}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
       MODEL_CREDENTIAL_ENCRYPTION_KEY: ${MODEL_CREDENTIAL_ENCRYPTION_KEY}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER must be sendgrid, resend, or smtp}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@memoria.local}
@@ -209,6 +217,9 @@ services:
       redis:
         condition: service_healthy
     command: ['pnpm', 'sync:server']
+    networks:
+      - default
+      - edge
     environment:
       NODE_ENV: production
       SYNC_SERVER_PORT: 3001
@@ -428,6 +439,14 @@ services:
       - '127.0.0.1:9000:9000'
     volumes:
       - s3_data:/data
+
+# Fixed subnet so setup can write a deterministic TRUSTED_PROXY_CIDRS. Keep it
+# in sync with EDGE_NETWORK_CIDR in scripts/setup.mjs.
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.29.47.0/28
 
 volumes:
   postgres_data:

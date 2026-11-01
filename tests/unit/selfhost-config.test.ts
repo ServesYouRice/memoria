@@ -64,6 +64,29 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
       }
     });
 
+    it("pins the gateway network and passes TRUSTED_PROXY_CIDRS to app, sync and worker (IMP-047)", () => {
+      const composeContent = readFileSync(
+        path.join(rootDir, "docker-compose.yml"),
+        "utf8",
+      );
+      expect(composeContent).toContain("subnet: 172.29.47.0/28");
+      const setupContent = readFileSync(
+        path.join(rootDir, "scripts/setup.mjs"),
+        "utf8",
+      );
+      expect(setupContent).toContain("EDGE_NETWORK_CIDR = '172.29.47.0/28'");
+      expect(setupContent).toContain("'TRUSTED_PROXY_CIDRS'");
+      const services = composeContent.split(/\n(?=  [a-z-]+:\n)/);
+      for (const name of ["app", "sync", "outbox-worker"]) {
+        const block = services.find((entry) =>
+          entry.trimStart().startsWith(`${name}:`),
+        );
+        expect(block, name).toContain(
+          "TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}",
+        );
+      }
+    });
+
     it("separates host port from fixed container port 3000", () => {
       const composeContent = readFileSync(
         path.join(rootDir, "docker-compose.yml"),
@@ -161,6 +184,38 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
           unlinkSync(tempEnv);
         }
       }
+    }, 25000);
+
+    it("scripts/doctor.mjs warns when behind a proxy with empty TRUSTED_PROXY_CIDRS (IMP-047)", () => {
+      const run = (cidrs: string) => {
+        const tempEnv = path.join(
+          tmpdir(),
+          `.env.test-doctor-proxy-${process.pid}`,
+        );
+        writeFileSync(
+          tempEnv,
+          [
+            "AUTH_URL=https://memoria.example",
+            `TRUSTED_PROXY_CIDRS=${cidrs}`,
+          ].join("\n"),
+          "utf8",
+        );
+        try {
+          const result = spawnSync(
+            process.execPath,
+            [path.join(rootDir, "scripts/doctor.mjs"), "--json"],
+            {
+              env: { ...process.env, MEMORIA_ENV_FILE: tempEnv },
+              cwd: rootDir,
+            },
+          );
+          return result.stdout.toString("utf8");
+        } finally {
+          if (existsSync(tempEnv)) unlinkSync(tempEnv);
+        }
+      };
+      expect(run("")).toContain("trusted-proxy");
+      expect(run("172.29.47.0/28")).not.toContain("trusted-proxy");
     }, 25000);
   });
 
