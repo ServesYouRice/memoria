@@ -32,7 +32,8 @@ documented restore drill passed (RPO 134s, RTO 16s).
 | [IMP-047](tasks/IMP-047.md) | Real client identity behind the gateway (built; compose smoke not run) | DEC-002 |
 | [IMP-053](tasks/IMP-053.md) | Visible delete failures and a mobile activity feed (built; E2E not run) | DEC-002 |
 | [IMP-057](tasks/IMP-057.md) | Image proxy so the CSP can drop `img-src https:` (built; E2E not run) | DEC-002 |
-| [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster | DEC-001, IMP-047 |
+| [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster | DEC-003, IMP-047 |
+| [IMP-058](tasks/IMP-058.md) | Move the runtime to Node 26 LTS in one step | DEC-002 |
 
 ## USER DECISIONS
 
@@ -41,5 +42,6 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 
 | ID | Decision | Recommended | Choice | Unblocks |
 | -- | -------- | ----------- | ------ | -------- |
-| DEC-001 | May agents add `apps/memoria/` to the infra repo (a push to its `main` deploys)? | Yes, staging first, via PR | | IMP-056 |
-| DEC-002 | Run `pnpm smoke` against the compose stack and `pnpm gate e2e` on a machine with Docker (the agent container has none) | Owner runs both on the dev machine | | IMP-047, IMP-053, IMP-057 |
+| DEC-001 | May agents add `apps/memoria/` to the infra repo (a push to its `main` deploys)? | Yes, staging first, via PR | Yes (owner, 2026-11-02) | IMP-056 |
+| DEC-002 | Run `pnpm smoke` against the compose stack and `pnpm gate e2e` on a machine with Docker (the agent container has none) | Owner runs both on the dev machine | | IMP-047, IMP-053, IMP-057, IMP-058 |
+| DEC-003 | Give agent sessions push access to `ServesYouRice/infra` (session permission for adding the repo was denied) | Allow `add_repo` for infra in session settings | | IMP-056 |
