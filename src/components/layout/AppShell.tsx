@@ -44,6 +44,7 @@ import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { gradients } from "@/lib/theme";
 import { useUnreadNotifications } from "@/lib/hooks/use-notifications";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
@@ -222,7 +223,7 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
               sx={{ ml: 0.5 }}
             >
               <Avatar
-                src={user?.image || undefined}
+                src={toImageProxyUrl(user?.image)}
                 sx={{
                   width: 32,
                   height: 32,

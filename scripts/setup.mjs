@@ -134,6 +134,9 @@ async function runEmailDeliveryProbe({ operationsBaseUrl, operationsToken, timeo
   throw new Error(`Email delivery probe ${startPayload.jobId} did not complete within ${timeoutMs}ms.`);
 }
 
+// Pinned in docker-compose.yml (networks.edge); only the gateway lives on it.
+const EDGE_NETWORK_CIDR = '172.29.47.0/28';
+
 function prepareEnv(targetPath, targetMode, selfHostChoices) {
   let raw = ensureEnvFile(targetPath, { force });
   const currentValues = readEnvFile(targetPath).values;
@@ -194,6 +197,11 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(raw, 'APP_BOOTSTRAP_TOKEN', bootstrapToken);
   raw = upsertEnvValue(raw, 'INTERNAL_OPERATIONS_TOKEN', operationsToken);
   raw = upsertEnvValue(raw, 'GRAFANA_ADMIN_PASSWORD', grafanaAdminPassword);
+  raw = upsertEnvValue(
+    raw,
+    'TRUSTED_PROXY_CIDRS',
+    currentValues.get('TRUSTED_PROXY_CIDRS') || (isProduction ? EDGE_NETWORK_CIDR : '')
+  );
   raw = upsertEnvValue(raw, 'REGISTRATION_MODE', currentValues.get('REGISTRATION_MODE') || 'open');
   raw = upsertEnvValue(raw, 'AUTH_RATE_LIMIT_MAX_REQUESTS', currentValues.get('AUTH_RATE_LIMIT_MAX_REQUESTS') || '5');
   raw = upsertEnvValue(raw, 'EMAIL_PROVIDER', selfHostChoices?.emailProvider || 'console');

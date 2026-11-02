@@ -22,10 +22,6 @@ export {
 } from "./use-canvas-dialogs";
 export { useCanvasChat, type CanvasChatState } from "./use-canvas-chat";
 export {
-  useCanvasItemHandlers,
-  type CanvasItemHandlers,
-} from "./use-canvas-item-handlers";
-export {
   useCanvasAlignment,
   type CanvasAlignmentHandlers,
   type AlignmentType,

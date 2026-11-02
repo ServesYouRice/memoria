@@ -61,16 +61,10 @@ export function buildCSP(
         : ["'strict-dynamic'"]),
     ],
     "style-src": ["'self'", "'nonce-" + nonce + "'"],
-    // Bookmark favicons and preview images, external image items, and OAuth
-    // avatars are arbitrary third-party HTTPS images the browser loads
-    // directly, so img-src keeps https: until those go through an image proxy.
-    "img-src": present([
-      "'self'",
-      "data:",
-      "blob:",
-      publicUploadsOrigin(),
-      "https:",
-    ]),
+    // Remote images (favicons, link previews, image items, avatars) load
+    // through the same-origin /api/v1/image-proxy (IMP-057), so img-src never
+    // lists a scheme-wide https:. Only a public upload bucket is added.
+    "img-src": present(["'self'", "data:", "blob:", publicUploadsOrigin()]),
     "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
     // Browser code only talks to this app (HTTP and its WebSockets) and,
     // when configured, Sentry. No other host may receive data.

@@ -121,9 +121,9 @@ describe("CSP Middleware", () => {
 
       expect(img).toContain("https://cdn.memoria.example.com");
       expect(img).toContain("'self'");
-      // Bookmark previews and external image items still load third-party
-      // HTTPS images; plain http and ws hosts stay blocked.
-      expect(img).toContain("https:");
+      // Remote images load through the same-origin image proxy (IMP-057),
+      // so no scheme-wide source remains.
+      expect(img).not.toContain("https:");
       expect(img).not.toContain("http:");
     });
   });

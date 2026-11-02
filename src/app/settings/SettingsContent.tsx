@@ -46,6 +46,7 @@ import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { gradients } from "@/lib/theme";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { NotificationPreferences } from "./NotificationPreferences";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 
@@ -348,7 +349,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
                 background: gradients.brand,
                 color: "#fff",
               }}
-              src={user.image || undefined}
+              src={toImageProxyUrl(user.image)}
             >
               {getInitials(user.name, user.email)}
             </Avatar>

@@ -28,27 +28,19 @@
  * });
  * ```
  *
- * ## Real-Time Updates (Issue #31)
- * ENHANCED with polling-based real-time updates for collaboration:
- * - Adaptive polling: 5s (active tab) / 30s (inactive tab)
- * - Page Visibility API for automatic frequency adjustment
- * - Zero overhead when disabled for private canvases
- *
  * @see {@link useAutosave} for debounced autosave implementation
  * @see {@link useCanvasHistory} for undo/redo with items
- * @see {@link useCanvasItemsWithPolling} for collaborative real-time updates
  */
 
 import { apiFetch, ApiError, isVersionConflict } from "@/lib/api/fetch-client";
 import {
   useMutation,
   useInfiniteQuery,
-  useQuery,
   useSuspenseQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
 import { nanoid } from "nanoid";
+import { toast } from "sonner";
 import { type ItemType, type CanvasItem } from "@/types/canvas";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -56,11 +48,6 @@ import {
   type UpdateCanvasItemInput,
   type DeleteCanvasItemInput,
 } from "@/lib/validation/canvas-item";
-import {
-  POLLING_INTERVAL_ACTIVE_MS,
-  POLLING_INTERVAL_INACTIVE_MS,
-  ENABLE_COLLABORATIVE_POLLING,
-} from "@/lib/constants";
 import {
   canvasItemListResponseSchema,
   type CanvasItemListResponse,
@@ -620,122 +607,6 @@ export function useAccessibleCanvasItems(canvasId: string, enabled = true) {
 }
 
 /**
- * Fetch a single canvas item by ID
- *
- * Retrieves detailed information about a specific canvas item.
- * Data is cached and automatically updated when mutations occur.
- *
- * @param itemId - The unique item identifier
- * @returns TanStack Query result with item data
- *
- * @example
- * ```typescript
- * function ItemDetail({ itemId }: { itemId: string }) {
- *   const { data: item, isLoading } = useCanvasItem(itemId);
- *   if (isLoading) return <div>Loading...</div>;
- *   return <div>{item.type}: {JSON.stringify(item.content)}</div>;
- * }
- * ```
- */
-export function useCanvasItem(itemId: string) {
-  return useQuery({
-    queryKey: canvasItemKeys.detail(itemId),
-    queryFn: () => api.getItem(itemId),
-    enabled: !!itemId,
-  });
-}
-
-/**
- * Custom hook to track page visibility for adaptive polling
- * Uses the Page Visibility API to detect when tab is active/inactive
- *
- * FEATURE: Issue #31 - Real-time updates with adaptive polling
- */
-function usePageVisibility() {
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      setIsVisible(!document.hidden);
-    };
-
-    // Set initial visibility
-    setIsVisible(!document.hidden);
-
-    // Listen for visibility changes
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
-  return isVisible;
-}
-
-/**
- * List canvas items with polling-based real-time updates
- *
- * FEATURE: Issue #31 - Real-time updates for collaboration
- *
- * This hook extends useCanvasItems with adaptive polling that:
- * - Polls every 5 seconds when tab is active
- * - Polls every 30 seconds when tab is inactive (battery/resource saving)
- * - Automatically pauses when polling is disabled
- * - Provides near real-time collaboration without WebSocket infrastructure
- *
- * Usage for shared canvases:
- * ```
- * const { data, isLoading } = useCanvasItemsWithPolling(canvasId, {
- *   enablePolling: canvas.isShared, // Only poll for shared canvases
- *   viewport: { minX, maxX, minY, maxY },
- * });
- * ```
- *
- * @param canvasId - The canvas ID to fetch items for
- * @param options - Configuration options
- * @param options.type - Optional item type filter
- * @param options.viewport - Optional viewport parameters for efficient loading
- * @param options.enablePolling - Enable/disable polling (default: true for shared canvases)
- */
-export function useCanvasItemsWithPolling(
-  canvasId: string,
-  options?: {
-    type?: ItemType;
-    viewport?: ViewportParams;
-    enablePolling?: boolean;
-  },
-) {
-  const isPageVisible = usePageVisibility();
-  const {
-    type,
-    viewport,
-    enablePolling = ENABLE_COLLABORATIVE_POLLING,
-  } = options || {};
-
-  // Determine refetch interval based on visibility and polling config
-  const refetchInterval =
-    enablePolling && isPageVisible
-      ? POLLING_INTERVAL_ACTIVE_MS // 5s when active
-      : enablePolling && !isPageVisible
-        ? POLLING_INTERVAL_INACTIVE_MS // 30s when inactive
-        : false; // No polling if disabled
-
-  return useQuery({
-    queryKey: canvasItemKeys.list(canvasId, type, viewport),
-    queryFn: () => api.listItems(canvasId, type, viewport),
-    enabled: !!canvasId,
-    refetchInterval,
-    // Keep previous data while refetching to prevent UI flicker
-    placeholderData: (previousData) => previousData,
-    // Refetch on window focus for immediate updates when user returns
-    refetchOnWindowFocus: enablePolling,
-    // Stale time matches polling interval to prevent redundant fetches
-    staleTime: enablePolling ? POLLING_INTERVAL_ACTIVE_MS : Infinity,
-  });
-}
-
-/**
  * IMP-042: while the canvas's collaborative document is open and writable,
  * item writes go through the document; the sync server validates and stores
  * each change, keeps the rows in step, and records the committed events that
@@ -1142,6 +1013,8 @@ export function useDeleteCanvasItem() {
       };
     },
     onError: (_err, _variables, context) => {
+      // One place for every delete path (button, keyboard, menu, bulk)
+      toast.error("Failed to delete item. It has been restored.");
       // Targeted rollback: re-insert the deleted item back into list caches
       if (context?.deletedItem) {
         queryClient.setQueryData(
@@ -1173,23 +1046,6 @@ export function useDeleteCanvasItem() {
           queryKey: canvasIndexKeys.all(canvasId),
         });
       }
-    },
-  });
-}
-
-/**
- * Restore a soft-deleted canvas item
- */
-export function useRestoreCanvasItem() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ itemId, version }: { itemId: string; version: number }) =>
-      api.restoreItem(itemId, version),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: canvasItemKeys.lists(),
-      });
     },
   });
 }

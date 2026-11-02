@@ -64,7 +64,6 @@ export function createThumbnailStoreHandler(
         data: {
           thumbnailKey: storageKey,
           thumbnailRevision: candidate.revision,
-          thumbnail: null,
         },
       });
       await tx.canvasThumbnailCandidate.delete({ where: { id: candidate.id } });

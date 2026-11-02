@@ -33,6 +33,7 @@ import { bookmarkContentSchema } from "@/lib/validation/canvas-item";
 import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { ItemType } from "@/types/canvas";
+import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { TagInput } from "./TagInput";
 
 interface CreateBookmarkDialogProps {
@@ -236,7 +237,7 @@ export function CreateBookmarkDialog({
                   <CardMedia
                     component="img"
                     height="140"
-                    image={metadata.previewImage}
+                    image={toImageProxyUrl(metadata.previewImage)}
                     alt={metadata.title || "Preview"}
                     sx={{ objectFit: "cover" }}
                   />
@@ -248,7 +249,7 @@ export function CreateBookmarkDialog({
                     {metadata.favicon && (
                       <Box
                         component="img"
-                        src={metadata.favicon}
+                        src={toImageProxyUrl(metadata.favicon)}
                         alt="favicon"
                         sx={{ width: 20, height: 20, flexShrink: 0 }}
                       />
