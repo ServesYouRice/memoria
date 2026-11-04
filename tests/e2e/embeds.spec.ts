@@ -99,12 +99,29 @@ function childFrame(page: Page): Frame {
   return frame;
 }
 
-/** The browser replaced the framed document with its own error page. */
-async function expectFramingRefused(page: Page, blocked: string[]) {
-  await expect
-    .poll(() => childFrame(page).url(), { timeout: 15_000 })
-    .toMatch(/^chrome-error:/);
-  expect(blocked.join(",")).toContain("ERR_BLOCKED_BY_RESPONSE");
+/**
+ * The browser replaced the framed document with its own error page. Chromium
+ * reports a `chrome-error:` frame URL and a blocked request; Firefox and WebKit
+ * leave the frame without the app document, so check that nothing of the app
+ * rendered in it instead.
+ */
+async function expectFramingRefused(
+  page: Page,
+  blocked: string[],
+  frameSrc: string,
+  browserName: string,
+) {
+  if (browserName === "chromium") {
+    await expect
+      .poll(() => childFrame(page).url(), { timeout: 15_000 })
+      .toMatch(/^chrome-error:/);
+    expect(blocked.join(",")).toContain("ERR_BLOCKED_BY_RESPONSE");
+    return;
+  }
+  // openHostPage waited for the host's load event, which covers the iframe.
+  const frame = childFrame(page);
+  expect(frame.url()).not.toBe(frameSrc);
+  await expect(frame.locator("main, [role=region], form")).toHaveCount(0);
 }
 
 /** Distinct X-Frame-Options values (the gateway and app may each send one). */
@@ -143,6 +160,7 @@ async function countRedCanvasPixels(frame: Frame) {
 test("signed embeds are framed only by their allowed origins and stop at revoke", async ({
   page,
   browser,
+  browserName,
   baseURL,
 }) => {
   const email = uniqueEmail("embeds");
@@ -209,8 +227,10 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
   // Chromium's Local Network Access check would otherwise block the iframe
   // navigation before framing rules are evaluated. Real embeds are public to
   // public; this only lets the test reach the same app the browser would.
+  // WebKit rejects the permission name, and Firefox and WebKit have no such
+  // check.
   const viewerContext = await browser.newContext({
-    permissions: ["local-network-access"],
+    permissions: browserName === "chromium" ? ["local-network-access"] : [],
   });
   try {
     // Headers on the wire: framing allowed for exactly the listed origin.
@@ -244,7 +264,12 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
 
     // 2. An origin that is not on the allow-list is refused.
     const other = await openHostPage(viewerContext, OTHER_ORIGIN, embedUrl);
-    await expectFramingRefused(other.page, other.blocked);
+    await expectFramingRefused(
+      other.page,
+      other.blocked,
+      embedUrl,
+      browserName,
+    );
 
     // 4. Non-embed routes cannot be framed, even by the embed's allowed origin.
     const loginUrl = new URL("/auth/login", baseURL!).toString();
@@ -258,7 +283,12 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
       ALLOWED_ORIGIN,
       loginUrl,
     );
-    await expectFramingRefused(framedLogin.page, framedLogin.blocked);
+    await expectFramingRefused(
+      framedLogin.page,
+      framedLogin.blocked,
+      loginUrl,
+      browserName,
+    );
 
     // 3. After revoke the embed stops working immediately.
     const revoked = await page.request.delete(
@@ -286,7 +316,12 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
       ALLOWED_ORIGIN,
       embedUrl,
     );
-    await expectFramingRefused(afterRevoke.page, afterRevoke.blocked);
+    await expectFramingRefused(
+      afterRevoke.page,
+      afterRevoke.blocked,
+      embedUrl,
+      browserName,
+    );
   } finally {
     await viewerContext.close();
   }

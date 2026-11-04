@@ -9,6 +9,7 @@
 //
 // Stages that need Docker, PostgreSQL, or browsers are explicit opt-ins.
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 
 // Single source of truth for the supported toolchain pins. These must match
@@ -47,6 +48,9 @@ const BUILD_ENV = {
 
 const DENIED_LICENSES = ['GPL-3.0', 'AGPL-3.0'];
 
+// pnpm is a .cmd shim on Windows, which spawnSync runs only through a shell.
+// Every argument here is a plain token, so no quoting is needed.
+const shell = process.platform === 'win32';
 const pnpm = (...args) => ({ cmd: 'pnpm', args });
 const generate = {
   ...pnpm('db:generate'),
@@ -115,13 +119,14 @@ function run({ cmd, args, env }) {
   const result = spawnSync(cmd, args, {
     stdio: 'inherit',
     env: { ...process.env, ...env },
-    shell: false,
+    shell,
   });
   return result.status === 0;
 }
 
 function checkDeniedLicenses() {
   const result = spawnSync('pnpm', ['licenses', 'list', '--prod', '--json'], {
+    shell,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
@@ -145,7 +150,7 @@ function checkDeniedLicenses() {
 }
 
 function checkRuntime() {
-  const pnpmVersion = spawnSync('pnpm', ['--version'], { encoding: 'utf8' }).stdout?.trim();
+  const pnpmVersion = spawnSync('pnpm', ['--version'], { encoding: 'utf8', shell }).stdout?.trim();
   const problems = [];
   if (process.versions.node !== NODE_VERSION) {
     problems.push(`node ${process.versions.node} (expected ${NODE_VERSION})`);
@@ -173,7 +178,7 @@ function runStage(name) {
     }
   }
   for (const bin of stage.requireBins ?? []) {
-    if (spawnSync(bin, ['--version'], { stdio: 'ignore' }).status !== 0) {
+    if (spawnSync(bin, ['--version'], { stdio: 'ignore', shell }).status !== 0) {
       console.error(`stage "${name}" requires "${bin}" on PATH`);
       return false;
     }
@@ -210,7 +215,8 @@ function main(argv) {
   return 0;
 }
 
-// Importable for tests without running the gate.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Importable for tests without running the gate. pathToFileURL, not a
+// `file://` template: on Windows argv[1] is `C:\...` and never matched.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(main(process.argv.slice(2)));
 }
