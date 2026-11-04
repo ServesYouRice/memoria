@@ -24,6 +24,10 @@ documented restore drill passed (RPO 134s, RTO 16s).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
+| [IMP-059](tasks/IMP-059.md) | Built-in AI runs on any saved provider (Claude, Gemini, OpenRouter, local), not only OpenAI | |
+| [IMP-060](tasks/IMP-060.md) | Browser extension: save all tabs to Memoria with a sorting note, then close them | |
+| [IMP-062](tasks/IMP-062.md) | AI sorting that follows your written instruction | IMP-059, IMP-060 |
+| [IMP-061](tasks/IMP-061.md) | Phone: "Share → Memoria" (Android share target, iPhone Shortcut) | IMP-060 |
 
 ## WAITING
 
