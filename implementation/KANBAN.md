@@ -28,6 +28,14 @@ documented restore drill passed (RPO 134s, RTO 16s).
 | [IMP-060](tasks/IMP-060.md) | Browser extension: save all tabs to Memoria with a sorting note, then close them | |
 | [IMP-062](tasks/IMP-062.md) | AI sorting that follows your written instruction | IMP-059, IMP-060 |
 | [IMP-061](tasks/IMP-061.md) | Phone: "Share → Memoria" (Android share target, iPhone Shortcut) | IMP-060 |
+| [IMP-063](tasks/IMP-063.md) | Saved links name, tag and explain themselves | IMP-059 |
+| [IMP-064](tasks/IMP-064.md) | "You saved this already" duplicate warning | IMP-060 |
+| [IMP-065](tasks/IMP-065.md) | New items file themselves into the right board (one tap, undo) | IMP-063 |
+| [IMP-066](tasks/IMP-066.md) | Agents (Hermes, OpenClaw) can write on cards and make boards | |
+| [IMP-067](tasks/IMP-067.md) | Ask your boards, and tell them what to do | IMP-059 |
+| [IMP-068](tasks/IMP-068.md) | Turn a pile into a checklist, table or summary | IMP-059 |
+| [IMP-069](tasks/IMP-069.md) | Weekly recap and tidy-up of old links | IMP-063 |
+| [IMP-070](tasks/IMP-070.md) | Voice and photos become tidy notes | IMP-059 |
 
 ## WAITING
 
