@@ -842,10 +842,14 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     if (!capabilities.canCopyItems && !capabilities.canComment) return;
     if ("evt" in e) {
       e.evt.preventDefault();
-      setContextMenuPosition({ x: e.evt.clientX, y: e.evt.clientY });
+      setContextMenuPosition({
+        x: e.evt.clientX,
+        y: e.evt.clientY,
+        itemId,
+      });
     } else {
       e.preventDefault();
-      setContextMenuPosition({ x: e.clientX, y: e.clientY });
+      setContextMenuPosition({ x: e.clientX, y: e.clientY, itemId });
     }
     setSelectedItemId(itemId);
   };

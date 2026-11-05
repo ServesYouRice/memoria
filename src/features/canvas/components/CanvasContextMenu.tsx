@@ -14,11 +14,18 @@ import {
   FileCopy as DuplicateIcon,
   Comment as CommentIcon,
 } from "@mui/icons-material";
-import type { CanvasCapabilities } from "@/types/canvas";
+import {
+  ItemType,
+  type CanvasCapabilities,
+  type CanvasItem,
+} from "@/types/canvas";
+import { pileTransformMenuItems, usePileTransform } from "./PileTransformMenu";
 
 export interface ContextMenuPosition {
   x: number;
   y: number;
+  /** The item the menu was opened on. */
+  itemId?: string;
 }
 
 export interface CanvasContextMenuProps {
@@ -30,6 +37,9 @@ export interface CanvasContextMenuProps {
   onDuplicate: () => void;
   onCopy: () => void;
   onComments: () => void;
+  /** IMP-069: the canvas and the item the menu is for (frame AI actions). */
+  canvasId?: string;
+  item?: CanvasItem;
 }
 
 export function CanvasContextMenu({
@@ -40,8 +50,18 @@ export function CanvasContextMenu({
   onDuplicate,
   onCopy,
   onComments,
+  canvasId,
+  item,
 }: CanvasContextMenuProps) {
   const open = Boolean(position);
+  const isFrame = item?.type === ItemType.FRAME;
+  // Ask about AI only once a frame's menu opens for someone who can edit.
+  const pile = usePileTransform(
+    canvasId,
+    isFrame && capabilities.canEditItems && capabilities.canCreateItems,
+  );
+  const frameId = isFrame ? item.id : null;
+  const showPileActions = open && frameId !== null && pile.available;
 
   const handleAction = (action: () => void) => {
     action();
@@ -81,6 +101,11 @@ export function CanvasContextMenu({
           <ListItemText>Comments</ListItemText>
         </MenuItem>
       )}
+      {showPileActions &&
+        pileTransformMenuItems({
+          pending: pile.pending,
+          onSelect: (kind) => handleAction(() => void pile.run(frameId!, kind)),
+        })}
       {capabilities.canDeleteItems && [
         <Divider key="delete-divider" />,
         <MenuItem key="delete" onClick={() => handleAction(onDelete)}>
