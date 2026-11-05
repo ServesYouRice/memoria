@@ -24,6 +24,8 @@ model User {
   twoFactorEnabled Boolean   @default(false)
   /// Saved links get a title, tags and summary in the background (IMP-064).
   autoEnrichLinks  Boolean   @default(true)
+  /// Inbox items move to a suggested board on their own when it is a confident match (IMP-066).
+  autoFileItems    Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -274,6 +276,7 @@ model CanvasItem {
   embeddings    ItemEmbedding[]
   clipBatchItems ClipBatchItem[]
   enrichment    ItemEnrichment?
+  homeBoardSuggestion HomeBoardSuggestion?
 }
 
 model CanvasThumbnailCandidate {
@@ -1247,4 +1250,37 @@ model ItemEnrichment {
 
   @@index([userId, status])
   @@index([userId, completedAt])
+}
+
+enum HomeBoardSuggestionStatus {
+  OPEN
+  ACCEPTED
+  AUTO_FILED
+  DISMISSED
+  REVERTED
+}
+
+/// A suggested home board for an item in the Inbox (IMP-066). One row per item
+/// ever, so a dismissed or undone suggestion is never proposed again. The move
+/// itself runs through the item's `Suggestion` and is recorded as a ChangeSet.
+model HomeBoardSuggestion {
+  itemId         String                    @id
+  item           CanvasItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the Inbox, who accepts, dismisses or undoes it.
+  userId         String
+  sourceCanvasId String
+  /// Not a foreign key: deleting a board must not erase a dismissal.
+  targetCanvasId String
+  confidence     Float
+  /// Why this board: board-name, tags or similar-items.
+  reasons        String[]                  @default([])
+  status         HomeBoardSuggestionStatus @default(OPEN)
+  suggestionId   String?                   @unique
+  changeSetId    String?
+  actedAt        DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@index([userId, sourceCanvasId, status])
+  @@index([userId, status, actedAt])
 }

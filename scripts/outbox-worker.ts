@@ -45,6 +45,11 @@ import {
   LINK_ENRICH_TIMEOUT_MS,
   createLinkEnrichmentHandler,
 } from "../src/lib/services/link-enrichment";
+import {
+  HOME_BOARD_JOB,
+  createHomeBoardProposalHandler,
+  enqueueHomeBoardProposal,
+} from "../src/lib/agents/home-board";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -71,7 +76,13 @@ await runOutboxWorker({
     "account-export.build": createAccountExportBuildHandler(prisma),
     "account-export.delete": createAccountExportDeleteHandler(prisma),
     [UPLOAD_NOTE_JOB]: createUploadNoteHandler(prisma),
-    [LINK_ENRICH_JOB]: createLinkEnrichmentHandler(prisma),
+    // An enriched Inbox link gets a suggested home board (IMP-066).
+    [LINK_ENRICH_JOB]: createLinkEnrichmentHandler(prisma, {
+      afterEnriched: async (tx, event) => {
+        await enqueueHomeBoardProposal(tx, event);
+      },
+    }),
+    [HOME_BOARD_JOB]: createHomeBoardProposalHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
