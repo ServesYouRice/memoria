@@ -35,6 +35,11 @@ import {
   createAccountExportDeleteHandler,
 } from "../src/lib/account-export/outbox-handler";
 import { accountExportTimeoutMs } from "../src/lib/account-export/constants";
+import {
+  UPLOAD_NOTE_JOB,
+  UPLOAD_NOTE_TIMEOUT_MS,
+  createUploadNoteHandler,
+} from "../src/lib/uploads/upload-note";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -60,12 +65,14 @@ await runOutboxWorker({
     "thumbnail.delete": createThumbnailDeleteHandler(),
     "account-export.build": createAccountExportBuildHandler(prisma),
     "account-export.delete": createAccountExportDeleteHandler(prisma),
+    [UPLOAD_NOTE_JOB]: createUploadNoteHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
   handlerTimeoutMs: Number(process.env.OUTBOX_HANDLER_TIMEOUT_MS || 15_000),
   handlerTimeoutMsByType: {
     "account-export.build": accountExportTimeoutMs(),
+    [UPLOAD_NOTE_JOB]: UPLOAD_NOTE_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

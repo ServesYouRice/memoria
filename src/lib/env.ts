@@ -120,6 +120,8 @@ const envSchema = z
     // Self-host only: lets saved OpenAI-compatible base URLs reach private or
     // loopback addresses (e.g. a local Ollama). Off by default (SSRF guard).
     AI_ALLOW_PRIVATE_BASE_URLS: z.enum(["true", "false"]).optional(),
+    // Speech model for voice notes (IMP-071); defaults per provider.
+    AI_TRANSCRIPTION_MODEL: optionalString,
     APP_BOOTSTRAP_TOKEN: optionalString,
     DATABASE_PASSWORD: optionalString,
     MINIO_ROOT_USER: optionalString,

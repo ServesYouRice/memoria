@@ -2,7 +2,9 @@ import {
   AiUpstreamError,
   joinUrl,
   postJson,
+  toBase64,
   type AiProviderAdapter,
+  type AiProviderConfig,
 } from "./types";
 
 export const ANTHROPIC_API_VERSION = "2023-06-01";
@@ -17,13 +19,50 @@ interface MessagesResponse {
   content?: Array<{ type?: string; text?: string }>;
 }
 
+function textFrom(payload: MessagesResponse): string {
+  if (payload?.stop_reason === "refusal") {
+    throw new AiUpstreamError(
+      "anthropic",
+      200,
+      "The model declined the request",
+    );
+  }
+  if (!Array.isArray(payload?.content)) {
+    throw new AiUpstreamError("anthropic", 200, "Response had no content");
+  }
+  return payload.content
+    .filter((block) => block?.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("");
+}
+
+function postMessages(
+  config: AiProviderConfig,
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  if (CLAUDE_EFFORT_MODEL.test(config.model)) {
+    body.output_config = { effort: "low" };
+  }
+  return postJson(
+    "anthropic",
+    joinUrl(config.baseUrl, "v1/messages"),
+    {
+      "x-api-key": config.apiKey,
+      "anthropic-version": ANTHROPIC_API_VERSION,
+    },
+    body,
+    signal,
+  ) as Promise<MessagesResponse>;
+}
+
 /** Anthropic Messages API (`POST /v1/messages`). */
 export const anthropicAdapter: AiProviderAdapter = {
   id: "anthropic",
   capabilities: {
     chat: true,
     speechToText: false,
-    readImage: false,
+    readImage: true,
     embeddings: false,
   },
   async generateText(config, request) {
@@ -66,5 +105,34 @@ export const anthropicAdapter: AiProviderAdapter = {
       )
       .map((block) => block.text)
       .join("");
+  },
+  // Image content blocks; there is no Anthropic speech-to-text endpoint.
+  async readImage(config, request) {
+    const payload = await postMessages(
+      config,
+      {
+        model: config.model,
+        max_tokens: request.maxTokens,
+        system: request.system,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: request.mimeType,
+                  data: toBase64(request.image),
+                },
+              },
+              { type: "text", text: request.prompt },
+            ],
+          },
+        ],
+      },
+      request.signal,
+    );
+    return textFrom(payload);
   },
 };

@@ -46,6 +46,7 @@ import { TimeMachineControl } from "@/features/canvas/components/TimeMachineCont
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
+import { UploadNoteOffer } from "./UploadNoteOffer";
 
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
@@ -1333,6 +1334,22 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                 }}
               />
             </SpeedDial>
+          )}
+          {!isDrawing && !isPresentationMode && (
+            <UploadNoteOffer
+              canvasId={canvasId}
+              canEdit={canEdit}
+              selectedItem={
+                selectedItemIds.size <= 1
+                  ? (allItems.find((item) => item.id === selectedItemId) ??
+                    null)
+                  : null
+              }
+              getViewportCenter={() => ({
+                x: (-position.x + stageSize.width / 2) / zoom,
+                y: (-position.y + stageSize.height / 2) / zoom,
+              })}
+            />
           )}
 
           <Stage
