@@ -1,10 +1,10 @@
 import type { ModelProvider } from "@/generated/prisma/client";
 
 /**
- * Optional capabilities an adapter can advertise. Only `chat` is implemented
- * today; later cards (transcription, image reading, embeddings) add the
- * matching optional methods to `AiProviderAdapter` and flip the flag on the
- * adapters that support it. Callers check the flag, never the provider.
+ * Optional capabilities an adapter can advertise. `chat` and `embeddings`
+ * (IMP-065) are implemented; later cards (transcription, image reading) add
+ * the matching optional methods to `AiProviderAdapter` and flip the flag on
+ * the adapters that support it. Callers check the flag, never the provider.
  */
 export interface AiCapabilities {
   chat: true;
@@ -29,6 +29,13 @@ export interface AiTextRequest {
   signal?: AbortSignal;
 }
 
+export interface AiEmbeddingRequest {
+  /** Embedding model; the chat model in `config` is not used. */
+  model: string;
+  input: string[];
+  signal?: AbortSignal;
+}
+
 export type AiAdapterId = "openai-compatible" | "anthropic";
 
 export interface AiProviderAdapter {
@@ -38,6 +45,11 @@ export interface AiProviderAdapter {
     config: AiProviderConfig,
     request: AiTextRequest,
   ): Promise<string>;
+  /** Present when `capabilities.embeddings` is true; one vector per input. */
+  embed?(
+    config: AiProviderConfig,
+    request: AiEmbeddingRequest,
+  ): Promise<number[][]>;
 }
 
 /**

@@ -59,11 +59,15 @@ export function chunk(items, size = MAX_LINKS_PER_BATCH) {
   return groups;
 }
 
-/** Request body for one batch of tabs. */
+/**
+ * Request body for one batch of tabs. Tabs already saved in Memoria are not
+ * saved again; the response lists them under `duplicates`.
+ */
 export function buildBatchBody(tabs, note, idempotencyKey) {
   const trimmedNote = String(note || "").trim();
   return {
     idempotencyKey,
+    skipDuplicates: true,
     links: tabs.map((tab) => ({
       url: tab.url,
       ...(tab.title ? { title: String(tab.title).slice(0, 500) } : {}),
@@ -96,8 +100,9 @@ export async function readError(response) {
 
 /**
  * Send one batch. Resolves with the server's confirmation
- * ({ batchId, canvasId, itemIds, replayed }) and rejects with a readable
- * Error otherwise, so the caller only closes tabs after a confirmed save.
+ * ({ batchId, canvasId, itemIds, replayed, duplicates }) and rejects with a
+ * readable Error otherwise, so the caller only closes tabs after a confirmed
+ * save. A tab counts as confirmed when it was saved or was already saved.
  */
 export async function sendBatch({
   serverUrl,
@@ -129,10 +134,36 @@ export async function sendBatch({
     throw new Error(await readError(response));
   }
   const body = await response.json();
-  if (!Array.isArray(body?.itemIds) || body.itemIds.length !== tabs.length) {
+  const alreadySaved = alreadySavedLinks(body).length;
+  if (
+    !Array.isArray(body?.itemIds) ||
+    body.itemIds.length + alreadySaved !== tabs.length
+  ) {
     throw new Error("Memoria answered, but did not confirm every tab.");
   }
   return body;
+}
+
+/**
+ * Links of a batch response that were already in Memoria and so were not
+ * saved again, each with the existing copy to open.
+ */
+export function alreadySavedLinks(body) {
+  if (!Array.isArray(body?.duplicates)) return [];
+  return body.duplicates.filter(
+    (entry) =>
+      entry &&
+      entry.savedItemId === null &&
+      Array.isArray(entry.existing) &&
+      entry.existing.length > 0,
+  );
+}
+
+/** Address of the existing copy of a link in the Memoria app. */
+export function existingLinkUrl(serverUrl, existing) {
+  const path = String(existing?.path || "");
+  if (!path.startsWith("/canvas/")) return null;
+  return `${normalizeServerUrl(serverUrl)}${path}`;
 }
 
 /** Stable fingerprint of what would be sent, to reuse keys on retry. */

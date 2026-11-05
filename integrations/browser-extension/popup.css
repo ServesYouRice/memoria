@@ -174,3 +174,25 @@ button.link {
   color: var(--accent);
   font-weight: 400;
 }
+
+#duplicate-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+#duplicate-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+#duplicate-list .title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -68,6 +68,12 @@
       </label>
       <p id="save-error" class="error" role="alert" hidden></p>
       <p id="save-status" class="status" role="status" hidden></p>
+      <div id="duplicates" hidden>
+        <p class="hint">
+          You saved these already, so they were not saved again:
+        </p>
+        <ul id="duplicate-list" aria-label="Tabs already in Memoria"></ul>
+      </div>
       <div class="actions">
         <button id="save" type="button">Save and close tabs</button>
       </div>

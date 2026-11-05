@@ -88,7 +88,7 @@ const TOOL_SPECS: ToolSpec[] = [
     title: "Save to Inbox",
     hints: ADDITIVE,
     description:
-      "Save a link (url) or a note (text) to the user's Inbox board, or to another board you may use (canvasId). Memoria places it in a free spot.",
+      "Save a link (url) or a note (text) to the user's Inbox board, or to another board you may use (canvasId). Memoria places it in a free spot. A link the user already saved is not saved again: the result has saved: false and names the existing item.",
     inputSchema: objectSchema({
       url: { type: "string", description: "Link to save as a bookmark." },
       canvasId: {
@@ -103,6 +103,11 @@ const TOOL_SPECS: ToolSpec[] = [
       title: { type: "string" },
       description: { type: "string" },
       tags: { type: "array", items: { type: "string" }, maxItems: 20 },
+      allowDuplicate: {
+        type: "boolean",
+        description:
+          "Save the link even though the user already saved it. Only when the user asks for a second copy.",
+      },
     }),
   },
   {

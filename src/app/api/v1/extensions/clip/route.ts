@@ -14,11 +14,16 @@ import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
+import {
+  existingFor,
+  findExistingLinks,
+  normalizeLinkUrl,
+} from "@/lib/services/duplicates";
 
 export const POST = withApiHandler(
   withValidation(
     clipSchema,
-    async ({ url, title, selection, canvasId }, req) => {
+    async ({ url, title, selection, canvasId, allowDuplicate }, req) => {
       const authResult = await authenticateApiKey(req);
       if (!authResult) {
         throw unauthorizedError("Invalid API Key");
@@ -74,6 +79,25 @@ export const POST = withApiHandler(
         }
       }
 
+      // "You saved this already" (IMP-065): report the existing copy and
+      // offer it instead of quietly saving the link twice.
+      const duplicates = existingFor(
+        await findExistingLinks(prisma, user.id, [url]),
+        url,
+      );
+      if (duplicates.length > 0 && !allowDuplicate) {
+        const existing = await prisma.canvasItem.findUnique({
+          where: { id: duplicates[0]!.itemId },
+        });
+        return NextResponse.json({
+          success: true,
+          created: false,
+          duplicate: true,
+          item: existing,
+          duplicates,
+        });
+      }
+
       // Create Item
       // Note: We random position avoid stacking if possible but random is fine for MVC
       const item = await prisma.$transaction(async (tx) => {
@@ -92,6 +116,7 @@ export const POST = withApiHandler(
               title: title || url,
               description: selection,
             },
+            normalizedUrl: normalizeLinkUrl(url),
             createdById: user.id,
           },
         });
@@ -111,7 +136,13 @@ export const POST = withApiHandler(
 
       await invalidateCanvasCache(targetCanvasId);
 
-      return NextResponse.json({ success: true, item });
+      return NextResponse.json({
+        success: true,
+        created: true,
+        duplicate: duplicates.length > 0,
+        item,
+        duplicates,
+      });
     },
   ),
 );

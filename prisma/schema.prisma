@@ -254,8 +254,11 @@ model CanvasItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   bookmarkRefreshedAt DateTime?
+  /// Bookmark URL normalized for "you saved this already" (IMP-065).
+  normalizedUrl String?
 
   @@index([canvasId, deletedAt])
+  @@index([normalizedUrl])
   @@index([canvasId, type])
   @@index([canvasId, zIndex])
   @@index([canvasId, updatedAt])
@@ -1232,6 +1235,8 @@ model ItemEnrichment {
   filledTags   String[]             @default([])
   /// Why the AI step did not run: not-configured, disabled, budget or provider-error.
   aiSkipReason String?
+  /// Other links of this user that look like the same page (embeddings, IMP-065).
+  similarItemIds String[]           @default([])
   completedAt  DateTime?
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt

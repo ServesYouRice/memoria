@@ -61,15 +61,65 @@ describe("getAiAdapter", () => {
     }
   });
 
-  it("declares optional capabilities without claiming them yet", () => {
-    for (const adapter of [anthropicAdapter, openAiCompatibleAdapter]) {
-      expect(adapter.capabilities).toEqual({
-        chat: true,
-        speechToText: false,
-        readImage: false,
-        embeddings: false,
-      });
-    }
+  it("declares optional capabilities, claiming only what is implemented", () => {
+    expect(anthropicAdapter.capabilities).toEqual({
+      chat: true,
+      speechToText: false,
+      readImage: false,
+      embeddings: false,
+    });
+    expect(anthropicAdapter.embed).toBeUndefined();
+    // Embeddings back near-duplicate links (IMP-065).
+    expect(openAiCompatibleAdapter.capabilities).toEqual({
+      chat: true,
+      speechToText: false,
+      readImage: false,
+      embeddings: true,
+    });
+    expect(typeof openAiCompatibleAdapter.embed).toBe("function");
+  });
+});
+
+describe("openAiCompatibleAdapter.embed", () => {
+  const config = {
+    provider: ModelProvider.OPENAI,
+    model: "gpt-4o-mini",
+    apiKey: "sk-test",
+    baseUrl: "https://api.openai.com/v1",
+  };
+
+  it("posts the input to /embeddings with the embedding model", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse({
+        data: [
+          { index: 1, embedding: [0, 1] },
+          { index: 0, embedding: [1, 0] },
+        ],
+      }),
+    );
+    await expect(
+      openAiCompatibleAdapter.embed!(config, {
+        model: "text-embedding-3-small",
+        input: ["a", "b"],
+      }),
+    ).resolves.toEqual([
+      [1, 0],
+      [0, 1],
+    ]);
+    const call = lastCall(fetchMock);
+    expect(call.url).toBe("https://api.openai.com/v1/embeddings");
+    expect(call.headers.authorization).toBe("Bearer sk-test");
+    expect(call.body).toEqual({
+      model: "text-embedding-3-small",
+      input: ["a", "b"],
+    });
+  });
+
+  it("rejects a response without one vector per input", async () => {
+    mockFetch(jsonResponse({ data: [{ index: 0, embedding: "nope" }] }));
+    await expect(
+      openAiCompatibleAdapter.embed!(config, { model: "m", input: ["a"] }),
+    ).rejects.toBeInstanceOf(AiUpstreamError);
   });
 });
 

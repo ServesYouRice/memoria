@@ -6,6 +6,8 @@ export const clipSchema = z.object({
   title: z.string().optional(),
   selection: z.string().optional(),
   canvasId: z.string().cuid().optional(),
+  /** Save even when the link is already in the user's boards (IMP-065). */
+  allowDuplicate: z.boolean().optional(),
 });
 
 export const webhookSchema = z.object({
@@ -59,6 +61,12 @@ export const clipBatchSchema = z.object({
     .max(CLIP_BATCH_NOTE_MAX_LENGTH)
     .optional()
     .transform((value) => (value ? value : undefined)),
+  /**
+   * Leave out links already saved in the user's boards and report them
+   * instead (IMP-065). Without it every link is saved and duplicates are only
+   * reported.
+   */
+  skipDuplicates: z.boolean().optional(),
 });
 
 export type ClipBatchInput = z.infer<typeof clipBatchSchema>;

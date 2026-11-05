@@ -10,7 +10,13 @@
  * Safe to run twice: the `ItemEnrichment` row is written in the same
  * transaction as the item, and a job whose row is no longer PENDING returns
  * without doing anything.
+ *
+ * When the provider supports embeddings (IMP-065) the job also stores the
+ * link's `ItemEmbedding` and records other links that look like the same
+ * page in `similarItemIds`; those are flagged, never blocked.
  */
+
+import { createHash } from "crypto";
 
 import {
   ItemEnrichmentStatus,
@@ -33,11 +39,13 @@ import {
   type LinkAiResult,
   type LinkAiSkipReason,
 } from "@/lib/ai/enrich-link";
+import { embedText, type EmbeddingResult } from "@/lib/ai/embeddings";
 import {
   extractPageText,
   fetchLinkPage,
   type LinkPageResult,
 } from "./link-page";
+import { findSimilarLinks, normalizeLinkUrl } from "./duplicates";
 
 const logger = createLogger("link-enrichment");
 
@@ -56,7 +64,8 @@ export type EnrichedField =
   | "tags"
   | "favicon"
   | "previewImage"
-  | "siteName";
+  | "siteName"
+  | "embedding";
 
 export interface LinkEnrichmentTarget {
   itemId: string;
@@ -259,11 +268,14 @@ export interface LinkEnrichedEvent {
   summary: string | null;
   filledFields: EnrichedField[];
   aiSkipReason: LinkAiSkipReason | null;
+  /** Other links of the user that look like the same page (IMP-065). */
+  similarItemIds: string[];
 }
 
 export interface LinkEnrichmentOptions {
   fetchPage?: typeof fetchLinkPage;
   suggest?: (input: LinkAiInput) => Promise<LinkAiResult>;
+  embed?: typeof embedText;
   /**
    * Runs inside the transaction that marks the link DONE, so a follow-up job
    * enqueued here (e.g. IMP-066 auto-filing) commits with the enrichment.
@@ -305,6 +317,7 @@ export function createLinkEnrichmentHandler(
 ): OutboxHandler {
   const fetchPage = options.fetchPage ?? fetchLinkPage;
   const suggest = options.suggest ?? suggestLinkDetails;
+  const embed = options.embed ?? embedText;
 
   return async (job, context) => {
     const { itemId } = payloadSchema.parse(job.payload);
@@ -358,6 +371,33 @@ export function createLinkEnrichmentHandler(
     });
     context?.signal.throwIfAborted();
 
+    // Near-duplicate detection needs an embedding; skip it whenever the AI
+    // step was skipped for budget or policy reasons.
+    let embedding: (EmbeddingResult & { ok: true }) | null = null;
+    let embeddingHash = "";
+    if (ai.ok || ai.reason === "provider-error") {
+      const suggestion = ai.ok ? ai.suggestion : null;
+      const embeddingText = [
+        suggestion?.title || metadata?.title || saved.title,
+        suggestion?.summary || metadata?.description || saved.description,
+        url,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const result = await embed({
+        userId: enrichment.userId,
+        text: embeddingText,
+        signal: context?.signal,
+      });
+      if (result.ok) {
+        embedding = result;
+        embeddingHash = createHash("sha256")
+          .update(embeddingText)
+          .digest("hex");
+      }
+      context?.signal.throwIfAborted();
+    }
+
     const outcome = await prisma.$transaction(async (tx) => {
       const located = await tx.canvasItem.findFirst({
         where: { id: itemId, deletedAt: null },
@@ -373,6 +413,7 @@ export function createLinkEnrichmentHandler(
           version: true,
           content: true,
           tags: true,
+          normalizedUrl: true,
           createdById: true,
           updatedById: true,
         },
@@ -407,6 +448,48 @@ export function createLinkEnrichmentHandler(
           operation: "updated",
         });
       }
+      // Keep the duplicate-lookup key in step with the saved URL. It is not
+      // user-visible content, so it does not bump the item version.
+      const normalizedUrl = normalizeLinkUrl(
+        (current.content as BookmarkContentLike).url,
+      );
+      if (normalizedUrl && normalizedUrl !== current.normalizedUrl) {
+        await tx.canvasItem.update({
+          where: { id: itemId },
+          data: { normalizedUrl },
+        });
+      }
+
+      let similarItemIds: string[] = [];
+      if (embedding) {
+        await tx.itemEmbedding.upsert({
+          where: {
+            itemId_provider_model: {
+              itemId,
+              provider: embedding.provider,
+              model: embedding.model,
+            },
+          },
+          create: {
+            itemId,
+            provider: embedding.provider,
+            model: embedding.model,
+            contentHash: embeddingHash,
+            vector: embedding.vector,
+          },
+          update: { contentHash: embeddingHash, vector: embedding.vector },
+        });
+        similarItemIds = (
+          await findSimilarLinks(tx, {
+            userId: fresh.userId,
+            itemId,
+            provider: embedding.provider,
+            model: embedding.model,
+            vector: embedding.vector,
+          })
+        ).map((match) => match.itemId);
+        plan.filledFields.push("embedding");
+      }
       await tx.itemEnrichment.update({
         where: { itemId },
         data: {
@@ -417,6 +500,7 @@ export function createLinkEnrichmentHandler(
           filledTitle: plan.filledTitle,
           filledTags: plan.filledTags,
           aiSkipReason: plan.aiSkipReason,
+          similarItemIds,
           completedAt: new Date(),
         },
       });
@@ -430,6 +514,7 @@ export function createLinkEnrichmentHandler(
         summary: plan.content.summary ?? null,
         filledFields: plan.filledFields,
         aiSkipReason: plan.aiSkipReason,
+        similarItemIds,
       });
       return { canvasId: current.canvasId, changed: plan.changed };
     });

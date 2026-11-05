@@ -12,6 +12,7 @@ import {
   LINK_ENRICH_JOB,
   createLinkEnrichmentHandler,
 } from "@/lib/services/link-enrichment";
+import { existingFor, findExistingLinks } from "@/lib/services/duplicates";
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -73,9 +74,16 @@ describe("link enrichment outbox job (PostgreSQL)", () => {
     ) as OutboxJob;
     const fetchPage = vi.fn().mockResolvedValue(page);
     const suggest = vi.fn().mockResolvedValue(suggestion);
+    const embed = vi.fn().mockResolvedValue({
+      ok: true,
+      provider: "OPENAI",
+      model: "text-embedding-3-small",
+      vector: [1, 0, 0],
+    });
     const handler = createLinkEnrichmentHandler(prisma, {
       fetchPage,
       suggest,
+      embed,
     });
     await handler({ ...job, attempts: 1 });
     await handler({ ...job, attempts: 2 });
@@ -106,6 +114,93 @@ describe("link enrichment outbox job (PostgreSQL)", () => {
       where: { entityId: item.id, operation: "updated" },
     });
     expect(events).toBe(1);
+
+    const embedding = await prisma.itemEmbedding.findUniqueOrThrow({
+      where: {
+        itemId_provider_model: {
+          itemId: item.id,
+          provider: "OPENAI",
+          model: "text-embedding-3-small",
+        },
+      },
+    });
+    expect(embedding.vector).toEqual([1, 0, 0]);
+
+    // The second link, embedded close to the first, is flagged as similar.
+    const second = jobs.find((entry) => entry.id !== job.id) as OutboxJob;
+    embed.mockResolvedValueOnce({
+      ok: true,
+      provider: "OPENAI",
+      model: "text-embedding-3-small",
+      vector: [0.99, 0.05, 0],
+    });
+    await handler({ ...second, attempts: 1 });
+    const secondRow = await prisma.itemEnrichment.findUniqueOrThrow({
+      where: { itemId: result.itemIds[1] },
+    });
+    expect(secondRow.similarItemIds).toEqual([item.id]);
+  });
+
+  it("finds a saved link again by its normalized URL, old rows included", async () => {
+    const user = await createUser();
+    const canvas = await prisma.canvas.create({
+      data: { userId: user.id, name: "Reading" },
+    });
+    // Saved before IMP-065: no normalizedUrl, different spelling.
+    const old = await prisma.canvasItem.create({
+      data: {
+        canvasId: canvas.id,
+        type: "BOOKMARK",
+        positionX: 0,
+        positionY: 0,
+        width: 300,
+        height: 100,
+        content: {
+          url: "https://WWW.Example.org/guide_100%/?utm_source=x#top",
+          title: "Old guide",
+        },
+        createdById: user.id,
+      },
+    });
+    const other = await createUser();
+
+    const found = await findExistingLinks(prisma, user.id, [
+      "https://www.example.org/guide_100%",
+    ]);
+    expect(
+      existingFor(found, "https://www.example.org/guide_100%"),
+    ).toMatchObject([{ itemId: old.id, canvasName: "Reading" }]);
+    // Another user's boards are never searched.
+    await expect(
+      findExistingLinks(prisma, other.id, [
+        "https://www.example.org/guide_100%",
+      ]),
+    ).resolves.toEqual(new Map());
+
+    const result = await saveClipBatch({
+      userId: user.id,
+      source: ClipBatchSource.SHARE_TARGET,
+      data: {
+        idempotencyKey: `dup-${randomBytes(4).toString("hex")}`,
+        links: [
+          { url: "https://www.example.org/guide_100%?fbclid=abc" },
+          { url: "https://example.org/new" },
+        ],
+        skipDuplicates: true,
+      },
+    });
+    expect(result.itemIds).toHaveLength(1);
+    expect(result.duplicates).toEqual([
+      expect.objectContaining({
+        index: 0,
+        savedItemId: null,
+        existing: [expect.objectContaining({ itemId: old.id })],
+      }),
+    ]);
+    const saved = await prisma.canvasItem.findUniqueOrThrow({
+      where: { id: result.itemIds[0] },
+    });
+    expect(saved.normalizedUrl).toBe("https://example.org/new");
   });
 
   it("enqueues nothing for a user who turned it off", async () => {

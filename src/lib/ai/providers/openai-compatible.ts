@@ -13,6 +13,20 @@ interface ChatCompletionResponse {
   choices?: Array<{ message?: { content?: string | null } }>;
 }
 
+interface EmbeddingResponse {
+  data?: Array<{ index?: number; embedding?: unknown }>;
+}
+
+function authHeaders(provider: ModelProvider, apiKey: string) {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${apiKey}`,
+  };
+  if (provider === ModelProvider.OPENROUTER) {
+    headers["x-title"] = "Memoria";
+  }
+  return headers;
+}
+
 /**
  * OpenAI Chat Completions. Gemini, OpenRouter and local/self-hosted servers
  * (Ollama, vLLM, LM Studio) are reached through the same wire format at their
@@ -24,7 +38,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
     chat: true,
     speechToText: false,
     readImage: false,
-    embeddings: false,
+    embeddings: true,
   },
   async generateText(config, request) {
     const isOpenAi = config.provider === ModelProvider.OPENAI;
@@ -42,12 +56,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       body.temperature = request.temperature;
     }
 
-    const headers: Record<string, string> = {
-      authorization: `Bearer ${config.apiKey}`,
-    };
-    if (config.provider === ModelProvider.OPENROUTER) {
-      headers["x-title"] = "Memoria";
-    }
+    const headers = authHeaders(config.provider, config.apiKey);
 
     const payload = (await postJson(
       "openai-compatible",
@@ -65,5 +74,33 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       );
     }
     return content;
+  },
+  async embed(config, request) {
+    const payload = (await postJson(
+      "openai-compatible",
+      joinUrl(config.baseUrl, "embeddings"),
+      authHeaders(config.provider, config.apiKey),
+      { model: request.model, input: request.input },
+      request.signal,
+    )) as EmbeddingResponse;
+    const rows = Array.isArray(payload?.data) ? [...payload.data] : [];
+    rows.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const vectors = rows.map((row) => row.embedding);
+    if (
+      vectors.length !== request.input.length ||
+      !vectors.every(
+        (vector): vector is number[] =>
+          Array.isArray(vector) &&
+          vector.length > 0 &&
+          vector.every((value) => typeof value === "number"),
+      )
+    ) {
+      throw new AiUpstreamError(
+        "openai-compatible",
+        200,
+        "Response had no usable embeddings",
+      );
+    }
+    return vectors;
   },
 };

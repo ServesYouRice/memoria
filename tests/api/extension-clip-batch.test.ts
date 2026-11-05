@@ -25,6 +25,14 @@ const mocks = vi.hoisted(() => ({
     liveItems: 0,
     items: [] as Array<Record<string, unknown> & { id: string }>,
     batches: [] as Batch[],
+    /** Bookmarks already in the user's boards, for the duplicate lookup. */
+    existing: [] as Array<{
+      id: string;
+      canvasId: string;
+      canvasName: string;
+      url: string;
+      title: string | null;
+    }>,
   },
 }));
 
@@ -47,7 +55,11 @@ vi.mock("@/lib/db", () => {
   let sequence = 0;
   const nextId = (prefix: string) => `${prefix}${++sequence}`;
   const tx = {
-    $queryRaw: vi.fn(async () => [{ locked: 1 }]),
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) =>
+      strings.join("").includes('FROM "CanvasItem"')
+        ? state.existing
+        : [{ locked: 1 }],
+    ),
     clipBatch: {
       findUnique: vi.fn(
         async ({
@@ -187,6 +199,7 @@ beforeEach(() => {
   mocks.state.items = [];
   mocks.state.batches = [];
   mocks.state.liveItems = 0;
+  mocks.state.existing = [];
   // A fresh key per test keeps the real batch limiter from carrying over.
   keyCounter += 1;
   mocks.authenticateApiKey.mockResolvedValue({
@@ -400,5 +413,91 @@ describe("POST /api/v1/extensions/clip/batch", () => {
       {},
     );
     expect(retry.status).toBe(201);
+  });
+
+  describe("duplicates (IMP-065)", () => {
+    const saved = {
+      id: "old-1",
+      canvasId: "board-1",
+      canvasName: "Reading",
+      url: "https://Example.com/page-1/?utm_source=newsletter",
+      title: "Page 1, saved last week",
+    };
+
+    it("saves every link by default and reports the ones already saved", async () => {
+      mocks.state.existing = [saved];
+      const response = await POST(
+        request({ idempotencyKey: "batch-dup-1", links: links(3) }),
+        {},
+      );
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.itemIds).toHaveLength(3);
+      expect(body.duplicates).toEqual([
+        {
+          index: 1,
+          url: "https://example.com/page-1",
+          savedItemId: body.itemIds[1],
+          existing: [
+            expect.objectContaining({
+              itemId: "old-1",
+              canvasName: "Reading",
+              path: "/canvas/board-1?item=old-1",
+            }),
+          ],
+        },
+      ]);
+      expect(mocks.state.items[1]).toMatchObject({
+        normalizedUrl: "https://example.com/page-1",
+      });
+    });
+
+    it("leaves out links that are already saved when asked to", async () => {
+      mocks.state.existing = [saved];
+      const body = {
+        idempotencyKey: "batch-dup-2",
+        links: links(3),
+        skipDuplicates: true,
+      };
+      const first = await POST(request(body), {});
+      expect(first.status).toBe(201);
+      const firstBody = await first.json();
+      expect(firstBody.itemIds).toHaveLength(2);
+      expect(mocks.state.items).toHaveLength(2);
+      expect(firstBody.duplicates).toEqual([
+        expect.objectContaining({ index: 1, savedItemId: null }),
+      ]);
+      // Batch positions keep the request order, so a replay can tell which
+      // link was skipped.
+      expect(mocks.state.batches[0]!.items.map((i) => i.position)).toEqual([
+        0, 2,
+      ]);
+      const [, , targets] = mocks.enqueueLinkEnrichment.mock
+        .calls[0] as unknown as [unknown, string, Array<{ baseTitle: string }>];
+      expect(targets.map((target) => target.baseTitle)).toEqual([
+        "Page 0",
+        "Page 2",
+      ]);
+
+      const replay = await POST(request(body), {});
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toEqual({ ...firstBody, replayed: true });
+    });
+
+    it("treats skipDuplicates as part of what the idempotency key covers", async () => {
+      await POST(
+        request({ idempotencyKey: "batch-dup-3", links: links(1) }),
+        {},
+      );
+      const response = await POST(
+        request({
+          idempotencyKey: "batch-dup-3",
+          links: links(1),
+          skipDuplicates: true,
+        }),
+        {},
+      );
+      expect(response.status).toBe(409);
+    });
   });
 });

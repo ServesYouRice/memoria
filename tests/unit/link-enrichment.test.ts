@@ -249,6 +249,7 @@ type Row = EnrichmentBase & {
   status: "PENDING" | "DONE" | "SKIPPED";
   filledFields: string[];
   aiSkipReason: string | null;
+  similarItemIds?: string[];
 };
 
 function fakeDb(options: { autoEnrichLinks?: boolean } = {}) {
@@ -270,6 +271,7 @@ function fakeDb(options: { autoEnrichLinks?: boolean } = {}) {
       deletedAt: null,
       content: { url: URL_, title: "Tab title" } as Record<string, unknown>,
       tags: [] as string[],
+      normalizedUrl: null as string | null,
       createdById: "u1",
       updatedById: null,
     },
@@ -299,10 +301,18 @@ function fakeDb(options: { autoEnrichLinks?: boolean } = {}) {
         },
       ),
     },
+    itemEmbedding: {
+      upsert: vi.fn(async () => ({})),
+      findMany: vi.fn(async () => [] as Array<Record<string, unknown>>),
+    },
     canvasItem: {
       findFirst: vi.fn(async () =>
         state.item.deletedAt ? null : { ...state.item },
       ),
+      update: vi.fn(async ({ data }: { data: { normalizedUrl: string } }) => {
+        Object.assign(state.item, data);
+        return state.item;
+      }),
       updateMany: vi.fn(
         async ({
           where,
@@ -336,6 +346,11 @@ function job(overrides: Partial<OutboxJob> = {}): OutboxJob {
     ...overrides,
   } as OutboxJob;
 }
+
+const noEmbedding = vi.fn(async () => ({
+  ok: false as const,
+  reason: "not-configured" as const,
+}));
 
 const page = {
   ok: true as const,
@@ -379,7 +394,11 @@ describe("link enrichment outbox job", () => {
     const db = fakeDb();
     const suggest = vi.fn().mockResolvedValue(ai);
     const fetchPage = vi.fn().mockResolvedValue(page);
-    await createLinkEnrichmentHandler(db.client, { fetchPage, suggest })(job());
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage,
+      suggest,
+      embed: noEmbedding,
+    })(job());
 
     expect(fetchPage).toHaveBeenCalledWith(URL_, { signal: undefined });
     expect(suggest).toHaveBeenCalledWith(
@@ -408,6 +427,7 @@ describe("link enrichment outbox job", () => {
     const suggest = vi.fn().mockResolvedValue(ai);
     const fetchPage = vi.fn().mockResolvedValue(page);
     const handler = createLinkEnrichmentHandler(db.client, {
+      embed: noEmbedding,
       fetchPage,
       suggest,
     });
@@ -429,6 +449,7 @@ describe("link enrichment outbox job", () => {
       return ai;
     });
     await createLinkEnrichmentHandler(db.client, {
+      embed: noEmbedding,
       fetchPage: vi.fn().mockResolvedValue(page),
       suggest,
     })(job());
@@ -441,6 +462,7 @@ describe("link enrichment outbox job", () => {
   it("records a spent budget and keeps the unfurled metadata", async () => {
     const db = fakeDb();
     await createLinkEnrichmentHandler(db.client, {
+      embed: noEmbedding,
       fetchPage: vi.fn().mockResolvedValue(page),
       suggest: vi.fn().mockResolvedValue({ ok: false, reason: "budget" }),
     })(job());
@@ -465,6 +487,7 @@ describe("link enrichment outbox job", () => {
       reason: "not-configured",
     });
     const handler = createLinkEnrichmentHandler(db.client, {
+      embed: noEmbedding,
       fetchPage,
       suggest,
     });
@@ -482,7 +505,10 @@ describe("link enrichment outbox job", () => {
   it("does nothing once the user turned enrichment off", async () => {
     const db = fakeDb({ autoEnrichLinks: false });
     const fetchPage = vi.fn();
-    await createLinkEnrichmentHandler(db.client, { fetchPage })(job());
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage,
+      embed: noEmbedding,
+    })(job());
     expect(fetchPage).not.toHaveBeenCalled();
     expect(db.state.row.status).toBe("SKIPPED");
   });
@@ -491,6 +517,7 @@ describe("link enrichment outbox job", () => {
     const db = fakeDb();
     const afterEnriched = vi.fn();
     await createLinkEnrichmentHandler(db.client, {
+      embed: noEmbedding,
       fetchPage: vi.fn().mockResolvedValue(page),
       suggest: vi.fn().mockResolvedValue(ai),
       afterEnriched,
@@ -505,5 +532,56 @@ describe("link enrichment outbox job", () => {
         summary: "What it is. Why it helps.",
       }),
     );
+  });
+
+  it("stores the embedding and flags links that look like the same page", async () => {
+    const db = fakeDb();
+    db.raw.itemEmbedding.findMany.mockResolvedValue([
+      { itemId: "twin", vector: [1, 0.01] },
+      { itemId: "other", vector: [0, 1] },
+    ]);
+    const embed = vi.fn(async () => ({
+      ok: true as const,
+      provider: "OPENAI",
+      model: "text-embedding-3-small",
+      vector: [1, 0],
+    }));
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage: vi.fn().mockResolvedValue(page),
+      suggest: vi.fn().mockResolvedValue(ai),
+      embed,
+    })(job());
+
+    expect(embed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "u1",
+        text: `A clear title\nWhat it is. Why it helps.\n${URL_}`,
+      }),
+    );
+    expect(db.raw.itemEmbedding.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          itemId: "item-1",
+          provider: "OPENAI",
+          model: "text-embedding-3-small",
+          vector: [1, 0],
+        }),
+      }),
+    );
+    expect(db.state.row.similarItemIds).toEqual(["twin"]);
+    expect(db.state.row.filledFields).toContain("embedding");
+    expect(db.state.item.normalizedUrl).toBe(URL_);
+  });
+
+  it("does not embed when the AI budget is spent", async () => {
+    const db = fakeDb();
+    const embed = vi.fn();
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage: vi.fn().mockResolvedValue(page),
+      suggest: vi.fn().mockResolvedValue({ ok: false, reason: "budget" }),
+      embed,
+    })(job());
+    expect(embed).not.toHaveBeenCalled();
+    expect(db.raw.itemEmbedding.upsert).not.toHaveBeenCalled();
   });
 });
