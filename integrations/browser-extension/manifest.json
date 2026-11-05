@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Memoria Tab Saver",
+  "short_name": "Memoria",
+  "version": "0.1.0",
+  "description": "Save every open tab to your Memoria Inbox in one click, then close them.",
+  "action": {
+    "default_title": "Save tabs to Memoria",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["tabs", "storage"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tab-saver@memoria.app",
+      "strict_min_version": "128.0"
+    }
+  }
+}
