@@ -29,7 +29,8 @@ export interface NotificationAction {
 
 export interface AppNotification {
   id: string;
-  type: NotificationType;
+  /** WEEKLY_RECAP (IMP-070) has no per-type preference. */
+  type: NotificationType | "WEEKLY_RECAP";
   subject: string;
   canvasId: string | null;
   readAt: string | null;

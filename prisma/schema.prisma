@@ -24,6 +24,10 @@ model User {
   twoFactorEnabled Boolean   @default(false)
   /// Saved links get a title, tags and summary in the background (IMP-064).
   autoEnrichLinks  Boolean   @default(true)
+  /// The weekly recap also arrives by email; in-app only by default (IMP-070).
+  weeklyRecapEmail Boolean   @default(false)
+  /// A link nobody opened for this many weeks counts as stale (IMP-070).
+  staleLinkWeeks   Int       @default(6)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -63,6 +67,7 @@ model User {
   notificationPreferences NotificationPreference[]
   accountExports AccountExport[]
   clipBatches   ClipBatch[]
+  weeklyRecaps  WeeklyRecap[]
 }
 
 enum AccountExportStatus {
@@ -256,6 +261,10 @@ model CanvasItem {
   bookmarkRefreshedAt DateTime?
   /// Bookmark URL normalized for "you saved this already" (IMP-065).
   normalizedUrl String?
+  /// Last time the owner opened the link (IMP-070); null before tracking began.
+  lastOpenedAt DateTime?
+  /// Set with deletedAt when the item went to the archive: the trash sweep keeps it.
+  archivedAt   DateTime?
 
   @@index([canvasId, deletedAt])
   @@index([normalizedUrl])
@@ -371,6 +380,7 @@ enum NotificationType {
   SHARE_INVITATION_ACCEPTED
   SHARE_INVITATION_DECLINED
   CANVAS_SHARED
+  WEEKLY_RECAP
 }
 
 model Notification {
@@ -1247,4 +1257,33 @@ model ItemEnrichment {
 
   @@index([userId, status])
   @@index([userId, completedAt])
+}
+
+/// IMP-070: one recap per user per ISO week (Monday, UTC). The unique key is
+/// what makes the weekly job safe to run twice: only the run that inserts the
+/// row writes the notification and queues the email.
+model WeeklyRecap {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStart      DateTime
+  periodStart    DateTime
+  periodEnd      DateTime
+  savedCount     Int       @default(0)
+  /// Links saved in the period, newest first: [{ id, title, url }].
+  savedLinks     Json
+  /// Suggested piles for the period's links: [{ title, itemIds }].
+  suggestedPiles Json
+  staleWeeks     Int
+  staleCount     Int       @default(0)
+  /// The stale links "Archive these" acts on (capped); re-checked at archive time.
+  staleItemIds   String[]  @default([])
+  notificationId String?
+  emailQueued    Boolean   @default(false)
+  archivedChangeSetId String?
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([userId, weekStart])
+  @@index([userId, createdAt])
 }

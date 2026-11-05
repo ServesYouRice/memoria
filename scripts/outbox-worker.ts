@@ -45,6 +45,15 @@ import {
   LINK_ENRICH_TIMEOUT_MS,
   createLinkEnrichmentHandler,
 } from "../src/lib/services/link-enrichment";
+import {
+  RECAP_EMAIL_JOB,
+  RECAP_SWEEP_JOB,
+  RECAP_USER_JOB,
+  RECAP_USER_TIMEOUT_MS,
+  createWeeklyRecapEmailHandler,
+  createWeeklyRecapHandler,
+  createWeeklyRecapSweepHandler,
+} from "../src/lib/recap/weekly-recap";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -72,6 +81,9 @@ await runOutboxWorker({
     "account-export.delete": createAccountExportDeleteHandler(prisma),
     [UPLOAD_NOTE_JOB]: createUploadNoteHandler(prisma),
     [LINK_ENRICH_JOB]: createLinkEnrichmentHandler(prisma),
+    [RECAP_SWEEP_JOB]: createWeeklyRecapSweepHandler(prisma),
+    [RECAP_USER_JOB]: createWeeklyRecapHandler(prisma),
+    [RECAP_EMAIL_JOB]: createWeeklyRecapEmailHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
@@ -80,6 +92,7 @@ await runOutboxWorker({
     "account-export.build": accountExportTimeoutMs(),
     [UPLOAD_NOTE_JOB]: UPLOAD_NOTE_TIMEOUT_MS,
     [LINK_ENRICH_JOB]: LINK_ENRICH_TIMEOUT_MS,
+    [RECAP_USER_JOB]: RECAP_USER_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

@@ -26,6 +26,8 @@ type TrashItem = {
   content: unknown;
   version: number;
   deletedAt: string;
+  /** Set when the item was archived: it stays here until restored. */
+  archivedAt?: string | null;
   canvas: { id: string; name: string };
 };
 
@@ -80,7 +82,7 @@ export function TrashContent() {
     <>
       <PageHeader
         title="Trash"
-        subtitle="Restore soft-deleted items from canvases you own"
+        subtitle="Restore deleted and archived items from canvases you own"
       />
       {query.error && (
         <Alert severity="error">Failed to load trash. Please try again.</Alert>
@@ -111,7 +113,7 @@ export function TrashContent() {
               >
                 <ListItemText
                   primary={itemLabel(item)}
-                  secondary={`${item.canvas.name} · deleted ${formatDistanceToNow(new Date(item.deletedAt), { addSuffix: true })}`}
+                  secondary={`${item.canvas.name} · ${item.archivedAt ? "archived" : "deleted"} ${formatDistanceToNow(new Date(item.deletedAt), { addSuffix: true })}${item.archivedAt ? " · kept until you restore it" : ""}`}
                 />
               </ListItem>
             ))}

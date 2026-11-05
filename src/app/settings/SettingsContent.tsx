@@ -51,6 +51,7 @@ import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { NotificationPreferences } from "./NotificationPreferences";
 import { AiProviderSettings } from "./AiProviderSettings";
 import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
+import { WeeklyRecapSettings } from "./WeeklyRecapSettings";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 
 interface SettingsContentProps {
@@ -514,6 +515,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
           title="Notifications"
         >
           <NotificationPreferences />
+          <WeeklyRecapSettings />
         </SettingsSection>
 
         {/* Keyboard shortcuts */}

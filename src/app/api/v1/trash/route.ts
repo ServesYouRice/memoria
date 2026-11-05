@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
           content: true,
           version: true,
           deletedAt: true,
+          archivedAt: true,
           canvas: { select: { id: true, name: true } },
         },
       }),
@@ -70,6 +71,7 @@ export async function PATCH(request: NextRequest) {
         data: {
           deletedAt: null,
           deletedById: null,
+          archivedAt: null,
           version: { increment: 1 },
           updatedById: userId,
         },

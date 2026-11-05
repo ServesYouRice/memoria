@@ -13,6 +13,7 @@ import {
   ContentCopy as CopyIcon,
   FileCopy as DuplicateIcon,
   Comment as CommentIcon,
+  OpenInNew as OpenLinkIcon,
 } from "@mui/icons-material";
 import {
   ItemType,
@@ -20,6 +21,7 @@ import {
   type CanvasItem,
 } from "@/types/canvas";
 import { pileTransformMenuItems, usePileTransform } from "./PileTransformMenu";
+import { openSavedLink, openableUrl } from "@/lib/bookmarks/open-link";
 
 export interface ContextMenuPosition {
   x: number;
@@ -62,6 +64,11 @@ export function CanvasContextMenu({
   );
   const frameId = isFrame ? item.id : null;
   const showPileActions = open && frameId !== null && pile.available;
+  // IMP-070: opening a link from the board counts as "opened" for the recap.
+  const linkUrl =
+    item?.type === ItemType.BOOKMARK
+      ? openableUrl((item.content as { url?: unknown }).url)
+      : null;
 
   const handleAction = (action: () => void) => {
     action();
@@ -77,6 +84,18 @@ export function CanvasContextMenu({
         position ? { top: position.y, left: position.x } : undefined
       }
     >
+      {linkUrl && item && (
+        <MenuItem
+          onClick={() =>
+            handleAction(() => openSavedLink({ id: item.id, url: linkUrl }))
+          }
+        >
+          <ListItemIcon>
+            <OpenLinkIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Open link</ListItemText>
+        </MenuItem>
+      )}
       {capabilities.canCopyItems && (
         <MenuItem onClick={() => handleAction(onCopy)}>
           <ListItemIcon>

@@ -294,6 +294,39 @@ describe("executing an approved Ask command", () => {
     ]);
   });
 
+  it("archives into the trash-backed archive instead of an Archive board", async () => {
+    mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([{ canvasId: "canvas-a" }])
+      .mockResolvedValueOnce([canvasItem("i1")]);
+
+    const result = await executeAskCommandSuggestion({
+      actor: { userId: "user-1", agentProfileId: "prof-ask" },
+      agentProfile: profile as never,
+      payload: {
+        kind: ASK_COMMAND_SUGGESTION_KIND,
+        command: { type: "archive", itemIds: ["i1"] },
+      },
+      summary: "Archive 1 item",
+    });
+
+    expect(result).toMatchObject({ changeSetId: "cs-1", archivedItemCount: 1 });
+    expect(mocks.tx.canvas.create).not.toHaveBeenCalled();
+    expect(mocks.tx.canvasItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "i1" },
+        data: expect.objectContaining({
+          archivedAt: expect.any(Date),
+          deletedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(mocks.tx.changeRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ operation: "ARCHIVE" }),
+      }),
+    );
+  });
+
   it("refuses to run when the proposing profile lost its propose rung", async () => {
     await expect(
       executeAskCommandSuggestion({

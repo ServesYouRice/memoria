@@ -437,6 +437,8 @@ describe("Tenant Scoping for Workspaces, Trash, and Notifications (IMP-060)", ()
         data: {
           deletedAt: null,
           deletedById: null,
+          // IMP-070: restoring an archived item ends its archive too.
+          archivedAt: null,
           version: { increment: 1 },
           updatedById: ownerUserId,
         },
