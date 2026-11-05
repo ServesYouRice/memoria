@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { toast } from "sonner";
@@ -24,6 +25,8 @@ import {
   type OrganizeCanvasResponse,
 } from "@/lib/hooks/use-agent-control";
 
+const INSTRUCTION_MAX_LENGTH = 1_000;
+
 interface SortIntoPilesDialogProps {
   canvasId: string;
   open: boolean;
@@ -33,8 +36,10 @@ interface SortIntoPilesDialogProps {
 }
 
 /**
- * Previews the built-in organizer's piles. Applying approves and runs the
- * suggestion as one change set, so a single Undo restores the board.
+ * Previews the built-in organizer's piles. With AI set up, the piles follow
+ * the optional instruction, which starts as the latest batch note. Applying
+ * approves and runs the suggestion as one change set, so a single Undo
+ * restores the board.
  */
 export function SortIntoPilesDialog({
   canvasId,
@@ -48,30 +53,56 @@ export function SortIntoPilesDialog({
   const reject = useRejectSuggestion();
   const revert = useRevertChangeSet();
   const [proposal, setProposal] = useState<OrganizeCanvasResponse | null>(null);
+  const [instruction, setInstruction] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [sorting, setSorting] = useState(false);
   const [applying, setApplying] = useState(false);
   const requested = useRef(false);
+
+  const runSort = useCallback(
+    (nextInstruction?: string) => {
+      setSorting(true);
+      setError(null);
+      organize
+        .mutateAsync({ canvasId, instruction: nextInstruction })
+        .then((result) => {
+          setProposal(result);
+          if (nextInstruction === undefined) {
+            setInstruction(result.instruction ?? "");
+          }
+        })
+        .catch((organizeError: unknown) =>
+          setError(
+            organizeError instanceof Error
+              ? organizeError.message
+              : "Could not sort this board.",
+          ),
+        )
+        .finally(() => setSorting(false));
+    },
+    [canvasId, organize],
+  );
 
   useEffect(() => {
     if (!open) {
       requested.current = false;
       setProposal(null);
+      setInstruction("");
       setError(null);
       return;
     }
     if (requested.current) return;
     requested.current = true;
-    organize
-      .mutateAsync(canvasId)
-      .then(setProposal)
-      .catch((organizeError: unknown) =>
-        setError(
-          organizeError instanceof Error
-            ? organizeError.message
-            : "Could not sort this board.",
-        ),
-      );
-  }, [canvasId, open, organize]);
+    runSort();
+  }, [open, runSort]);
+
+  async function sortAgain() {
+    if (proposal?.suggestionId) {
+      await reject.mutateAsync(proposal.suggestionId).catch(() => undefined);
+    }
+    setProposal(null);
+    runSort(instruction.trim());
+  }
 
   async function dismiss() {
     if (proposal?.suggestionId) {
@@ -119,52 +150,76 @@ export function SortIntoPilesDialog({
     }
   }
 
-  const loading = !proposal && !error;
-  const empty = proposal && proposal.piles.length === 0;
+  const loading = sorting || (!proposal && !error);
+  const empty = !sorting && proposal && proposal.piles.length === 0;
+  const busy = sorting || applying;
 
   return (
     <Dialog open={open} onClose={() => void dismiss()} fullWidth maxWidth="xs">
       <DialogTitle>Sort into piles</DialogTitle>
       <DialogContent>
-        {loading && (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-            <CircularProgress size={28} aria-label="Finding piles" />
-          </Box>
-        )}
-        {error && <Alert severity="error">{error}</Alert>}
-        {empty && (
-          <Alert severity="info">
-            No piles found. Loose items need shared tags, words or websites to
-            be grouped.
-          </Alert>
-        )}
-        {proposal && proposal.piles.length > 0 && (
-          <Stack spacing={1.5}>
-            <Typography variant="body2" sx={{ color: "text.secondary" }}>
-              Each pile becomes a titled frame with its items inside. Items that
-              fit nowhere stay where they are.
-            </Typography>
-            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
-              {proposal.piles.map((pile) => (
-                <Chip
-                  key={pile.title}
-                  label={`${pile.title} · ${pile.itemCount}`}
-                  variant="outlined"
-                />
-              ))}
+        <Stack spacing={1.5}>
+          <TextField
+            label="How should it sort? (optional)"
+            placeholder="By project; anything about travel together"
+            value={instruction}
+            onChange={(event) => setInstruction(event.target.value)}
+            multiline
+            minRows={2}
+            maxRows={5}
+            size="small"
+            disabled={busy}
+            slotProps={{ htmlInput: { maxLength: INSTRUCTION_MAX_LENGTH } }}
+            helperText="Used when AI is set up in Settings."
+            sx={{ mt: 1 }}
+          />
+          {loading && (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+              <CircularProgress size={28} aria-label="Finding piles" />
+            </Box>
+          )}
+          {error && <Alert severity="error">{error}</Alert>}
+          {!sorting && proposal?.notice && (
+            <Alert severity="warning">{proposal.notice}</Alert>
+          )}
+          {empty && (
+            <Alert severity="info">
+              No piles found. Loose items need shared tags, words or websites to
+              be grouped.
+            </Alert>
+          )}
+          {!sorting && proposal && proposal.piles.length > 0 && (
+            <Stack spacing={1.5}>
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                {proposal.method === "ai" ? "Sorted by AI. " : ""}Each pile
+                becomes a titled frame with its items inside. Items that fit
+                nowhere stay where they are.
+              </Typography>
+              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
+                {proposal.piles.map((pile, index) => (
+                  <Chip
+                    key={`${pile.title}-${index}`}
+                    label={`${pile.title} · ${pile.itemCount}`}
+                    variant="outlined"
+                  />
+                ))}
+              </Stack>
             </Stack>
-          </Stack>
-        )}
+          )}
+        </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => void dismiss()} disabled={applying}>
           {proposal?.suggestionId ? "Not now" : "Close"}
         </Button>
-        {proposal?.suggestionId && (
+        <Button onClick={() => void sortAgain()} disabled={busy}>
+          Sort again
+        </Button>
+        {proposal?.suggestionId && !sorting && (
           <Button
             variant="contained"
             onClick={() => void apply()}
-            disabled={applying}
+            disabled={busy}
           >
             {applying ? "Sorting…" : "Apply"}
           </Button>
