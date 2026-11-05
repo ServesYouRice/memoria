@@ -10,6 +10,7 @@ import {
 } from "@/lib/agents/service-core";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
 import { ItemType } from "@/types/canvas";
 
 export const INBOX_CANVAS_NAME = "Inbox";
@@ -143,6 +144,20 @@ export async function saveToInbox(input: {
     summary: `Save ${isLink ? "link" : "note"} to ${inbox.name}`,
     rung: AGENT_CAPABILITY_RUNGS.INGEST,
     actionKind: AgentActionKind.INGEST,
+    // Saved links name, tag and summarize themselves (IMP-064); a title the
+    // agent chose is kept.
+    afterCreate: isLink
+      ? async (tx, item) => {
+          await enqueueLinkEnrichment(tx, input.actor.userId, [
+            {
+              itemId: item.id,
+              baseTitle: data.title || data.url,
+              baseTags: data.tags,
+              titleLocked: Boolean(data.title),
+            },
+          ]);
+        }
+      : undefined,
   });
 
   await invalidateCanvasCache(inbox.id);

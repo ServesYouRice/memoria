@@ -50,6 +50,7 @@ import { gradients } from "@/lib/theme";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { NotificationPreferences } from "./NotificationPreferences";
 import { AiProviderSettings } from "./AiProviderSettings";
+import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 
 interface SettingsContentProps {
@@ -578,6 +579,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
           title="AI provider"
         >
           <AiProviderSettings />
+          <LinkEnrichmentSettings />
         </SettingsSection>
 
         {/* AI agents */}

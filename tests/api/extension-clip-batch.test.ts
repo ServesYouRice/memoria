@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   checkApiKeyRateLimit: vi.fn(),
   invalidateCanvasCache: vi.fn(),
   recordCanvasItemEventsBatch: vi.fn(),
+  enqueueLinkEnrichment: vi.fn(async () => 0),
   state: {
     canvases: [] as Array<{ id: string; userId: string; name: string }>,
     liveItems: 0,
@@ -37,6 +38,9 @@ vi.mock("@/lib/cache/canvas-cache", () => ({
 }));
 vi.mock("@/lib/collaboration/committed-events", () => ({
   recordCanvasItemEventsBatch: mocks.recordCanvasItemEventsBatch,
+}));
+vi.mock("@/lib/services/link-enrichment", () => ({
+  enqueueLinkEnrichment: mocks.enqueueLinkEnrichment,
 }));
 vi.mock("@/lib/db", () => {
   const state = mocks.state;
@@ -313,6 +317,16 @@ describe("POST /api/v1/extensions/clip/batch", () => {
       100,
     );
     expect(mocks.invalidateCanvasCache).toHaveBeenCalledWith(body.canvasId);
+    // One enrichment job per link, enqueued in the batch transaction.
+    expect(mocks.enqueueLinkEnrichment).toHaveBeenCalledTimes(1);
+    const [, enrichUserId, targets] = mocks.enqueueLinkEnrichment.mock
+      .calls[0] as unknown as [unknown, string, Array<Record<string, unknown>>];
+    expect(enrichUserId).toBe("u1");
+    expect(targets).toHaveLength(100);
+    expect(targets[0]).toEqual({
+      itemId: body.itemIds[0],
+      baseTitle: "Page 0",
+    });
 
     await expect(getLatestClipBatchNote(body.canvasId)).resolves.toMatchObject({
       batchId: body.batchId,
@@ -351,6 +365,8 @@ describe("POST /api/v1/extensions/clip/batch", () => {
     expect(mocks.state.items).toHaveLength(3);
     expect(mocks.state.batches).toHaveLength(1);
     expect(mocks.recordCanvasItemEventsBatch).toHaveBeenCalledTimes(1);
+    // A replay enqueues no second set of enrichment jobs.
+    expect(mocks.enqueueLinkEnrichment).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to reuse an idempotency key for a different batch", async () => {

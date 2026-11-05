@@ -140,6 +140,11 @@ export function EditBookmarkDialog({
         previewImage: metadata?.previewImage || undefined,
         siteName: metadata?.siteName || undefined,
         unfurledAt: metadata ? new Date().toISOString() : undefined,
+        // Keep the enrichment summary while the link stays the same.
+        summary:
+          isBookmarkContent(item.content) && item.content.url === data.url
+            ? item.content.summary
+            : undefined,
       };
 
       await updateItem.mutateAsync({

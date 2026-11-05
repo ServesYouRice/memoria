@@ -35,6 +35,11 @@ import {
   createAccountExportDeleteHandler,
 } from "../src/lib/account-export/outbox-handler";
 import { accountExportTimeoutMs } from "../src/lib/account-export/constants";
+import {
+  LINK_ENRICH_JOB,
+  LINK_ENRICH_TIMEOUT_MS,
+  createLinkEnrichmentHandler,
+} from "../src/lib/services/link-enrichment";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -60,12 +65,14 @@ await runOutboxWorker({
     "thumbnail.delete": createThumbnailDeleteHandler(),
     "account-export.build": createAccountExportBuildHandler(prisma),
     "account-export.delete": createAccountExportDeleteHandler(prisma),
+    [LINK_ENRICH_JOB]: createLinkEnrichmentHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
   handlerTimeoutMs: Number(process.env.OUTBOX_HANDLER_TIMEOUT_MS || 15_000),
   handlerTimeoutMsByType: {
     "account-export.build": accountExportTimeoutMs(),
+    [LINK_ENRICH_JOB]: LINK_ENRICH_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

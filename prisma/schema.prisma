@@ -22,6 +22,8 @@ model User {
   name             String?
   image            String?
   twoFactorEnabled Boolean   @default(false)
+  /// Saved links get a title, tags and summary in the background (IMP-064).
+  autoEnrichLinks  Boolean   @default(true)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -268,6 +270,7 @@ model CanvasItem {
   entityLinks   ItemEntityLink[]
   embeddings    ItemEmbedding[]
   clipBatchItems ClipBatchItem[]
+  enrichment    ItemEnrichment?
 }
 
 model CanvasThumbnailCandidate {
@@ -1202,4 +1205,37 @@ model ClipBatchItem {
 
   @@id([batchId, itemId])
   @@index([itemId])
+}
+
+enum ItemEnrichmentStatus {
+  PENDING
+  DONE
+  SKIPPED
+}
+
+/// Background naming, tagging and summarizing of a saved link (IMP-064). The
+/// base values are what the item held when it was saved: the job only replaces
+/// a title or tag list that still equals them (or what it wrote itself), so a
+/// user's edit always wins, and `filledFields` records what it filled.
+model ItemEnrichment {
+  itemId       String               @id
+  item         CanvasItem           @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the board, whose settings and AI budget the job uses.
+  userId       String
+  status       ItemEnrichmentStatus @default(PENDING)
+  baseTitle    String?
+  baseTags     String[]             @default([])
+  /// The saver chose this title on purpose; keep it even if it is unchanged.
+  titleLocked  Boolean              @default(false)
+  filledFields String[]             @default([])
+  filledTitle  String?
+  filledTags   String[]             @default([])
+  /// Why the AI step did not run: not-configured, disabled, budget or provider-error.
+  aiSkipReason String?
+  completedAt  DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, completedAt])
 }

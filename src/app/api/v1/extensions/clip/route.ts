@@ -13,6 +13,7 @@ import { Problems, notFoundError, unauthorizedError } from "@/lib/errors";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
+import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
 
 export const POST = withApiHandler(
   withValidation(
@@ -101,6 +102,10 @@ export const POST = withApiHandler(
           version: created.version,
           operation: "created",
         });
+        // Name, tag and summarize the link in the background (IMP-064).
+        await enqueueLinkEnrichment(tx, user.id, [
+          { itemId: created.id, baseTitle: title || url },
+        ]);
         return created;
       });
 

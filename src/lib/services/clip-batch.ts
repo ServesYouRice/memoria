@@ -26,6 +26,7 @@ import {
 } from "@/lib/policy/capacity";
 import { findOpenSlot, INBOX_CANVAS_NAME } from "@/lib/agents/inbox";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
+import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
 import {
   clipBatchSchema,
   type ClipBatchInput,
@@ -190,6 +191,15 @@ export async function saveClipBatch(input: {
         itemId: item.id,
         version: item.version,
         operation: "created" as const,
+      })),
+    );
+    // One background naming/tagging job per link (IMP-064).
+    await enqueueLinkEnrichment(
+      tx,
+      userId,
+      items.map((item, index) => ({
+        itemId: item.id,
+        baseTitle: data.links[index]!.title || data.links[index]!.url,
       })),
     );
 

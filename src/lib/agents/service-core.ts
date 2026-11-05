@@ -416,6 +416,11 @@ export async function createCanvasItemWrite(input: {
   summary: string;
   rung?: number;
   actionKind?: AgentActionKind;
+  /** Extra writes that must commit with the item (e.g. its enrichment job). */
+  afterCreate?: (
+    tx: Prisma.TransactionClient,
+    item: PrismaCanvasItem,
+  ) => Promise<void>;
 }) {
   const normalizedItem = normalizeAgentItemWriteData(input.itemData);
 
@@ -494,6 +499,7 @@ export async function createCanvasItemWrite(input: {
       agentActionId: agentAction.id,
       changeSetId: changeSet.id,
     });
+    await input.afterCreate?.(tx, item);
 
     return { item, agentActionId: agentAction.id, changeSetId: changeSet.id };
   });
