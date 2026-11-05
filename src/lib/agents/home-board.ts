@@ -43,11 +43,13 @@ import {
   type ActorContext,
 } from "@/lib/agents/service-core";
 import {
-  ARCHIVE_BOARD_NAME,
   ASK_COMMAND_SUGGESTION_KIND,
   executeAskCommandSuggestion,
   getAskAssistantProfile,
 } from "@/lib/ai/ask-commands";
+
+/** Boards named like this were archive targets before IMP-070; never a home. */
+const LEGACY_ARCHIVE_BOARD_NAME = "Archive";
 import type { AskCommand } from "@/lib/ai/ask-schema";
 import { isAiEnabled } from "@/lib/ai/budget";
 import { getAiAvailability } from "@/lib/ai/provider-resolution";
@@ -330,7 +332,8 @@ async function loadCandidateBoards(
   ).filter(
     (board) =>
       !isInboxName(board.name) &&
-      board.name.trim().toLowerCase() !== ARCHIVE_BOARD_NAME.toLowerCase(),
+      board.name.trim().toLowerCase() !==
+        LEGACY_ARCHIVE_BOARD_NAME.toLowerCase(),
   );
   if (boards.length === 0) return [];
   const ids = boards.map((board) => board.id);
@@ -662,6 +665,10 @@ export async function acceptHomeBoardSuggestion(input: {
   } catch (error) {
     await closeStale(row.itemId, suggestion.id);
     throw error;
+  }
+  if (!("boardId" in result)) {
+    await closeStale(row.itemId, suggestion.id);
+    throw new BadRequestError("This suggestion is not a board move.");
   }
   await markSuggestionExecuted({
     userId: input.userId,

@@ -25,6 +25,7 @@ import {
   assertCanvasItemCapacity,
 } from "@/lib/policy/capacity";
 import { ActivityType, logActivity } from "@/lib/activity";
+import { archiveItems } from "@/lib/services/archive";
 import { ItemType } from "@/types/canvas";
 import {
   askCommandSchema,
@@ -41,7 +42,6 @@ import {
 
 export const ASK_COMMAND_SUGGESTION_KIND = "ask-command";
 export const ASK_ASSISTANT_PROFILE_NAME = "Memoria assistant";
-export const ARCHIVE_BOARD_NAME = "Archive";
 
 /** Change records for a cross-board move; undo puts the item back. */
 export const ASK_MOVE_OPERATION = "MOVE";
@@ -263,6 +263,15 @@ export async function executeAskCommandSuggestion(input: {
   if (command.type === "make_pile") {
     throw new BadRequestError("Piles run through the piles executor.");
   }
+  if (command.type === "archive") {
+    // IMP-070: one archive concept. Archived items go to the trash-backed
+    // archive (kept until restored) in one change set that undo reverses.
+    return archiveItems({
+      actor: input.actor,
+      itemIds: command.itemIds,
+      summary: input.summary,
+    });
+  }
   const userId = input.actor.userId;
   const touched = new Set<string>();
 
@@ -291,16 +300,6 @@ export async function executeAskCommandSuggestion(input: {
         select: { id: true, name: true },
       });
       if (!target) throw new NotFoundError("Board not found.");
-    } else if (command.type === "archive") {
-      target = await tx.canvas.findFirst({
-        where: {
-          userId,
-          isTemplate: false,
-          name: { equals: ARCHIVE_BOARD_NAME, mode: "insensitive" },
-        },
-        orderBy: { createdAt: "asc" },
-        select: { id: true, name: true },
-      });
     }
 
     const changeSet = await tx.changeSet.create({
@@ -315,12 +314,12 @@ export async function executeAskCommandSuggestion(input: {
       },
     });
 
-    if (!target) {
-      const name =
-        command.type === "create_board" ? command.name : ARCHIVE_BOARD_NAME;
-      target = await createBoardTx(tx, userId, changeSet.id, name);
+    if (command.type === "create_board") {
+      target = await createBoardTx(tx, userId, changeSet.id, command.name);
       createdBoardId = target.id;
     }
+
+    if (!target) throw new NotFoundError("Board not found.");
 
     const items = command.itemIds.length
       ? await loadOwnedItems(tx, userId, command.itemIds)

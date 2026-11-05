@@ -246,3 +246,94 @@ export function shareDecisionTemplate(data: {
     html: `<p>${escapeHtml(data.recipientEmail)} ${data.decision} your invitation to <strong>${escapeHtml(data.canvasName)}</strong>.</p>`,
   };
 }
+
+/**
+ * IMP-070 weekly recap: what was saved, suggested piles, and links nobody
+ * opened in a while. The email only links to the recap page; archiving
+ * happens there, behind the user's session.
+ */
+export function weeklyRecapTemplate(data: {
+  userName: string;
+  savedCount: number;
+  savedLinks: { title: string; url: string }[];
+  suggestedPiles: { title: string; itemCount: number }[];
+  staleCount: number;
+  staleWeeks: number;
+  recapUrl: string;
+  settingsUrl: string;
+}): EmailTemplate {
+  const savedLine =
+    data.savedCount === 1
+      ? "You saved 1 link this week."
+      : `You saved ${data.savedCount} links this week.`;
+  const staleLine =
+    data.staleCount > 0
+      ? `${data.staleCount} ${data.staleCount === 1 ? "link has" : "links have"} not been opened in ${data.staleWeeks} weeks. You can archive them in one tap; they stay in Trash with their summaries until you restore them.`
+      : null;
+  const text = [
+    `Hi ${data.userName},`,
+    "",
+    savedLine,
+    ...data.savedLinks.map((link) => `- ${link.title} (${link.url})`),
+    ...(data.suggestedPiles.length > 0
+      ? [
+          "",
+          "Suggested piles:",
+          ...data.suggestedPiles.map(
+            (pile) => `- ${pile.title} (${pile.itemCount})`,
+          ),
+        ]
+      : []),
+    ...(staleLine ? ["", staleLine] : []),
+    "",
+    `Open your recap: ${data.recapUrl}`,
+    "",
+    `Turn these emails off in Settings: ${data.settingsUrl}`,
+  ].join("\n");
+
+  const list = (items: string[]) =>
+    items.length > 0
+      ? `<ul style="padding-left: 20px;">${items.map((item) => `<li>${item}</li>`).join("")}</ul>`
+      : "";
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background-color: #f8f9fa; padding: 30px; border-radius: 8px;">
+    <h1 style="color: #1976d2; margin-top: 0;">Your week in Memoria</h1>
+    <p>Hi ${escapeHtml(data.userName)},</p>
+    <p>${escapeHtml(savedLine)}</p>
+    ${list(
+      data.savedLinks.map(
+        (link) =>
+          `<a href="${escapeHtml(link.url)}">${escapeHtml(link.title)}</a>`,
+      ),
+    )}
+    ${
+      data.suggestedPiles.length > 0
+        ? `<p><strong>Suggested piles</strong></p>${list(
+            data.suggestedPiles.map(
+              (pile) => `${escapeHtml(pile.title)} (${pile.itemCount})`,
+            ),
+          )}`
+        : ""
+    }
+    ${staleLine ? `<p>${escapeHtml(staleLine)}</p>` : ""}
+    <div style="margin: 30px 0;">
+      <a href="${escapeHtml(data.recapUrl)}" style="display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Open your recap</a>
+    </div>
+    <p style="font-size: 12px; color: #999;">
+      You get this email because you turned on the weekly recap email.
+      <a href="${escapeHtml(data.settingsUrl)}">Turn it off in Settings</a>.
+    </p>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return { subject: "Your week in Memoria", text, html };
+}

@@ -52,6 +52,7 @@ import { NotificationPreferences } from "./NotificationPreferences";
 import { AiProviderSettings } from "./AiProviderSettings";
 import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
 import { AutoFileSettings } from "./AutoFileSettings";
+import { WeeklyRecapSettings } from "./WeeklyRecapSettings";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 
 interface SettingsContentProps {
@@ -515,6 +516,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
           title="Notifications"
         >
           <NotificationPreferences />
+          <WeeklyRecapSettings />
         </SettingsSection>
 
         {/* Keyboard shortcuts */}

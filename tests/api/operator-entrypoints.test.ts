@@ -165,7 +165,7 @@ describe("Operator, Cron, Bootstrap, and CSP boundaries (IMP-058)", () => {
         expect(prismaMocks.$transaction).not.toHaveBeenCalled();
       });
 
-      it("queues the three daily retention jobs with stable dedupe keys", async () => {
+      it("queues the three daily retention jobs and the weekly recap with stable dedupe keys", async () => {
         process.env.CRON_SECRET = "valid-cron-secret-12345";
         vi.useFakeTimers();
         vi.setSystemTime(new Date("2026-08-25T14:30:00.000Z"));
@@ -183,7 +183,7 @@ describe("Operator, Cron, Bootstrap, and CSP boundaries (IMP-058)", () => {
         const data = await res.json();
         expect(data).toEqual({ queued: true, day: "2026-08-25" });
 
-        expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledTimes(3);
+        expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledTimes(4);
         expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledWith(
           expect.anything(),
           {
@@ -206,6 +206,16 @@ describe("Operator, Cron, Bootstrap, and CSP boundaries (IMP-058)", () => {
             type: "retention.maintenance",
             payload: {},
             dedupeKey: "retention.maintenance:2026-08-25",
+          },
+        );
+        // IMP-070: one recap sweep per ISO week (Monday 2026-08-24).
+        expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledWith(
+          expect.anything(),
+          {
+            type: "recap.weekly-sweep",
+            payload: { weekStart: "2026-08-24" },
+            dedupeKey: "recap.weekly-sweep:2026-08-24",
+            maxAttempts: 5,
           },
         );
       });

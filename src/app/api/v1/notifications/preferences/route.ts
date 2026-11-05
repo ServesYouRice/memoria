@@ -5,9 +5,19 @@ import { requireAuth } from "@/lib/api/auth";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { prisma } from "@/lib/db";
 
+// The weekly recap (IMP-070) is always in the app and has its own email
+// opt-in under Settings → Weekly recap, so it is not a per-type preference.
+const PREFERENCE_TYPES = Object.values(NotificationType).filter(
+  (type) => type !== NotificationType.WEEKLY_RECAP,
+);
+
 const updateSchema = z
   .object({
-    type: z.nativeEnum(NotificationType),
+    type: z
+      .nativeEnum(NotificationType)
+      .refine((type) => type !== NotificationType.WEEKLY_RECAP, {
+        message: "The weekly recap is set under Settings → Weekly recap.",
+      }),
     inAppEnabled: z.boolean(),
     emailEnabled: z.boolean(),
   })
@@ -22,7 +32,7 @@ export const GET = withApiHandler(async () => {
     stored.map((preference) => [preference.type, preference]),
   );
   return NextResponse.json({
-    preferences: Object.values(NotificationType).map((type) => ({
+    preferences: PREFERENCE_TYPES.map((type) => ({
       type,
       inAppEnabled: byType.get(type)?.inAppEnabled ?? true,
       emailEnabled: byType.get(type)?.emailEnabled ?? true,

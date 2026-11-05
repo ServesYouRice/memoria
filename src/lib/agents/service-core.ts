@@ -26,6 +26,7 @@ import {
   recordCanvasItemEventsBatch,
 } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
+import { ARCHIVE_OPERATION, revertArchivedItem } from "@/lib/services/archive";
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -1082,6 +1083,19 @@ async function applyRevertOperation(
     throw new BadRequestError(
       `Change record ${changeRecord.id} is not reversible.`,
     );
+  }
+
+  if (
+    changeRecord.targetType === "CanvasItem" &&
+    changeRecord.operation === ARCHIVE_OPERATION
+  ) {
+    // IMP-070: an archived item goes back onto its board.
+    await revertArchivedItem(tx, {
+      targetId: changeRecord.targetId,
+      userId,
+      rollbackChangeSetId,
+    });
+    return;
   }
 
   if (

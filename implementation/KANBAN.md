@@ -27,7 +27,6 @@ RTO 16s).
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-059](tasks/IMP-059.md) | Firefox and WebKit pass `pnpm gate e2e` | |
-| [IMP-070](tasks/IMP-070.md) | Weekly recap and tidy-up of old links | IMP-064 |
 
 ## WAITING
 
