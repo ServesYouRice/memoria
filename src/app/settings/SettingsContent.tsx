@@ -51,6 +51,7 @@ import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { NotificationPreferences } from "./NotificationPreferences";
 import { AiProviderSettings } from "./AiProviderSettings";
 import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
+import { AutoFileSettings } from "./AutoFileSettings";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 
 interface SettingsContentProps {
@@ -580,6 +581,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
         >
           <AiProviderSettings />
           <LinkEnrichmentSettings />
+          <AutoFileSettings />
         </SettingsSection>
 
         {/* AI agents */}

@@ -194,7 +194,8 @@ function getSharedCanvasId(
   return sharedCanvasId;
 }
 
-async function createSuggestionRecordTx(
+/** Files a suggestion inside the caller's transaction (IMP-066 home boards). */
+export async function createSuggestionRecordTx(
   tx: Prisma.TransactionClient,
   input: {
     actor: ActorContext;

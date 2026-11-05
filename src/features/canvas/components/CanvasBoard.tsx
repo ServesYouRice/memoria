@@ -47,6 +47,7 @@ import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 import { UploadNoteOffer } from "./UploadNoteOffer";
+import { HomeBoardSuggestions, isInboxBoardName } from "./HomeBoardSuggestions";
 
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
@@ -1335,6 +1336,19 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               />
             </SpeedDial>
           )}
+          {isOwner &&
+            isInboxBoardName(canvasName) &&
+            !isDrawing &&
+            !isPresentationMode &&
+            !isTimeMachineActive && (
+              <HomeBoardSuggestions
+                canvasId={canvasId}
+                items={allItems}
+                zoom={zoom}
+                position={position}
+                stageSize={stageSize}
+              />
+            )}
           {!isDrawing && !isPresentationMode && (
             <UploadNoteOffer
               canvasId={canvasId}
