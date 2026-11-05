@@ -6,7 +6,8 @@
  * committed events and the batch record are written in one transaction, and a
  * retry with the same idempotency key returns the first result instead of
  * creating the links again. The optional sorting note is kept on the batch for
- * the Inbox sorter (IMP-063).
+ * the Inbox sorter (IMP-063). Links already in the user's boards are reported
+ * as `duplicates` (IMP-065), and left out when the batch asks to skip them.
  */
 
 import { createHash } from "crypto";
@@ -26,6 +27,13 @@ import {
 } from "@/lib/policy/capacity";
 import { findOpenSlot, INBOX_CANVAS_NAME } from "@/lib/agents/inbox";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
+import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
+import {
+  existingFor,
+  findExistingLinks,
+  normalizeLinkUrl,
+  type ExistingLink,
+} from "@/lib/services/duplicates";
 import {
   clipBatchSchema,
   type ClipBatchInput,
@@ -35,19 +43,61 @@ export { ClipBatchSource };
 
 const LINK_SIZE = { width: 360, height: 120 };
 
+export interface ClipBatchDuplicate {
+  /** Position of the link in the request. */
+  index: number;
+  url: string;
+  /** The item this batch saved for the link; null when it was skipped. */
+  savedItemId: string | null;
+  /** Copies already in the user's boards, oldest first. */
+  existing: ExistingLink[];
+}
+
 export interface ClipBatchResult {
   batchId: string;
   canvasId: string;
-  /** Created item ids, in the order the links were sent. */
+  /**
+   * Created item ids, in the order the links were sent. With
+   * `skipDuplicates`, links that were already saved have no entry here.
+   */
   itemIds: string[];
   /** True when this call replayed an earlier batch with the same key. */
   replayed: boolean;
+  /** Links already in the user's boards (IMP-065). */
+  duplicates: ClipBatchDuplicate[];
 }
 
 function hashBatch(input: ClipBatchInput) {
   return createHash("sha256")
-    .update(JSON.stringify({ links: input.links, note: input.note ?? null }))
+    .update(
+      JSON.stringify({
+        links: input.links,
+        note: input.note ?? null,
+        // Only present when set, so earlier batches keep their hash.
+        ...(input.skipDuplicates ? { skipDuplicates: true } : {}),
+      }),
+    )
     .digest("hex");
+}
+
+function describeDuplicates(
+  links: ClipBatchInput["links"],
+  found: Map<string, ExistingLink[]>,
+  savedByIndex: Map<number, string>,
+): ClipBatchDuplicate[] {
+  return links.flatMap((link, index) => {
+    const existing = existingFor(found, link.url);
+    return existing.length > 0
+      ? [
+          {
+            index,
+            url: link.url,
+            savedItemId: savedByIndex.get(index) ?? null,
+            existing,
+          },
+        ]
+      : [];
+  });
 }
 
 async function lockBatchKey(
@@ -114,7 +164,10 @@ export async function saveClipBatch(input: {
         id: true,
         canvasId: true,
         requestHash: true,
-        items: { select: { itemId: true }, orderBy: { position: "asc" } },
+        items: {
+          select: { itemId: true, position: true },
+          orderBy: { position: "asc" },
+        },
       },
     });
     if (previous) {
@@ -123,23 +176,48 @@ export async function saveClipBatch(input: {
           "This idempotency key was already used for a different batch.",
         );
       }
+      const itemIds = previous.items.map((item) => item.itemId);
+      const found = await findExistingLinks(
+        tx,
+        userId,
+        data.links.map((link) => link.url),
+        { excludeItemIds: itemIds },
+      );
       return {
         batchId: previous.id,
         canvasId: previous.canvasId,
-        itemIds: previous.items.map((item) => item.itemId),
+        itemIds,
         replayed: true,
+        duplicates: describeDuplicates(
+          data.links,
+          found,
+          new Map(previous.items.map((item) => [item.position, item.itemId])),
+        ),
       };
     }
 
+    const found = await findExistingLinks(
+      tx,
+      userId,
+      data.links.map((link) => link.url),
+    );
+    // Original request positions of the links this batch saves.
+    const positions = data.links
+      .map((link, index) => ({ link, index }))
+      .filter(
+        ({ link }) =>
+          !data.skipDuplicates || existingFor(found, link.url).length === 0,
+      );
+
     const canvasId = await findOrCreateInbox(tx, userId);
     await lockCanvasForMutation(tx, canvasId);
-    await assertCanvasItemCapacity(tx, canvasId, data.links.length);
+    await assertCanvasItemCapacity(tx, canvasId, positions.length);
 
     const occupied = await tx.canvasItem.findMany({
       where: { canvasId, deletedAt: null },
       select: { positionX: true, positionY: true, width: true, height: true },
     });
-    const rows = data.links.map((link) => {
+    const rows = positions.map(({ link }) => {
       const slot = findOpenSlot(occupied, LINK_SIZE);
       const rect = { positionX: slot.x, positionY: slot.y, ...LINK_SIZE };
       occupied.push(rect);
@@ -153,16 +231,20 @@ export async function saveClipBatch(input: {
         ...rect,
         zIndex: 1,
         content: content as Prisma.InputJsonValue,
+        normalizedUrl: normalizeLinkUrl(link.url),
         createdById: userId,
         updatedById: userId,
       };
     });
 
     // INSERT ... RETURNING gives rows back in input order.
-    const items = await tx.canvasItem.createManyAndReturn({
-      data: rows,
-      select: { id: true, version: true },
-    });
+    const items =
+      rows.length > 0
+        ? await tx.canvasItem.createManyAndReturn({
+            data: rows,
+            select: { id: true, version: true },
+          })
+        : [];
     const batch = await tx.clipBatch.create({
       data: {
         userId,
@@ -173,9 +255,9 @@ export async function saveClipBatch(input: {
         note: data.note ?? null,
         items: {
           createMany: {
-            data: items.map((item, position) => ({
+            data: items.map((item, created) => ({
               itemId: item.id,
-              position,
+              position: positions[created]!.index,
             })),
           },
         },
@@ -192,12 +274,28 @@ export async function saveClipBatch(input: {
         operation: "created" as const,
       })),
     );
+    // One background naming/tagging job per link (IMP-064).
+    await enqueueLinkEnrichment(
+      tx,
+      userId,
+      items.map((item, created) => {
+        const link = positions[created]!.link;
+        return { itemId: item.id, baseTitle: link.title || link.url };
+      }),
+    );
 
     return {
       batchId: batch.id,
       canvasId,
       itemIds: items.map((item) => item.id),
       replayed: false,
+      duplicates: describeDuplicates(
+        data.links,
+        found,
+        new Map(
+          items.map((item, created) => [positions[created]!.index, item.id]),
+        ),
+      ),
     };
   });
 

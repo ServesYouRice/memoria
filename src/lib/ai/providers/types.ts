@@ -47,6 +47,13 @@ export interface AiImageRequest {
   signal?: AbortSignal;
 }
 
+export interface AiEmbeddingRequest {
+  /** Embedding model; the chat model in `config` is not used. */
+  model: string;
+  input: string[];
+  signal?: AbortSignal;
+}
+
 export type AiAdapterId = "openai-compatible" | "anthropic";
 
 export interface AiProviderAdapter {
@@ -66,6 +73,11 @@ export interface AiProviderAdapter {
     config: AiProviderConfig,
     request: AiImageRequest,
   ): Promise<string>;
+  /** Present when `capabilities.embeddings` is true; one vector per input. */
+  embed?(
+    config: AiProviderConfig,
+    request: AiEmbeddingRequest,
+  ): Promise<number[][]>;
 }
 
 /**

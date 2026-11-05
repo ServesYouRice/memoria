@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     canvasFindMany: vi.fn(),
     canvasItemFindMany: vi.fn(),
     commentFindMany: vi.fn(),
+    queryRaw: vi.fn(async (): Promise<unknown[]> => []),
     createCanvasItemComment: vi.fn(),
     createCanvasItemWrite: vi.fn(),
     requireScopedItem: vi.fn(),
@@ -34,6 +35,8 @@ vi.mock("@/lib/db", () => ({
     },
     canvasItem: { findMany: mocks.canvasItemFindMany },
     comment: { findMany: mocks.commentFindMany },
+    // Duplicate-link lookup (IMP-065).
+    $queryRaw: () => mocks.queryRaw(),
     $transaction: async (fn: (tx: typeof mocks.tx) => unknown) => fn(mocks.tx),
   },
 }));
@@ -309,6 +312,59 @@ describe("inbox_save with a target board (IMP-067)", () => {
       expect.objectContaining({ canvasId, summary: "Save link to Trips" }),
     );
     expect(result.structuredContent).toMatchObject({ canvasId });
+  });
+
+  it("names the existing item instead of saving a link twice", async () => {
+    mocks.canvasFindFirst.mockResolvedValue({ id: canvasId, name: "Trips" });
+    mocks.queryRaw.mockResolvedValueOnce([
+      {
+        id: itemId,
+        canvasId,
+        canvasName: "Trips",
+        url: "https://hotel.example/one/?utm_source=mail",
+        title: "Hotel one",
+      },
+    ]);
+
+    const result = await call(profile(), "inbox_save", {
+      url: "https://hotel.example/one",
+      canvasId,
+    });
+
+    expect(mocks.createCanvasItemWrite).not.toHaveBeenCalled();
+    expect(result.structuredContent).toMatchObject({
+      saved: false,
+      duplicate: true,
+      itemId,
+      canvasId,
+      existing: [{ itemId, board: "Trips", title: "Hotel one" }],
+    });
+  });
+
+  it("never reveals a saved copy on a board outside the agent's scope", async () => {
+    mocks.canvasFindFirst.mockResolvedValue({ id: canvasId, name: "Trips" });
+    mocks.queryRaw.mockResolvedValueOnce([
+      {
+        id: "citem-private",
+        canvasId: otherCanvasId,
+        canvasName: "Private",
+        url: "https://hotel.example/one",
+        title: "Secret",
+      },
+    ]);
+    mocks.createCanvasItemWrite.mockResolvedValueOnce({
+      item: { id: "cnew" },
+      changeSetId: "cs1",
+    });
+
+    const result = await call(profile(), "inbox_save", {
+      url: "https://hotel.example/one",
+      canvasId,
+    });
+
+    expect(mocks.createCanvasItemWrite).toHaveBeenCalled();
+    expect(JSON.stringify(result.structuredContent)).not.toContain("Secret");
+    expect(result.structuredContent).toMatchObject({ saved: true });
   });
 
   it("refuses a board outside the agent's scope", async () => {

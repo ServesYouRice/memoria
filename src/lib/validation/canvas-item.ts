@@ -88,6 +88,8 @@ export const bookmarkContentSchema = z.object({
   previewImage: z.string().max(2048).optional(),
   siteName: z.string().max(200).optional(),
   unfurledAt: z.string().optional(),
+  /** Two-line "what is this", written by link enrichment (IMP-064). */
+  summary: z.string().max(600).optional(),
 });
 
 /**

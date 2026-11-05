@@ -1,7 +1,9 @@
 // Memoria Tab Saver popup. Works with the promise-based WebExtension API in
 // Chrome, Edge (`chrome.*`) and Firefox (`browser.*`).
 import {
+  alreadySavedLinks,
   chunk,
+  existingLinkUrl,
   isApiKey,
   isPreselected,
   isWebUrl,
@@ -30,6 +32,37 @@ function show(section) {
 function setMessage(id, text) {
   $(id).textContent = text || "";
   $(id).hidden = !text;
+}
+
+// "You saved this already": list the tabs Memoria did not save again, each
+// with a link to open the existing copy.
+function renderDuplicates(entries) {
+  const list = $("duplicate-list");
+  list.replaceChildren();
+  $("duplicates").hidden = entries.length === 0;
+  for (const entry of entries) {
+    const existing = entry.existing[0];
+    const item = document.createElement("li");
+    const title = document.createElement("span");
+    title.className = "title";
+    title.textContent = existing.title || entry.url;
+    title.title = entry.url;
+    item.append(title);
+    const href = existingLinkUrl(settings.serverUrl, existing);
+    if (href) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "link";
+      open.textContent = existing.canvasName
+        ? `Open in ${existing.canvasName}`
+        : "Open existing";
+      open.addEventListener("click", () => {
+        void ext.tabs.create({ url: href, active: true });
+      });
+      item.append(open);
+    }
+    list.append(item);
+  }
 }
 
 async function loadSettings() {
@@ -150,6 +183,7 @@ async function showTabs() {
   }
   setMessage("save-error", "");
   setMessage("save-status", "");
+  renderDuplicates([]);
   renderTabs();
   show("main");
 }
@@ -191,10 +225,12 @@ async function save() {
   $("save").disabled = true;
   setMessage("save-error", "");
   setMessage("save-status", "Saving…");
+  renderDuplicates([]);
   let saved = 0;
+  const duplicates = [];
   try {
     for (const group of groups) {
-      await sendBatch({
+      const result = await sendBatch({
         serverUrl: settings.serverUrl,
         apiKey: settings.apiKey,
         tabs: group.tabs,
@@ -202,20 +238,28 @@ async function save() {
         idempotencyKey: group.idempotencyKey,
       });
       await forgetBatch(group.signature);
-      // Only tabs the server confirmed are closed.
+      // Only tabs the server confirmed (saved, or already saved) are closed.
       await closeTabs(group.tabs.map((tab) => tab.id));
-      saved += group.tabs.length;
+      const skipped = alreadySavedLinks(result);
+      duplicates.push(...skipped);
+      saved += group.tabs.length - skipped.length;
     }
     $("note").value = "";
     renderTabs();
-    setMessage(
-      "save-status",
+    renderDuplicates(duplicates);
+    const savedText =
       saved === 1
         ? "Saved 1 tab to your Memoria Inbox."
-        : `Saved ${saved} tabs to your Memoria Inbox.`,
+        : `Saved ${saved} tabs to your Memoria Inbox.`;
+    setMessage(
+      "save-status",
+      duplicates.length === 0
+        ? savedText
+        : `${savedText} ${duplicates.length === 1 ? "1 tab was" : `${duplicates.length} tabs were`} already saved.`,
     );
   } catch (error) {
     renderTabs();
+    renderDuplicates(duplicates);
     setMessage("save-status", saved ? `Saved and closed ${saved} tabs.` : "");
     setMessage(
       "save-error",

@@ -40,6 +40,11 @@ import {
   UPLOAD_NOTE_TIMEOUT_MS,
   createUploadNoteHandler,
 } from "../src/lib/uploads/upload-note";
+import {
+  LINK_ENRICH_JOB,
+  LINK_ENRICH_TIMEOUT_MS,
+  createLinkEnrichmentHandler,
+} from "../src/lib/services/link-enrichment";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -66,6 +71,7 @@ await runOutboxWorker({
     "account-export.build": createAccountExportBuildHandler(prisma),
     "account-export.delete": createAccountExportDeleteHandler(prisma),
     [UPLOAD_NOTE_JOB]: createUploadNoteHandler(prisma),
+    [LINK_ENRICH_JOB]: createLinkEnrichmentHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
@@ -73,6 +79,7 @@ await runOutboxWorker({
   handlerTimeoutMsByType: {
     "account-export.build": accountExportTimeoutMs(),
     [UPLOAD_NOTE_JOB]: UPLOAD_NOTE_TIMEOUT_MS,
+    [LINK_ENRICH_JOB]: LINK_ENRICH_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

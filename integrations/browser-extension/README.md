@@ -8,6 +8,8 @@ in the current window to your Memoria Inbox and then closes them.
 - The optional "How should these be sorted?" note is stored with the batch.
 - Tabs close only after Memoria confirms the save. A retry reuses the same
   idempotency key, so a batch is never saved twice.
+- A tab whose link is already in your boards is not saved again; the popup
+  lists it with a button that opens the existing copy.
 
 ## Install
 

@@ -34,6 +34,10 @@ export function transcriptionModelFor(provider: ModelProvider): string {
     : "whisper-1";
 }
 
+interface EmbeddingResponse {
+  data?: Array<{ index?: number; embedding?: unknown }>;
+}
+
 function authHeaders(config: AiProviderConfig): Record<string, string> {
   const headers: Record<string, string> = {
     authorization: `Bearer ${config.apiKey}`,
@@ -67,7 +71,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
     chat: true,
     speechToText: true,
     readImage: true,
-    embeddings: false,
+    embeddings: true,
   },
   async generateText(config, request) {
     const isOpenAi = config.provider === ModelProvider.OPENAI;
@@ -85,12 +89,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       body.temperature = request.temperature;
     }
 
-    const headers: Record<string, string> = {
-      authorization: `Bearer ${config.apiKey}`,
-    };
-    if (config.provider === ModelProvider.OPENROUTER) {
-      headers["x-title"] = "Memoria";
-    }
+    const headers = authHeaders(config);
 
     const payload = (await postJson(
       "openai-compatible",
@@ -164,5 +163,33 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       request.signal,
     )) as ChatCompletionResponse;
     return messageContent(payload);
+  },
+  async embed(config, request) {
+    const payload = (await postJson(
+      "openai-compatible",
+      joinUrl(config.baseUrl, "embeddings"),
+      authHeaders(config),
+      { model: request.model, input: request.input },
+      request.signal,
+    )) as EmbeddingResponse;
+    const rows = Array.isArray(payload?.data) ? [...payload.data] : [];
+    rows.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const vectors = rows.map((row) => row.embedding);
+    if (
+      vectors.length !== request.input.length ||
+      !vectors.every(
+        (vector): vector is number[] =>
+          Array.isArray(vector) &&
+          vector.length > 0 &&
+          vector.every((value) => typeof value === "number"),
+      )
+    ) {
+      throw new AiUpstreamError(
+        "openai-compatible",
+        200,
+        "Response had no usable embeddings",
+      );
+    }
+    return vectors;
   },
 };
