@@ -1227,6 +1227,70 @@ async function applyRevertOperation(
   }
 
   if (
+    changeRecord.targetType === "Canvas" &&
+    changeRecord.operation === "CREATE"
+  ) {
+    // A board an agent made (boards_create). Undo removes it only while it
+    // holds nothing, so the user's later additions are never lost.
+    const existing = await tx.canvas.findUnique({
+      where: { id: changeRecord.targetId },
+      select: { id: true, name: true, userId: true, createdAt: true },
+    });
+    if (existing) {
+      const [liveItems, liveUploads] = await Promise.all([
+        tx.canvasItem.count({
+          where: { canvasId: existing.id, deletedAt: null },
+        }),
+        tx.uploadAsset.count({
+          where: { canvasId: existing.id, status: { not: "DELETED" } },
+        }),
+      ]);
+      if (liveItems > 0 || liveUploads > 0) {
+        throw new BadRequestError(
+          "This board has items on it now. Undo those first, or delete the board in Memoria.",
+        );
+      }
+      await tx.canvas.delete({ where: { id: existing.id } });
+      await tx.changeRecord.create({
+        data: {
+          changeSetId: rollbackChangeSetId,
+          targetType: "Canvas",
+          targetId: changeRecord.targetId,
+          operation: "ROLLBACK_CREATE",
+          before: toJsonValue(existing),
+          after: Prisma.JsonNull,
+          reversible: false,
+        },
+      });
+    }
+
+    const grantedAgentProfileId =
+      changeRecord.after &&
+      typeof changeRecord.after === "object" &&
+      !Array.isArray(changeRecord.after) &&
+      typeof changeRecord.after.grantedAgentProfileId === "string"
+        ? changeRecord.after.grantedAgentProfileId
+        : null;
+    if (grantedAgentProfileId) {
+      const profile = await tx.agentProfile.findFirst({
+        where: { id: grantedAgentProfileId, userId },
+        select: { allowedCanvasIds: true },
+      });
+      if (profile?.allowedCanvasIds.includes(changeRecord.targetId)) {
+        await tx.agentProfile.update({
+          where: { id: grantedAgentProfileId },
+          data: {
+            allowedCanvasIds: profile.allowedCanvasIds.filter(
+              (canvasId) => canvasId !== changeRecord.targetId,
+            ),
+          },
+        });
+      }
+    }
+    return;
+  }
+
+  if (
     changeRecord.operation === "UPDATE" &&
     changeRecord.before &&
     changeRecord.targetType === "CanvasItem"
