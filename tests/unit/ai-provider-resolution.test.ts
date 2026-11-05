@@ -159,7 +159,7 @@ describe("AI provider lookup order", () => {
       capabilities: {
         chat: true,
         speechToText: false,
-        readImage: false,
+        readImage: true,
         embeddings: false,
       },
     });

@@ -72,6 +72,103 @@ export async function generateText(options: GenerateOptions): Promise<string> {
   }
 }
 
+/** Thrown when the resolved provider cannot do what a feature asked for. */
+export class AiCapabilityError extends ServiceUnavailableError {
+  constructor(capability: "speechToText" | "readImage") {
+    super(
+      capability === "speechToText"
+        ? "The saved AI provider cannot transcribe audio."
+        : "The saved AI provider cannot read images.",
+    );
+  }
+}
+
+async function providerFailure(
+  resolved: ResolvedAiProvider,
+  error: unknown,
+): Promise<never> {
+  if (error instanceof ServiceUnavailableError) throw error;
+  const upstream = error instanceof AiUpstreamError ? error : null;
+  logger.warn(
+    {
+      provider: resolved.provider,
+      source: resolved.source,
+      adapter: resolved.adapter.id,
+      errorName: (error as Error)?.name,
+      status: upstream?.status,
+      providerRequestId: upstream?.providerRequestId,
+    },
+    "AI provider request failed",
+  );
+  if (upstream?.authFailed && resolved.credentialId) {
+    await markAiCredentialRejected(resolved.credentialId);
+    throw new AiProviderError(
+      "The AI provider rejected the saved key. Update it in Settings.",
+    );
+  }
+  throw new AiProviderError();
+}
+
+export interface TranscribeOptions {
+  userId: string;
+  audio: Uint8Array;
+  mimeType: string;
+  filename: string;
+  signal?: AbortSignal;
+}
+
+/** Speech-to-text on the user's provider. Budgets are the caller's. */
+export async function transcribeAudio(
+  options: TranscribeOptions,
+): Promise<string> {
+  const resolved = await resolveAiProvider(options.userId);
+  if (!resolved.capabilities.speechToText || !resolved.adapter.transcribeAudio)
+    throw new AiCapabilityError("speechToText");
+  await assertUsableBaseUrl(resolved);
+  try {
+    return await resolved.adapter.transcribeAudio(resolved, {
+      audio: options.audio,
+      mimeType: options.mimeType,
+      filename: options.filename,
+      signal: options.signal,
+    });
+  } catch (error) {
+    return providerFailure(resolved, error);
+  }
+}
+
+export interface ReadImageOptions {
+  userId: string;
+  image: Uint8Array;
+  mimeType: string;
+  prompt: string;
+  system: string;
+  maxTokens: number;
+  signal?: AbortSignal;
+}
+
+/** Image reading (vision) on the user's provider. Budgets are the caller's. */
+export async function readImageText(
+  options: ReadImageOptions,
+): Promise<string> {
+  const resolved = await resolveAiProvider(options.userId);
+  if (!resolved.capabilities.readImage || !resolved.adapter.readImage)
+    throw new AiCapabilityError("readImage");
+  await assertUsableBaseUrl(resolved);
+  try {
+    return await resolved.adapter.readImage(resolved, {
+      image: options.image,
+      mimeType: options.mimeType,
+      prompt: options.prompt,
+      system: options.system,
+      maxTokens: options.maxTokens,
+      signal: options.signal,
+    });
+  } catch (error) {
+    return providerFailure(resolved, error);
+  }
+}
+
 export function buildCanvasSummaryContent(items: any[]): string {
   const content = items
     .slice(0, AI_SUMMARY_ITEM_LIMIT)

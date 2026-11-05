@@ -22,7 +22,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "Anthropic (Claude)",
     supportsByok: true,
     defaultBaseUrl: "https://api.anthropic.com",
-    capabilityFlags: ["chat", "reasoning"],
+    capabilityFlags: ["chat", "reasoning", "vision"],
     suggestedModels: [
       "claude-sonnet-5-5",
       "claude-opus-5-5",
@@ -34,7 +34,13 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "OpenAI",
     supportsByok: true,
     defaultBaseUrl: "https://api.openai.com/v1",
-    capabilityFlags: ["chat", "reasoning", "embeddings"],
+    capabilityFlags: [
+      "chat",
+      "reasoning",
+      "embeddings",
+      "vision",
+      "speech-to-text",
+    ],
     suggestedModels: ["gpt-5.4-mini", "gpt-5.4"],
   },
   {
@@ -42,7 +48,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "Google Gemini",
     supportsByok: true,
     defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    capabilityFlags: ["chat", "reasoning", "embeddings"],
+    capabilityFlags: ["chat", "reasoning", "embeddings", "vision"],
     suggestedModels: ["gemini-2.5-flash", "gemini-2.5-pro"],
   },
   {
@@ -50,7 +56,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "OpenRouter",
     supportsByok: true,
     defaultBaseUrl: "https://openrouter.ai/api/v1",
-    capabilityFlags: ["chat", "routing"],
+    capabilityFlags: ["chat", "routing", "vision"],
     suggestedModels: ["anthropic/claude-sonnet-5.5", "openai/gpt-5.4"],
   },
   {
@@ -58,7 +64,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "OpenAI-Compatible / Local",
     supportsByok: true,
     requiresBaseUrl: true,
-    capabilityFlags: ["chat", "embeddings"],
+    capabilityFlags: ["chat", "embeddings", "vision", "speech-to-text"],
     suggestedModels: ["custom"],
   },
 ];

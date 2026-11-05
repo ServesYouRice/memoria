@@ -1,8 +1,9 @@
 /**
- * Image Upload API
+ * Upload API
  *
- * Handles file uploads for canvas images with security measures:
- * - File type validation (images only)
+ * Handles file uploads for canvas images and voice notes with security
+ * measures:
+ * - File type validation from magic bytes (images; audio only for voice notes)
  * - File size limits
  * - Sanitized filenames
  * - Private storage with an authorized read proxy
@@ -28,6 +29,16 @@ import {
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 import { boundRequestBody, payloadTooLarge } from "@/lib/uploads/body-limit";
 import { checkImageBounds } from "@/lib/uploads/image-bounds";
+import {
+  ALLOWED_AUDIO_MIME_TYPES,
+  ALLOWED_IMAGE_MIME_TYPES,
+  declaredTypeMatches,
+  detectUploadType,
+} from "@/lib/uploads/file-types";
+import {
+  assertUploadNoteOffered,
+  requestUploadNote,
+} from "@/lib/uploads/upload-note";
 
 // Maximum file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -37,14 +48,9 @@ const MAX_REQUEST_BODY_BYTES = MAX_FILE_SIZE + MULTIPART_OVERHEAD_ALLOWANCE;
 const MAX_FILES_PER_USER = LAUNCH_LIMITS.uploadsPerUser;
 const MAX_TOTAL_BYTES_PER_USER = LAUNCH_LIMITS.uploadBytesPerUser;
 
-// Allowed image MIME types
-// NOTE: SVG removed due to XSS security risk (SVG can contain embedded scripts)
-const ALLOWED_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-];
+// Voice notes (IMP-071): an audio upload is only accepted together with a
+// request to transcribe it into a note, since the canvas has no audio item.
+const VOICE_NOTE_PURPOSE = "voice-note";
 
 const DEFAULT_SCAN_TIMEOUT_MS = 10000;
 
@@ -80,49 +86,17 @@ function generateUniqueFilename(
   return `${baseName}-${timestamp}-${random}${extension}`;
 }
 
-/**
- * Identify image type from magic bytes
- */
-function detectImageType(
-  buffer: Buffer,
-): { mime: string; extension: string } | null {
-  if (buffer.length < 12) {
-    return null;
-  }
-
-  // JPEG: FF D8 FF
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return { mime: "image/jpeg", extension: ".jpg" };
-  }
-
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47 &&
-    buffer[4] === 0x0d &&
-    buffer[5] === 0x0a &&
-    buffer[6] === 0x1a &&
-    buffer[7] === 0x0a
-  ) {
-    return { mime: "image/png", extension: ".png" };
-  }
-
-  // GIF: GIF87a or GIF89a
-  const header = buffer.subarray(0, 6).toString("ascii");
-  if (header === "GIF87a" || header === "GIF89a") {
-    return { mime: "image/gif", extension: ".gif" };
-  }
-
-  // WEBP: RIFF....WEBP
-  const riff = buffer.subarray(0, 4).toString("ascii");
-  const webp = buffer.subarray(8, 12).toString("ascii");
-  if (riff === "RIFF" && webp === "WEBP") {
-    return { mime: "image/webp", extension: ".webp" };
-  }
-
-  return null;
+function parseNotePosition(formData: FormData) {
+  const x = Number(formData.get("positionX"));
+  const y = Number(formData.get("positionY"));
+  const inRange = (value: number) =>
+    Number.isFinite(value) && Math.abs(value) <= 1_000_000;
+  return formData.has("positionX") &&
+    formData.has("positionY") &&
+    inRange(x) &&
+    inRange(y)
+    ? { positionX: x, positionY: y }
+    : {};
 }
 
 function getStorageMode(): "local" | "s3" {
@@ -328,6 +302,21 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
 
     await requireCanvasAccess(canvasId, userId, email, "EDIT");
 
+    const purpose = formData.get("purpose");
+    if (purpose !== null && purpose !== VOICE_NOTE_PURPOSE) {
+      throw new ApiError(
+        400,
+        "https://memoria.local/errors/upload",
+        "Bad Request",
+        "Unsupported upload purpose",
+      );
+    }
+    const isVoiceNote = purpose === VOICE_NOTE_PURPOSE;
+    const notePosition = isVoiceNote ? parseNotePosition(formData) : {};
+    // Check before storing anything: a recording nobody can transcribe would
+    // only use up the quota.
+    if (isVoiceNote) await assertUploadNoteOffered(userId, "speechToText");
+
     if (file.size > MAX_FILE_SIZE) {
       throw payloadTooLarge(MAX_FILE_SIZE);
     }
@@ -335,22 +324,29 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const detectedType = detectImageType(buffer);
-    if (!detectedType || !ALLOWED_MIME_TYPES.includes(detectedType.mime)) {
+    const detectedType = detectUploadType(buffer);
+    const allowed: readonly string[] = isVoiceNote
+      ? ALLOWED_AUDIO_MIME_TYPES
+      : ALLOWED_IMAGE_MIME_TYPES;
+    if (!detectedType || !allowed.includes(detectedType.mime)) {
       throw new ApiError(
         400,
         "https://memoria.local/errors/upload",
         "Bad Request",
-        "Invalid or unsupported image format",
+        isVoiceNote
+          ? "Invalid or unsupported audio format"
+          : "Invalid or unsupported image format",
       );
     }
 
-    const bounds = checkImageBounds(buffer, detectedType.mime);
-    if (!bounds.ok) {
-      throw new UnprocessableEntityError(bounds.reason);
+    if (detectedType.kind === "image") {
+      const bounds = checkImageBounds(buffer, detectedType.mime);
+      if (!bounds.ok) {
+        throw new UnprocessableEntityError(bounds.reason);
+      }
     }
 
-    if (file.type && file.type !== detectedType.mime) {
+    if (!declaredTypeMatches(file.type, detectedType)) {
       throw new ApiError(
         400,
         "https://memoria.local/errors/upload",
@@ -375,6 +371,17 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
         "Local uploads are development-only. Configure S3-compatible storage in production.",
       );
     }
+
+    const voiceNote = async (assetId: string) =>
+      isVoiceNote
+        ? {
+            note: await requestUploadNote(prisma, {
+              userId,
+              assetId,
+              ...notePosition,
+            }),
+          }
+        : {};
 
     return withUploadLock(userId, async () => {
       const storageKey = `uploads/${safeUserId}/${uniqueFilename}`;
@@ -419,11 +426,13 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
         }
 
         return NextResponse.json({
+          assetId: asset.id,
           url: `/api/v1/uploads/${asset.id}`,
           filename: file.name,
           size: file.size,
           type: detectedType.mime,
           storage: "s3",
+          ...(await voiceNote(asset.id)),
         });
       }
 
@@ -453,11 +462,13 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
       }
 
       return NextResponse.json({
+        assetId: asset.id,
         url: `/api/v1/uploads/${asset.id}`,
         filename: file.name,
         size: file.size,
         type: detectedType.mime,
         storage: "local",
+        ...(await voiceNote(asset.id)),
       });
     });
   });

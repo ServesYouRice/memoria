@@ -686,6 +686,10 @@ model UploadAsset {
   size        Int
   status      UploadAssetStatus @default(PENDING)
   lastError   String?
+  // The text note the upload.note job made from this file (IMP-071). Set in
+  // the same transaction that creates the note, so a repeated job skips. Not a
+  // foreign key: notes are soft-deleted, and re-requesting clears it.
+  noteItemId  String?
   createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])

@@ -4,6 +4,7 @@ import {
   AiUpstreamError,
   anthropicAdapter,
   getAiAdapter,
+  getAiCapabilities,
   openAiCompatibleAdapter,
 } from "@/lib/ai/providers";
 import { ANTHROPIC_API_VERSION } from "@/lib/ai/providers/anthropic";
@@ -61,15 +62,38 @@ describe("getAiAdapter", () => {
     }
   });
 
-  it("declares optional capabilities without claiming them yet", () => {
-    for (const adapter of [anthropicAdapter, openAiCompatibleAdapter]) {
-      expect(adapter.capabilities).toEqual({
-        chat: true,
-        speechToText: false,
-        readImage: false,
-        embeddings: false,
-      });
-    }
+  it("flags speech-to-text and image reading per provider", () => {
+    const flags = (provider: ModelProvider) => {
+      const { speechToText, readImage } = getAiCapabilities(provider);
+      return { speechToText, readImage };
+    };
+    expect(flags(ModelProvider.ANTHROPIC)).toEqual({
+      speechToText: false,
+      readImage: true,
+    });
+    expect(flags(ModelProvider.OPENAI)).toEqual({
+      speechToText: true,
+      readImage: true,
+    });
+    expect(flags(ModelProvider.OPENAI_COMPAT)).toEqual({
+      speechToText: true,
+      readImage: true,
+    });
+    // No /audio/transcriptions on their OpenAI-compatible APIs.
+    expect(flags(ModelProvider.GEMINI)).toEqual({
+      speechToText: false,
+      readImage: true,
+    });
+    expect(flags(ModelProvider.OPENROUTER)).toEqual({
+      speechToText: false,
+      readImage: true,
+    });
+    expect(getAiCapabilities(ModelProvider.OPENAI).embeddings).toBe(false);
+    // A flag is only set where the adapter has the method behind it.
+    expect(anthropicAdapter.transcribeAudio).toBeUndefined();
+    expect(typeof anthropicAdapter.readImage).toBe("function");
+    expect(typeof openAiCompatibleAdapter.transcribeAudio).toBe("function");
+    expect(typeof openAiCompatibleAdapter.readImage).toBe("function");
   });
 });
 
@@ -246,5 +270,150 @@ describe("anthropicAdapter", () => {
     await expect(
       anthropicAdapter.generateText(config, request),
     ).rejects.toMatchObject({ status: 529, authFailed: false });
+  });
+});
+
+const image = {
+  image: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+  mimeType: "image/png",
+  prompt: "Read this",
+  system: "You read",
+  maxTokens: 900,
+};
+
+describe("speech-to-text and image reading", () => {
+  const openAiConfig = {
+    provider: ModelProvider.OPENAI,
+    model: "gpt-4o-mini",
+    apiKey: "sk-user",
+    baseUrl: "https://api.openai.com/v1",
+  };
+
+  afterEach(() => {
+    delete process.env.AI_TRANSCRIPTION_MODEL;
+  });
+
+  it("transcribes through multipart /audio/transcriptions with a speech model", async () => {
+    const fetchMock = mockFetch(jsonResponse({ text: "buy milk" }));
+    const text = await openAiCompatibleAdapter.transcribeAudio!(openAiConfig, {
+      audio: new Uint8Array([0x1a, 0x45, 0xdf, 0xa3]),
+      mimeType: "audio/webm",
+      filename: "voice-note.webm",
+    });
+    expect(text).toBe("buy milk");
+    const [url, init] = fetchMock.mock.calls.at(-1) as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://api.openai.com/v1/audio/transcriptions");
+    expect((init.headers as Record<string, string>).authorization).toBe(
+      "Bearer sk-user",
+    );
+    // fetch sets the multipart boundary itself.
+    expect(
+      (init.headers as Record<string, string>)["content-type"],
+    ).toBeUndefined();
+    const form = init.body as FormData;
+    expect(form.get("model")).toBe("gpt-4o-mini-transcribe");
+    const file = form.get("file") as File;
+    expect(file.name).toBe("voice-note.webm");
+    expect(file.type).toBe("audio/webm");
+    expect(file.size).toBe(4);
+  });
+
+  it("uses whisper-1 for local servers unless AI_TRANSCRIPTION_MODEL is set", async () => {
+    const fetchMock = mockFetch(jsonResponse({ text: "x" }));
+    const local = {
+      ...openAiConfig,
+      provider: ModelProvider.OPENAI_COMPAT,
+      baseUrl: "http://whisper.local/v1/",
+    };
+    const audio = {
+      audio: new Uint8Array([1, 2]),
+      mimeType: "audio/ogg",
+      filename: "a.ogg",
+    };
+    await openAiCompatibleAdapter.transcribeAudio!(local, audio);
+    let [url, init] = fetchMock.mock.calls.at(-1) as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("http://whisper.local/v1/audio/transcriptions");
+    expect((init.body as FormData).get("model")).toBe("whisper-1");
+
+    process.env.AI_TRANSCRIPTION_MODEL = "large-v3";
+    mockFetch(jsonResponse({ text: "x" }));
+    await openAiCompatibleAdapter.transcribeAudio!(local, audio);
+    [url, init] = vi.mocked(fetch).mock.calls.at(-1) as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect((init.body as FormData).get("model")).toBe("large-v3");
+  });
+
+  it("rejects a transcription response without text", async () => {
+    mockFetch(jsonResponse({ segments: [] }));
+    await expect(
+      openAiCompatibleAdapter.transcribeAudio!(openAiConfig, {
+        audio: new Uint8Array([1]),
+        mimeType: "audio/mpeg",
+        filename: "a.mp3",
+      }),
+    ).rejects.toBeInstanceOf(AiUpstreamError);
+  });
+
+  it("reads an image as an image_url data URL in the chat messages", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse({ choices: [{ message: { content: "Receipt\n\n- tea" } }] }),
+    );
+    await expect(
+      openAiCompatibleAdapter.readImage!(openAiConfig, image),
+    ).resolves.toBe("Receipt\n\n- tea");
+    const call = lastCall(fetchMock);
+    expect(call.url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(call.body.max_completion_tokens).toBe(900);
+    expect(call.body.messages[0]).toEqual({
+      role: "system",
+      content: "You read",
+    });
+    expect(call.body.messages[1].content).toEqual([
+      { type: "text", text: "Read this" },
+      {
+        type: "image_url",
+        image_url: { url: "data:image/png;base64,iVBORw==" },
+      },
+    ]);
+  });
+
+  it("reads an image with an Anthropic base64 image content block", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse({
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "Whiteboard\n\nPlan" }],
+      }),
+    );
+    const text = await anthropicAdapter.readImage!(
+      {
+        provider: ModelProvider.ANTHROPIC,
+        model: "claude-haiku-5-5",
+        apiKey: "sk-ant",
+        baseUrl: "https://api.anthropic.com",
+      },
+      image,
+    );
+    expect(text).toBe("Whiteboard\n\nPlan");
+    const call = lastCall(fetchMock);
+    expect(call.url).toBe("https://api.anthropic.com/v1/messages");
+    expect(call.headers["x-api-key"]).toBe("sk-ant");
+    expect(call.body.system).toBe("You read");
+    expect(call.body.max_tokens).toBe(900);
+    expect(call.body.output_config).toEqual({ effort: "low" });
+    expect(call.body.messages[0].content).toEqual([
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: "iVBORw==" },
+      },
+      { type: "text", text: "Read this" },
+    ]);
   });
 });

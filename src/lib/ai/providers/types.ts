@@ -1,10 +1,10 @@
 import type { ModelProvider } from "@/generated/prisma/client";
 
 /**
- * Optional capabilities an adapter can advertise. Only `chat` is implemented
- * today; later cards (transcription, image reading, embeddings) add the
- * matching optional methods to `AiProviderAdapter` and flip the flag on the
- * adapters that support it. Callers check the flag, never the provider.
+ * Optional capabilities an adapter can advertise. Each optional capability
+ * has a matching optional method on `AiProviderAdapter`; `getAiCapabilities`
+ * narrows the adapter's flags per provider. Callers check the flag, never the
+ * provider.
  */
 export interface AiCapabilities {
   chat: true;
@@ -29,6 +29,24 @@ export interface AiTextRequest {
   signal?: AbortSignal;
 }
 
+/** Speech-to-text for one stored audio file. */
+export interface AiTranscriptionRequest {
+  audio: Uint8Array;
+  mimeType: string;
+  filename: string;
+  signal?: AbortSignal;
+}
+
+/** Read one image (text, receipt, whiteboard) with a text instruction. */
+export interface AiImageRequest {
+  image: Uint8Array;
+  mimeType: string;
+  prompt: string;
+  system: string;
+  maxTokens: number;
+  signal?: AbortSignal;
+}
+
 export type AiAdapterId = "openai-compatible" | "anthropic";
 
 export interface AiProviderAdapter {
@@ -37,6 +55,16 @@ export interface AiProviderAdapter {
   generateText(
     config: AiProviderConfig,
     request: AiTextRequest,
+  ): Promise<string>;
+  /** Present when `capabilities.speechToText` can be true. */
+  transcribeAudio?(
+    config: AiProviderConfig,
+    request: AiTranscriptionRequest,
+  ): Promise<string>;
+  /** Present when `capabilities.readImage` can be true. */
+  readImage?(
+    config: AiProviderConfig,
+    request: AiImageRequest,
   ): Promise<string>;
 }
 
@@ -74,13 +102,41 @@ export async function postJson(
   body: unknown,
   signal?: AbortSignal,
 ): Promise<unknown> {
+  return postBody(
+    adapter,
+    url,
+    { "content-type": "application/json", ...headers },
+    JSON.stringify(body),
+    signal,
+  );
+}
+
+/** Multipart POST (file uploads such as `/audio/transcriptions`). */
+export async function postForm(
+  adapter: AiAdapterId,
+  url: string,
+  headers: Record<string, string>,
+  body: FormData,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  // fetch sets the multipart content-type with its boundary.
+  return postBody(adapter, url, headers, body, signal);
+}
+
+async function postBody(
+  adapter: AiAdapterId,
+  url: string,
+  headers: Record<string, string>,
+  body: string | FormData,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const timeout = AbortSignal.timeout(AI_PROVIDER_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json", ...headers },
-      body: JSON.stringify(body),
+      headers,
+      body,
       // A saved base URL is validated before use; never follow it elsewhere.
       redirect: "error",
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
@@ -115,4 +171,10 @@ export async function postJson(
       requestId,
     );
   }
+}
+
+export function toBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+    "base64",
+  );
 }

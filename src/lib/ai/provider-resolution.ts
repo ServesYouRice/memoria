@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils/ssrf-protection";
 import {
   getAiAdapter,
+  getAiCapabilities,
   type AiCapabilities,
   type AiProviderAdapter,
   type AiProviderConfig,
@@ -109,7 +110,7 @@ function resolvedFrom(
     baseUrl,
     credentialId,
     adapter,
-    capabilities: adapter.capabilities,
+    capabilities: getAiCapabilities(provider),
   };
 }
 
