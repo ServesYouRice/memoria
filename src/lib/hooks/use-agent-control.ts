@@ -21,6 +21,18 @@ export interface OrganizeCanvasResponse {
   suggestionId: string | null;
   summary?: string;
   piles: Array<{ title: string; itemCount: number }>;
+  /** "ai" when the owner's AI chose the piles, "words" for word matching. */
+  method?: "ai" | "words";
+  /** Why the AI sort was not used, when it was asked for. */
+  notice?: string | null;
+  /** The instruction the sort followed (the latest batch note by default). */
+  instruction?: string | null;
+}
+
+export interface OrganizeCanvasInput {
+  canvasId: string;
+  /** Omit to use the latest batch note; an empty string means none. */
+  instruction?: string;
 }
 
 export interface AgentProfileSummary {
@@ -294,11 +306,11 @@ const api = {
     );
   },
 
-  async organizeCanvas(canvasId: string) {
+  async organizeCanvas({ canvasId, instruction }: OrganizeCanvasInput) {
     const response = await apiFetch(`/api/v1/canvases/${canvasId}/organize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(instruction === undefined ? {} : { instruction }),
     });
 
     return parseJson<OrganizeCanvasResponse>(
