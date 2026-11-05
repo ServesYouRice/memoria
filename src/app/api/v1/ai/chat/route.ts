@@ -20,6 +20,7 @@ export const POST = withAuthValidation(
           prompt: message,
           system: systemPrompt,
           maxTokens: 500,
+          userId: session.user.id,
         }),
     );
 

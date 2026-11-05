@@ -330,6 +330,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
         system: "You are a physics expert",
         temperature: 0.8,
         maxTokens: 500,
+        userId: sessionUser.id,
       });
     });
 
@@ -354,6 +355,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
         prompt: "How can I organize my board?",
         system: expect.stringContaining("Canvas with 5 physics notes"),
         maxTokens: 500,
+        userId: sessionUser.id,
       });
     });
 
@@ -378,6 +380,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
       });
       expect(aiServiceMocks.generateTags).toHaveBeenCalledWith(
         "General relativity describes the geometry of spacetime.",
+        sessionUser.id,
       );
     });
   });
@@ -467,7 +470,10 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
             },
           },
         });
-        expect(aiServiceMocks.summarizeCanvas).toHaveBeenCalledWith(mockItems);
+        expect(aiServiceMocks.summarizeCanvas).toHaveBeenCalledWith(
+          mockItems,
+          sessionUser.id,
+        );
       });
     });
 

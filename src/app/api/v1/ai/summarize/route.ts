@@ -42,7 +42,7 @@ export const POST = withAuthValidation(
     const budgeted = await runBudgetedAi(
       session.user.id,
       { prompt, maxOutputTokens: 500 },
-      () => summarizeCanvas(canvas.items),
+      () => summarizeCanvas(canvas.items, session.user.id),
     );
 
     return NextResponse.json({
