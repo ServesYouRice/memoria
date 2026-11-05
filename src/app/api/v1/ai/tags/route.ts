@@ -10,7 +10,7 @@ export const POST = withAuthValidation(
     const budgeted = await runBudgetedAi(
       session.user.id,
       { prompt: content, maxOutputTokens: 80 },
-      () => generateTags(content),
+      () => generateTags(content, session.user.id),
     );
     return NextResponse.json({ tags: budgeted.value, usage: budgeted.usage });
   },
