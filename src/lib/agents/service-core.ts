@@ -1291,6 +1291,78 @@ async function applyRevertOperation(
   }
 
   if (
+    changeRecord.targetType === "CanvasItem" &&
+    changeRecord.operation === "MOVE" &&
+    changeRecord.before
+  ) {
+    // An approved Ask command moved this item to another board (IMP-068).
+    // Undo returns it to the board and spot it came from.
+    const snapshot = changeRecord.before as unknown as PrismaCanvasItem;
+    const existing = await tx.canvasItem.findFirst({
+      where: {
+        id: changeRecord.targetId,
+        canvas: { userId },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundError(
+        `Canvas item ${changeRecord.targetId} no longer exists.`,
+      );
+    }
+    const source = await tx.canvas.findFirst({
+      where: { id: snapshot.canvasId, userId },
+      select: { id: true },
+    });
+    if (!source) {
+      throw new BadRequestError(
+        "The board this item came from is gone, so it cannot go back.",
+      );
+    }
+    for (const canvasId of [existing.canvasId, snapshot.canvasId].sort()) {
+      await lockCanvasForMutation(tx, canvasId);
+    }
+    const reverted = await tx.canvasItem.update({
+      where: { id: changeRecord.targetId },
+      data: {
+        canvasId: snapshot.canvasId,
+        positionX: snapshot.positionX,
+        positionY: snapshot.positionY,
+        version: { increment: 1 },
+        updatedById: userId,
+      },
+    });
+    if (existing.canvasId !== snapshot.canvasId) {
+      await recordCanvasItemEvent(tx, {
+        canvasId: existing.canvasId,
+        actorId: userId,
+        itemId: reverted.id,
+        version: reverted.version,
+        operation: "deleted",
+      });
+    }
+    await recordCanvasItemEvent(tx, {
+      canvasId: snapshot.canvasId,
+      actorId: userId,
+      itemId: reverted.id,
+      version: reverted.version,
+      operation:
+        existing.canvasId !== snapshot.canvasId ? "created" : "updated",
+    });
+    await tx.changeRecord.create({
+      data: {
+        changeSetId: rollbackChangeSetId,
+        targetType: "CanvasItem",
+        targetId: changeRecord.targetId,
+        operation: "ROLLBACK_MOVE",
+        before: toJsonValue(existing),
+        after: toJsonValue(reverted),
+        reversible: false,
+      },
+    });
+    return;
+  }
+
+  if (
     changeRecord.operation === "UPDATE" &&
     changeRecord.before &&
     changeRecord.targetType === "CanvasItem"

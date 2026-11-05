@@ -45,6 +45,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { gradients } from "@/lib/theme";
 import { useUnreadNotifications } from "@/lib/hooks/use-notifications";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
+import { AskLauncher } from "@/features/command-palette/AskPalette";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
@@ -182,6 +183,7 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
           </Box>
 
           <Box sx={{ flexGrow: { xs: 1, md: 0 } }} />
+          {user && <AskLauncher />}
 
           {/* Actions */}
           <Tooltip title="Search">
