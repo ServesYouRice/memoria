@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import path from "path";
 import { describe, expect, it } from "vitest";
 import {
   SUPPORTED_MCP_PROTOCOL_VERSIONS,
@@ -42,6 +44,9 @@ describe("Agent MCP surface", () => {
         "items_get",
         "inbox_save",
         "inbox_sort",
+        "items_annotate",
+        "boards_list",
+        "boards_create",
         "piles_propose",
         "piles_apply",
         "knowledge_list",
@@ -85,6 +90,58 @@ describe("Agent MCP surface", () => {
     expect(
       tools.get("actions_propose_external")?.annotations.openWorldHint,
     ).toBe(true);
+  });
+
+  it("describes the IMP-067 board and annotation tools", () => {
+    const tools = new Map(listMcpTools().map((tool) => [tool.name, tool]));
+
+    expect(tools.get("items_annotate")?.inputSchema).toMatchObject({
+      required: ["itemId", "text"],
+      properties: { kind: { enum: ["summary", "note"] } },
+    });
+    expect(tools.get("items_annotate")?.annotations.destructiveHint).toBe(
+      false,
+    );
+    expect(tools.get("boards_create")?.inputSchema).toMatchObject({
+      required: ["name"],
+    });
+    expect(tools.get("boards_list")?.annotations.readOnlyHint).toBe(true);
+    expect(tools.get("inbox_save")?.inputSchema).toMatchObject({
+      properties: { canvasId: { type: "string" } },
+    });
+    expect(toInternalToolName("items_annotate")).toBe("items.annotate");
+    expect(toInternalToolName("boards_create")).toBe("boards.create");
+  });
+
+  it("names only real server tools in the Memoria skill", () => {
+    const skill = readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../integrations/skills/memoria/SKILL.md",
+      ),
+      "utf8",
+    );
+    const serverTools = new Set(listMcpTools().map((tool) => tool.name));
+    const referenced = new Set(
+      [...skill.matchAll(/`([a-z]+_[a-z_]+)`/g)].map((match) =>
+        // Client-prefixed spellings (OpenClaw, Hermes) name the same tools.
+        match[1].replace(/^(memoria__|mcp_memoria_)/, ""),
+      ),
+    );
+
+    expect(skill).toMatch(/^version: 1\.1\.0$/m);
+    expect(referenced.size).toBeGreaterThan(5);
+    for (const name of referenced) {
+      expect(serverTools, name).toContain(name);
+    }
+    for (const name of [
+      "items_annotate",
+      "boards_create",
+      "boards_list",
+      "inbox_save",
+    ]) {
+      expect(referenced).toContain(name);
+    }
   });
 
   it("maps wire names back to the internal dotted taxonomy", () => {

@@ -65,6 +65,8 @@ export const inboxSaveSchema = z
     title: z.string().trim().max(500).optional(),
     description: z.string().trim().max(2000).optional(),
     tags: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
+    /** Save onto this board instead of the Inbox; it must be in scope. */
+    canvasId: z.string().trim().min(1).max(64).optional(),
   })
   .refine((value) => Boolean(value.url || value.text), {
     message: "Send a url to save a link, or text to save a note.",
@@ -78,21 +80,28 @@ export async function saveToInbox(input: {
   const data = inboxSaveSchema.parse(input.data);
   assertAgentCapability(input.agentProfile, AGENT_CAPABILITY_RUNGS.INGEST);
 
-  const inbox = await prisma.canvas.findFirst({
-    where: {
-      userId: input.actor.userId,
-      name: INBOX_CANVAS_NAME,
-      ...(input.agentProfile.allowedCanvasIds.length > 0
-        ? { id: { in: input.agentProfile.allowedCanvasIds } }
-        : {}),
-    },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
-  });
+  const inbox = data.canvasId
+    ? await prisma.canvas.findFirst({
+        where: { id: data.canvasId, userId: input.actor.userId },
+        select: { id: true, name: true },
+      })
+    : await prisma.canvas.findFirst({
+        where: {
+          userId: input.actor.userId,
+          name: INBOX_CANVAS_NAME,
+          ...(input.agentProfile.allowedCanvasIds.length > 0
+            ? { id: { in: input.agentProfile.allowedCanvasIds } }
+            : {}),
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true },
+      });
 
   if (!inbox) {
     throw new NotFoundError(
-      "No Inbox board is shared with this app. Allow it the Inbox board in Memoria.",
+      data.canvasId
+        ? "Canvas not found."
+        : "No Inbox board is shared with this app. Allow it the Inbox board in Memoria.",
     );
   }
   assertCanvasScope(input.agentProfile, inbox.id);
@@ -131,7 +140,7 @@ export async function saveToInbox(input: {
       content,
       tags: data.tags,
     },
-    summary: isLink ? `Save link to Inbox` : `Save note to Inbox`,
+    summary: `Save ${isLink ? "link" : "note"} to ${inbox.name}`,
     rung: AGENT_CAPABILITY_RUNGS.INGEST,
     actionKind: AgentActionKind.INGEST,
   });
