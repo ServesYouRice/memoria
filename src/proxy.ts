@@ -32,6 +32,16 @@ export function isUploadWriteRequest(
   return method === "POST" && pathname === "/api/v1/upload";
 }
 
+export function isShareTargetSaveRequest(
+  pathname: string,
+  method: string,
+): boolean {
+  return (
+    pathname === "/share-target/save" &&
+    (method === "POST" || method === "PATCH")
+  );
+}
+
 export async function proxy(request: NextRequest) {
   // Generate or extract request ID for tracing (Issue #24)
   const suppliedRequestId = request.headers.get("x-request-id");
@@ -145,10 +155,12 @@ export async function proxy(request: NextRequest) {
     if (rateLimitResponse) return rateLimitResponse;
   }
 
-  // Apply rate limiting for item operations
+  // Apply rate limiting for item operations. The share-target save (IMP-062)
+  // writes Inbox items outside /api/v1, so it shares the item budget.
   if (
     request.nextUrl.pathname.startsWith("/api/v1/canvas-items") ||
-    request.nextUrl.pathname.startsWith("/api/v1/items")
+    request.nextUrl.pathname.startsWith("/api/v1/items") ||
+    isShareTargetSaveRequest(pathname, request.method)
   ) {
     specificRateLimitApplied = true;
     const rateLimitResponse =
