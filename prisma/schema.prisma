@@ -60,6 +60,7 @@ model User {
   notificationActions Notification[] @relation("NotificationActor")
   notificationPreferences NotificationPreference[]
   accountExports AccountExport[]
+  clipBatches   ClipBatch[]
 }
 
 enum AccountExportStatus {
@@ -134,6 +135,7 @@ model Canvas {
   versions    CanvasVersion[]
   document    CanvasDocument?
   embeds      CanvasEmbed[]
+  clipBatches ClipBatch[]
 
   zoomLevel   Float       @default(1.0)
   panX        Float       @default(0)
@@ -265,6 +267,7 @@ model CanvasItem {
   connectionsTo   ItemConnection[] @relation("ConnectionTo")
   entityLinks   ItemEntityLink[]
   embeddings    ItemEmbedding[]
+  clipBatchItems ClipBatchItem[]
 }
 
 model CanvasThumbnailCandidate {
@@ -1162,4 +1165,41 @@ model OAuthToken {
 
   @@index([userId, revokedAt])
   @@index([agentProfileId])
+}
+
+enum ClipBatchSource {
+  EXTENSION
+  SHARE_TARGET
+}
+
+/// One "save these links" request from the browser extension (IMP-061) or the
+/// phone share target (IMP-062). The idempotency key makes a retried batch a
+/// replay instead of a second set of items; the optional sorting note is read
+/// by the Inbox sorter (IMP-063).
+model ClipBatch {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId       String
+  canvas         Canvas          @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  source         ClipBatchSource
+  idempotencyKey String
+  requestHash    String
+  note           String?
+  createdAt      DateTime        @default(now())
+  items          ClipBatchItem[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([canvasId, createdAt])
+}
+
+model ClipBatchItem {
+  batchId  String
+  batch    ClipBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  position Int
+
+  @@id([batchId, itemId])
+  @@index([itemId])
 }
