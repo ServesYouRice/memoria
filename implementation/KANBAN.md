@@ -27,6 +27,7 @@ RTO 16s).
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-059](tasks/IMP-059.md) | Firefox and WebKit pass `pnpm gate e2e` | |
+| [IMP-072](tasks/IMP-072.md) | Moving an item to another board leaves no broken lines | |
 
 ## WAITING
 
