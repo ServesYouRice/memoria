@@ -27,7 +27,6 @@ RTO 16s).
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-059](tasks/IMP-059.md) | Firefox and WebKit pass `pnpm gate e2e` | |
-| [IMP-062](tasks/IMP-062.md) | Phone: "Share → Memoria" (Android share target, iPhone Shortcut) | IMP-061 |
 | [IMP-064](tasks/IMP-064.md) | Saved links name, tag and explain themselves | IMP-060 |
 | [IMP-065](tasks/IMP-065.md) | "You saved this already" duplicate warning | IMP-061 |
 | [IMP-066](tasks/IMP-066.md) | New items file themselves into the right board (one tap, undo) | IMP-064 |
