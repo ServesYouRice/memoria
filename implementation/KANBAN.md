@@ -30,7 +30,6 @@ RTO 16s).
 | [IMP-064](tasks/IMP-064.md) | Saved links name, tag and explain themselves | IMP-060 |
 | [IMP-065](tasks/IMP-065.md) | "You saved this already" duplicate warning | IMP-061 |
 | [IMP-066](tasks/IMP-066.md) | New items file themselves into the right board (one tap, undo) | IMP-064 |
-| [IMP-068](tasks/IMP-068.md) | Ask your boards, and tell them what to do | IMP-060 |
 | [IMP-070](tasks/IMP-070.md) | Weekly recap and tidy-up of old links | IMP-064 |
 | [IMP-071](tasks/IMP-071.md) | Voice and photos become tidy notes | IMP-060 |
 

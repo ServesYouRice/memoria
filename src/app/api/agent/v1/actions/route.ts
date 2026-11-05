@@ -35,6 +35,11 @@ import {
   pilesSuggestionPayloadSchema,
 } from "@/lib/agents/piles";
 import {
+  ASK_COMMAND_SUGGESTION_KIND,
+  askCommandSuggestionPayloadSchema,
+  executeAskCommandSuggestion,
+} from "@/lib/ai/ask-commands";
+import {
   listScopedActionTimeline,
   requireScopedKnowledgeEntity,
 } from "@/lib/agents/query-core";
@@ -576,6 +581,36 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       await verifyCanvasOwnership(context.userId, parsed.canvasId);
 
       const result = await executePilesSuggestion({
+        actor,
+        agentProfile,
+        payload: parsed,
+        summary: suggestion.summary,
+      });
+
+      await markSuggestionExecuted({
+        userId: context.userId,
+        suggestionId: suggestion.id,
+      });
+
+      return NextResponse.json(
+        {
+          suggestionId: suggestion.id,
+          executed: result,
+        },
+        { status: 200 },
+      );
+    }
+
+    if (payloadKind === ASK_COMMAND_SUGGESTION_KIND) {
+      // Filed by Ask (IMP-068); only its own assistant profile may run it.
+      const parsed = askCommandSuggestionPayloadSchema.parse(payload);
+      if (suggestion.agentProfileId !== agentProfile.id) {
+        throw new ForbiddenError(
+          "This suggestion belongs to another agent profile.",
+        );
+      }
+
+      const result = await executeAskCommandSuggestion({
         actor,
         agentProfile,
         payload: parsed,
