@@ -11,6 +11,8 @@
  * the canvas can open its device copy from IndexedDB.
  */
 
+// Keep in step with PUBLIC_ASSET_CACHE in offline-store.ts, which also stores
+// a remembered canvas shell's assets here.
 const CACHE_NAME = "memoria-public-v2";
 // Keep in step with CANVAS_SHELL_CACHE in offline-store.ts.
 const CANVAS_SHELL_CACHE = "memoria-canvas-shells-v1";

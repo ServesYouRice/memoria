@@ -9,6 +9,7 @@ import {
   claimOfflineCache,
   clearOfflineCache,
   openCanvasDocumentCache,
+  PUBLIC_ASSET_CACHE,
   pruneOfflineCache,
   readOfflineCacheOwner,
   rememberCanvasShell,
@@ -19,18 +20,22 @@ const bytes = (...values: number[]) => new Uint8Array(values);
 
 const deletedCaches: string[] = [];
 const putShells: Array<[string, Response]> = [];
+const putAssets: string[] = [];
 
 beforeEach(async () => {
   deletedCaches.length = 0;
   putShells.length = 0;
+  putAssets.length = 0;
   vi.stubGlobal("caches", {
     delete: async (name: string) => {
       deletedCaches.push(name);
       return true;
     },
-    open: async () => ({
+    open: async (name: string) => ({
+      match: async (key: string) => key === "/_next/static/chunks/cached.js",
       put: async (key: string, response: Response) => {
-        putShells.push([key, response]);
+        if (name === CANVAS_SHELL_CACHE) putShells.push([key, response]);
+        else putAssets.push(`${name} ${key}`);
       },
     }),
   });
@@ -202,5 +207,36 @@ describe("canvas page shells", () => {
     });
     await rememberCanvasShell("/canvas/cabc");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores the shell's scripts and styles for an offline reload", async () => {
+    const basic = (body: string) => {
+      const response = new Response(body, { status: 200 });
+      Object.defineProperty(response, "type", { value: "basic" });
+      return response;
+    };
+    const fetchMock = vi.fn(async (url: string) =>
+      url === "/canvas/cabc"
+        ? basic(
+            '<link rel="stylesheet" href="/_next/static/css/app.css">' +
+              '<script src="/_next/static/chunks/main.js?dpl=1&amp;v=2"></script>' +
+              '<script src="/_next/static/chunks/cached.js"></script>' +
+              '<script src="https://cdn.example/x.js"></script>',
+          )
+        : basic("asset"),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      serviceWorker: { controller: {} },
+    });
+
+    await rememberCanvasShell("/canvas/cabc");
+
+    expect(putShells.map(([key]) => key)).toEqual(["/canvas/cabc"]);
+    expect(putAssets.sort()).toEqual([
+      `${PUBLIC_ASSET_CACHE} /_next/static/chunks/main.js?dpl=1&v=2`,
+      `${PUBLIC_ASSET_CACHE} /_next/static/css/app.css`,
+    ]);
   });
 });
