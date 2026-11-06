@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   createCanvas,
   DEFAULT_PASSWORD,
+  hydrated,
   registerAndVerify,
   uniqueEmail,
 } from "./helpers";
@@ -23,8 +24,11 @@ test("account export and deletion remove durable and public data", async ({
   expect(shareToken).toBeTruthy();
 
   await page.goto("/settings");
+  const exportButton = await hydrated(
+    page.getByRole("button", { name: "Download account data" }),
+  );
   const exportPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download account data" }).click();
+  await exportButton.click();
   const exportDownload = await exportPromise;
   expect(exportDownload.suggestedFilename()).toMatch(
     /^memoria-account-\d{4}-\d{2}-\d{2}\.jsonl\.gz$/,

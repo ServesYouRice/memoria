@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { totpFromUri } from "../helpers/auth-harness";
-import { DEFAULT_PASSWORD, registerAndVerify, uniqueEmail } from "./helpers";
+import {
+  DEFAULT_PASSWORD,
+  hydrated,
+  registerAndVerify,
+  uniqueEmail,
+} from "./helpers";
 
 // Passkeys are covered by the software-authenticator suites: this harness
 // serves the app from 127.0.0.1, and browsers refuse IP addresses as WebAuthn
@@ -14,7 +19,9 @@ test("authenticator-app two-factor gates password sign-in", async ({
   await registerAndVerify(page, email);
 
   await page.goto("/settings");
-  await page.getByLabel("Password to confirm").fill(DEFAULT_PASSWORD);
+  await (
+    await hydrated(page.getByLabel("Password to confirm"))
+  ).fill(DEFAULT_PASSWORD);
   await page.getByRole("button", { name: "Set up two-factor" }).click();
   const setupKey = await page.getByLabel("Setup key").inputValue();
   expect(setupKey).toMatch(/^[A-Z2-7]+=*$/);

@@ -188,6 +188,8 @@ export class CanvasDocumentSession {
   private cacheStopped = false;
   private updatesSinceCompaction = 0;
   private cacheWrites: Promise<unknown> = Promise.resolve();
+  /** connect() ran while the browser was offline; the online event connects. */
+  private waitingForNetwork = false;
 
   constructor(options: CanvasDocumentSessionOptions) {
     this.options = options;
@@ -341,6 +343,11 @@ export class CanvasDocumentSession {
   };
 
   private onOnline = () => {
+    if (this.waitingForNetwork) {
+      this.clearRetry();
+      this.connect();
+      return;
+    }
     if (this.snapshot.connected || this.snapshot.forbidden || this.retryTimer)
       return;
     void this.provider?.connect();
@@ -372,6 +379,20 @@ export class CanvasDocumentSession {
 
   private connect(): void {
     if (this.destroyed) return;
+    // Opened without a network (a reload while offline): wait for the
+    // browser's online event instead of dialling the sync server, and check
+    // again after the retry delay in case the event never comes (Firefox
+    // skips it for a page that loaded offline).
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      this.waitingForNetwork = true;
+      if (!this.retryTimer)
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          this.connect();
+        }, this.options.retryDelayMs ?? 2_000);
+      return;
+    }
+    this.waitingForNetwork = false;
     const provider: HocuspocusProvider = new HocuspocusProvider({
       url: this.options.url,
       name: this.canvasId,

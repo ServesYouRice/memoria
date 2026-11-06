@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 // Single source of truth for the supported toolchain pins. These must match
 // package.json (engines.node, packageManager) and the Dockerfile base image;
 // tests/unit/runtime-alignment.test.ts fails when they drift.
-export const NODE_VERSION = '24.20.0';
+export const NODE_VERSION = '26.13.0';
 // 11.13.0 shipped a broken @pnpm/exe build with no binary; do not pin it.
 export const PNPM_VERSION = '11.13.1';
 

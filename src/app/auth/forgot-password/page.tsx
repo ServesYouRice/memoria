@@ -13,7 +13,7 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { ArrowBack } from "@mui/icons-material";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
@@ -28,14 +28,13 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
 
   const {
-    control,
+    register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      email: "",
-    },
+    // No default values: an uncontrolled field keeps whatever the person typed
+    // before hydration finished (WebKit can fill a field that early).
   });
 
   const onSubmit = async (data: FormData) => {
@@ -114,21 +113,15 @@ export default function ForgotPasswordPage() {
           ) : (
             <form onSubmit={handleSubmit(onSubmit)}>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <Controller
-                  name="email"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Email Address"
-                      type="email"
-                      fullWidth
-                      autoFocus
-                      error={!!errors.email}
-                      helperText={errors.email?.message}
-                      disabled={isSubmitting}
-                    />
-                  )}
+                <TextField
+                  {...register("email")}
+                  label="Email Address"
+                  type="email"
+                  fullWidth
+                  autoFocus
+                  error={!!errors.email}
+                  helperText={errors.email?.message}
+                  disabled={isSubmitting}
                 />
 
                 {error && (

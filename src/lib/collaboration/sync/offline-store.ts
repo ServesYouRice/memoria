@@ -33,6 +33,8 @@ const OWNER_KEY = "owner";
  * two names in step.
  */
 export const CANVAS_SHELL_CACHE = "memoria-canvas-shells-v1";
+// Keep in step with CACHE_NAME in public/sw.js.
+export const PUBLIC_ASSET_CACHE = "memoria-public-v2";
 
 /** Device copies kept beyond this many are pruned, oldest first, once synced. */
 export const MAX_CACHED_CANVASES = 30;
@@ -401,6 +403,57 @@ export async function rememberCanvasShell(pathname: string): Promise<void> {
     credentials: "same-origin",
     redirect: "manual",
   });
-  if (response.ok && response.type === "basic")
-    await cache.put(pathname, response);
+  if (!response.ok || response.type !== "basic") return;
+  const html = await response.clone().text();
+  await cache.put(pathname, response);
+  await rememberShellAssets(html);
+}
+
+/**
+ * Store the scripts and styles the shell needs in the service worker's public
+ * cache. The worker caches assets as they pass through it, but WebKit serves a
+ * reload's assets from its memory cache without asking the worker, so without
+ * this an offline reload gets the shell and none of its code. Chunks the page
+ * loads later on demand are stored as they arrive.
+ */
+async function rememberShellAssets(html: string): Promise<void> {
+  const urls = new Set<string>();
+  for (const match of html.matchAll(/["'](\/_next\/static\/[^"'\s#]+)/g))
+    urls.add(match[1]!.replaceAll("&amp;", "&"));
+  watchLoadedAssets();
+  await storePublicAssets(urls);
+}
+
+let watchingLoadedAssets = false;
+
+function watchLoadedAssets(): void {
+  const origin = globalThis.location?.origin;
+  if (
+    watchingLoadedAssets ||
+    !origin ||
+    typeof PerformanceObserver === "undefined"
+  )
+    return;
+  watchingLoadedAssets = true;
+  new PerformanceObserver((list) => {
+    const urls = new Set<string>();
+    for (const entry of list.getEntries()) {
+      const url = new URL(entry.name, origin);
+      if (url.origin === origin && url.pathname.startsWith("/_next/static/"))
+        urls.add(url.pathname + url.search);
+    }
+    void storePublicAssets(urls).catch(() => {});
+  }).observe({ type: "resource", buffered: true });
+}
+
+async function storePublicAssets(urls: Set<string>): Promise<void> {
+  if (urls.size === 0 || !navigator.onLine) return;
+  const cache = await caches.open(PUBLIC_ASSET_CACHE);
+  await Promise.all(
+    [...urls].map(async (url) => {
+      if (await cache.match(url)) return;
+      const asset = await fetch(url, { credentials: "same-origin" });
+      if (asset.ok && asset.type === "basic") await cache.put(url, asset);
+    }),
+  );
 }

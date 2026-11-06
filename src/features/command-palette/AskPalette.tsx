@@ -365,12 +365,14 @@ export function AskLauncher() {
           px: 1.5,
           py: 0.75,
           borderRadius: 999,
-          color: "text.secondary",
+          // Secondary text on this tint can fall below 4.5:1 contrast (axe
+          // flagged it on the dashboard at 768px).
+          color: "text.primary",
           bgcolor: (theme) => alpha(theme.palette.text.primary, 0.06),
         }}
       >
         <AskIcon fontSize="small" />
-        <Typography variant="body2" noWrap>
+        <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
           Ask your boards…
         </Typography>
       </ButtonBase>

@@ -421,4 +421,38 @@ describe("offline canvas document session", () => {
     browser.dispatchEvent(new Event("online"));
     expect(provider.connects).toBe(1);
   });
+
+  it("opens without a network from the device copy and dials in once online", async () => {
+    const { itemId } = await storeOnlineCopy();
+    const browser = new EventTarget();
+    vi.stubGlobal("window", browser);
+    vi.stubGlobal("navigator", { onLine: false });
+    const before = providers.created.length;
+
+    const reloaded = open();
+    await waitFor(() => reloaded.getSnapshot().restored);
+    expect(providers.created.length).toBe(before);
+    expect(reloaded.getSnapshot().connected).toBe(false);
+    reloaded.updateItem(itemId, { positionX: 7 });
+    expect(reloaded.getSnapshot().unsavedChanges).toBe(1);
+
+    vi.stubGlobal("navigator", { onLine: true });
+    browser.dispatchEvent(new Event("online"));
+    expect(providers.created.length).toBe(before + 1);
+  });
+
+  it("dials in once the network is back even without an online event", async () => {
+    await storeOnlineCopy();
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("navigator", { onLine: false });
+    const before = providers.created.length;
+
+    const reloaded = open();
+    await waitFor(() => reloaded.getSnapshot().restored);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(providers.created.length).toBe(before);
+
+    vi.stubGlobal("navigator", { onLine: true });
+    await waitFor(() => providers.created.length === before + 1);
+  });
 });

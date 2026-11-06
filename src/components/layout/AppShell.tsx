@@ -115,7 +115,8 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
         Skip to main content
       </Button>
       <AppBar position="sticky">
-        <Toolbar sx={{ gap: 1 }}>
+        {/* Tighter on the narrowest phones: seven controls fit 320px. */}
+        <Toolbar sx={{ gap: { xs: 0.5, sm: 1 } }}>
           {/* Mobile menu */}
           <IconButton
             edge="start"

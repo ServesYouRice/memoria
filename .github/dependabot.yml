@@ -41,7 +41,3 @@ updates:
       # The backup client major must match the PostgreSQL server major.
       - dependency-name: postgres
         update-types: ["version-update:semver-major"]
-      # The image Node major moves with the gate, engines and runtime test
-      # together (docs/operations/runtime-support.md, IMP-058).
-      - dependency-name: node
-        update-types: ["version-update:semver-major"]

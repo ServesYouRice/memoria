@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 export const DEFAULT_PASSWORD = "Correct-Horse-Battery-Staple-42!";
 
@@ -11,6 +16,24 @@ interface CapturedMessage {
   html: string;
   deliveryId: string | null;
   receivedAt: string;
+}
+
+/**
+ * Resolve once React has hydrated the element, so its handlers are attached.
+ * Server-rendered controls are visible and enabled before that; WebKit can
+ * type into or click them early, and the input or click is then lost.
+ */
+export async function hydrated(locator: Locator) {
+  await expect
+    .poll(
+      () =>
+        locator.evaluate((element) =>
+          Object.keys(element).some((key) => key.startsWith("__reactProps$")),
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  return locator;
 }
 
 export function uniqueEmail(prefix: string) {

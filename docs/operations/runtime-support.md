@@ -1,7 +1,7 @@
 # Runtime support
 
-Memoria supports Node.js 24 LTS for its custom Node/WebSocket production
-topology. The local gate (`scripts/gate.mjs`) and both production-image stages pin 24.20.0; `package.json`
+Memoria supports Node.js 26 LTS for its custom Node/WebSocket production
+topology. The local gate (`scripts/gate.mjs`) and both production-image stages pin 26.13.0; `package.json`
 rejects other major lines so local installs cannot silently test a different
 runtime contract. Upgrade the gate pin, both Docker stages, engine range, and the
 runtime contract test together after the next LTS line has passed the full

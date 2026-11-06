@@ -20,13 +20,33 @@ import {
  * Host pages live on other origins. The app only accepts https origins in
  * production, so each host is a fake https origin whose document is served by
  * Playwright route interception; the browser still enforces `frame-ancestors`
- * against that origin exactly as it would for a real site. The embed itself is
- * loaded from the real app gateway (an http loopback address, which browsers
- * do not treat as mixed content).
+ * against that origin exactly as it would for a real site.
+ *
+ * The framed app is reached through a fake https origin too, whose requests
+ * Playwright forwards to the real gateway with the gateway's own headers. An
+ * http loopback frame inside an https page is mixed content to WebKit, which
+ * blocks it before framing rules apply, and a public page reaching loopback
+ * trips Chromium's Local Network Access check.
  */
 
 const ALLOWED_ORIGIN = "https://embed-host-allowed.example";
 const OTHER_ORIGIN = "https://embed-host-other.example";
+const APP_ORIGIN = "https://memoria-app.example";
+
+/** Serve the real app under APP_ORIGIN for every page in the context. */
+async function proxyApp(context: BrowserContext, gatewayOrigin: string) {
+  await context.route(`${APP_ORIGIN}/**`, async (route) => {
+    const response = await route.fetch({
+      url: gatewayOrigin + route.request().url().slice(APP_ORIGIN.length),
+    });
+    await route.fulfill({ response });
+  });
+}
+
+function viaProxy(url: string) {
+  const parsed = new URL(url);
+  return `${APP_ORIGIN}${parsed.pathname}${parsed.search}`;
+}
 
 function crc32(buffer: Buffer) {
   let crc = 0xffffffff;
@@ -100,10 +120,10 @@ function childFrame(page: Page): Frame {
 }
 
 /**
- * The browser replaced the framed document with its own error page. Chromium
- * reports a `chrome-error:` frame URL and a blocked request; Firefox and WebKit
- * leave the frame without the app document, so check that nothing of the app
- * rendered in it instead.
+ * The browser refused to show the framed document. Chromium reports a
+ * `chrome-error:` frame URL and a blocked request. Firefox leaves the frame
+ * without the app URL, and its error frame cannot be queried (a locator waits
+ * forever). WebKit keeps the URL but leaves the frame document empty.
  */
 async function expectFramingRefused(
   page: Page,
@@ -120,7 +140,10 @@ async function expectFramingRefused(
   }
   // openHostPage waited for the host's load event, which covers the iframe.
   const frame = childFrame(page);
-  expect(frame.url()).not.toBe(frameSrc);
+  if (browserName === "firefox") {
+    expect(frame.url()).not.toBe(frameSrc);
+    return;
+  }
   await expect(frame.locator("main, [role=region], form")).toHaveCount(0);
 }
 
@@ -222,16 +245,10 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
   };
   expect(new URL(embedUrl).origin).toBe(new URL(baseURL!).origin);
 
-  // Everything below runs without the owner's session cookies. The fake https
-  // host origins count as public sites and the app is served from loopback, so
-  // Chromium's Local Network Access check would otherwise block the iframe
-  // navigation before framing rules are evaluated. Real embeds are public to
-  // public; this only lets the test reach the same app the browser would.
-  // WebKit rejects the permission name, and Firefox and WebKit have no such
-  // check.
-  const viewerContext = await browser.newContext({
-    permissions: browserName === "chromium" ? ["local-network-access"] : [],
-  });
+  // Everything below runs without the owner's session cookies.
+  const viewerContext = await browser.newContext();
+  await proxyApp(viewerContext, new URL(baseURL!).origin);
+  const framedEmbedUrl = viaProxy(embedUrl);
   try {
     // Headers on the wire: framing allowed for exactly the listed origin.
     const embedHeaders = (await viewerContext.request.get(embedUrl)).headers();
@@ -246,9 +263,13 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
       predicate: (response) =>
         /\/api\/v1\/uploads\/[^/?]+\?embed=/.test(response.url()),
     });
-    const allowed = await openHostPage(viewerContext, ALLOWED_ORIGIN, embedUrl);
+    const allowed = await openHostPage(
+      viewerContext,
+      ALLOWED_ORIGIN,
+      framedEmbedUrl,
+    );
     const frame = childFrame(allowed.page);
-    await expect.poll(() => frame.url()).toBe(embedUrl);
+    await expect.poll(() => frame.url()).toBe(framedEmbedUrl);
     expect(allowed.blocked).toEqual([]);
     await expect(
       frame.getByRole("region", { name: /read-only embedded canvas/ }),
@@ -263,11 +284,15 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
     expect((await viewerContext.request.get(upload.url)).status()).toBe(401);
 
     // 2. An origin that is not on the allow-list is refused.
-    const other = await openHostPage(viewerContext, OTHER_ORIGIN, embedUrl);
+    const other = await openHostPage(
+      viewerContext,
+      OTHER_ORIGIN,
+      framedEmbedUrl,
+    );
     await expectFramingRefused(
       other.page,
       other.blocked,
-      embedUrl,
+      framedEmbedUrl,
       browserName,
     );
 
@@ -281,12 +306,12 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
     const framedLogin = await openHostPage(
       viewerContext,
       ALLOWED_ORIGIN,
-      loginUrl,
+      viaProxy(loginUrl),
     );
     await expectFramingRefused(
       framedLogin.page,
       framedLogin.blocked,
-      loginUrl,
+      viaProxy(loginUrl),
       browserName,
     );
 
@@ -314,12 +339,12 @@ test("signed embeds are framed only by their allowed origins and stop at revoke"
     const afterRevoke = await openHostPage(
       viewerContext,
       ALLOWED_ORIGIN,
-      embedUrl,
+      framedEmbedUrl,
     );
     await expectFramingRefused(
       afterRevoke.page,
       afterRevoke.blocked,
-      embedUrl,
+      framedEmbedUrl,
       browserName,
     );
   } finally {

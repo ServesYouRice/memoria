@@ -13,7 +13,7 @@ import {
   Paper,
   CircularProgress,
 } from "@mui/material";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
@@ -38,15 +38,13 @@ function ResetPasswordForm() {
   const [error, setError] = useState<string | null>(null);
 
   const {
-    control,
+    register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      password: "",
-      confirmPassword: "",
-    },
+    // No default values: an uncontrolled field keeps whatever the person typed
+    // before hydration finished (WebKit can fill a field that early).
   });
 
   useEffect(() => {
@@ -171,37 +169,25 @@ function ResetPasswordForm() {
           ) : (
             <form onSubmit={handleSubmit(onSubmit)}>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <Controller
-                  name="password"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="New Password"
-                      type="password"
-                      fullWidth
-                      autoFocus
-                      error={!!errors.password}
-                      helperText={errors.password?.message}
-                      disabled={isSubmitting}
-                    />
-                  )}
+                <TextField
+                  {...register("password")}
+                  label="New Password"
+                  type="password"
+                  fullWidth
+                  autoFocus
+                  error={!!errors.password}
+                  helperText={errors.password?.message}
+                  disabled={isSubmitting}
                 />
 
-                <Controller
-                  name="confirmPassword"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Confirm New Password"
-                      type="password"
-                      fullWidth
-                      error={!!errors.confirmPassword}
-                      helperText={errors.confirmPassword?.message}
-                      disabled={isSubmitting}
-                    />
-                  )}
+                <TextField
+                  {...register("confirmPassword")}
+                  label="Confirm New Password"
+                  type="password"
+                  fullWidth
+                  error={!!errors.confirmPassword}
+                  helperText={errors.confirmPassword?.message}
+                  disabled={isSubmitting}
                 />
 
                 {error && (
