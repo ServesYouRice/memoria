@@ -19,12 +19,12 @@ elsewhere) against the production image with real PostgreSQL, Redis, S3
 
 | Card | Outcome | Evidence |
 | ---- | ------- | -------- |
+| [IMP-058](tasks/IMP-058.md) | Move the runtime to Node 26 LTS in one step | |
 
 ## READY
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-058](tasks/IMP-058.md) | Move the runtime to Node 26 LTS in one step | |
 | [IMP-072](tasks/IMP-072.md) | Moving an item to another board leaves no broken lines | |
 | [IMP-073](tasks/IMP-073.md) | Every Redis key and channel under `memoria:` (shared Valkey ACL) | |
 | [IMP-074](tasks/IMP-074.md) | Prove Memoria on PostgreSQL 18 (the cluster's version) | |

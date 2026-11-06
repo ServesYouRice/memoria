@@ -10,9 +10,9 @@ describe("supported Node runtime", () => {
     const dockerfile = readFileSync("Dockerfile", "utf8");
     const gate = readFileSync("scripts/gate.mjs", "utf8");
 
-    expect(packageJson.engines.node).toBe(">=24.20.0 <25");
-    expect(dockerfile.match(/FROM node:24\.20\.0-alpine/g)).toHaveLength(2);
-    expect(gate).toContain("export const NODE_VERSION = '24.20.0';");
+    expect(packageJson.engines.node).toBe(">=26.13.0 <27");
+    expect(dockerfile.match(/FROM node:26\.13\.0-alpine/g)).toHaveLength(2);
+    expect(gate).toContain("export const NODE_VERSION = '26.13.0';");
   });
 
   it("pins the same pnpm release in the local gate and package.json", () => {
