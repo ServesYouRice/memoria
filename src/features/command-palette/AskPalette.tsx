@@ -372,7 +372,7 @@ export function AskLauncher() {
         }}
       >
         <AskIcon fontSize="small" />
-        <Typography variant="body2" noWrap>
+        <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
           Ask your boards…
         </Typography>
       </ButtonBase>
