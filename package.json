@@ -112,11 +112,11 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
-    "@next/bundle-analyzer": "16.4.3",
+    "@next/bundle-analyzer": "16.4.4",
     "@percy/cli": "^1.32.12",
     "@percy/playwright": "^1.1.2",
     "@playwright/test": "^1.64.1",
-    "@tanstack/react-query-devtools": "^5.105.0",
+    "@tanstack/react-query-devtools": "^5.105.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26",
@@ -128,10 +128,10 @@
     "@types/zxcvbn": "^4.4.5",
     "@typescript-eslint/eslint-plugin": "^8.72.1",
     "@typescript-eslint/parser": "^8.72.1",
-    "@vitejs/plugin-react": "^6.1.2",
-    "@vitest/coverage-v8": "^5.0.5",
+    "@vitejs/plugin-react": "^6.2.1",
+    "@vitest/coverage-v8": "^5.1.0",
     "eslint": "^9.39.2",
-    "eslint-config-next": "16.4.3",
+    "eslint-config-next": "16.4.4",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -145,7 +145,7 @@
     "typescript": "^5.9.3",
     "vite": "^8.3.3",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=26.13.0 <27",
