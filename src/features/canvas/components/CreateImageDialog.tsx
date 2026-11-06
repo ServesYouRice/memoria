@@ -20,6 +20,8 @@ import {
   Box,
   Typography,
   LinearProgress,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import { CloudUpload as UploadIcon } from "@mui/icons-material";
 import { useForm, Controller } from "react-hook-form";
@@ -28,6 +30,12 @@ import { z } from "zod";
 import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
 import { ItemType } from "@/types/canvas";
 import { TagInput } from "./TagInput";
+import {
+  announceUploadNote,
+  requestUploadNote,
+  uploadAssetIdFromUrl,
+  useUploadNoteOffers,
+} from "@/features/canvas/hooks/use-upload-notes";
 
 interface CreateImageDialogProps {
   open: boolean;
@@ -63,6 +71,9 @@ export function CreateImageDialog({
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createItem = useCreateCanvasItem();
+  // IMP-071: offered only when the saved AI provider can read images.
+  const offers = useUploadNoteOffers(open);
+  const [makeNote, setMakeNote] = useState(false);
 
   const {
     control,
@@ -81,6 +92,7 @@ export function CreateImageDialog({
     reset();
     setError(null);
     setUploadedImage(null);
+    setMakeNote(false);
     onClose();
   };
 
@@ -173,6 +185,19 @@ export function CreateImageDialog({
         },
         tags: data.tags || [],
       });
+
+      const assetId = uploadAssetIdFromUrl(uploadedImage.url);
+      if (makeNote && offers.readImage && assetId) {
+        // The note goes beside the image; the original is kept.
+        announceUploadNote(
+          assetId,
+          requestUploadNote({
+            assetId,
+            positionX: initialPosition.x + canvasWidth + 24,
+            positionY: initialPosition.y,
+          }),
+        );
+      }
 
       handleClose();
     } catch (err) {
@@ -278,6 +303,19 @@ export function CreateImageDialog({
                 />
               )}
             />
+
+            {offers.readImage && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={makeNote}
+                    onChange={(event) => setMakeNote(event.target.checked)}
+                    disabled={isSubmitting}
+                  />
+                }
+                label="Make a note from this photo (AI reads receipts, whiteboards and pages)"
+              />
+            )}
 
             {/* Tags */}
             <Controller

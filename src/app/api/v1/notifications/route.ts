@@ -72,12 +72,14 @@ export const GET = withApiHandler(async (request: Request) => {
       : undefined;
     const action = invitationHref
       ? { href: invitationHref, label: "Review invitation" }
-      : notification.canvasId && notification.type !== "CANVAS_SHARED"
-        ? {
-            href: `/canvas/${notification.canvasId}`,
-            label: "Open canvas",
-          }
-        : null;
+      : notification.type === "WEEKLY_RECAP"
+        ? { href: "/recap", label: "Open recap" }
+        : notification.canvasId && notification.type !== "CANVAS_SHARED"
+          ? {
+              href: `/canvas/${notification.canvasId}`,
+              label: "Open canvas",
+            }
+          : null;
     return { ...notification, action };
   });
 

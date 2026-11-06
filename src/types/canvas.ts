@@ -131,6 +131,8 @@ export interface BookmarkContent {
   previewImage?: string;
   siteName?: string;
   unfurledAt?: string;
+  /** Two-line "what is this", written by link enrichment. */
+  summary?: string;
 }
 
 /**

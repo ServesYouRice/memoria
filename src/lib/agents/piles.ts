@@ -22,6 +22,7 @@ import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { ItemType } from "@/types/canvas";
+import { sortPilesWithAi, type SortPilesResult } from "@/lib/ai/sort-piles";
 
 export const PILES_SUGGESTION_KIND = "canvas-piles";
 export const ORGANIZER_PROFILE_NAME = "Memoria organizer";
@@ -287,6 +288,32 @@ export function suggestPiles(
   }
 
   return piles;
+}
+
+/**
+ * The Sort dialog's grouping: the owner's AI when configured, following an
+ * optional instruction, else the built-in word matching. AI piles must pass
+ * `pilesSchema` and only name the given items; anything else falls back to
+ * word matching with a notice.
+ */
+export async function suggestPilesForOwner(input: {
+  userId: string;
+  items: GroupingItem[];
+  instruction?: string | null;
+  maxPiles?: number;
+}): Promise<SortPilesResult> {
+  const maxPiles = Math.min(input.maxPiles ?? 8, MAX_PILES);
+  return sortPilesWithAi({
+    userId: input.userId,
+    items: input.items,
+    instruction: input.instruction,
+    maxPiles,
+    fallback: () => suggestPiles(input.items, { maxPiles }),
+    validate: (piles) => {
+      const result = pilesSchema.safeParse(piles);
+      return result.success ? result.data : null;
+    },
+  });
 }
 
 const SORTABLE_TYPES = new Set<string>([

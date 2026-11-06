@@ -27,18 +27,7 @@ RTO 16s).
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-059](tasks/IMP-059.md) | Firefox and WebKit pass `pnpm gate e2e` | |
-| [IMP-060](tasks/IMP-060.md) | Built-in AI runs on any saved provider (Claude, Gemini, OpenRouter, local), not only OpenAI | |
-| [IMP-061](tasks/IMP-061.md) | Browser extension: save all tabs to Memoria with a sorting note, then close them | |
-| [IMP-063](tasks/IMP-063.md) | AI sorting that follows your written instruction | IMP-060, IMP-061 |
-| [IMP-062](tasks/IMP-062.md) | Phone: "Share → Memoria" (Android share target, iPhone Shortcut) | IMP-061 |
-| [IMP-064](tasks/IMP-064.md) | Saved links name, tag and explain themselves | IMP-060 |
-| [IMP-065](tasks/IMP-065.md) | "You saved this already" duplicate warning | IMP-061 |
-| [IMP-066](tasks/IMP-066.md) | New items file themselves into the right board (one tap, undo) | IMP-064 |
-| [IMP-067](tasks/IMP-067.md) | Agents (Hermes, OpenClaw) can write on cards and make boards | |
-| [IMP-068](tasks/IMP-068.md) | Ask your boards, and tell them what to do | IMP-060 |
-| [IMP-069](tasks/IMP-069.md) | Turn a pile into a checklist, table or summary | IMP-060 |
-| [IMP-070](tasks/IMP-070.md) | Weekly recap and tidy-up of old links | IMP-064 |
-| [IMP-071](tasks/IMP-071.md) | Voice and photos become tidy notes | IMP-060 |
+| [IMP-072](tasks/IMP-072.md) | Moving an item to another board leaves no broken lines | |
 
 ## WAITING
 

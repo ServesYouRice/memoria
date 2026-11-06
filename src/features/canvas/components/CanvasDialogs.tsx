@@ -297,6 +297,12 @@ export function CanvasDialogs({
         onCopy={onCopy}
         onComments={onOpenComments}
         capabilities={capabilities}
+        canvasId={canvasId}
+        item={
+          contextMenuPosition?.itemId
+            ? items.find((item) => item.id === contextMenuPosition.itemId)
+            : undefined
+        }
       />
 
       {capabilities.canComment && commentsItemId && (

@@ -40,6 +40,7 @@ import {
   DownloadOutlined as DownloadIcon,
   NotificationsActiveOutlined as NotificationsIcon,
   AutoAwesomeOutlined as AiUsageIcon,
+  Psychology as AiProviderIcon,
   Shield as SecurityIcon,
 } from "@mui/icons-material";
 import { useThemeMode } from "@/lib/theme-context";
@@ -48,6 +49,10 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { gradients } from "@/lib/theme";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { NotificationPreferences } from "./NotificationPreferences";
+import { AiProviderSettings } from "./AiProviderSettings";
+import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
+import { AutoFileSettings } from "./AutoFileSettings";
+import { WeeklyRecapSettings } from "./WeeklyRecapSettings";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 
 interface SettingsContentProps {
@@ -511,6 +516,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
           title="Notifications"
         >
           <NotificationPreferences />
+          <WeeklyRecapSettings />
         </SettingsSection>
 
         {/* Keyboard shortcuts */}
@@ -569,6 +575,15 @@ export function SettingsContent({ user }: SettingsContentProps) {
               </Box>
             ))}
           </Box>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={<AiProviderIcon color="primary" />}
+          title="AI provider"
+        >
+          <AiProviderSettings />
+          <LinkEnrichmentSettings />
+          <AutoFileSettings />
         </SettingsSection>
 
         {/* AI agents */}

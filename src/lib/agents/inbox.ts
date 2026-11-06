@@ -10,6 +10,12 @@ import {
 } from "@/lib/agents/service-core";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
+import {
+  existingFor,
+  findExistingLinks,
+  normalizeLinkUrl,
+} from "@/lib/services/duplicates";
 import { ItemType } from "@/types/canvas";
 
 export const INBOX_CANVAS_NAME = "Inbox";
@@ -65,6 +71,10 @@ export const inboxSaveSchema = z
     title: z.string().trim().max(500).optional(),
     description: z.string().trim().max(2000).optional(),
     tags: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
+    /** Save onto this board instead of the Inbox; it must be in scope. */
+    canvasId: z.string().trim().min(1).max(64).optional(),
+    /** Save the link again even when it is already saved (IMP-065). */
+    allowDuplicate: z.boolean().optional(),
   })
   .refine((value) => Boolean(value.url || value.text), {
     message: "Send a url to save a link, or text to save a note.",
@@ -78,21 +88,28 @@ export async function saveToInbox(input: {
   const data = inboxSaveSchema.parse(input.data);
   assertAgentCapability(input.agentProfile, AGENT_CAPABILITY_RUNGS.INGEST);
 
-  const inbox = await prisma.canvas.findFirst({
-    where: {
-      userId: input.actor.userId,
-      name: INBOX_CANVAS_NAME,
-      ...(input.agentProfile.allowedCanvasIds.length > 0
-        ? { id: { in: input.agentProfile.allowedCanvasIds } }
-        : {}),
-    },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
-  });
+  const inbox = data.canvasId
+    ? await prisma.canvas.findFirst({
+        where: { id: data.canvasId, userId: input.actor.userId },
+        select: { id: true, name: true },
+      })
+    : await prisma.canvas.findFirst({
+        where: {
+          userId: input.actor.userId,
+          name: INBOX_CANVAS_NAME,
+          ...(input.agentProfile.allowedCanvasIds.length > 0
+            ? { id: { in: input.agentProfile.allowedCanvasIds } }
+            : {}),
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true },
+      });
 
   if (!inbox) {
     throw new NotFoundError(
-      "No Inbox board is shared with this app. Allow it the Inbox board in Memoria.",
+      data.canvasId
+        ? "Canvas not found."
+        : "No Inbox board is shared with this app. Allow it the Inbox board in Memoria.",
     );
   }
   assertCanvasScope(input.agentProfile, inbox.id);
@@ -113,6 +130,38 @@ export async function saveToInbox(input: {
       : { text: data.title ? `${data.title}\n\n${data.text}` : data.text },
   );
 
+  // "You saved this already" (IMP-065): name the existing copy instead of
+  // saving the link twice. Only boards this app may see are considered, so
+  // the answer never reveals items outside its scope.
+  const linkUrl = isLink ? (content as { url: string }).url : null;
+  const duplicates = linkUrl
+    ? existingFor(
+        await findExistingLinks(prisma, input.actor.userId, [linkUrl]),
+        linkUrl,
+      ).filter(
+        (entry) =>
+          input.agentProfile.allowedCanvasIds.length === 0 ||
+          input.agentProfile.allowedCanvasIds.includes(entry.canvasId),
+      )
+    : [];
+  if (duplicates.length > 0 && !data.allowDuplicate) {
+    const [first] = duplicates;
+    return {
+      saved: false,
+      duplicate: true,
+      canvasId: first!.canvasId,
+      itemId: first!.itemId,
+      existing: duplicates.map((entry) => ({
+        itemId: entry.itemId,
+        canvasId: entry.canvasId,
+        board: entry.canvasName,
+        title: entry.title,
+        url: entry.url,
+      })),
+      message: `Already saved as "${first!.title || first!.url}" on ${first!.canvasName}. Pass allowDuplicate: true to save it again.`,
+    };
+  }
+
   const occupied = await prisma.canvasItem.findMany({
     where: { canvasId: inbox.id, deletedAt: null },
     select: { positionX: true, positionY: true, width: true, height: true },
@@ -131,15 +180,46 @@ export async function saveToInbox(input: {
       content,
       tags: data.tags,
     },
-    summary: isLink ? `Save link to Inbox` : `Save note to Inbox`,
+    summary: `Save ${isLink ? "link" : "note"} to ${inbox.name}`,
     rung: AGENT_CAPABILITY_RUNGS.INGEST,
     actionKind: AgentActionKind.INGEST,
+    // Saved links name, tag and summarize themselves (IMP-064); a title the
+    // agent chose is kept.
+    afterCreate: isLink
+      ? async (tx, item) => {
+          await tx.canvasItem.update({
+            where: { id: item.id },
+            data: { normalizedUrl: normalizeLinkUrl(linkUrl!) },
+          });
+          await enqueueLinkEnrichment(tx, input.actor.userId, [
+            {
+              itemId: item.id,
+              baseTitle: data.title || data.url,
+              baseTags: data.tags,
+              titleLocked: Boolean(data.title),
+            },
+          ]);
+        }
+      : undefined,
   });
 
   await invalidateCanvasCache(inbox.id);
   return {
+    saved: true,
     canvasId: inbox.id,
     itemId: result.item.id,
     changeSetId: result.changeSetId,
+    ...(duplicates.length > 0
+      ? {
+          duplicate: true,
+          existing: duplicates.map((entry) => ({
+            itemId: entry.itemId,
+            canvasId: entry.canvasId,
+            board: entry.canvasName,
+            title: entry.title,
+            url: entry.url,
+          })),
+        }
+      : {}),
   };
 }

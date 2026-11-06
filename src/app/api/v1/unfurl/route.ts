@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-import { safeFetch } from "@/lib/utils/ssrf-protection";
-import {
-  extractMetadata,
-  validateMetadata,
-} from "@/lib/utils/metadata-extractor";
+import { fetchLinkPage } from "@/lib/services/link-page";
 import { getCachedUnfurl, setCachedUnfurl } from "@/lib/cache/unfurl-cache";
 import { logger } from "@/lib/logger";
 import { withAuthValidation } from "@/lib/api/route-handler";
@@ -27,36 +23,18 @@ export const POST = withAuthValidation(unfurlSchema, async ({ url }) => {
     return NextResponse.json(cachedMetadata);
   }
 
-  // Validate and fetch URL with SSRF protection
-  const fetchResult = await safeFetch(url, {
-    maxRedirects: 5,
-    timeout: 10000, // 10 seconds
-    maxSize: 2 * 1024 * 1024, // 2MB max response size
-  });
-
-  if (!fetchResult.ok) {
+  // Fetch with SSRF protection and extract metadata (shared with link
+  // enrichment, IMP-064)
+  const page = await fetchLinkPage(url);
+  if (!page.ok) {
     throw new ApiError(
-      fetchResult.status || 500,
+      page.status,
       "https://memoria.local/errors/unfurl",
       "Unfurl Failed",
-      fetchResult.error || "Failed to fetch URL",
+      page.error,
     );
   }
-
-  if (!fetchResult.data) {
-    throw new ApiError(
-      500,
-      "https://memoria.local/errors/unfurl",
-      "Unfurl Failed",
-      "No data received",
-    );
-  }
-
-  // Extract metadata from HTML
-  const metadata = extractMetadata(fetchResult.data, url);
-
-  // Validate and clean metadata
-  const cleanedMetadata = validateMetadata(metadata);
+  const cleanedMetadata = page.metadata;
 
   // Add unfurl timestamp
   const result = {

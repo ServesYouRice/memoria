@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ModelProvider } from "@/generated/prisma/enums";
 
 export const tagSchema = z.object({
   content: z.string().min(1).max(5000),
@@ -24,3 +25,21 @@ export const generateSchema = z.object({
 export const summarizeSchema = z.object({
   canvasId: z.string().cuid(),
 });
+
+export const aiProviderSettingsSchema = z
+  .object({
+    provider: z.nativeEnum(ModelProvider),
+    model: z.string().trim().min(1).max(160),
+    baseUrl: z.string().trim().url().max(2048).optional().nullable(),
+    // Omit to keep the saved key (only when the provider is unchanged).
+    apiKey: z.string().trim().min(1).max(4096).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.provider !== ModelProvider.OPENAI_COMPAT || !!value.baseUrl,
+    {
+      message: "An OpenAI-compatible provider needs a base URL.",
+      path: ["baseUrl"],
+    },
+  );

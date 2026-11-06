@@ -112,7 +112,16 @@ const envSchema = z
     ACCOUNT_EXPORT_MAX_INPUT_BYTES: optionalPositiveInt,
     ACCOUNT_EXPORT_MAX_ARCHIVE_BYTES: optionalPositiveInt,
     ACCOUNT_EXPORT_TIMEOUT_MS: optionalPositiveInt,
+    // Server-wide fallbacks for built-in AI. A user's provider key saved in
+    // Settings (ModelCredential) always wins; OpenAI is tried before Anthropic.
     OPENAI_API_KEY: optionalString,
+    ANTHROPIC_API_KEY: optionalString,
+    ANTHROPIC_MODEL: optionalString,
+    // Self-host only: lets saved OpenAI-compatible base URLs reach private or
+    // loopback addresses (e.g. a local Ollama). Off by default (SSRF guard).
+    AI_ALLOW_PRIVATE_BASE_URLS: z.enum(["true", "false"]).optional(),
+    // Speech model for voice notes (IMP-071); defaults per provider.
+    AI_TRANSCRIPTION_MODEL: optionalString,
     APP_BOOTSTRAP_TOKEN: optionalString,
     DATABASE_PASSWORD: optionalString,
     MINIO_ROOT_USER: optionalString,

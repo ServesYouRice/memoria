@@ -211,6 +211,13 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     category: "General",
     action: "search",
   },
+  {
+    key: "j",
+    modifiers: ["ctrl"],
+    description: "Ask Memoria",
+    category: "General",
+    action: "ask",
+  },
 ];
 
 /**

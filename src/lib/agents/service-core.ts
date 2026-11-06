@@ -26,6 +26,7 @@ import {
   recordCanvasItemEventsBatch,
 } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
+import { ARCHIVE_OPERATION, revertArchivedItem } from "@/lib/services/archive";
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -194,7 +195,8 @@ function getSharedCanvasId(
   return sharedCanvasId;
 }
 
-async function createSuggestionRecordTx(
+/** Files a suggestion inside the caller's transaction (IMP-066 home boards). */
+export async function createSuggestionRecordTx(
   tx: Prisma.TransactionClient,
   input: {
     actor: ActorContext;
@@ -416,6 +418,11 @@ export async function createCanvasItemWrite(input: {
   summary: string;
   rung?: number;
   actionKind?: AgentActionKind;
+  /** Extra writes that must commit with the item (e.g. its enrichment job). */
+  afterCreate?: (
+    tx: Prisma.TransactionClient,
+    item: PrismaCanvasItem,
+  ) => Promise<void>;
 }) {
   const normalizedItem = normalizeAgentItemWriteData(input.itemData);
 
@@ -494,6 +501,7 @@ export async function createCanvasItemWrite(input: {
       agentActionId: agentAction.id,
       changeSetId: changeSet.id,
     });
+    await input.afterCreate?.(tx, item);
 
     return { item, agentActionId: agentAction.id, changeSetId: changeSet.id };
   });
@@ -1079,6 +1087,19 @@ async function applyRevertOperation(
 
   if (
     changeRecord.targetType === "CanvasItem" &&
+    changeRecord.operation === ARCHIVE_OPERATION
+  ) {
+    // IMP-070: an archived item goes back onto its board.
+    await revertArchivedItem(tx, {
+      targetId: changeRecord.targetId,
+      userId,
+      rollbackChangeSetId,
+    });
+    return;
+  }
+
+  if (
+    changeRecord.targetType === "CanvasItem" &&
     changeRecord.operation === "CREATE"
   ) {
     const existing = await tx.canvasItem.findUnique({
@@ -1223,6 +1244,142 @@ async function applyRevertOperation(
         },
       });
     }
+    return;
+  }
+
+  if (
+    changeRecord.targetType === "Canvas" &&
+    changeRecord.operation === "CREATE"
+  ) {
+    // A board an agent made (boards_create). Undo removes it only while it
+    // holds nothing, so the user's later additions are never lost.
+    const existing = await tx.canvas.findUnique({
+      where: { id: changeRecord.targetId },
+      select: { id: true, name: true, userId: true, createdAt: true },
+    });
+    if (existing) {
+      const [liveItems, liveUploads] = await Promise.all([
+        tx.canvasItem.count({
+          where: { canvasId: existing.id, deletedAt: null },
+        }),
+        tx.uploadAsset.count({
+          where: { canvasId: existing.id, status: { not: "DELETED" } },
+        }),
+      ]);
+      if (liveItems > 0 || liveUploads > 0) {
+        throw new BadRequestError(
+          "This board has items on it now. Undo those first, or delete the board in Memoria.",
+        );
+      }
+      await tx.canvas.delete({ where: { id: existing.id } });
+      await tx.changeRecord.create({
+        data: {
+          changeSetId: rollbackChangeSetId,
+          targetType: "Canvas",
+          targetId: changeRecord.targetId,
+          operation: "ROLLBACK_CREATE",
+          before: toJsonValue(existing),
+          after: Prisma.JsonNull,
+          reversible: false,
+        },
+      });
+    }
+
+    const grantedAgentProfileId =
+      changeRecord.after &&
+      typeof changeRecord.after === "object" &&
+      !Array.isArray(changeRecord.after) &&
+      typeof changeRecord.after.grantedAgentProfileId === "string"
+        ? changeRecord.after.grantedAgentProfileId
+        : null;
+    if (grantedAgentProfileId) {
+      const profile = await tx.agentProfile.findFirst({
+        where: { id: grantedAgentProfileId, userId },
+        select: { allowedCanvasIds: true },
+      });
+      if (profile?.allowedCanvasIds.includes(changeRecord.targetId)) {
+        await tx.agentProfile.update({
+          where: { id: grantedAgentProfileId },
+          data: {
+            allowedCanvasIds: profile.allowedCanvasIds.filter(
+              (canvasId) => canvasId !== changeRecord.targetId,
+            ),
+          },
+        });
+      }
+    }
+    return;
+  }
+
+  if (
+    changeRecord.targetType === "CanvasItem" &&
+    changeRecord.operation === "MOVE" &&
+    changeRecord.before
+  ) {
+    // An approved Ask command moved this item to another board (IMP-068).
+    // Undo returns it to the board and spot it came from.
+    const snapshot = changeRecord.before as unknown as PrismaCanvasItem;
+    const existing = await tx.canvasItem.findFirst({
+      where: {
+        id: changeRecord.targetId,
+        canvas: { userId },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundError(
+        `Canvas item ${changeRecord.targetId} no longer exists.`,
+      );
+    }
+    const source = await tx.canvas.findFirst({
+      where: { id: snapshot.canvasId, userId },
+      select: { id: true },
+    });
+    if (!source) {
+      throw new BadRequestError(
+        "The board this item came from is gone, so it cannot go back.",
+      );
+    }
+    for (const canvasId of [existing.canvasId, snapshot.canvasId].sort()) {
+      await lockCanvasForMutation(tx, canvasId);
+    }
+    const reverted = await tx.canvasItem.update({
+      where: { id: changeRecord.targetId },
+      data: {
+        canvasId: snapshot.canvasId,
+        positionX: snapshot.positionX,
+        positionY: snapshot.positionY,
+        version: { increment: 1 },
+        updatedById: userId,
+      },
+    });
+    if (existing.canvasId !== snapshot.canvasId) {
+      await recordCanvasItemEvent(tx, {
+        canvasId: existing.canvasId,
+        actorId: userId,
+        itemId: reverted.id,
+        version: reverted.version,
+        operation: "deleted",
+      });
+    }
+    await recordCanvasItemEvent(tx, {
+      canvasId: snapshot.canvasId,
+      actorId: userId,
+      itemId: reverted.id,
+      version: reverted.version,
+      operation:
+        existing.canvasId !== snapshot.canvasId ? "created" : "updated",
+    });
+    await tx.changeRecord.create({
+      data: {
+        changeSetId: rollbackChangeSetId,
+        targetType: "CanvasItem",
+        targetId: changeRecord.targetId,
+        operation: "ROLLBACK_MOVE",
+        before: toJsonValue(existing),
+        after: toJsonValue(reverted),
+        reversible: false,
+      },
+    });
     return;
   }
 

@@ -22,6 +22,14 @@ model User {
   name             String?
   image            String?
   twoFactorEnabled Boolean   @default(false)
+  /// Saved links get a title, tags and summary in the background (IMP-064).
+  autoEnrichLinks  Boolean   @default(true)
+  /// Inbox items move to a suggested board on their own when it is a confident match (IMP-066).
+  autoFileItems    Boolean   @default(false)
+  /// The weekly recap also arrives by email; in-app only by default (IMP-070).
+  weeklyRecapEmail Boolean   @default(false)
+  /// A link nobody opened for this many weeks counts as stale (IMP-070).
+  staleLinkWeeks   Int       @default(6)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -60,6 +68,8 @@ model User {
   notificationActions Notification[] @relation("NotificationActor")
   notificationPreferences NotificationPreference[]
   accountExports AccountExport[]
+  clipBatches   ClipBatch[]
+  weeklyRecaps  WeeklyRecap[]
 }
 
 enum AccountExportStatus {
@@ -134,6 +144,7 @@ model Canvas {
   versions    CanvasVersion[]
   document    CanvasDocument?
   embeds      CanvasEmbed[]
+  clipBatches ClipBatch[]
 
   zoomLevel   Float       @default(1.0)
   panX        Float       @default(0)
@@ -250,8 +261,15 @@ model CanvasItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   bookmarkRefreshedAt DateTime?
+  /// Bookmark URL normalized for "you saved this already" (IMP-065).
+  normalizedUrl String?
+  /// Last time the owner opened the link (IMP-070); null before tracking began.
+  lastOpenedAt DateTime?
+  /// Set with deletedAt when the item went to the archive: the trash sweep keeps it.
+  archivedAt   DateTime?
 
   @@index([canvasId, deletedAt])
+  @@index([normalizedUrl])
   @@index([canvasId, type])
   @@index([canvasId, zIndex])
   @@index([canvasId, updatedAt])
@@ -265,6 +283,9 @@ model CanvasItem {
   connectionsTo   ItemConnection[] @relation("ConnectionTo")
   entityLinks   ItemEntityLink[]
   embeddings    ItemEmbedding[]
+  clipBatchItems ClipBatchItem[]
+  enrichment    ItemEnrichment?
+  homeBoardSuggestion HomeBoardSuggestion?
 }
 
 model CanvasThumbnailCandidate {
@@ -362,6 +383,7 @@ enum NotificationType {
   SHARE_INVITATION_ACCEPTED
   SHARE_INVITATION_DECLINED
   CANVAS_SHARED
+  WEEKLY_RECAP
 }
 
 model Notification {
@@ -683,6 +705,10 @@ model UploadAsset {
   size        Int
   status      UploadAssetStatus @default(PENDING)
   lastError   String?
+  // The text note the upload.note job made from this file (IMP-071). Set in
+  // the same transaction that creates the note, so a repeated job skips. Not a
+  // foreign key: notes are soft-deleted, and re-requesting clears it.
+  noteItemId  String?
   createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])
@@ -1162,4 +1188,138 @@ model OAuthToken {
 
   @@index([userId, revokedAt])
   @@index([agentProfileId])
+}
+
+enum ClipBatchSource {
+  EXTENSION
+  SHARE_TARGET
+}
+
+/// One "save these links" request from the browser extension (IMP-061) or the
+/// phone share target (IMP-062). The idempotency key makes a retried batch a
+/// replay instead of a second set of items; the optional sorting note is read
+/// by the Inbox sorter (IMP-063).
+model ClipBatch {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId       String
+  canvas         Canvas          @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  source         ClipBatchSource
+  idempotencyKey String
+  requestHash    String
+  note           String?
+  createdAt      DateTime        @default(now())
+  items          ClipBatchItem[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([canvasId, createdAt])
+}
+
+model ClipBatchItem {
+  batchId  String
+  batch    ClipBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  position Int
+
+  @@id([batchId, itemId])
+  @@index([itemId])
+}
+
+enum ItemEnrichmentStatus {
+  PENDING
+  DONE
+  SKIPPED
+}
+
+/// Background naming, tagging and summarizing of a saved link (IMP-064). The
+/// base values are what the item held when it was saved: the job only replaces
+/// a title or tag list that still equals them (or what it wrote itself), so a
+/// user's edit always wins, and `filledFields` records what it filled.
+model ItemEnrichment {
+  itemId       String               @id
+  item         CanvasItem           @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the board, whose settings and AI budget the job uses.
+  userId       String
+  status       ItemEnrichmentStatus @default(PENDING)
+  baseTitle    String?
+  baseTags     String[]             @default([])
+  /// The saver chose this title on purpose; keep it even if it is unchanged.
+  titleLocked  Boolean              @default(false)
+  filledFields String[]             @default([])
+  filledTitle  String?
+  filledTags   String[]             @default([])
+  /// Why the AI step did not run: not-configured, disabled, budget or provider-error.
+  aiSkipReason String?
+  /// Other links of this user that look like the same page (embeddings, IMP-065).
+  similarItemIds String[]           @default([])
+  completedAt  DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, completedAt])
+}
+
+enum HomeBoardSuggestionStatus {
+  OPEN
+  ACCEPTED
+  AUTO_FILED
+  DISMISSED
+  REVERTED
+}
+
+/// A suggested home board for an item in the Inbox (IMP-066). One row per item
+/// ever, so a dismissed or undone suggestion is never proposed again. The move
+/// itself runs through the item's `Suggestion` and is recorded as a ChangeSet.
+model HomeBoardSuggestion {
+  itemId         String                    @id
+  item           CanvasItem                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the Inbox, who accepts, dismisses or undoes it.
+  userId         String
+  sourceCanvasId String
+  /// Not a foreign key: deleting a board must not erase a dismissal.
+  targetCanvasId String
+  confidence     Float
+  /// Why this board: board-name, tags or similar-items.
+  reasons        String[]                  @default([])
+  status         HomeBoardSuggestionStatus @default(OPEN)
+  suggestionId   String?                   @unique
+  changeSetId    String?
+  actedAt        DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@index([userId, sourceCanvasId, status])
+  @@index([userId, status, actedAt])
+}
+
+/// IMP-070: one recap per user per ISO week (Monday, UTC). The unique key is
+/// what makes the weekly job safe to run twice: only the run that inserts the
+/// row writes the notification and queues the email.
+model WeeklyRecap {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStart      DateTime
+  periodStart    DateTime
+  periodEnd      DateTime
+  savedCount     Int       @default(0)
+  /// Links saved in the period, newest first: [{ id, title, url }].
+  savedLinks     Json
+  /// Suggested piles for the period's links: [{ title, itemIds }].
+  suggestedPiles Json
+  staleWeeks     Int
+  staleCount     Int       @default(0)
+  /// The stale links "Archive these" acts on (capped); re-checked at archive time.
+  staleItemIds   String[]  @default([])
+  notificationId String?
+  emailQueued    Boolean   @default(false)
+  archivedChangeSetId String?
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([userId, weekStart])
+  @@index([userId, createdAt])
 }

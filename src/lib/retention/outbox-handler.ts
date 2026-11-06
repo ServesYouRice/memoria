@@ -13,6 +13,8 @@ export function createTrashRetentionHandler(
       WITH doomed AS (
         SELECT "id" FROM "CanvasItem"
         WHERE "deletedAt" < ${cutoff}
+          -- IMP-070: archived items wait in the trash until the user acts.
+          AND "archivedAt" IS NULL
         ORDER BY "deletedAt" ASC
         LIMIT 500
       )

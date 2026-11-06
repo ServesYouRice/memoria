@@ -30,6 +30,7 @@ import {
   searchScopedItems,
 } from "@/lib/agents/query-core";
 import { INBOX_CANVAS_NAME, saveToInbox } from "@/lib/agents/inbox";
+import { createAgentBoard, listAgentBoards } from "@/lib/agents/boards";
 import {
   PILES_SUGGESTION_KIND,
   applyCanvasPiles,
@@ -45,6 +46,24 @@ const mcpSearchSchema = z.object({
   canvasId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
+const mcpAnnotateSchema = z.object({
+  itemId: z.string().trim().min(1),
+  kind: z.enum(["summary", "note"]).default("note"),
+  text: z.string().trim().min(1).max(4000),
+});
+const ANNOTATION_LABELS = { summary: "Summary", note: "Note" } as const;
+
+/**
+ * Agent annotations are comments on the item, labeled with the agent's name,
+ * so they sit beside the user's text instead of rewriting it.
+ */
+export function formatItemAnnotation(input: {
+  kind: keyof typeof ANNOTATION_LABELS;
+  agentName: string;
+  text: string;
+}) {
+  return `${ANNOTATION_LABELS[input.kind]} from ${input.agentName}: ${input.text}`;
+}
 const mcpOffsetSchema = z.coerce
   .number()
   .int()
@@ -413,8 +432,72 @@ export async function executeMcpTool(
       return createUntrustedResult(await searchScopedItems(context, parsed));
     }
     case "items.get": {
-      return createUntrustedResult(
-        await getScopedItemDetail(context, String(args.itemId || "")),
+      const detail = await getScopedItemDetail(
+        context,
+        String(args.itemId || ""),
+      );
+      const annotations = await prisma.comment.findMany({
+        where: { itemId: detail.item.id, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, content: true, createdAt: true },
+      });
+      return createUntrustedResult({
+        ...detail,
+        item: { ...detail.item, annotations },
+      });
+    }
+    case "items.annotate": {
+      const parsed = mcpAnnotateSchema.parse(args);
+      const { actor, agentProfile } = await resolveWriteActor(context, {
+        agentProfileId:
+          typeof args.agentProfileId === "string"
+            ? args.agentProfileId
+            : undefined,
+      });
+      const item = await requireScopedItem(
+        { userId: context.userId, agentProfile },
+        parsed.itemId,
+      );
+      assertCanvasScope(agentProfile, item.canvasId);
+      assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.COMMENT);
+      const result = await createCanvasItemComment({
+        actor,
+        itemId: item.id,
+        content: formatItemAnnotation({
+          kind: parsed.kind,
+          agentName: agentProfile.name,
+          text: parsed.text,
+        }),
+        summary: `Add ${parsed.kind} to item ${item.id}`,
+      });
+      return createTextResult({
+        itemId: item.id,
+        canvasId: item.canvasId,
+        annotationId: result.comment.id,
+        kind: parsed.kind,
+        agentActionId: result.agentActionId,
+        changeSetId: result.changeSetId,
+      });
+    }
+    case "boards.list": {
+      return createTextResult(
+        await listAgentBoards({
+          userId: context.userId,
+          agentProfile: context.agentProfile,
+          data: args,
+        }),
+      );
+    }
+    case "boards.create": {
+      const { actor, agentProfile } = await resolveWriteActor(context, {
+        agentProfileId:
+          typeof args.agentProfileId === "string"
+            ? args.agentProfileId
+            : undefined,
+      });
+      return createTextResult(
+        await createAgentBoard({ actor, agentProfile, data: args }),
       );
     }
     case "inbox.sort": {

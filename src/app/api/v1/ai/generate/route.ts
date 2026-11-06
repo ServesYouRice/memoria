@@ -10,7 +10,14 @@ export const POST = withAuthValidation(
     const budgeted = await runBudgetedAi(
       session.user.id,
       { prompt: `${system || ""}\n${prompt}`, maxOutputTokens: 500 },
-      () => generateText({ prompt, system, temperature, maxTokens: 500 }),
+      () =>
+        generateText({
+          prompt,
+          system,
+          temperature,
+          maxTokens: 500,
+          userId: session.user.id,
+        }),
     );
     return NextResponse.json({ result: budgeted.value, usage: budgeted.usage });
   },

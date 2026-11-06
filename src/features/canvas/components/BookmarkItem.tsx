@@ -54,7 +54,10 @@ function BookmarkItemComponent({
     : { url: "Invalid bookmark" };
 
   // Check if we have metadata
-  const hasMetadata = content.title || content.description;
+  const hasMetadata = content.title || content.description || content.summary;
+  // The enrichment summary says what the link is; a clipped selection or the
+  // page description is the fallback.
+  const blurb = content.summary || content.description;
 
   // Sync with server updates
   useEffect(() => {
@@ -218,13 +221,13 @@ function BookmarkItemComponent({
           )}
 
           {/* Description */}
-          {content.description && (
+          {blurb && (
             <Text
               x={10}
               y={35}
               width={localSize.width - 20}
               height={localSize.height - 65}
-              text={content.description}
+              text={blurb}
               fontSize={12}
               fontFamily="Arial"
               fill="#666"

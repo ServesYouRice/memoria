@@ -96,6 +96,11 @@ function limits(): BudgetLimits {
   };
 }
 
+/** Largest prompt `runBudgetedAi` accepts (AI_MAX_PROMPT_BYTES). */
+export function aiMaxPromptBytes(): number {
+  return limits().maxPromptBytes;
+}
+
 export function isAiEnabled(): boolean {
   return process.env.AI_ENABLED !== "false";
 }
