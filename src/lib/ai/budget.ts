@@ -120,7 +120,7 @@ function secondsUntilTomorrow(now = new Date()): number {
 }
 
 function budgetKey(userId: string, now = new Date()): string {
-  return `memoria:ai:budget:${dateKey(now)}:${userId}`;
+  return `ai:budget:${dateKey(now)}:${userId}`;
 }
 
 function reservationCost(

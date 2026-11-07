@@ -42,6 +42,7 @@ import {
   authorizationLeaseMustClose,
 } from "@/lib/collaboration/transport-policy";
 import { SharedConnectionAdmission } from "@/lib/collaboration/shared-admission";
+import { syncDocumentsChannel } from "@/lib/collaboration/channels";
 import {
   deriveUpgradeClientId,
   isAllowedCollaborationOrigin,
@@ -64,8 +65,6 @@ const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_CONNECTIONS = 5_000;
 const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 const SYNC_STEP_1 = 0;
-/** Redis channel naming canvases whose stored document moved (IMP-043). */
-export const SYNC_DOCUMENTS_CHANNEL = "collaboration:sync:documents";
 
 export interface SyncServerOptions {
   prisma: PrismaClient;
@@ -162,6 +161,8 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
   const { prisma, logger } = options;
   const redis = options.redis ?? null;
   const instanceId = nanoid(10);
+  /** Canvases whose stored document moved (IMP-043), under the prefix. */
+  const documentsChannel = syncDocumentsChannel();
   const engine = new CanvasSyncEngine({
     prisma,
     logger,
@@ -170,10 +171,7 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     onCommitted: (canvasId) => {
       if (!redis) return;
       redis
-        .publish(
-          SYNC_DOCUMENTS_CHANNEL,
-          JSON.stringify({ canvasId, instanceId }),
-        )
+        .publish(documentsChannel, JSON.stringify({ canvasId, instanceId }))
         .catch((error) =>
           logger.error({ error }, "Could not announce a document update"),
         );
@@ -222,7 +220,7 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
           ),
         );
     });
-    await subscriber.subscribe(SYNC_DOCUMENTS_CHANNEL);
+    await subscriber.subscribe(documentsChannel);
   }
 
   const server: Server = new Server({

@@ -39,6 +39,11 @@ const envSchema = z
     AUTH_URL: z.string().url(),
     AUTH_SECRET: z.string().min(32),
     REDIS_URL: optionalUrl,
+    // Mirrors REDIS_KEY_PREFIX_PATTERN in src/lib/cache/redis-keys.ts (IMP-073).
+    REDIS_KEY_PREFIX: z.preprocess(
+      emptyToUndefined,
+      z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,62}:$/).optional(),
+    ),
     INTERNAL_OPERATIONS_TOKEN: optionalString,
     MEMORIA_E2E_MODE: z.enum(['true']).optional(),
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,

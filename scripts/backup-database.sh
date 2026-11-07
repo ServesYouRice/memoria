@@ -82,6 +82,7 @@ S3_ENDPOINT="${S3_ENDPOINT:-}"
 S3_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID:-}"
 S3_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}"
 REDIS_URL="${REDIS_URL:-}"
+REDIS_KEY_PREFIX="${REDIS_KEY_PREFIX:-memoria:}"
 
 # Backup options
 COMPRESSION="${COMPRESSION:-gzip}"
@@ -627,7 +628,7 @@ record_backup_success() {
     [[ -n "$REDIS_URL" ]] || return 0
     local result
     result=$(redis_command SET \
-        memoria:operations:gauges:backup_last_success_timestamp_seconds \
+        "${REDIS_KEY_PREFIX}operations:gauges:backup_last_success_timestamp_seconds" \
         "$(date -u +%s)" 2>/dev/null || true)
     if [[ "$result" != "OK" ]]; then
         log WARN "Backup completed but its Redis success gauge could not be updated"

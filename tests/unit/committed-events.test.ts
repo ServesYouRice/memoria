@@ -41,7 +41,7 @@ describe("committed canvas events", () => {
       payload: { eventId: event.id },
     } as never);
     expect(publish).toHaveBeenCalledWith(
-      `collaboration:canvas:${event.canvasId}`,
+      `memoria:collaboration:canvas:${event.canvasId}`,
       expect.stringContaining('"type":"event"'),
     );
   });

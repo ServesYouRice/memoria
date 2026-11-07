@@ -294,6 +294,13 @@ describe("self-host configuration enforceability (IMP-042 / IMP-055)", () => {
       );
     }, 30000);
 
+    it("rejects a REDIS_KEY_PREFIX that is not a literal namespace", () => {
+      const result = validateProductionEnv({ REDIS_KEY_PREFIX: "memoria*" });
+
+      expect(result.status).not.toBe(0);
+      expect(outputOf(result)).toContain("REDIS_KEY_PREFIX must be");
+    }, 30000);
+
     it("names smtp among the production providers when console is configured", () => {
       const result = validateProductionEnv({ EMAIL_PROVIDER: "console" });
 

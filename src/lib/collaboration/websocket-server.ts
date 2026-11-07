@@ -32,6 +32,7 @@ import {
 } from "./upgrade-policy";
 import { COLLABORATION_SYNC_PATH } from "./sync/protocol";
 import { SharedConnectionAdmission } from "./shared-admission";
+import { canvasChannel, canvasChannelPrefix } from "./channels";
 
 export interface CollaborationUser {
   userId: string;
@@ -72,7 +73,6 @@ const MAX_CONNECTIONS_PER_PRINCIPAL = 10;
 const MAX_CONNECTIONS_PER_CLIENT = 30;
 const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
-const REDIS_CHANNEL_PREFIX = "collaboration:canvas:";
 const dirtyCursorCanvases = new Set<string>();
 
 interface CursorPosition {
@@ -173,15 +173,11 @@ if (redisSubscriber) {
   });
 }
 
-function getChannel(canvasId: string): string {
-  return `${REDIS_CHANNEL_PREFIX}${canvasId}`;
-}
-
 async function subscribeToCanvas(canvasId: string): Promise<void> {
   if (!redisSubscriber) return;
   const count = subscriptions.get(canvasId) || 0;
   if (count === 0) {
-    await redisSubscriber.subscribe(getChannel(canvasId));
+    await redisSubscriber.subscribe(canvasChannel(canvasId));
   }
   subscriptions.set(canvasId, count + 1);
 }
@@ -190,7 +186,7 @@ async function unsubscribeFromCanvas(canvasId: string): Promise<void> {
   if (!redisSubscriber) return;
   const count = subscriptions.get(canvasId) || 0;
   if (count <= 1) {
-    await redisSubscriber.unsubscribe(getChannel(canvasId));
+    await redisSubscriber.unsubscribe(canvasChannel(canvasId));
     subscriptions.delete(canvasId);
     remotePresence.deleteCanvas(canvasId);
     remoteCursors.deleteCanvas(canvasId);
@@ -202,7 +198,7 @@ async function unsubscribeFromCanvas(canvasId: string): Promise<void> {
 function publishMessage(message: CollaborationBusMessage): void {
   if (!redisPublisher) return;
   redisPublisher
-    .publish(getChannel(message.canvasId), JSON.stringify(message))
+    .publish(canvasChannel(message.canvasId), JSON.stringify(message))
     .catch((error) => logger.error({ error }, "Redis publish error"));
 }
 
@@ -305,7 +301,7 @@ async function handleRedisMessage(
   channel: string,
   payload: string,
 ): Promise<void> {
-  if (!channel.startsWith(REDIS_CHANNEL_PREFIX)) return;
+  if (!channel.startsWith(canvasChannelPrefix())) return;
 
   let message: CollaborationBusMessage;
   try {

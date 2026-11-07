@@ -31,6 +31,7 @@ export default defineConfig({
       "tests/e2e/**",
       "tests/e2e/visual/**",
       "tests/integration/**",
+      "tests/redis/**",
       "**/.claude/worktrees/**",
     ],
     coverage: {
