@@ -21,6 +21,7 @@ fi
 MAX_BACKUP_AGE_SECONDS="${MAX_BACKUP_AGE_SECONDS:-5400}"
 BACKUP_S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"
 REDIS_URL="${REDIS_URL:-}"
+REDIS_KEY_PREFIX="${REDIS_KEY_PREFIX:-memoria:}"
 
 backup_aws() {
   if [[ -n "$BACKUP_S3_ENDPOINT" ]]; then
@@ -46,7 +47,7 @@ redis_command() {
 record_counter() {
   [[ -n "$REDIS_URL" ]] || return 0
   redis_command INCR \
-    memoria:operations:counters:backup_freshness_failures_total >/dev/null || true
+    "${REDIS_KEY_PREFIX}operations:counters:backup_freshness_failures_total" >/dev/null || true
 }
 
 fail() {
@@ -76,7 +77,7 @@ fi
 
 if [[ -n "$REDIS_URL" ]]; then
   redis_command SET \
-    memoria:operations:gauges:backup_last_success_timestamp_seconds \
+    "${REDIS_KEY_PREFIX}operations:gauges:backup_last_success_timestamp_seconds" \
     "$latest_epoch" >/dev/null || true
 fi
 

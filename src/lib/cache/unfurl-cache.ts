@@ -5,6 +5,7 @@
  */
 
 import { getRedisClient } from "./redis-client";
+import { redisScanPattern } from "./redis-keys";
 import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("unfurl-cache");
@@ -129,13 +130,28 @@ export async function getUnfurlCacheStats(): Promise<{
   if (!redis) return null;
 
   try {
-    const keys = await redis.keys("unfurl:*");
+    // SCAN, never KEYS: KEYS blocks the server and the shared Valkey's ACL
+    // refuses it. keyPrefix does not reach MATCH, so the pattern carries it.
+    const match = redisScanPattern("unfurl:*");
+    let totalKeys = 0;
+    let cursor = "0";
+    do {
+      const [next, keys] = await redis.scan(
+        cursor,
+        "MATCH",
+        match,
+        "COUNT",
+        250,
+      );
+      totalKeys += keys.length;
+      cursor = next;
+    } while (cursor !== "0");
     const info = await redis.info("memory");
     const memoryMatch = info.match(/used_memory_human:(.+)/);
     const memoryUsage = memoryMatch?.[1] ? memoryMatch[1].trim() : "unknown";
 
     return {
-      totalKeys: keys.length,
+      totalKeys,
       memoryUsage,
     };
   } catch (error) {

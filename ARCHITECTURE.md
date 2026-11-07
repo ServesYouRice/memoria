@@ -52,7 +52,12 @@ realtime replicas behind the gateway.
   shares, templates, activities, API keys, agent audit records, and knowledge
   graph primitives.
 - **Redis** is required in production for cache/shared-state support and
-  collaboration fanout across instances.
+  collaboration fanout across instances. Every key and pub/sub channel lives
+  under `REDIS_KEY_PREFIX` (default `memoria:`; IMP-073): the client sets
+  ioredis `keyPrefix`, and channels and `SCAN` patterns add it through
+  `src/lib/cache/redis-keys.ts`. `KEYS` is never used. This fits the shared
+  Valkey's ACL (`~memoria:*`, `&memoria:*`, no `@dangerous`); `pnpm test:redis`
+  runs against that ACL.
 - **S3-compatible object storage** is required in production for uploads.
   Production targets Cloudflare R2; the local and self-host stack runs
   SeaweedFS under the `minio` host name.
@@ -170,7 +175,7 @@ note at once; Yjs merges the edits.
   canvas row lock and first applies whatever other replicas stored since this
   one last looked, so each replica writes on top of the latest document and a
   row change is reconciled into the log exactly once. After a write the
-  replica announces the canvas on Redis (`collaboration:sync:documents`);
+  replica announces the canvas on Redis (`memoria:collaboration:sync:documents`);
   others pull the new updates at once, and the one-second reconcile pass
   compares update ids as a fallback. The Hocuspocus Redis extension is not
   used: it would relay updates to other replicas before they are validated

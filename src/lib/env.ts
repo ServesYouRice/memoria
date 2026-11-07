@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
+import { REDIS_KEY_PREFIX_PATTERN } from "./cache/redis-keys";
 
 const envFilePath = process.env.MEMORIA_ENV_FILE || ".env";
 const resolvedEnvPath = path.resolve(process.cwd(), envFilePath);
@@ -53,6 +54,15 @@ const envSchema = z
     NEXTAUTH_URL: optionalUrl,
     NEXTAUTH_SECRET: optionalString,
     REDIS_URL: optionalUrl,
+    // Every Redis key and channel lives under this prefix (IMP-073).
+    REDIS_KEY_PREFIX: emptyToUndefined(
+      z
+        .string()
+        .regex(
+          REDIS_KEY_PREFIX_PATTERN,
+          "REDIS_KEY_PREFIX must be 2-64 letters, digits, '_', '.', ':' or '-' and end with ':'.",
+        ),
+    ),
     LOG_LEVEL: optionalString,
     INTERNAL_OPERATIONS_TOKEN: optionalString,
     MEMORIA_E2E_MODE: z.enum(["true"]).optional(),

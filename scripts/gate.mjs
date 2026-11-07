@@ -75,6 +75,11 @@ export const STAGES = {
     requireEnv: ['TEST_DATABASE_URL'],
     steps: [generate, pnpm('test:integration')],
   },
+  redis: {
+    summary: 'real Valkey under the shared-cluster ACL: keys and channels only under memoria: (needs docker)',
+    requireBins: ['docker'],
+    steps: [generate, pnpm('test:redis')],
+  },
   build: {
     summary: 'production build and App Router bundle budgets',
     steps: [
