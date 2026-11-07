@@ -20,7 +20,7 @@ Memoria follows the owner's hosting and architecture handbook
   the realtime service split from the Next.js app so either can run more than
   one replica. Already in place: Better Auth (passkeys, TOTP), signed embed
   tokens with per-embed framing rules, and an R2-ready S3 client.
-- **Platform:** the shared k3s cluster's PostgreSQL 16 (CloudNativePG), Valkey
+- **Platform:** the shared k3s cluster's PostgreSQL 18 (CloudNativePG), Valkey
   (Redis protocol) and R2. The bundled SeaweedFS/MinIO and monitoring stack are
   for local and self-host use only. Cluster configuration lives in the private
   `infra` repo, not here.

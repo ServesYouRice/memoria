@@ -385,7 +385,7 @@ services:
       - '127.0.0.1:${GRAFANA_HOST_PORT:-3001}:3000'
 
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     container_name: memoria-postgres
     restart: unless-stopped
     ports:
@@ -395,7 +395,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: memoria
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U memoria']
       interval: 10s

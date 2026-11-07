@@ -45,7 +45,7 @@ x-runtime-environment: &runtime-environment
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: memoria_e2e
       POSTGRES_PASSWORD: memoria-e2e-db-password
@@ -58,7 +58,7 @@ services:
       timeout: 3s
       retries: 30
     volumes:
-      - postgres_e2e:/var/lib/postgresql/data
+      - postgres_e2e:/var/lib/postgresql
 
   redis:
     image: redis:7-alpine

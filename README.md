@@ -6,7 +6,7 @@ Memoria is a stateful Node application for visual note organization. It combines
 
 - Runtime: stateful Node server with Next.js App Router and a custom WebSocket server
 - Required production services: PostgreSQL, Redis, S3-compatible object storage
-- Target platform: the owner's shared k3s cluster (PostgreSQL 16 via CloudNativePG, Valkey, Cloudflare R2); cluster configuration lives in the private `infra` repo
+- Target platform: the owner's shared k3s cluster (PostgreSQL 18 via CloudNativePG, Valkey, Cloudflare R2); cluster configuration lives in the private `infra` repo
 - Reference self-host stack: Docker Compose, with SeaweedFS serving the S3 API under the `minio` service name; this is for local and self-host use only
 - Non-goal for v1: serverless-first deployment
 

@@ -39,7 +39,7 @@ The direction set by the owner's handbook, ordered by the Kanban:
   limits through Redis (IMP-043), so any replica can take any connection.
 - **Worker and scheduler:** separate processes from the same image; the
   outbox claims jobs with `SKIP LOCKED`.
-- **Data:** shared PostgreSQL 16, Valkey (Redis protocol), Cloudflare R2.
+- **Data:** shared PostgreSQL 18, Valkey (Redis protocol), Cloudflare R2.
 
 Production runs one replica of each process. The `replicas` compose profile
 (`COMPOSE_PROFILES=replicas` plus `MEMORIA_APP_UPSTREAMS` and
