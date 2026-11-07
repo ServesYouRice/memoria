@@ -8,7 +8,9 @@ export default defineConfig({
   testIgnore: "visual/**",
   fullyParallel: false,
   forbidOnly: !!process.env["CI"],
-  retries: process.env["CI"] ? 2 : 0,
+  // One local retry absorbs browser-process crashes (seen with WebKit on
+  // Windows) and records a trace for any failure that repeats.
+  retries: 1,
   // The production stack intentionally rate-limits one client IP. Docker NAT
   // makes every browser worker share that IP, so release journeys run serially.
   workers: 1,
