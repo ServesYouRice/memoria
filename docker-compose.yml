@@ -27,6 +27,7 @@ services:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-memoria:}
       AUTH_URL: ${AUTH_URL}
       AUTH_SECRET: ${AUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
@@ -166,6 +167,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-memoria:}
       AUTH_URL: ${AUTH_URL}
       AUTH_SECRET: ${AUTH_SECRET}
       APP_BOOTSTRAP_TOKEN: ${APP_BOOTSTRAP_TOKEN}
@@ -225,6 +227,7 @@ services:
       SYNC_SERVER_PORT: 3001
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-memoria:}
       AUTH_URL: ${AUTH_URL}
       AUTH_SECRET: ${AUTH_SECRET}
       APP_BOOTSTRAP_TOKEN: ${APP_BOOTSTRAP_TOKEN}
@@ -296,6 +299,7 @@ services:
       PGDATABASE: memoria
       PGPASSWORD: ${DATABASE_PASSWORD}
       REDIS_URL: ${REDIS_URL}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-memoria:}
       AWS_REGION: ${BACKUP_S3_REGION:-us-east-1}
       BACKUP_BUCKET: ${BACKUP_BUCKET:-}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-35}
@@ -323,6 +327,7 @@ services:
     command: ['./scripts/run-backup-freshness-loop.sh']
     environment:
       REDIS_URL: ${REDIS_URL}
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-memoria:}
       AWS_REGION: ${BACKUP_S3_REGION:-us-east-1}
       BACKUP_BUCKET: ${BACKUP_BUCKET:-}
       BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
@@ -385,7 +390,7 @@ services:
       - '127.0.0.1:${GRAFANA_HOST_PORT:-3001}:3000'
 
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     container_name: memoria-postgres
     restart: unless-stopped
     ports:
@@ -395,7 +400,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: memoria
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U memoria']
       interval: 10s

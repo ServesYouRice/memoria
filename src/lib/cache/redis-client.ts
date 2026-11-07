@@ -5,6 +5,7 @@
 
 import Redis from "ioredis";
 import { createLogger } from "@/lib/logger";
+import { getRedisKeyPrefix } from "./redis-keys";
 
 const logger = createLogger("redis-client");
 
@@ -32,8 +33,10 @@ export function getRedisClient(): Redis | null {
   }
 
   try {
-    // Create new Redis client
+    // Create new Redis client. Every key lands under REDIS_KEY_PREFIX; pub/sub
+    // channels and SCAN patterns take it from redis-keys.ts (IMP-073).
     redis = new Redis(redisUrl, {
+      keyPrefix: getRedisKeyPrefix(),
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: false,

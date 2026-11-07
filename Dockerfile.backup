@@ -1,6 +1,6 @@
-# Keep the client major equal to the server major (pgvector/pgvector:pg16):
-# newer pg_dump output (e.g. SET transaction_timeout) fails to restore on 16.
-FROM postgres:16-alpine
+# Keep the client major equal to the server major (pgvector/pgvector:pg18):
+# newer pg_dump output (e.g. SET transaction_timeout) fails to restore on an older server.
+FROM postgres:18-alpine
 
 RUN apk add --no-cache \
     aws-cli \

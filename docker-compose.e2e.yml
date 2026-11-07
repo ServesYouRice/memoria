@@ -4,7 +4,9 @@ x-runtime-environment: &runtime-environment
   MEMORIA_E2E_MODE: 'true'
   PORT: '3000'
   DATABASE_URL: postgresql://memoria_e2e:memoria-e2e-db-password@postgres:5432/memoria_e2e
-  REDIS_URL: redis://:memoria-e2e-redis-password@redis:6379
+  # The memoria ACL user mirrors the shared cluster Valkey's (IMP-073).
+  REDIS_URL: redis://memoria:memoria-e2e-redis-password@redis:6379
+  REDIS_KEY_PREFIX: 'memoria:'
   AUTH_URL: http://127.0.0.1:3300
   AUTH_SECRET: memoria-e2e-auth-secret-0123456789abcdef
   NEXTAUTH_URL: http://127.0.0.1:3300
@@ -45,7 +47,7 @@ x-runtime-environment: &runtime-environment
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: memoria_e2e
       POSTGRES_PASSWORD: memoria-e2e-db-password
@@ -58,11 +60,30 @@ services:
       timeout: 3s
       retries: 30
     volumes:
-      - postgres_e2e:/var/lib/postgresql/data
+      - postgres_e2e:/var/lib/postgresql
 
   redis:
     image: redis:7-alpine
-    command: ['redis-server', '--appendonly', 'yes', '--requirepass', 'memoria-e2e-redis-password']
+    # The app connects as `memoria`, limited like on the shared cluster Valkey:
+    # keys and channels only under memoria:, no @admin or @dangerous but INFO.
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - memoria-e2e-redis-password
+      - --user
+      - memoria
+      - 'on'
+      - '>memoria-e2e-redis-password'
+      - resetkeys
+      - '~memoria:*'
+      - resetchannels
+      - '&memoria:*'
+      - '+@all'
+      - '-@admin'
+      - '-@dangerous'
+      - '+info'
     ports:
       - '127.0.0.1:36379:6379'
     healthcheck:

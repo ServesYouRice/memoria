@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { getRedisClient } from "@/lib/cache/redis-client";
+import { canvasChannel } from "./channels";
 import { toCommittedEventEnvelope } from "./committed-events";
 
 const payloadSchema = z.object({ eventId: z.string().cuid() }).strict();
@@ -25,7 +26,7 @@ export function createCanvasEventHandler(
     });
     if (!event) return;
     await publish(
-      `collaboration:canvas:${event.canvasId}`,
+      canvasChannel(event.canvasId),
       JSON.stringify({
         type: "event",
         canvasId: event.canvasId,
@@ -55,7 +56,7 @@ export function createCanvasRestoreEventHandler(
     });
     if (!event || event.operation !== "restored") return;
     await publish(
-      `collaboration:canvas:${event.canvasId}`,
+      canvasChannel(event.canvasId),
       JSON.stringify({
         type: "message",
         canvasId: event.canvasId,

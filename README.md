@@ -6,7 +6,7 @@ Memoria is a stateful Node application for visual note organization. It combines
 
 - Runtime: stateful Node server with Next.js App Router and a custom WebSocket server
 - Required production services: PostgreSQL, Redis, S3-compatible object storage
-- Target platform: the owner's shared k3s cluster (PostgreSQL 16 via CloudNativePG, Valkey, Cloudflare R2); cluster configuration lives in the private `infra` repo
+- Target platform: the owner's shared k3s cluster (PostgreSQL 18 via CloudNativePG, Valkey, Cloudflare R2); cluster configuration lives in the private `infra` repo
 - Reference self-host stack: Docker Compose, with SeaweedFS serving the S3 API under the `minio` service name; this is for local and self-host use only
 - Non-goal for v1: serverless-first deployment
 
@@ -113,6 +113,9 @@ Use `.env.example` as the source template. Important variables:
 
 - `DATABASE_URL`
 - `REDIS_URL`
+- `REDIS_KEY_PREFIX` (default `memoria:`; every Redis key and pub/sub channel
+  lives under it, so a shared Valkey can limit Memoria's ACL user to
+  `~memoria:*` and `&memoria:*`)
 - `AUTH_URL`
 - `AUTH_SECRET`
 - `APP_BOOTSTRAP_TOKEN`
@@ -165,6 +168,7 @@ pnpm gate                # fast: install, prisma generate, lint, type-check, cov
 pnpm gate build          # production build + bundle budgets
 pnpm gate audit          # prod dependency audit, license inventory, GPL/AGPL denial
 pnpm gate integration    # PostgreSQL integration + schema drift (TEST_DATABASE_URL, a *test* DB)
+pnpm gate redis          # real Valkey under the shared-cluster ACL (~memoria:*, &memoria:*) (docker)
 pnpm gate container      # clean image build + CycloneDX SBOM (docker, syft)
 pnpm gate e2e            # production-image E2E + ops smoke: chromium, firefox, webkit (docker)
 pnpm gate all            # every stage above

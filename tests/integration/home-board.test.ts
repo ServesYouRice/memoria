@@ -15,6 +15,12 @@ import {
   listHomeBoardSuggestions,
   undoHomeBoardMove,
 } from "@/lib/agents/home-board";
+import { revertChangeSet } from "@/lib/agents/service-core";
+import {
+  ASK_COMMAND_SUGGESTION_KIND,
+  executeAskCommandSuggestion,
+  getAskAssistantProfile,
+} from "@/lib/ai/ask-commands";
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -221,6 +227,121 @@ describe("home board suggestions (PostgreSQL)", () => {
       (await listHomeBoardSuggestions({ userId: user.id, canvasId: inbox.id }))
         .suggestions,
     ).toEqual([]);
+  });
+
+  it("a move drops the item's lines on the old board and undo restores them", async () => {
+    const { user, inbox, rome } = await setup();
+    const item = await saveLink(inbox.id, user.id, "Colosseum tickets", [
+      "rome",
+      "travel",
+    ]);
+    const before = await saveLink(inbox.id, user.id, "Flights", []);
+    const after = await saveLink(inbox.id, user.id, "Hotel", []);
+    const unrelated = await saveLink(inbox.id, user.id, "Other", []);
+    const outgoing = await prisma.itemConnection.create({
+      data: {
+        canvasId: inbox.id,
+        fromId: item.id,
+        toId: after.id,
+        label: "then",
+        style: "DASHED",
+      },
+    });
+    const incoming = await prisma.itemConnection.create({
+      data: { canvasId: inbox.id, fromId: before.id, toId: item.id },
+    });
+    const kept = await prisma.itemConnection.create({
+      data: { canvasId: inbox.id, fromId: before.id, toId: unrelated.id },
+    });
+    await createHomeBoardProposalHandler(prisma, noAi)(jobFor(item.id));
+    const accepted = await acceptHomeBoardSuggestion({
+      userId: user.id,
+      itemId: item.id,
+    });
+
+    expect(
+      (await prisma.canvasItem.findUniqueOrThrow({ where: { id: item.id } }))
+        .canvasId,
+    ).toBe(rome.id);
+    const remaining = await prisma.itemConnection.findMany({
+      where: { canvasId: inbox.id },
+    });
+    expect(remaining.map((connection) => connection.id)).toEqual([kept.id]);
+    const records = await prisma.changeRecord.findMany({
+      where: { changeSetId: accepted.changeSetId },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(records.map((r) => `${r.targetType}:${r.operation}`)).toEqual([
+      "CanvasItem:MOVE",
+      "ItemConnection:DELETE",
+      "ItemConnection:DELETE",
+    ]);
+    expect(
+      records
+        .slice(1)
+        .map((r) => r.targetId)
+        .sort(),
+    ).toEqual([outgoing.id, incoming.id].sort());
+    // Old-board collaborators get the item's delete event.
+    expect(
+      await prisma.canvasEvent.count({
+        where: { canvasId: inbox.id, entityId: item.id, operation: "deleted" },
+      }),
+    ).toBe(1);
+
+    await undoHomeBoardMove({ userId: user.id, itemId: item.id });
+    expect(
+      (await prisma.canvasItem.findUniqueOrThrow({ where: { id: item.id } }))
+        .canvasId,
+    ).toBe(inbox.id);
+    const restored = await prisma.itemConnection.findMany({
+      where: { canvasId: inbox.id },
+      orderBy: { id: "asc" },
+    });
+    expect(restored).toEqual(
+      [outgoing, incoming, kept].sort((a, b) => a.id.localeCompare(b.id)),
+    );
+  });
+
+  it("restores a line between two items that moved together", async () => {
+    const { user, inbox, work } = await setup();
+    const first = await saveLink(inbox.id, user.id, "Part one", []);
+    const second = await saveLink(inbox.id, user.id, "Part two", []);
+    const line = await prisma.itemConnection.create({
+      data: { canvasId: inbox.id, fromId: first.id, toId: second.id },
+    });
+    const profile = await getAskAssistantProfile(user.id);
+    const actor = { userId: user.id, agentProfileId: profile.id };
+
+    const moved = await executeAskCommandSuggestion({
+      actor,
+      agentProfile: profile,
+      payload: {
+        kind: ASK_COMMAND_SUGGESTION_KIND,
+        command: {
+          type: "move_items",
+          itemIds: [first.id, second.id],
+          boardId: work.id,
+        },
+      },
+      summary: "Move 2 items to Work",
+    });
+    expect(moved.movedItemCount).toBe(2);
+    expect(await prisma.itemConnection.count({ where: { id: line.id } })).toBe(
+      0,
+    );
+
+    await revertChangeSet({ actor, changeSetId: moved.changeSetId });
+    expect(
+      (
+        await prisma.canvasItem.findMany({
+          where: { id: { in: [first.id, second.id] } },
+        })
+      ).map((item) => item.canvasId),
+    ).toEqual([inbox.id, inbox.id]);
+    expect(
+      await prisma.itemConnection.findUniqueOrThrow({ where: { id: line.id } }),
+    ).toEqual(line);
   });
 
   it("a dismissed suggestion is not proposed again", async () => {

@@ -29,9 +29,11 @@ export const OPERATIONAL_GAUGES = [
 
 export type OperationalGauge = (typeof OPERATIONAL_GAUGES)[number];
 
-const COUNTER_PREFIX = "memoria:operations:counters:";
+// The client adds REDIS_KEY_PREFIX; the backup scripts write these keys with
+// it spelled out (scripts/backup-database.sh, check-backup-freshness.sh).
+const COUNTER_PREFIX = "operations:counters:";
 export const BACKUP_SUCCESS_GAUGE_KEY =
-  "memoria:operations:gauges:backup_last_success_timestamp_seconds";
+  "operations:gauges:backup_last_success_timestamp_seconds";
 
 type CounterState = Record<OperationalCounter, number>;
 type GaugeState = Record<OperationalGauge, number>;

@@ -1,6 +1,6 @@
 services:
   restore-postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: memoria-isolated-restore
@@ -11,7 +11,7 @@ services:
       timeout: 3s
       retries: 30
     volumes:
-      - restore_postgres_data:/var/lib/postgresql/data
+      - restore_postgres_data:/var/lib/postgresql
 
   # S3-compatible stand-in (MinIO's images were withdrawn from Docker Hub).
   restore-minio:
