@@ -50,3 +50,6 @@ public/uploads
 
 # Claude Code worktrees are local scratch checkouts, never repo content.
 .claude/worktrees/
+
+# Local gate output (pnpm gate container)
+memoria-sbom.cdx.json
