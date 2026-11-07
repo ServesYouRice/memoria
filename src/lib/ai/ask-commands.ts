@@ -250,7 +250,8 @@ async function createBoardTx(
 /**
  * Runs an approved Ask command as one change set. Moves keep the item (and
  * its comments, links and embeddings) and only change its board, recorded as
- * `MOVE` so undo returns it.
+ * `MOVE` so undo returns it. Its connector lines on the old board are deleted
+ * and recorded as `ItemConnection:DELETE`, so undo restores them too.
  */
 export async function executeAskCommandSuggestion(input: {
   actor: ActorContext;
@@ -343,9 +344,36 @@ export async function executeAskCommandSuggestion(input: {
         select: { positionX: true, positionY: true, width: true },
       });
       const positions = planMovePositions(existing, moving);
+      // IMP-072: undo walks records newest first, so the dropped lines must
+      // sort before every move and are restored once all items are back.
+      const droppedConnectionsAt = new Date(Date.now() - 1);
 
       for (const item of moving) {
         const position = positions.get(item.id)!;
+        // Lines cannot cross boards, so the item's connections on the old
+        // board (both directions) go with the move and come back on undo.
+        const connections = await tx.itemConnection.findMany({
+          where: { OR: [{ fromId: item.id }, { toId: item.id }] },
+        });
+        if (connections.length > 0) {
+          await tx.itemConnection.deleteMany({
+            where: {
+              id: { in: connections.map((connection) => connection.id) },
+            },
+          });
+          await tx.changeRecord.createMany({
+            data: connections.map((connection) => ({
+              createdAt: droppedConnectionsAt,
+              changeSetId: changeSet.id,
+              targetType: "ItemConnection",
+              targetId: connection.id,
+              operation: "DELETE",
+              before: toJsonValue(connection),
+              after: Prisma.JsonNull,
+              reversible: true,
+            })),
+          });
+        }
         const updated = await tx.canvasItem.update({
           where: { id: item.id },
           data: {
@@ -372,6 +400,7 @@ export async function executeAskCommandSuggestion(input: {
         });
         await tx.changeRecord.create({
           data: {
+            createdAt: new Date(),
             changeSetId: changeSet.id,
             targetType: "CanvasItem",
             targetId: item.id,

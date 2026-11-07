@@ -6,9 +6,20 @@ const mocks = vi.hoisted(() => {
   const tx = {
     agentAction: { create: vi.fn(), update: vi.fn() },
     changeSet: { create: vi.fn(), update: vi.fn() },
-    changeRecord: { create: vi.fn(), updateMany: vi.fn() },
+    changeRecord: { create: vi.fn(), createMany: vi.fn(), updateMany: vi.fn() },
     canvas: { findFirst: vi.fn(), create: vi.fn() },
-    canvasItem: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    canvasItem: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    itemConnection: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      deleteMany: vi.fn(),
+      create: vi.fn(),
+    },
     agentProfile: { update: vi.fn() },
   };
   return {
@@ -239,6 +250,7 @@ describe("executing an approved Ask command", () => {
   beforeEach(() => {
     mocks.tx.agentAction.create.mockResolvedValue({ id: "act-1" });
     mocks.tx.changeSet.create.mockResolvedValue({ id: "cs-1" });
+    mocks.tx.itemConnection.findMany.mockResolvedValue([]);
     mocks.tx.canvasItem.update.mockImplementation(async ({ where, data }) => ({
       ...canvasItem(where.id),
       ...data,
@@ -292,6 +304,82 @@ describe("executing an approved Ask command", () => {
       "CanvasItem:MOVE",
       "CanvasItem:MOVE",
     ]);
+  });
+
+  it("drops the moved item's lines on the old board in the same change set", async () => {
+    mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
+    mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1")])
+      .mockResolvedValueOnce([]);
+    const lines = [
+      {
+        id: "conn-out",
+        canvasId: "canvas-a",
+        fromId: "i1",
+        toId: "i9",
+        label: "next",
+        style: "DASHED",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        id: "conn-in",
+        canvasId: "canvas-a",
+        fromId: "i8",
+        toId: "i1",
+        label: null,
+        style: "SOLID",
+        createdAt: new Date("2026-01-02T00:00:00.000Z"),
+      },
+    ];
+    mocks.tx.itemConnection.findMany.mockResolvedValueOnce(lines);
+
+    await executeAskCommandSuggestion({
+      actor: { userId: "user-1", agentProfileId: "prof-ask" },
+      agentProfile: profile as never,
+      payload: {
+        kind: ASK_COMMAND_SUGGESTION_KIND,
+        command: { type: "move_items", itemIds: ["i1"], boardId: "board-b" },
+      },
+      summary: "Move 1 item",
+    });
+
+    expect(mocks.tx.itemConnection.findMany).toHaveBeenCalledWith({
+      where: { OR: [{ fromId: "i1" }, { toId: "i1" }] },
+    });
+    expect(mocks.tx.itemConnection.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["conn-out", "conn-in"] } },
+    });
+    const [[{ data: dropped }]] = mocks.tx.changeRecord.createMany.mock.calls;
+    expect(dropped).toEqual([
+      expect.objectContaining({
+        changeSetId: "cs-1",
+        targetType: "ItemConnection",
+        targetId: "conn-out",
+        operation: "DELETE",
+        before: expect.objectContaining({ fromId: "i1", toId: "i9" }),
+        reversible: true,
+      }),
+      expect.objectContaining({
+        targetId: "conn-in",
+        operation: "DELETE",
+        before: expect.objectContaining({ fromId: "i8", toId: "i1" }),
+      }),
+    ]);
+    // Undo walks newest first: the lines must sort before the move.
+    const [[move]] = mocks.tx.changeRecord.create.mock.calls;
+    expect(move.data.operation).toBe("MOVE");
+    expect(dropped[0].createdAt.getTime()).toBeLessThan(
+      move.data.createdAt.getTime(),
+    );
+    // Old-board collaborators get the normal delete event for the item.
+    expect(mocks.recordEvent).toHaveBeenCalledWith(
+      mocks.tx,
+      expect.objectContaining({
+        canvasId: "canvas-a",
+        itemId: "i1",
+        operation: "deleted",
+      }),
+    );
   });
 
   it("archives into the trash-backed archive instead of an Archive board", async () => {
@@ -403,5 +491,99 @@ describe("undoing an Ask move", () => {
       mocks.tx,
       expect.objectContaining({ canvasId: "canvas-a", operation: "created" }),
     );
+  });
+
+  it("restores the lines the move dropped once the item is back", async () => {
+    const line = {
+      id: "conn-1",
+      canvasId: "canvas-a",
+      fromId: "i1",
+      toId: "i9",
+      label: "next",
+      style: "DASHED",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const gone = { ...line, id: "conn-2", toId: "i-gone" };
+    mocks.changeSetFindFirst.mockResolvedValue({
+      id: "cs-1",
+      scopeType: "user",
+      scopeId: "user-1",
+      revertedAt: null,
+      changeRecords: [
+        {
+          id: "cr-move",
+          targetType: "CanvasItem",
+          targetId: "i1",
+          operation: "MOVE",
+          before: canvasItem("i1", "canvas-a"),
+          after: canvasItem("i1", "board-new"),
+          reversible: true,
+        },
+        {
+          id: "cr-line",
+          targetType: "ItemConnection",
+          targetId: "conn-1",
+          operation: "DELETE",
+          before: line,
+          after: null,
+          reversible: true,
+        },
+        {
+          id: "cr-gone",
+          targetType: "ItemConnection",
+          targetId: "conn-2",
+          operation: "DELETE",
+          before: gone,
+          after: null,
+          reversible: true,
+        },
+      ],
+    });
+    mocks.tx.agentAction.create.mockResolvedValue({ id: "act-rb" });
+    mocks.tx.changeSet.create.mockResolvedValue({ id: "cs-rb" });
+    mocks.tx.canvasItem.findFirst.mockResolvedValue(
+      canvasItem("i1", "board-new"),
+    );
+    mocks.tx.canvas.findFirst.mockResolvedValue({ id: "canvas-a" });
+    mocks.tx.canvasItem.update.mockResolvedValue({
+      ...canvasItem("i1", "canvas-a"),
+      version: 3,
+    });
+    // Both ends of conn-1 are on the board; conn-2 lost its other end.
+    mocks.tx.canvasItem.count.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+    mocks.tx.itemConnection.findFirst.mockResolvedValue(null);
+    mocks.tx.itemConnection.create.mockImplementation(async ({ data }) => data);
+
+    await revertChangeSet({
+      actor: { userId: "user-1", agentProfileId: "prof-ask" },
+      changeSetId: "cs-1",
+    });
+
+    expect(mocks.tx.canvasItem.update.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.itemConnection.create.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.tx.canvasItem.count).toHaveBeenCalledWith({
+      where: { id: { in: ["i1", "i9"] }, canvasId: "canvas-a" },
+    });
+    expect(mocks.tx.itemConnection.create).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.itemConnection.create).toHaveBeenCalledWith({
+      data: {
+        id: "conn-1",
+        canvasId: "canvas-a",
+        fromId: "i1",
+        toId: "i9",
+        label: "next",
+        style: "DASHED",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    });
+    expect(mocks.tx.changeRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changeSetId: "cs-rb",
+        targetType: "ItemConnection",
+        targetId: "conn-1",
+        operation: "ROLLBACK_DELETE",
+      }),
+    });
   });
 });
