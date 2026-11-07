@@ -1384,6 +1384,74 @@ async function applyRevertOperation(
   }
 
   if (
+    changeRecord.targetType === "ItemConnection" &&
+    changeRecord.operation === "DELETE" &&
+    changeRecord.before
+  ) {
+    // A line an approved move dropped from the old board (IMP-072). The move
+    // records sort newer, so the items are already back; the line returns
+    // only while both ends are on that board and nothing has replaced it.
+    const snapshot = changeRecord.before as unknown as {
+      id: string;
+      canvasId: string;
+      fromId: string;
+      toId: string;
+      label: string | null;
+      style: string;
+      createdAt: string;
+    };
+    const board = await tx.canvas.findFirst({
+      where: { id: snapshot.canvasId, userId },
+      select: { id: true },
+    });
+    if (!board) return;
+    await lockCanvasForMutation(tx, snapshot.canvasId);
+    const endpointIds = Array.from(new Set([snapshot.fromId, snapshot.toId]));
+    const [endpoints, clash] = await Promise.all([
+      tx.canvasItem.count({
+        where: { id: { in: endpointIds }, canvasId: snapshot.canvasId },
+      }),
+      tx.itemConnection.findFirst({
+        where: {
+          OR: [
+            { id: snapshot.id },
+            {
+              canvasId: snapshot.canvasId,
+              fromId: snapshot.fromId,
+              toId: snapshot.toId,
+            },
+          ],
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (endpoints !== endpointIds.length || clash) return;
+    const restored = await tx.itemConnection.create({
+      data: {
+        id: snapshot.id,
+        canvasId: snapshot.canvasId,
+        fromId: snapshot.fromId,
+        toId: snapshot.toId,
+        label: snapshot.label,
+        style: snapshot.style,
+        createdAt: new Date(snapshot.createdAt),
+      },
+    });
+    await tx.changeRecord.create({
+      data: {
+        changeSetId: rollbackChangeSetId,
+        targetType: "ItemConnection",
+        targetId: restored.id,
+        operation: "ROLLBACK_DELETE",
+        before: Prisma.JsonNull,
+        after: toJsonValue(restored),
+        reversible: false,
+      },
+    });
+    return;
+  }
+
+  if (
     changeRecord.operation === "UPDATE" &&
     changeRecord.before &&
     changeRecord.targetType === "CanvasItem"
