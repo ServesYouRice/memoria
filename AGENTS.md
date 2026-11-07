@@ -81,7 +81,7 @@ pnpm type-check
 pnpm test -- --run
 pnpm build
 pnpm smoke
-pnpm gate [build|audit|integration|container|e2e|all]
+pnpm gate [build|audit|integration|redis|container|e2e|all]
 ```
 
 There is no hosted CI: `pnpm gate` (fast stage by default) is the local gate,
