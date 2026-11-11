@@ -698,11 +698,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   }, []);
 
   // Handlers
-  const handleAddNoteFromAI = (text: string) => {
+  // Returns the create so AIDialog closes only once the note exists.
+  const handleAddNoteFromAI = async (text: string): Promise<void> => {
     const centerX = (-position.x + stageSize.width / 2) / zoom;
     const centerY = (-position.y + stageSize.height / 2) / zoom;
 
-    createItem({
+    await createItem({
       canvasId,
       type: ItemType.NOTE,
       positionX: centerX - 150,

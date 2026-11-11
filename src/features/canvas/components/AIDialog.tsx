@@ -32,7 +32,7 @@ interface AIDialogProps {
   open: boolean;
   onClose: () => void;
   canvasId: string;
-  onAddNote: (text: string) => void;
+  onAddNote: (text: string) => void | Promise<void>;
   getContext?: () => string;
 }
 
@@ -56,6 +56,7 @@ export function AIDialog({
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   // Chat State
   const [persona, setPersona] = useState<PersonaKey>("creative");
@@ -155,11 +156,21 @@ export function AIDialog({
     }
   };
 
-  const handleAddNote = () => {
-    if (result) {
-      onAddNote(result);
-      onClose();
+  // Close only once the note exists; on failure keep the result to retry.
+  const handleAddNote = async () => {
+    if (!result || adding) return;
+    setAdding(true);
+    setError(null);
+    let added = false;
+    try {
+      await onAddNote(result);
+      added = true;
+    } catch {
+      setError("Failed to add the note. Please try again.");
+    } finally {
+      setAdding(false);
     }
+    if (added) onClose();
   };
 
   return (
@@ -349,7 +360,8 @@ export function AIDialog({
         {result && tab !== 2 && (
           <Button
             variant="contained"
-            onClick={handleAddNote}
+            onClick={() => void handleAddNote()}
+            disabled={adding}
             startIcon={<NoteAdd />}
           >
             Add as Note

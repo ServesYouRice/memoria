@@ -135,7 +135,7 @@ interface CanvasDialogsProps {
 
   aiDialogOpen: boolean;
   setAiDialogOpen: (open: boolean) => void;
-  onAddNoteFromAI: (text: string) => void;
+  onAddNoteFromAI: (text: string) => void | Promise<void>;
   getAIContext: () => string;
 
   serendipityOpen: boolean;
