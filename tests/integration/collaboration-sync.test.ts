@@ -770,6 +770,65 @@ describe("collaboration sync server", () => {
     expect(status).toBe(403);
   });
 
+  it("limits one principal's concurrent document connections and frees a slot on disconnect (TASK-171)", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const { url } = await startServer();
+    const open = Array.from({ length: 10 }, () =>
+      connect({ url, canvasId: canvas.id, cookie: owner.cookie }),
+    );
+    await waitFor(() => open.every(({ provider }) => provider.isSynced));
+
+    const extra = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    // Retryable, never forbidden (which would clear the device copy).
+    await waitFor(() =>
+      extra.authFailures.includes(SYNC_CLOSE_REASONS.unavailable),
+    );
+    expect(extra.provider.isSynced).toBe(false);
+    expect(extra.authFailures).not.toContain(SYNC_CLOSE_REASONS.forbidden);
+
+    open[0]!.provider.destroy();
+    extra.provider.destroy();
+    await waitFor(async () => {
+      const next = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+      try {
+        await waitFor(
+          () => next.provider.isSynced || next.authFailures.length > 0,
+        );
+        return next.provider.isSynced;
+      } finally {
+        next.provider.destroy();
+      }
+    });
+  });
+
+  it("bounds one client's concurrent sockets before authentication (TASK-171)", async () => {
+    const { url } = await startServer();
+    const sockets: WebSocket[] = [];
+    const open = () =>
+      new Promise<number>((resolve) => {
+        const socket = new WebSocket(url, { headers: { origin: TEST_ORIGIN } });
+        sockets.push(socket);
+        socket.on("unexpected-response", (_request, response) => {
+          resolve(response.statusCode ?? 0);
+          socket.terminate();
+        });
+        socket.on("open", () => resolve(101));
+        socket.on("error", () => undefined);
+      });
+    try {
+      for (let index = 0; index < 30; index += 1)
+        expect(await open()).toBe(101);
+      expect(await open()).toBe(429);
+      // A closed socket gives its slot back.
+      const closed = new Promise((resolve) => sockets[0]!.on("close", resolve));
+      sockets[0]!.terminate();
+      await closed;
+      await waitFor(async () => (await open()) === 101);
+    } finally {
+      for (const socket of sockets) socket.terminate();
+    }
+  });
+
   it("snapshots versions from the document and restores them into open documents", async () => {
     const canvas = await createCanvas(owner.user.id);
     routeAuth.userId = owner.user.id;

@@ -377,6 +377,49 @@ describe("two sync replicas", () => {
   });
 });
 
+describe("sync connection limits across replicas (TASK-171)", () => {
+  it("counts one principal's document connections on both replicas", async () => {
+    const canvas = await sharedCanvas();
+    const a = await startReplica({
+      redis: redisClient(),
+      reconcileIntervalMs: 60_000,
+    });
+    const b = await startReplica({
+      redis: redisClient(),
+      reconcileIntervalMs: 60_000,
+    });
+    const open = Array.from({ length: 10 }, (_value, index) =>
+      connect(index % 2 ? a.url : b.url, canvas.id, owner.cookie),
+    );
+    await waitFor(() => open.every(({ provider }) => provider.isSynced));
+
+    const extra = connect(b.url, canvas.id, owner.cookie);
+    const failures: string[] = [];
+    extra.provider.on(
+      "authenticationFailed",
+      ({ reason }: { reason: string }) => failures.push(reason),
+    );
+    await waitFor(() => failures.includes("memoria:unavailable"));
+
+    // A slot freed on one replica is free on the other.
+    open[1]!.provider.destroy();
+    extra.provider.destroy();
+    await waitFor(async () => {
+      const next = connect(b.url, canvas.id, owner.cookie);
+      let refused = false;
+      next.provider.on("authenticationFailed", () => {
+        refused = true;
+      });
+      try {
+        await waitFor(() => next.provider.isSynced || refused);
+        return next.provider.isSynced;
+      } finally {
+        next.provider.destroy();
+      }
+    });
+  });
+});
+
 describe("shared connection limits", () => {
   const limits = { global: 100, perCanvas: 3, perPrincipal: 2, perClient: 50 };
 

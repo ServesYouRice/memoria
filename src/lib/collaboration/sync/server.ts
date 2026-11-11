@@ -7,10 +7,14 @@
  * server's upgrade proxy where no gateway route exists. It
  *
  * - admits upgrades only on the sync path, from the configured origin, within
- *   the per-client upgrade budget and the global connection cap;
+ *   the per-client upgrade budget, the per-client socket limit and the
+ *   global connection cap;
  * - authenticates each document with the Better Auth session (or a public
  *   share token) and re-checks every connection on the presence socket's
  *   authorization interval;
+ * - admits each authenticated document connection within the per-canvas,
+ *   per-principal and per-client limits (shared across replicas through
+ *   Redis), and releases it when the connection or its socket closes;
  * - validates, persists and projects every update before acknowledging it
  *   (`engine.ts`), and closes the document for a client whose update it
  *   refused so the client resyncs;
@@ -41,7 +45,10 @@ import {
   AUTHORIZATION_REFRESH_INTERVAL_MS,
   authorizationLeaseMustClose,
 } from "@/lib/collaboration/transport-policy";
-import { SharedConnectionAdmission } from "@/lib/collaboration/shared-admission";
+import {
+  type AdmittedConnection,
+  SharedConnectionAdmission,
+} from "@/lib/collaboration/shared-admission";
 import { syncDocumentsChannel } from "@/lib/collaboration/channels";
 import {
   deriveUpgradeClientId,
@@ -63,6 +70,16 @@ import { InvalidDocumentUpdateError } from "./validation";
 
 const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_CONNECTIONS = 5_000;
+// Concurrent document connections, with the presence socket's values
+// (websocket-server.ts): a browser holds one of each per open canvas.
+const MAX_CONNECTIONS_PER_CANVAS = 100;
+const MAX_CONNECTIONS_PER_PRINCIPAL = 10;
+const MAX_CONNECTIONS_PER_CLIENT = 30;
+// Open WebSockets per client in this process, authenticated or not.
+// Hocuspocus closes a socket that authenticates no document within `timeout`.
+const MAX_SOCKETS_PER_CLIENT = MAX_CONNECTIONS_PER_CLIENT;
+/** Set in onUpgrade (replacing any caller copy) to find the socket's entry. */
+const SOCKET_HEADER = "x-memoria-sync-socket";
 const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 const SYNC_STEP_1 = 0;
 
@@ -103,6 +120,20 @@ export interface SyncServer {
   reconcileOpenDocuments(): Promise<void>;
   destroy(): Promise<void>;
 }
+
+/** A document connection holding a slot in the admission limits. */
+interface AdmittedDocument extends AdmittedConnection {
+  /** Hocuspocus created the connection, so onDisconnect will run for it. */
+  established: boolean;
+  released: boolean;
+}
+
+interface OpenSocket {
+  clientId: string;
+  admitted: Set<AdmittedDocument>;
+}
+
+type AdmittedContext = SyncConnectionContext & { admission: AdmittedDocument };
 
 class SyncCloseError extends Error {
   constructor(
@@ -179,12 +210,11 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
   });
   const admission = new SharedConnectionAdmission({
     scope: "sync",
-    // The sync server limits upgrades; documents limit themselves.
     limits: {
       global: MAX_CONNECTIONS,
-      perCanvas: MAX_CONNECTIONS,
-      perPrincipal: MAX_CONNECTIONS,
-      perClient: MAX_CONNECTIONS,
+      perCanvas: MAX_CONNECTIONS_PER_CANVAS,
+      perPrincipal: MAX_CONNECTIONS_PER_PRINCIPAL,
+      perClient: MAX_CONNECTIONS_PER_CLIENT,
     },
     upgradesPerMinute: MAX_UPGRADES_PER_CLIENT_PER_MINUTE,
     leaseMs: AUTHORIZATION_LEASE_MS,
@@ -192,6 +222,20 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     logger,
   });
   const connectionCount = () => server.hocuspocus.getConnectionsCount();
+  /** Upgraded sockets by the key in SOCKET_HEADER, until they close. */
+  const sockets = new Map<string, OpenSocket>();
+  const socketsPerClient = new Map<string, number>();
+
+  function releaseAdmitted(open: OpenSocket, admitted: AdmittedDocument): void {
+    if (admitted.released) return;
+    admitted.released = true;
+    open.admitted.delete(admitted);
+    void admission.release(admitted);
+  }
+
+  function* admittedConnections(): Iterable<AdmittedDocument> {
+    for (const open of sockets.values()) yield* open.admitted;
+  }
 
   let subscriber: Redis | null = null;
   async function subscribeToPeers(): Promise<void> {
@@ -270,11 +314,31 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
         )
       )
         return rejectUpgrade(socket, "403 Forbidden");
+      const clientId = deriveUpgradeClientId(incoming);
       if (
         connectionCount() >= MAX_CONNECTIONS ||
-        !(await admission.consumeUpgrade(deriveUpgradeClientId(incoming)))
+        sockets.size >= MAX_CONNECTIONS ||
+        !(await admission.consumeUpgrade(clientId)) ||
+        (socketsPerClient.get(clientId) ?? 0) >= MAX_SOCKETS_PER_CLIENT
       )
         return rejectUpgrade(socket, "429 Too Many Requests");
+      // Closed while the budget was checked: "close" will not fire again.
+      if (socket.destroyed) return handled();
+      const socketKey = nanoid();
+      const open: OpenSocket = { clientId, admitted: new Set() };
+      sockets.set(socketKey, open);
+      socketsPerClient.set(clientId, (socketsPerClient.get(clientId) ?? 0) + 1);
+      incoming.headers[SOCKET_HEADER] = socketKey;
+      socket.once("close", () => {
+        sockets.delete(socketKey);
+        const remaining = (socketsPerClient.get(clientId) ?? 0) - 1;
+        if (remaining > 0) socketsPerClient.set(clientId, remaining);
+        else socketsPerClient.delete(clientId);
+        // Covers admissions that never became a connection (the socket
+        // closed during authentication or the document failed to load).
+        for (const admitted of [...open.admitted])
+          releaseAdmitted(open, admitted);
+      });
     },
 
     async onAuthenticate({
@@ -312,7 +376,64 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
       // View and comment roles never apply updates (Hocuspocus refuses them
       // for read-only connections); the hook below re-checks the role.
       connectionConfig.readOnly = !canWriteDocument(context.access);
-      return context;
+
+      const socketKey = requestHeaders.get(SOCKET_HEADER) ?? "";
+      const open = sockets.get(socketKey);
+      // An earlier attempt for this document on the same socket that never
+      // became a connection (its load failed) must not keep its slot.
+      for (const earlier of open ? [...open.admitted] : [])
+        if (earlier.canvasId === documentName && !earlier.established)
+          releaseAdmitted(open!, earlier);
+      const admitted: AdmittedDocument = {
+        id: nanoid(),
+        canvasId: documentName,
+        principalId: context.principalId,
+        clientId: open?.clientId ?? "unknown",
+        established: false,
+        released: false,
+      };
+      const decision = open ? await admission.admit(admitted) : null;
+      // Over a limit, or the socket closed meanwhile. Retryable, never
+      // forbidden: that would make the client drop its device copy.
+      if (!open || !decision?.admitted || sockets.get(socketKey) !== open) {
+        if (decision?.admitted) void admission.release(admitted);
+        else if (decision)
+          logger.warn(
+            {
+              canvasId: documentName,
+              userId: context.principalId,
+              limit: decision.reason,
+            },
+            "Refused a sync connection over a concurrent limit",
+          );
+        throw new SyncCloseError(
+          SYNC_CLOSE_CODES.unavailable,
+          SYNC_CLOSE_REASONS.unavailable,
+        );
+      }
+      open.admitted.add(admitted);
+      const admittedContext: AdmittedContext = {
+        ...context,
+        admission: admitted,
+      };
+      return admittedContext;
+    },
+
+    async connected({ context }) {
+      const admitted = (context as Partial<AdmittedContext>).admission;
+      if (admitted) admitted.established = true;
+    },
+
+    // Runs once for every connection Hocuspocus created, however it closed.
+    async onDisconnect({ context, requestHeaders }) {
+      const admitted = (context as Partial<AdmittedContext>).admission;
+      if (!admitted) return;
+      const open = sockets.get(requestHeaders.get(SOCKET_HEADER) ?? "");
+      if (open) releaseAdmitted(open, admitted);
+      else if (!admitted.released) {
+        admitted.released = true;
+        void admission.release(admitted);
+      }
     },
 
     async onLoadDocument({ documentName }) {
@@ -521,6 +642,7 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
       timers.push(
         setInterval(() => {
           admission.sweep();
+          void admission.renew(admittedConnections());
           void refreshAuthorizations();
         }, options.authorizationRefreshMs ?? AUTHORIZATION_REFRESH_INTERVAL_MS),
         setInterval(() => {
