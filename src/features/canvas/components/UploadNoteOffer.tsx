@@ -70,6 +70,9 @@ export function UploadNoteOffer({
   const [elapsed, setElapsed] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const cancelledRef = useRef(false);
+  const mountedRef = useRef(false);
+  const startingRef = useRef(false);
+  const [starting, setStarting] = useState(false);
 
   const imageAssetId =
     selectedItem?.type === ItemType.IMAGE
@@ -107,14 +110,16 @@ export function UploadNoteOffer({
     return () => clearInterval(timer);
   }, [recording]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Set in the effect body so StrictMode's mount/unmount/mount ends true.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       // Leaving the canvas mid-recording discards it.
       cancelledRef.current = true;
       recorderRef.current?.stop();
-    },
-    [],
-  );
+    };
+  }, []);
 
   const startRecording = useCallback(async () => {
     const mimeType = pickRecordingType();
@@ -122,11 +127,26 @@ export function UploadNoteOffer({
       tracker.fail(new Error("This browser cannot record audio."));
       return;
     }
+    // One acquisition at a time: repeated clicks while the permission prompt
+    // is open must not create a second recorder.
+    if (startingRef.current || recorderRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      tracker.fail(new Error("Microphone access was not allowed."));
+      if (mountedRef.current) {
+        tracker.fail(new Error("Microphone access was not allowed."));
+      }
+      return;
+    } finally {
+      startingRef.current = false;
+      if (mountedRef.current) setStarting(false);
+    }
+    if (!mountedRef.current) {
+      // Unmounted while waiting: no Stop control or timeout would exist.
+      stream.getTracks().forEach((track) => track.stop());
       return;
     }
     const recorder = new MediaRecorder(stream, {
@@ -219,7 +239,7 @@ export function UploadNoteOffer({
                 onClick={
                   recording ? () => recorderRef.current?.stop() : startRecording
                 }
-                disabled={busy && !recording}
+                disabled={(busy || starting) && !recording}
               >
                 {recording ? <StopIcon /> : <MicIcon />}
               </Fab>
