@@ -1,4 +1,5 @@
-import { stripHtml, sanitizeNoteHtml, sanitizeUrl } from "@/lib/sanitization";
+import { load } from "cheerio";
+import { sanitizeNoteHtml, sanitizeUrl } from "@/lib/sanitization";
 import { MAX_NOTE_TEXT_LENGTH } from "@/lib/constants";
 
 export const MAX_DOCUMENT_BYTES = 50_000;
@@ -250,19 +251,116 @@ export function normalizeNoteContent(
   if (typeof value.text !== "string")
     return fail("Invalid legacy note content.");
   const safeHtml = sanitizeNoteHtml(value.text);
-  const plainText = stripHtml(safeHtml);
+  let document = legacyHtmlToDocument(safeHtml);
+  const plainText = extractText(document).trim();
   if (!plainText) return fail("Note text cannot be empty.");
   if (plainText.length > MAX_NOTE_TEXT_LENGTH)
     return fail("Note text is too long.");
-  return {
-    formatVersion: 1,
-    document: {
+  try {
+    document = validateNode(document, 0, { value: 0 });
+  } catch {
+    // Too many blocks for the document limits: keep the decoded text in one
+    // paragraph rather than rejecting a note that was valid before.
+    document = {
       type: "doc",
       content: [
         { type: "paragraph", content: [{ type: "text", text: plainText }] },
       ],
-    },
-    plainText,
-    text: safeHtml,
+    };
+  }
+  return { formatVersion: 1, document, plainText, text: safeHtml };
+}
+
+type LegacyHtmlNode = {
+  type: string;
+  name?: string;
+  data?: string;
+  children?: LegacyHtmlNode[];
+};
+const LEGACY_TEXT_BLOCKS = new Set(["p", "h1", "h2", "h3", "pre"]);
+const LEGACY_CONTAINER_BLOCKS = new Set(["ul", "ol", "li", "blockquote"]);
+
+/** Inline children of a block: cheerio text nodes hold decoded text. */
+function legacyInline(
+  node: LegacyHtmlNode,
+  out: TiptapNode[],
+  preformatted: boolean,
+) {
+  if (node.type === "text") {
+    const text = preformatted
+      ? node.data || ""
+      : (node.data || "").replace(/[ \t\n\r\f]+/g, " ");
+    const last = out[out.length - 1];
+    if (last?.type === "text") last.text += text;
+    else if (text) out.push({ type: "text", text });
+    return;
+  }
+  if (node.type !== "tag") return;
+  if (node.name === "br") {
+    out.push({ type: "hardBreak" });
+    return;
+  }
+  for (const child of node.children || [])
+    legacyInline(child, out, preformatted || node.name === "pre");
+}
+
+function legacyParagraph(inline: TiptapNode[], preformatted: boolean) {
+  const content: TiptapNode[] = [];
+  for (const node of inline) {
+    if (node.type !== "text" || !preformatted) {
+      content.push(node.type === "text" ? { ...node } : node);
+      continue;
+    }
+    // Keep preformatted line breaks as hard breaks.
+    (node.text || "").split("\n").forEach((line, index) => {
+      if (index > 0) content.push({ type: "hardBreak" });
+      if (line) content.push({ type: "text", text: line });
+    });
+  }
+  if (!preformatted) {
+    const first = content[0];
+    if (first?.type === "text") first.text = first.text!.replace(/^ +/, "");
+    const last = content[content.length - 1];
+    if (last?.type === "text") last.text = last.text!.replace(/ +$/, "");
+  }
+  return {
+    type: "paragraph",
+    content: content.filter((node) => node.type !== "text" || node.text),
   };
+}
+
+/**
+ * Turn sanitized legacy HTML into one paragraph per source block (p, h1-h3,
+ * pre, li, blockquote), with decoded text and hard breaks for <br>.
+ */
+function legacyHtmlToDocument(safeHtml: string): TiptapNode {
+  const $ = load(`<div id="legacy-note-root">${safeHtml}</div>`, null, false);
+  const root = $("#legacy-note-root").get(0) as unknown as LegacyHtmlNode;
+  const blocks: TiptapNode[] = [];
+  const walk = (nodes: LegacyHtmlNode[]) => {
+    let run: TiptapNode[] = [];
+    const flush = () => {
+      const paragraph = legacyParagraph(run, false);
+      if (paragraph.content.length) blocks.push(paragraph);
+      run = [];
+    };
+    for (const node of nodes) {
+      if (node.type === "tag" && LEGACY_TEXT_BLOCKS.has(node.name || "")) {
+        flush();
+        const inline: TiptapNode[] = [];
+        for (const child of node.children || [])
+          legacyInline(child, inline, node.name === "pre");
+        blocks.push(legacyParagraph(inline, node.name === "pre"));
+      } else if (
+        node.type === "tag" &&
+        LEGACY_CONTAINER_BLOCKS.has(node.name || "")
+      ) {
+        flush();
+        walk(node.children || []);
+      } else legacyInline(node, run, false);
+    }
+    flush();
+  };
+  walk(root?.children || []);
+  return { type: "doc", content: blocks };
 }
