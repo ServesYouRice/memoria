@@ -63,6 +63,7 @@ import type {
 } from "./types";
 import { ConsoleEmailProvider } from "./providers/console";
 import { SMTPEmailProvider } from "./providers/smtp";
+import { resolveSmtpPassword } from "./smtp-password";
 import { SendGridEmailProvider } from "./providers/sendgrid";
 import { ResendEmailProvider } from "./providers/resend";
 import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
@@ -79,12 +80,10 @@ const SUPPORTED_EMAIL_PROVIDERS = new Set<EmailServiceConfig["provider"]>([
   "resend",
 ]);
 
-// ... (skipping getEmailConfig, it is fine) -> No, I need to put it back.
-
 /**
  * Email service configuration from environment
  */
-function getEmailConfig(): EmailServiceConfig {
+export function getEmailConfig(): EmailServiceConfig {
   const provider = (process.env["EMAIL_PROVIDER"] ||
     "console") as EmailServiceConfig["provider"];
 
@@ -107,7 +106,8 @@ function getEmailConfig(): EmailServiceConfig {
       requireTLS: process.env.NODE_ENV === "production",
       auth: {
         user: process.env["SMTP_USER"] || "",
-        pass: process.env["SMTP_PASS"] || "",
+        // Same alias rule env.ts validates (SMTP_PASSWORD -> SMTP_PASS).
+        pass: resolveSmtpPassword(process.env) || "",
       },
     };
   } else if (provider === "sendgrid") {

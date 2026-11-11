@@ -4,6 +4,7 @@ import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 import { REDIS_KEY_PREFIX_PATTERN } from "./cache/redis-keys";
 import { parseTrustedProxyCidrs } from "./network/client-ip";
+import { resolveSmtpPassword } from "./email/smtp-password";
 
 const envFilePath = process.env.MEMORIA_ENV_FILE || ".env";
 const resolvedEnvPath = path.resolve(process.cwd(), envFilePath);
@@ -36,7 +37,7 @@ const rawEnv = {
   ...process.env,
   AUTH_URL: process.env.AUTH_URL ?? process.env.NEXTAUTH_URL,
   AUTH_SECRET: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
-  SMTP_PASS: process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD,
+  SMTP_PASS: resolveSmtpPassword(process.env),
 };
 
 const KNOWN_PLACEHOLDER_REGEX =
