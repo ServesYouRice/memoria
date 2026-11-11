@@ -6,7 +6,7 @@
 
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import {
   Dialog,
@@ -55,6 +55,23 @@ const formSchema = z.object({
 type FormInput = z.input<typeof formSchema>;
 type FormData = z.output<typeof formSchema>;
 
+/**
+ * Best-effort delete of an upload the user abandoned, so it stops counting
+ * against the quota. The DELETE route allows only the canvas owner, so an
+ * editor's abandoned upload is refused (403) and stays until upload delete
+ * authorization for uploaders is decided; failures are ignored.
+ */
+function discardUpload(assetId: string) {
+  try {
+    void fetch(`/api/v1/uploads/${encodeURIComponent(assetId)}`, {
+      method: "DELETE",
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // Cleanup never blocks closing the dialog.
+  }
+}
+
 export function CreateImageDialog({
   open,
   onClose,
@@ -70,6 +87,14 @@ export function CreateImageDialog({
   } | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The uploaded asset not yet added to the canvas.
+  const pendingAssetRef = useRef<string | null>(null);
+  const discardPending = () => {
+    const assetId = pendingAssetRef.current;
+    pendingAssetRef.current = null;
+    if (assetId) discardUpload(assetId);
+  };
+  useEffect(() => discardPending, []);
   const createItem = useCreateCanvasItem();
   // IMP-071: offered only when the saved AI provider can read images.
   const offers = useUploadNoteOffers(open);
@@ -89,6 +114,7 @@ export function CreateImageDialog({
   });
 
   const handleClose = () => {
+    discardPending();
     reset();
     setError(null);
     setUploadedImage(null);
@@ -123,6 +149,13 @@ export function CreateImageDialog({
       }
 
       const data = await response.json();
+      const assetId: string | null =
+        typeof data.assetId === "string"
+          ? data.assetId
+          : uploadAssetIdFromUrl(data.url);
+      // "Change Image": the previous upload is no longer wanted.
+      discardPending();
+      pendingAssetRef.current = assetId;
 
       // Load image to get dimensions
       const img = new globalThis.Image();
@@ -185,6 +218,8 @@ export function CreateImageDialog({
         },
         tags: data.tags || [],
       });
+      // The item now references the upload; closing must not delete it.
+      pendingAssetRef.current = null;
 
       const assetId = uploadAssetIdFromUrl(uploadedImage.url);
       if (makeNote && offers.readImage && assetId) {
