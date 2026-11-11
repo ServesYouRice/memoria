@@ -64,6 +64,8 @@ const externalActionPayloadSchema = z.object({
   compensatingAction: z.record(z.string(), z.unknown()).optional(),
 });
 
+const timelineCanvasIdSchema = z.string().cuid().optional();
+
 const createCheckpointSchema = z.object({
   canvasId: z.string().cuid(),
   reason: z.string().min(1).max(255),
@@ -231,10 +233,18 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     defaultLimit: 50,
     maxLimit: 100,
   });
+  const canvasId = timelineCanvasIdSchema.parse(
+    request.nextUrl.searchParams.get("canvasId") ?? undefined,
+  );
+  if (canvasId) {
+    assertCanvasScope(context.agentProfile, canvasId);
+    await verifyCanvasOwnership(context.userId, canvasId);
+  }
 
   return NextResponse.json(
     await listScopedActionTimeline(context, {
       limit,
+      canvasId,
     }),
   );
 });

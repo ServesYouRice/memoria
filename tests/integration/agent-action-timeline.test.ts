@@ -188,3 +188,84 @@ describe("agent action timeline scope", () => {
     expect(body.changeSets).toHaveLength(2);
   });
 });
+
+describe("canvas-filtered timeline (TASK-022)", () => {
+  it("returns this canvas's older records past 100 newer ones elsewhere", async () => {
+    const { owner, inScope, descoped } = await setup();
+    const old = new Date(Date.now() - 86_400_000);
+    await prisma.changeSet.updateMany({
+      where: { scopeId: inScope.id },
+      data: { startedAt: old },
+    });
+    await prisma.suggestion.updateMany({
+      where: { userId: owner.id, summary: { endsWith: "In scope" } },
+      data: { createdAt: old },
+    });
+    const profileId = (
+      await prisma.agentProfile.findFirstOrThrow({
+        where: { userId: owner.id },
+      })
+    ).id;
+    await prisma.changeSet.createMany({
+      data: Array.from({ length: 105 }, (_, i) => ({
+        userId: owner.id,
+        agentProfileId: profileId,
+        scopeType: "canvas",
+        scopeId: descoped.id,
+        status: "COMPLETED" as const,
+        summary: `noise ${i}`,
+      })),
+    });
+    await prisma.suggestion.createMany({
+      data: Array.from({ length: 105 }, (_, i) => ({
+        userId: owner.id,
+        agentProfileId: profileId,
+        kind: "INTERNAL_ORGANIZATION" as const,
+        summary: `noise ${i}`,
+        payload: { canvasId: descoped.id },
+        expiresAt: new Date(Date.now() + 60_000),
+      })),
+    });
+
+    contextState.current = {
+      ...agentContext(owner.id, null),
+      actorType: "user",
+    };
+    const response = await actionsGet(
+      new NextRequest(
+        `http://localhost/api/agent/v1/actions?limit=100&canvasId=${inScope.id}`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.changeSets.map((c: { scopeId: string }) => c.scopeId)).toEqual(
+      [inScope.id],
+    );
+    expect(
+      body.suggestions.map((s: { summary: string }) => s.summary).sort(),
+    ).toEqual(["canvas suggestion In scope", "item suggestion In scope"]);
+    expect(body.hasMore).toBe(false);
+
+    const small = await (
+      await actionsGet(
+        new NextRequest(
+          `http://localhost/api/agent/v1/actions?limit=1&canvasId=${inScope.id}`,
+        ),
+      )
+    ).json();
+    expect(small.suggestions).toHaveLength(1);
+    expect(small.hasMore).toBe(true);
+
+    // An agent token may not name a canvas outside its scope.
+    const profile = await prisma.agentProfile.findFirstOrThrow({
+      where: { id: profileId },
+    });
+    contextState.current = agentContext(owner.id, profile);
+    const denied = await actionsGet(
+      new NextRequest(
+        `http://localhost/api/agent/v1/actions?canvasId=${descoped.id}`,
+      ),
+    );
+    expect(denied.status).toBe(403);
+  });
+});

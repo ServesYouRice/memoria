@@ -454,10 +454,41 @@ async function filterSuggestionsToScope<
   });
 }
 
+/**
+ * Ids of the newest suggestions that belong to one canvas: `payload.canvasId`
+ * names it, or `payload.itemId` is one of its items.
+ */
+async function findCanvasSuggestionIds(
+  where: { userId: string; agentProfileId?: string },
+  canvasId: string,
+  take: number,
+) {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT s."id" FROM "Suggestion" s
+    WHERE s."userId" = ${where.userId}
+      ${
+        where.agentProfileId
+          ? Prisma.sql`AND s."agentProfileId" = ${where.agentProfileId}`
+          : Prisma.empty
+      }
+      AND (
+        s."payload"->>'canvasId' = ${canvasId}
+        OR s."payload"->>'itemId' IN (
+          SELECT i."id" FROM "CanvasItem" i WHERE i."canvasId" = ${canvasId}
+        )
+      )
+    ORDER BY s."createdAt" DESC
+    LIMIT ${take}
+  `;
+  return rows.map((row) => row.id);
+}
+
 export async function listScopedActionTimeline(
   actor: ScopedActor,
   input: {
     limit: number;
+    /** Restrict change sets and suggestions to one canvas, in the query. */
+    canvasId?: string;
   },
 ) {
   const where = actor.agentProfile
@@ -473,45 +504,58 @@ export async function listScopedActionTimeline(
   const allowedCanvasIds = actor.agentProfile
     ? new Set(actor.agentProfile.allowedCanvasIds)
     : null;
+  const { canvasId } = input;
+  if (canvasId) assertCanvasScope(actor.agentProfile, canvasId);
+  // One extra row tells a canvas-filtered caller whether more exist.
+  const take = canvasId ? input.limit + 1 : input.limit;
+  const changeSetScope = canvasId
+    ? { scopeType: "canvas", scopeId: canvasId }
+    : allowedCanvasIds
+      ? { scopeType: "canvas", scopeId: { in: [...allowedCanvasIds] } }
+      : {};
 
-  const [actions, changeSets, suggestions] = await Promise.all([
+  const [actions, changeSetRows, suggestionRows] = await Promise.all([
     prisma.agentAction.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: input.limit,
     }),
     prisma.changeSet.findMany({
-      where: allowedCanvasIds
-        ? {
-            ...where,
-            scopeType: "canvas",
-            scopeId: { in: [...allowedCanvasIds] },
-          }
-        : where,
+      where: { ...where, ...changeSetScope },
       orderBy: { startedAt: "desc" },
-      take: input.limit,
+      take,
       include: {
         changeRecords: true,
       },
     }),
-    prisma.suggestion.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: input.limit,
-    }),
-  ]);
-
-  return {
-    actions,
-    changeSets,
-    suggestions: allowedCanvasIds
-      ? await filterSuggestionsToScope(
-          actor.userId,
-          allowedCanvasIds,
-          suggestions,
+    canvasId
+      ? findCanvasSuggestionIds(where, canvasId, take).then((ids) =>
+          prisma.suggestion.findMany({
+            where: { id: { in: ids } },
+            orderBy: { createdAt: "desc" },
+          }),
         )
-      : suggestions,
-  };
+      : prisma.suggestion.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take,
+        }),
+  ]);
+  const hasMore =
+    changeSetRows.length > input.limit || suggestionRows.length > input.limit;
+  const changeSets = changeSetRows.slice(0, input.limit);
+  const scopedSuggestions = suggestionRows.slice(0, input.limit);
+  const suggestions = allowedCanvasIds
+    ? await filterSuggestionsToScope(
+        actor.userId,
+        allowedCanvasIds,
+        scopedSuggestions,
+      )
+    : scopedSuggestions;
+
+  return canvasId
+    ? { actions, changeSets, suggestions, hasMore }
+    : { actions, changeSets, suggestions };
 }
 
 export async function listOwnedIntegrationAccounts(userId: string) {
