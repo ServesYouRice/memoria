@@ -203,9 +203,12 @@ describe("writeNoteFragment", () => {
       document: readNoteFragment(fragmentFromEditorJson(RICH_DOCUMENT))
         .document,
     });
+    if (!strict) throw new Error("expected a stored note");
     doc.transact(() => writeNoteFragment(fragment, strict));
     expect(readNoteFragment(fragment).document).toEqual(strict);
-    expect(stored.type).toBe("doc");
+    // Raw editor JSON (extra link attrs) is not a valid stored row; it is
+    // reported as unreadable rather than turned into an empty note.
+    expect(stored).toBeNull();
 
     const heading = fragment.get(0);
     const edited: TiptapNode = {
@@ -222,7 +225,9 @@ describe("writeNoteFragment", () => {
   });
 
   it("converts legacy HTML notes", () => {
-    const document = noteDocumentFromContent({ text: "<p>Hello <b>x</b></p>" });
+    const document = noteDocumentFromContent({
+      text: "<p>Hello <b>x</b></p>",
+    })!;
     const fragment = new Y.Doc().getXmlFragment("text");
     writeNoteFragment(fragment, document);
     expect(readNoteFragment(fragment).plainText).toBe("Hello x");
