@@ -44,6 +44,7 @@ import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
+import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
 import { resolveBoardCapabilities } from "@/features/canvas/hooks/time-machine-capabilities";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
@@ -689,8 +690,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   // Handlers
   const handleAddNoteFromAI = (text: string) => {
-    const centerX = (-position.x + stageSize.width / 2) / zoom;
-    const centerY = (-position.y + stageSize.height / 2) / zoom;
+    const { x: centerX, y: centerY } = viewportCenterWorld(
+      position,
+      stageSize,
+      zoom,
+    );
 
     createItem({
       canvasId,
@@ -714,12 +718,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   const handleAddSerendipityItems = async (items: any[]) => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
     for (const item of items) {
       await createItem({
         content: item.content,
         type: item.type,
-        positionX: -position.x + stageSize.width / 2 + Math.random() * 100,
-        positionY: -position.y + stageSize.height / 2 + Math.random() * 100,
+        positionX: center.x + Math.random() * 100,
+        positionY: center.y + Math.random() * 100,
         width: 300,
         height: 200,
         canvasId: canvasId,
@@ -730,11 +735,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   const handleWhisperSend = async (text: string) => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
     await createItem({
       content: { text },
       type: ItemType.NOTE,
-      positionX: -position.x + stageSize.width / 2,
-      positionY: -position.y + stageSize.height / 2,
+      positionX: center.x,
+      positionY: center.y,
       width: 300,
       height: 200,
       canvasId: canvasId,
@@ -1366,10 +1372,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                     null)
                   : null
               }
-              getViewportCenter={() => ({
-                x: (-position.x + stageSize.width / 2) / zoom,
-                y: (-position.y + stageSize.height / 2) / zoom,
-              })}
+              getViewportCenter={() =>
+                viewportCenterWorld(position, stageSize, zoom)
+              }
             />
           )}
 
