@@ -13,6 +13,7 @@ import {
   Typography,
   Box,
   CircularProgress,
+  Alert,
 } from "@mui/material";
 import { Download, Description, Code, PictureAsPdf } from "@mui/icons-material";
 import { type CanvasItem } from "@/types/canvas";
@@ -20,6 +21,7 @@ import {
   exportToJSON,
   exportToMarkdown,
   exportToPDF,
+  fetchAllCanvasItems,
 } from "@/lib/export/export-utils";
 
 export type ExportFormat = "json" | "markdown" | "pdf" | "png";
@@ -48,17 +50,23 @@ export function ExportDialog({
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>("png");
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleExport = async () => {
     setIsExporting(true);
+    setExportError(null);
     try {
       const filename = canvasName.replace(/[^a-z0-9]/gi, "_").toLowerCase();
 
       if (format === "json") {
-        const json = await exportToJSON(canvasId, canvasName, items);
+        // The board's items are a viewport working set; files hold the
+        // whole canvas.
+        const allItems = await fetchAllCanvasItems(canvasId, items);
+        const json = await exportToJSON(canvasId, canvasName, allItems);
         downloadFile(json, `${filename}.json`, "application/json");
       } else if (format === "markdown") {
-        const md = await exportToMarkdown(canvasId, canvasName, items);
+        const allItems = await fetchAllCanvasItems(canvasId, items);
+        const md = await exportToMarkdown(canvasId, canvasName, allItems);
         downloadFile(md, `${filename}.md`, "text/markdown");
       } else if (format === "pdf") {
         await exportToPDF(filename, stageRef.current);
@@ -77,7 +85,11 @@ export function ExportDialog({
       onClose();
     } catch (error) {
       console.error("Export failed:", error);
-      // Show error toast
+      setExportError(
+        error instanceof Error && error.message
+          ? `Export failed: ${error.message}`
+          : "Export failed. Nothing was downloaded.",
+      );
     } finally {
       setIsExporting(false);
     }
@@ -99,6 +111,11 @@ export function ExportDialog({
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>Export Canvas</DialogTitle>
       <DialogContent>
+        {exportError && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {exportError}
+          </Alert>
+        )}
         <FormControl component="fieldset" fullWidth sx={{ mt: 1 }}>
           <FormLabel component="legend">Choose Format</FormLabel>
           <RadioGroup

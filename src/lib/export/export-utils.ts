@@ -10,6 +10,61 @@ import {
   type BookmarkContent,
   type ImageContent,
 } from "@/types/canvas";
+import { apiFetch } from "@/lib/api/fetch-client";
+
+/** A canvas larger than this many listing pages fails the export loudly. */
+const MAX_EXPORT_PAGES = 200;
+const EXPORT_PAGE_LIMIT = 500;
+
+interface CanvasItemListPage {
+  items: CanvasItem[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+/**
+ * Every live item of the canvas, for file exports. The board's own `items`
+ * are a viewport-bounded, tag-filtered working set, so the export walks the
+ * full listing (no viewport or tag params) to the last cursor page. Rows the
+ * board holds are overlaid so unsaved live edits and local creations are
+ * included. Throws instead of returning a partial list.
+ */
+export async function fetchAllCanvasItems(
+  canvasId: string,
+  liveItems: CanvasItem[] = [],
+): Promise<CanvasItem[]> {
+  const fetched: CanvasItem[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; ; page++) {
+    if (page >= MAX_EXPORT_PAGES) {
+      throw new Error("Canvas is too large to export completely");
+    }
+    const params = new URLSearchParams({
+      canvasId,
+      limit: String(EXPORT_PAGE_LIMIT),
+    });
+    if (cursor) params.set("cursor", cursor);
+    const response = await apiFetch(`/api/v1/canvas-items?${params}`);
+    const body = (await response.json()) as CanvasItemListPage;
+    if (!Array.isArray(body.items)) {
+      throw new Error("Unexpected canvas item listing response");
+    }
+    fetched.push(...body.items);
+    if (!body.hasMore) break;
+    if (!body.nextCursor || body.items.length === 0) {
+      throw new Error("Canvas item listing ended before the last page");
+    }
+    cursor = body.nextCursor;
+  }
+
+  const live = new Map(liveItems.map((item) => [item.id, item]));
+  const merged = fetched.map((item) => live.get(item.id) ?? item);
+  const seen = new Set(merged.map((item) => item.id));
+  for (const item of liveItems) {
+    if (!seen.has(item.id)) merged.push(item);
+  }
+  return merged;
+}
 
 /**
  * Export canvas to JSON string
