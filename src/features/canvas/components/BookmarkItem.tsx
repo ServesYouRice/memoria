@@ -377,32 +377,53 @@ function BookmarkItemComponent({
  * Same optimization strategy as NoteItem:
  * - Prevents re-renders when other canvas items change
  * - Only re-renders when the item itself is updated
- * - Or when selection state changes
+ * - Or when selection state or capabilities change
  */
+export function areBookmarkItemPropsEqual(
+  prevProps: BookmarkItemProps,
+  nextProps: BookmarkItemProps,
+): boolean {
+  // Re-render if item changed
+  if (prevProps.item.id !== nextProps.item.id) {
+    return false;
+  }
+
+  // Re-render if selection state changed
+  if (prevProps.isSelected !== nextProps.isSelected) {
+    return false;
+  }
+
+  // Re-render if item was updated
+  if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
+    return false;
+  }
+
+  // Re-render if version changed
+  if (prevProps.item.version !== nextProps.item.version) {
+    return false;
+  }
+
+  // Re-render when permissions change (fallback -> loaded, or an access
+  // change from the sync server): draggable, the resize handles and the
+  // activate/commit callbacks all depend on them. Callbacks are rebuilt by
+  // the layer on every render, so they are not compared; a re-render here
+  // also picks up the latest ones.
+  if (prevProps.capabilities !== nextProps.capabilities) {
+    const prev = prevProps.capabilities;
+    const next = nextProps.capabilities;
+    const keys = new Set([...Object.keys(prev), ...Object.keys(next)]) as Set<
+      keyof typeof prev
+    >;
+    for (const key of keys) {
+      if (prev[key] !== next[key]) return false;
+    }
+  }
+
+  // No changes detected, skip re-render
+  return true;
+}
+
 export const BookmarkItem = React.memo(
   BookmarkItemComponent,
-  (prevProps, nextProps) => {
-    // Re-render if item changed
-    if (prevProps.item.id !== nextProps.item.id) {
-      return false;
-    }
-
-    // Re-render if selection state changed
-    if (prevProps.isSelected !== nextProps.isSelected) {
-      return false;
-    }
-
-    // Re-render if item was updated
-    if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
-      return false;
-    }
-
-    // Re-render if version changed
-    if (prevProps.item.version !== nextProps.item.version) {
-      return false;
-    }
-
-    // No changes detected, skip re-render
-    return true;
-  },
+  areBookmarkItemPropsEqual,
 );
