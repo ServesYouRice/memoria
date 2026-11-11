@@ -13,6 +13,7 @@ import {
   type VersionedNoteContent,
 } from "@/lib/rich-text/note-format";
 import { collaborativeNoteExtensions } from "@/lib/collaboration/sync/note-schema";
+import { toCanonicalNoteDocument } from "@/lib/rich-text/editor-json";
 import {
   Box,
   Button,
@@ -139,7 +140,9 @@ export function RichTextEditor({
     ...(collaboration ? {} : { content: initialDocument }),
     editable,
     onUpdate: ({ editor }) => {
-      const document = editor.getJSON() as TiptapNode;
+      // getJSON() omits empty `content` and writes attribute defaults; the
+      // adapter gives the validator (and later submit) canonical input.
+      const document = toCanonicalNoteDocument(editor.getJSON());
       try {
         onChange(
           normalizeNoteContent(
