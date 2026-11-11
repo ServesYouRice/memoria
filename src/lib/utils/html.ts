@@ -21,10 +21,11 @@ export function stripHtmlTags(html: string): string {
       .trim();
   }
 
-  // Client-side: use DOM parser for better accuracy
-  const temp = document.createElement("div");
-  temp.innerHTML = html;
-  return temp.textContent || temp.innerText || "";
+  // Client-side: parse in an inert DOMParser document. It has no browsing
+  // context, so markup such as <img onerror> is never fetched or run, unlike
+  // an element created by the live `document`.
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  return parsed.body?.textContent ?? "";
 }
 
 /**
