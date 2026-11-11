@@ -37,7 +37,10 @@ import { documentSaveStatus as documentSaveStatusOf } from "@/features/canvas/sa
 import { useCollaboration } from "@/lib/hooks/use-collaboration";
 import { useVirtualItems } from "@/lib/hooks/use-virtual-items";
 import { useRestoreVersion } from "@/lib/hooks/use-canvas-versions"; // Only restore needed
-import { useCanvasData } from "@/features/canvas/hooks/use-canvas-data";
+import {
+  resolveTimeMachineCapabilities,
+  useCanvasData,
+} from "@/features/canvas/hooks/use-canvas-data";
 import { useCanvasInteraction } from "@/features/canvas/hooks/use-canvas-interaction";
 import { useCanvasKeyboard } from "@/features/canvas/hooks/use-canvas-keyboard";
 import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
@@ -172,9 +175,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   } = useCanvasData({ canvasId, viewportSize: stageSize });
   // IMP-008: one capability contract, derived once and passed down. Every
   // surface reads these flags instead of re-deriving a role comparison.
-  const capabilities = React.useMemo(
+  const accessCapabilities = React.useMemo(
     () => resolveCanvasCapabilities(accessLevel as CanvasAccessLevel),
     [accessLevel],
+  );
+  // A Time Machine preview is read-only (its items keep the live IDs).
+  const capabilities = React.useMemo(
+    () =>
+      resolveTimeMachineCapabilities(accessCapabilities, isTimeMachineActive),
+    [accessCapabilities, isTimeMachineActive],
   );
   const canEdit = capabilities.canEditItems;
   const isOwner = capabilities.canManageCanvas;
@@ -1646,7 +1655,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
           onRestore={
-            canEdit
+            // The preview itself is read-only; restoring needs real access.
+            accessCapabilities.canEditItems
               ? async (version) => {
                   setPendingRestoreVersionId(version.id);
                 }

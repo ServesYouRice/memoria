@@ -13,7 +13,7 @@ import {
   type CanvasVersionSnapshot,
 } from "@/lib/hooks/use-canvas-versions";
 import { useCanvas, useUpdateCanvas } from "@/lib/hooks/use-canvases";
-import { type CanvasItem } from "@/types/canvas";
+import { type CanvasCapabilities, type CanvasItem } from "@/types/canvas";
 import { canvasItemMatchesSearch } from "@/features/canvas/search";
 import {
   useCanvasGeometry,
@@ -75,6 +75,28 @@ function hydrateSnapshotItems(
       updatedAt,
     };
   });
+}
+
+/**
+ * While a historical version is previewed, the board shows snapshot items
+ * that carry the live item IDs, so any move, edit or delete would land on the
+ * live item. The preview is read-only; "Restore This Version" is the only way
+ * to apply history. Copying and commenting are left as they are.
+ */
+export function resolveTimeMachineCapabilities(
+  capabilities: CanvasCapabilities,
+  previewActive: boolean,
+): CanvasCapabilities {
+  if (!previewActive) return capabilities;
+  return {
+    ...capabilities,
+    canMoveItems: false,
+    canResizeItems: false,
+    canEditItems: false,
+    canCreateItems: false,
+    canDeleteItems: false,
+    canVote: false,
+  };
 }
 
 export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
