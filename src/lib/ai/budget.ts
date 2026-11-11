@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import { createLogger } from "@/lib/logger";
 import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
 import { AiBudgetError, AiBudgetStoreError, AiDisabledError } from "./errors";
+import { AI_PROVIDER_TIMEOUT_MS } from "./providers/types";
 
 const logger = createLogger("ai-budget");
 const DAY_SECONDS = 48 * 60 * 60;
@@ -11,6 +13,16 @@ const DEFAULT_CONCURRENCY_LIMIT = 2;
 const DEFAULT_INPUT_RATE_MICRO_USD_PER_MILLION = 150_000;
 const DEFAULT_OUTPUT_RATE_MICRO_USD_PER_MILLION = 600_000;
 const DEFAULT_MAX_PROMPT_BYTES = 64 * 1024;
+/**
+ * How long a concurrency slot stays held without a release. Every operation
+ * passed to runBudgetedAi makes one provider call, which
+ * AI_PROVIDER_TIMEOUT_MS bounds; the second interval is margin for the work
+ * around that call and for clock skew between app replicas (the lease clock
+ * is the app's, passed into the script). A release that is lost (process
+ * death, a failed release eval, no Redis client at release time) frees the
+ * slot when the lease runs out instead of at UTC midnight.
+ */
+export const AI_CONCURRENCY_LEASE_MS = 2 * AI_PROVIDER_TIMEOUT_MS;
 
 interface BudgetLimits {
   tokenLimit: number;
@@ -36,6 +48,8 @@ export interface AiUsageSnapshot {
 
 interface Reservation {
   key: string;
+  leaseKey: string;
+  leaseId: string;
   userId: string;
   tokens: number;
   costMicroUsd: number;
@@ -46,13 +60,14 @@ interface Reservation {
 interface MemoryUsage {
   tokens: number;
   cost: number;
-  concurrency: number;
   requests: number;
   rejections: number;
 }
 
 const globalBudget = globalThis as typeof globalThis & {
   __memoriaAiBudget?: Map<string, MemoryUsage>;
+  /** Lease key -> lease id -> expiry (ms). */
+  __memoriaAiLeases?: Map<string, Map<string, number>>;
 };
 
 function memoryStore(): Map<string, MemoryUsage> {
@@ -60,6 +75,22 @@ function memoryStore(): Map<string, MemoryUsage> {
     globalBudget.__memoriaAiBudget = new Map();
   }
   return globalBudget.__memoriaAiBudget;
+}
+
+/** Unexpired memory-backend leases for a lease key, pruned as a side effect. */
+function memoryLeases(leaseKey: string, now = Date.now()): Map<string, number> {
+  if (!globalBudget.__memoriaAiLeases) {
+    globalBudget.__memoriaAiLeases = new Map();
+  }
+  let leases = globalBudget.__memoriaAiLeases.get(leaseKey);
+  if (!leases) {
+    leases = new Map();
+    globalBudget.__memoriaAiLeases.set(leaseKey, leases);
+  }
+  for (const [id, expiresAt] of leases) {
+    if (expiresAt <= now) leases.delete(id);
+  }
+  return leases;
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -123,6 +154,11 @@ function budgetKey(userId: string, now = new Date()): string {
   return `ai:budget:${dateKey(now)}:${userId}`;
 }
 
+/** Sorted set of a user's held concurrency leases, scored by expiry (ms). */
+function leaseKey(userId: string): string {
+  return `ai:active:${userId}`;
+}
+
 function reservationCost(
   promptTokens: number,
   outputTokens: number,
@@ -138,10 +174,15 @@ function reservationCost(
   );
 }
 
+// KEYS[1] daily usage hash, KEYS[2] lease sorted set.
+// ARGV: tokens, cost, concurrency limit, token limit, cost limit, hash TTL
+// (s), now (ms), lease length (ms), lease id.
 const RESERVE_SCRIPT = `
+local now = tonumber(ARGV[7])
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
 local tokens = tonumber(redis.call('HGET', KEYS[1], 'tokens') or '0')
 local cost = tonumber(redis.call('HGET', KEYS[1], 'cost') or '0')
-local active = tonumber(redis.call('HGET', KEYS[1], 'concurrency') or '0')
+local active = redis.call('ZCARD', KEYS[2])
 if active + 1 > tonumber(ARGV[3]) then
   redis.call('HINCRBY', KEYS[1], 'rejections', 1)
   redis.call('EXPIRE', KEYS[1], ARGV[6])
@@ -159,17 +200,17 @@ if cost + tonumber(ARGV[2]) > tonumber(ARGV[5]) then
 end
 redis.call('HINCRBY', KEYS[1], 'tokens', ARGV[1])
 redis.call('HINCRBY', KEYS[1], 'cost', ARGV[2])
-redis.call('HINCRBY', KEYS[1], 'concurrency', 1)
 redis.call('HINCRBY', KEYS[1], 'requests', 1)
 redis.call('EXPIRE', KEYS[1], ARGV[6])
+redis.call('ZADD', KEYS[2], now + tonumber(ARGV[8]), ARGV[9])
+redis.call('PEXPIRE', KEYS[2], ARGV[8])
 return {0, tokens + tonumber(ARGV[1]), cost + tonumber(ARGV[2]), active + 1}
 `;
 
+// KEYS[1] lease sorted set; ARGV[1] lease id.
 const RELEASE_SCRIPT = `
-local active = tonumber(redis.call('HGET', KEYS[1], 'concurrency') or '0')
-if active > 0 then redis.call('HINCRBY', KEYS[1], 'concurrency', -1) end
-redis.call('EXPIRE', KEYS[1], ARGV[1])
-return math.max(0, active - 1)
+redis.call('ZREM', KEYS[1], ARGV[1])
+return redis.call('ZCARD', KEYS[1])
 `;
 
 function throwBudget(code: number, retryAfter: number): never {
@@ -219,20 +260,26 @@ async function reserve(
   );
   const now = new Date();
   const key = budgetKey(userId, now);
+  const leases = leaseKey(userId);
+  const leaseId = randomUUID();
   const retryAfter = secondsUntilTomorrow(now);
   const redis = getRedisClient();
   if (redis) {
     try {
       const result = (await redis.eval(
         RESERVE_SCRIPT,
-        1,
+        2,
         key,
+        leases,
         tokens,
         costMicroUsd,
         budgetLimits.concurrencyLimit,
         budgetLimits.tokenLimit,
         budgetLimits.costLimitMicroUsd,
         DAY_SECONDS,
+        now.getTime(),
+        AI_CONCURRENCY_LEASE_MS,
+        leaseId,
       )) as number[];
       if (Number(result[0]) !== 0) throwBudget(Number(result[0]), retryAfter);
       incrementOperationalCounter("ai_requests_total");
@@ -243,6 +290,8 @@ async function reserve(
       );
       return {
         key,
+        leaseKey: leases,
+        leaseId,
         userId,
         tokens,
         costMicroUsd,
@@ -266,12 +315,12 @@ async function reserve(
   const current = store.get(key) ?? {
     tokens: 0,
     cost: 0,
-    concurrency: 0,
     requests: 0,
     rejections: 0,
   };
+  const held = memoryLeases(leases, now.getTime());
   let rejection = 0;
-  if (current.concurrency + 1 > budgetLimits.concurrencyLimit) rejection = 3;
+  if (held.size + 1 > budgetLimits.concurrencyLimit) rejection = 3;
   else if (current.tokens + tokens > budgetLimits.tokenLimit) rejection = 1;
   else if (current.cost + costMicroUsd > budgetLimits.costLimitMicroUsd)
     rejection = 2;
@@ -282,14 +331,16 @@ async function reserve(
   }
   current.tokens += tokens;
   current.cost += costMicroUsd;
-  current.concurrency += 1;
   current.requests += 1;
   store.set(key, current);
+  held.set(leaseId, now.getTime() + AI_CONCURRENCY_LEASE_MS);
   incrementOperationalCounter("ai_requests_total");
   incrementOperationalCounter("ai_reserved_tokens_total", tokens);
   incrementOperationalCounter("ai_reserved_cost_micro_usd_total", costMicroUsd);
   return {
     key,
+    leaseKey: leases,
+    leaseId,
     userId,
     tokens,
     costMicroUsd,
@@ -302,8 +353,9 @@ async function release(reservation: Reservation): Promise<void> {
   if (reservation.backend === "redis") {
     const redis = getRedisClient();
     if (!redis) return;
+    // A failed release is only logged: the lease expires on its own.
     await redis
-      .eval(RELEASE_SCRIPT, 1, reservation.key, DAY_SECONDS)
+      .eval(RELEASE_SCRIPT, 1, reservation.leaseKey, reservation.leaseId)
       .catch((error) => {
         logger.error(
           { errorName: (error as Error)?.name },
@@ -313,12 +365,11 @@ async function release(reservation: Reservation): Promise<void> {
       });
     return;
   }
-  const current = memoryStore().get(reservation.key);
-  if (current) current.concurrency = Math.max(0, current.concurrency - 1);
+  memoryLeases(reservation.leaseKey).delete(reservation.leaseId);
 }
 
 function snapshot(
-  values: Partial<MemoryUsage>,
+  values: Partial<MemoryUsage> & { concurrency?: number },
   budgetLimits = limits(),
 ): AiUsageSnapshot {
   return {
@@ -337,14 +388,21 @@ function snapshot(
 
 export async function getAiUsage(userId: string): Promise<AiUsageSnapshot> {
   const key = budgetKey(userId);
+  const leases = leaseKey(userId);
+  const now = Date.now();
   const redis = getRedisClient();
   if (redis) {
     try {
-      const values = await redis.hgetall(key);
+      // Active requests are the unexpired leases; the hash's legacy
+      // `concurrency` field is no longer read.
+      const [values, active] = await Promise.all([
+        redis.hgetall(key),
+        redis.zcount(leases, `(${now}`, "+inf"),
+      ]);
       return snapshot({
         tokens: Number(values.tokens || 0),
         cost: Number(values.cost || 0),
-        concurrency: Number(values.concurrency || 0),
+        concurrency: Number(active || 0),
         requests: Number(values.requests || 0),
         rejections: Number(values.rejections || 0),
       });
@@ -356,7 +414,10 @@ export async function getAiUsage(userId: string): Promise<AiUsageSnapshot> {
       if (process.env.NODE_ENV === "production") throw new AiBudgetStoreError();
     }
   }
-  return snapshot(memoryStore().get(key) ?? {});
+  return snapshot({
+    ...(memoryStore().get(key) ?? {}),
+    concurrency: memoryLeases(leases, now).size,
+  });
 }
 
 export async function runBudgetedAi<T>(
@@ -380,4 +441,5 @@ export async function runBudgetedAi<T>(
 
 export function resetAiBudgetForTests(): void {
   globalBudget.__memoriaAiBudget = undefined;
+  globalBudget.__memoriaAiLeases = undefined;
 }
