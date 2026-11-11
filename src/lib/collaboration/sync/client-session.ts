@@ -112,6 +112,8 @@ export interface CanvasDocumentSessionOptions {
   url: string;
   /** The server refused a local change; the document was reloaded. */
   onRejectedChange?: () => void;
+  /** The canvas's public share token, when opened from its share link. */
+  shareToken?: string;
   /** Delay before reconnecting after `memoria:unavailable`. */
   retryDelayMs?: number;
   /** Node test clients pass a cookie-carrying WebSocket implementation. */
@@ -467,8 +469,10 @@ export class CanvasDocumentSession {
       url: this.options.url,
       name: this.canvasId,
       document: this.doc,
-      // Browsers authenticate with the session cookie; the token is unused.
-      token: "",
+      // Browsers authenticate with the session cookie. The token is the
+      // public share token, needed only to open a public canvas the user
+      // neither owns nor was shared.
+      token: this.options.shareToken ?? "",
       // Batch keystrokes: each batch is one stored, acknowledged update.
       flushDelay: 150,
       ...(this.options.WebSocketPolyfill

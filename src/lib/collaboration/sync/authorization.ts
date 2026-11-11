@@ -28,7 +28,8 @@ export interface SyncConnectionContext {
   principalId: string;
   /** Better Auth session row behind the connection; absent for guests. */
   sessionId?: string;
-  guestShareToken?: string;
+  /** Public share token presented at connect, re-checked on refresh. */
+  shareToken?: string;
   access: CollaborationAccessLevel;
   leaseExpiresAt: number;
   authorizationFailures: number;
@@ -43,7 +44,7 @@ export async function authorizeSyncConnection(
   input: {
     documentName: string;
     headers: Headers;
-    /** The provider token: a public share token for guests, otherwise empty. */
+    /** The provider token: a public share token, otherwise empty. */
     token: string;
     now?: number;
   },
@@ -64,11 +65,11 @@ export async function authorizeSyncConnection(
     },
   });
   const principalId = session ? session.user.id : `guest:${nanoid(10)}`;
-  const guestShareToken = session ? undefined : input.token || undefined;
+  const shareToken = input.token || undefined;
   const access = resolveCollaborationAccess({
     principalId,
     sessionActive: Boolean(session),
-    guestShareToken,
+    shareToken,
     canvas,
     sharedRole: canvas?.shares?.[0]?.role,
   });
@@ -76,7 +77,7 @@ export async function authorizeSyncConnection(
   return {
     principalId,
     sessionId: session?.session.id,
-    guestShareToken,
+    shareToken,
     access,
     leaseExpiresAt: (input.now ?? Date.now()) + AUTHORIZATION_LEASE_MS,
     authorizationFailures: 0,
@@ -151,7 +152,7 @@ export async function refreshSyncAuthorizations(
         sessionActive:
           context.sessionId !== undefined &&
           liveSessions.get(context.sessionId) === context.principalId,
-        guestShareToken: context.guestShareToken,
+        shareToken: context.shareToken,
         canvas: canvas ?? null,
         sharedRole: canvas?.shares.find(
           (share) => share.recipientId === context.principalId,

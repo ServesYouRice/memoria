@@ -24,6 +24,7 @@ import {
   authorizationLeaseMustClose,
   collaborationColorForUser,
   consumeMessageBudget,
+  presentsCurrentShareToken,
   resolveCollaborationAccess,
 } from "./transport-policy";
 import {
@@ -59,7 +60,8 @@ interface ClientConnection {
   authorizationLeaseExpiresAt: number;
   authorizationFailureCount: number;
   clientId: string;
-  guestShareToken?: string;
+  /** Public share token presented at upgrade, re-checked on refresh. */
+  shareToken?: string;
 }
 
 // Presence renewal, zombie detection, and the global authorization batch share
@@ -218,9 +220,7 @@ export function isValidGuestShare(
   canvas: { isPublic: boolean; shareToken: string | null },
   suppliedToken: string | null,
 ): boolean {
-  return Boolean(
-    canvas.isPublic && suppliedToken && suppliedToken === canvas.shareToken,
-  );
+  return presentsCurrentShareToken(canvas, suppliedToken);
 }
 
 // Active connections per canvas
@@ -613,7 +613,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
               accessLevel: "VIEW",
             };
             (request as any).clientId = clientId;
-            (request as any).guestShareToken = shareToken;
+            (request as any).shareToken = shareToken;
 
             wss.handleUpgrade(request, socket, head, (ws) => {
               wss.emit("connection", ws, request);
@@ -643,12 +643,15 @@ export function createCollaborationServer(server: any): WebSocketServer {
             },
           });
 
-          if (
-            !canvas ||
-            (canvas.userId !== user.id &&
-              canvas.shares.length === 0 &&
-              !canvas.isPublic)
-          ) {
+          const shareToken = url.searchParams.get("shareToken") || undefined;
+          const accessLevel = resolveCollaborationAccess({
+            principalId: user.id,
+            sessionActive: true,
+            shareToken,
+            canvas,
+            sharedRole: canvas?.shares[0]?.role,
+          });
+          if (!accessLevel) {
             logger.warn(
               { userId: user.id, canvasId },
               `User denied access to canvas`,
@@ -656,11 +659,6 @@ export function createCollaborationServer(server: any): WebSocketServer {
             rejectUpgrade(socket, "HTTP/1.1 403 Forbidden\r\n\r\n");
             return;
           }
-
-          const accessLevel =
-            canvas.userId === user.id
-              ? "OWNER"
-              : canvas.shares[0]?.role || "VIEW";
 
           // Attach user to request for handleConnection
           (request as any).user = {
@@ -672,6 +670,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
             sessionId: authSession.session.id,
           };
           (request as any).clientId = clientId;
+          (request as any).shareToken = shareToken;
 
           wss.handleUpgrade(request, socket, head, (ws) => {
             wss.emit("connection", ws, request);
@@ -784,8 +783,7 @@ async function handleConnection(
     accessLevel?: ClientConnection["accessLevel"];
   };
   const clientId = String((request as any).clientId || "unknown");
-  const guestShareToken = (request as any).guestShareToken as
-    string | undefined;
+  const shareToken = (request as any).shareToken as string | undefined;
 
   if (!user || !canvasId) {
     incrementOperationalCounter("websocket_rejected_total");
@@ -831,7 +829,7 @@ async function handleConnection(
     authorizationLeaseExpiresAt: now + AUTHORIZATION_LEASE_MS,
     authorizationFailureCount: 0,
     clientId,
-    guestShareToken,
+    shareToken,
   };
 
   const clients = canvasConnections ?? new Set<ClientConnection>();
@@ -989,7 +987,7 @@ async function revalidateAllConnections(): Promise<void> {
       sessionActive:
         client.user.sessionId !== undefined &&
         liveSessions.get(client.user.sessionId) === userId,
-      guestShareToken: client.guestShareToken,
+      shareToken: client.shareToken,
       canvas: canvas
         ? {
             userId: canvas.userId,

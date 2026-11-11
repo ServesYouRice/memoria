@@ -705,6 +705,46 @@ describe("collaboration sync server", () => {
     );
   });
 
+  it("lets a signed-in stranger open a public canvas only with its current link (TASK-165)", async () => {
+    const stranger = await createSignedInUser("stranger");
+    const canvas = await prisma.canvas.create({
+      data: {
+        name: "Public canvas",
+        userId: owner.user.id,
+        isPublic: true,
+        shareToken: `share-${Date.now()}-${counter}-stranger`,
+      },
+    });
+    const { url } = await startServer();
+
+    const byIdOnly = connect({
+      url,
+      canvasId: canvas.id,
+      cookie: stranger.cookie,
+    });
+    await waitFor(() =>
+      byIdOnly.authFailures.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+
+    const viaLink = connect({
+      url,
+      canvasId: canvas.id,
+      cookie: stranger.cookie,
+      token: canvas.shareToken!,
+    });
+    await waitFor(() => viaLink.provider.isSynced);
+    expect(viaLink.provider.authorizedScope).toBe("readonly");
+
+    // Rotating the link revokes the old one at the next refresh.
+    await prisma.canvas.update({
+      where: { id: canvas.id },
+      data: { shareToken: `${canvas.shareToken}-rotated` },
+    });
+    await waitFor(() =>
+      viaLink.closeReasons.includes(SYNC_CLOSE_REASONS.forbidden),
+    );
+  });
+
   it("refuses connections without a session or from another origin", async () => {
     const canvas = await createCanvas(owner.user.id);
     const { url } = await startServer();

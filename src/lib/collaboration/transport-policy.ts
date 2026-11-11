@@ -16,29 +16,46 @@ export interface CollaborationAuthorizationCanvas {
 }
 
 /** Pure authorization decision shared by the batched refresh and its tests. */
+/**
+ * The presented token is the canvas's current public share token. A null
+ * token (sharing off) never matches, so rotating or disabling the link
+ * revokes everyone who held the old one.
+ */
+export function presentsCurrentShareToken(
+  canvas: { isPublic: boolean; shareToken: string | null },
+  presented: string | null | undefined,
+): boolean {
+  return Boolean(
+    canvas.isPublic &&
+    canvas.shareToken &&
+    presented &&
+    presented === canvas.shareToken,
+  );
+}
+
 export function resolveCollaborationAccess(options: {
   principalId: string;
   /** The connection's session row still exists, is unexpired, and is theirs. */
   sessionActive?: boolean;
-  guestShareToken?: string;
+  /** The public share token the connection presented, if any. */
+  shareToken?: string;
   canvas: CollaborationAuthorizationCanvas | null;
   sharedRole?: Exclude<CollaborationAccessLevel, "OWNER">;
 }): CollaborationAccessLevel | null {
-  const { principalId, sessionActive, guestShareToken, canvas, sharedRole } =
+  const { principalId, sessionActive, shareToken, canvas, sharedRole } =
     options;
   if (!canvas) return null;
 
   if (principalId.startsWith("guest:")) {
-    return canvas.isPublic &&
-      Boolean(guestShareToken) &&
-      guestShareToken === canvas.shareToken
-      ? "VIEW"
-      : null;
+    return presentsCurrentShareToken(canvas, shareToken) ? "VIEW" : null;
   }
 
   if (sessionActive !== true) return null;
   if (canvas.userId === principalId) return "OWNER";
-  return sharedRole || (canvas.isPublic ? "VIEW" : null);
+  if (sharedRole) return sharedRole;
+  // Like the public HTTP route, a public canvas is open to signed-in users
+  // without a share only through its current link.
+  return presentsCurrentShareToken(canvas, shareToken) ? "VIEW" : null;
 }
 
 export function authorizationLeaseMustClose(options: {
