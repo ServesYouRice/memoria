@@ -216,3 +216,72 @@ describe("browser extension helpers", () => {
     ).rejects.toThrow(/Could not reach Memoria/);
   });
 });
+
+describe("browser extension over-long tab URLs", () => {
+  const urlOfLength = (length: number) => {
+    const base = "https://example.com/";
+    return base + "a".repeat(length - base.length);
+  };
+
+  it("does not preselect or allow a tab whose URL exceeds the server limit", async () => {
+    const lib =
+      (await import("../../integrations/browser-extension/lib.js")) as Record<
+        string,
+        unknown
+      >;
+    const isSavableUrl = lib.isSavableUrl as (url: string) => boolean;
+    expect(typeof isSavableUrl).toBe("function");
+    expect(isPreselected({ url: urlOfLength(2048), pinned: false })).toBe(true);
+    expect(isPreselected({ url: urlOfLength(2049), pinned: false })).toBe(
+      false,
+    );
+    expect(isSavableUrl(urlOfLength(2048))).toBe(true);
+    expect(isSavableUrl(urlOfLength(2049))).toBe(false);
+    expect(isSavableUrl("chrome://settings")).toBe(false);
+  });
+
+  it("keeps the client limit equal to the server's MAX_URL_LENGTH", async () => {
+    const lib =
+      (await import("../../integrations/browser-extension/lib.js")) as Record<
+        string,
+        unknown
+      >;
+    const { MAX_URL_LENGTH } = await import("@/lib/constants");
+    expect(lib.MAX_URL_LENGTH).toBe(MAX_URL_LENGTH);
+  });
+
+  it("names the tab the server rejected", async () => {
+    const rejected = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            title: "Validation Error",
+            status: 400,
+            errors: [
+              {
+                field: "links.1.url",
+                message: "String must contain at most 2048 character(s)",
+              },
+            ],
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/problem+json" },
+          },
+        ),
+    );
+    await expect(
+      sendBatch({
+        serverUrl: "https://memoria.example.com",
+        apiKey: "mk_abcdefghijklmnopqrstuvwxyz",
+        tabs: [
+          { id: 1, url: "https://example.com/one", title: "One" },
+          { id: 2, url: "https://example.com/two", title: "The long one" },
+        ],
+        note: "",
+        idempotencyKey: "key-1",
+        fetchImpl: rejected,
+      }),
+    ).rejects.toThrow(/The long one/);
+  });
+});

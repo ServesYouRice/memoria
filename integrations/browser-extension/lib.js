@@ -11,11 +11,23 @@ export function isWebUrl(url) {
 }
 
 /**
- * Whether a tab is ticked when the popup opens: normal web tabs are, pinned
- * tabs and browser pages (chrome://, about:, edge://, extension pages) are not.
+ * Longest URL the server accepts. Keep in step with MAX_URL_LENGTH in
+ * src/lib/constants.ts: one longer URL makes the server reject a whole batch.
+ */
+export const MAX_URL_LENGTH = 2048;
+
+/** A web page whose address the server will accept, sent unchanged. */
+export function isSavableUrl(url) {
+  return isWebUrl(url) && url.length <= MAX_URL_LENGTH;
+}
+
+/**
+ * Whether a tab is ticked when the popup opens: normal web tabs are; pinned
+ * tabs, browser pages (chrome://, about:, edge://, extension pages) and pages
+ * with an address too long to save are not.
  */
 export function isPreselected(tab) {
-  return !tab.pinned && isWebUrl(tab.url);
+  return !tab.pinned && isSavableUrl(tab.url);
 }
 
 /**
@@ -92,11 +104,19 @@ export function buildBatchBody(tabs, note, idempotencyKey) {
   };
 }
 
-/** Readable message from a problem+json (or other) error response. */
-export async function readError(response) {
+/**
+ * Readable message from a problem+json (or other) error response. With the
+ * submitted `tabs`, a validation error on `links.N.…` names that tab.
+ */
+export async function readError(response, tabs = []) {
   let detail = "";
+  let tabName = "";
   try {
     const body = await response.json();
+    const field = Array.isArray(body?.errors) ? body.errors[0]?.field : null;
+    const index = /^links\.(\d+)(?:\.|$)/.exec(String(field ?? ""))?.[1];
+    const tab = index === undefined ? undefined : tabs[Number(index)];
+    if (tab) tabName = String(tab.title || tab.url || "");
     detail =
       (Array.isArray(body?.errors) && body.errors[0]?.message) ||
       body?.detail ||
@@ -109,9 +129,10 @@ export async function readError(response) {
   if (response.status === 401) {
     return "Memoria did not accept the API key. Check it in the extension settings.";
   }
-  return detail
+  const message = detail
     ? `Memoria could not save the tabs: ${String(detail).replace(/[.!?]?$/, ".")}`
     : `Memoria could not save the tabs (HTTP ${response.status}).`;
+  return tabName ? `${message} Rejected tab: ${tabName}` : message;
 }
 
 /**
@@ -147,7 +168,7 @@ export async function sendBatch({
     );
   }
   if (!response.ok) {
-    throw new Error(await readError(response));
+    throw new Error(await readError(response, tabs));
   }
   const body = await response.json();
   const alreadySaved = alreadySavedLinks(body).length;

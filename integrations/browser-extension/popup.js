@@ -7,6 +7,7 @@ import {
   existingLinkUrl,
   isApiKey,
   isPreselected,
+  isSavableUrl,
   isWebUrl,
   normalizeServerUrl,
   originPattern,
@@ -133,7 +134,7 @@ function selectedTabs() {
 }
 
 function renderSelection() {
-  const savable = tabs.filter((tab) => isWebUrl(tab.url));
+  const savable = tabs.filter((tab) => isSavableUrl(tab.url));
   const count = selected.size;
   $("selection-count").textContent = `${count} of ${tabs.length} tabs selected`;
   $("toggle-all").checked = count > 0 && count === savable.length;
@@ -150,7 +151,7 @@ function renderTabs() {
   const list = $("tab-list");
   list.replaceChildren();
   for (const tab of tabs) {
-    const savable = isWebUrl(tab.url);
+    const savable = isSavableUrl(tab.url);
     const item = document.createElement("li");
     item.className = savable ? "" : "unsavable";
     const label = document.createElement("label");
@@ -172,7 +173,11 @@ function renderTabs() {
     if (!savable || tab.pinned) {
       const tag = document.createElement("span");
       tag.className = "tag";
-      tag.textContent = savable ? "pinned" : "browser page";
+      tag.textContent = savable
+        ? "pinned"
+        : isWebUrl(tab.url)
+          ? "address too long"
+          : "browser page";
       label.append(tag);
     }
     item.append(label);
@@ -255,7 +260,7 @@ async function saveSelected() {
       const now = fresh.get(tab.id);
       return now ? { ...tab, url: now.url, title: now.title } : tab;
     });
-  const chosen = selectedTabs().filter((tab) => isWebUrl(tab.url));
+  const chosen = selectedTabs().filter((tab) => isSavableUrl(tab.url));
   if (chosen.length === 0) return;
   const note = $("note").value;
   const groups = await batchesFor(chosen, note);
@@ -333,7 +338,7 @@ async function start() {
   $("toggle-all").addEventListener("change", (event) => {
     selected.clear();
     if (event.target.checked) {
-      for (const tab of tabs) if (isWebUrl(tab.url)) selected.add(tab.id);
+      for (const tab of tabs) if (isSavableUrl(tab.url)) selected.add(tab.id);
     }
     renderTabs();
   });
