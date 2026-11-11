@@ -196,6 +196,40 @@ export function alreadySavedLinks(body) {
   );
 }
 
+function hasFragment(url) {
+  const hash = String(url).indexOf("#");
+  return hash !== -1 && hash < String(url).length - 1;
+}
+
+/**
+ * Ids of submitted tabs the server reported as already saved without proof
+ * that the saved copy is the same page. Duplicate matching ignores the URL
+ * fragment, which on hash-routed apps names a different page
+ * (#/document/A vs #/document/B), so such a tab was never saved and must stay
+ * open. A duplicate counts as the same page when one existing copy has the
+ * tab's exact URL; when the response names no URL, only when the tab's URL
+ * has no fragment.
+ */
+export function unconfirmedDuplicateTabIds(tabs, body) {
+  const unconfirmed = [];
+  for (const entry of alreadySavedLinks(body)) {
+    const tab =
+      tabs[entry.index]?.url === entry.url
+        ? tabs[entry.index]
+        : tabs.find((candidate) => candidate.url === entry.url);
+    if (!tab) continue;
+    const savedUrls = entry.existing
+      .map((existing) => existing?.url)
+      .filter((url) => typeof url === "string");
+    const samePage =
+      savedUrls.length > 0
+        ? savedUrls.includes(tab.url)
+        : !hasFragment(tab.url);
+    if (!samePage) unconfirmed.push(tab.id);
+  }
+  return unconfirmed;
+}
+
 /** Address of the existing copy of a link in the Memoria app. */
 export function existingLinkUrl(serverUrl, existing) {
   const path = String(existing?.path || "");

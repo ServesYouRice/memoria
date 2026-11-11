@@ -12,6 +12,7 @@ import {
   normalizeServerUrl,
   originPattern,
   selectionSignature,
+  unconfirmedDuplicateTabIds,
   sendBatch,
 } from "./lib.js";
 
@@ -270,6 +271,7 @@ async function saveSelected() {
   renderDuplicates([]);
   let saved = 0;
   let changed = 0;
+  let unconfirmed = 0;
   const duplicates = [];
   const changedText = () =>
     changed === 0
@@ -277,6 +279,12 @@ async function saveSelected() {
       : changed === 1
         ? " 1 tab changed page and was left open."
         : ` ${changed} tabs changed page and were left open.`;
+  const unconfirmedText = () =>
+    unconfirmed === 0
+      ? ""
+      : unconfirmed === 1
+        ? " 1 tab matched a saved page at a different address and was left open."
+        : ` ${unconfirmed} tabs matched a saved page at a different address and were left open.`;
   try {
     for (const group of groups) {
       const result = await sendBatch({
@@ -293,11 +301,18 @@ async function saveSelected() {
         group.tabs,
         await currentTabs(group.tabs.map((tab) => tab.id)),
       );
-      await closeTabs(decision.closable);
+      // A duplicate matched without its URL fragment may be another page
+      // that was never saved: keep it open.
+      const keep = new Set(unconfirmedDuplicateTabIds(group.tabs, result));
+      await closeTabs(decision.closable.filter((id) => !keep.has(id)));
       for (const id of decision.changed) selected.delete(id);
-      changed += decision.changed.length;
+      changed += decision.changed.filter((id) => !keep.has(id)).length;
+      unconfirmed += keep.size;
       const skipped = alreadySavedLinks(result);
-      duplicates.push(...skipped);
+      const keptUrls = new Set(
+        group.tabs.filter((tab) => keep.has(tab.id)).map((tab) => tab.url),
+      );
+      duplicates.push(...skipped.filter((entry) => !keptUrls.has(entry.url)));
       saved += group.tabs.length - skipped.length;
     }
     $("note").value = "";
@@ -314,6 +329,7 @@ async function saveSelected() {
       (duplicates.length === 0
         ? savedText
         : `${savedText} ${duplicates.length === 1 ? "1 tab was" : `${duplicates.length} tabs were`} already saved.`) +
+        unconfirmedText() +
         changedText(),
     );
   } catch (error) {
@@ -321,7 +337,7 @@ async function saveSelected() {
     renderDuplicates(duplicates);
     setMessage(
       "save-status",
-      (saved ? `Saved ${saved} tabs.` : "") + changedText(),
+      (saved ? `Saved ${saved} tabs.` : "") + unconfirmedText() + changedText(),
     );
     setMessage(
       "save-error",

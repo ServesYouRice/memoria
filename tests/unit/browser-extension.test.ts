@@ -285,3 +285,47 @@ describe("browser extension over-long tab URLs", () => {
     ).rejects.toThrow(/The long one/);
   });
 });
+
+describe("browser extension duplicate confirmation", () => {
+  const duplicate = (index: number, url: string, existingUrls: unknown[]) => ({
+    index,
+    url,
+    savedItemId: null,
+    existing: existingUrls.map((existingUrl) => ({
+      itemId: "i",
+      canvasId: "c",
+      path: "/canvas/c?item=i",
+      ...(existingUrl === undefined ? {} : { url: existingUrl }),
+    })),
+  });
+
+  it("does not confirm a duplicate whose saved copy has another fragment", async () => {
+    const lib =
+      (await import("../../integrations/browser-extension/lib.js")) as Record<
+        string,
+        unknown
+      >;
+    const unconfirmed = lib.unconfirmedDuplicateTabIds as (
+      tabs: unknown[],
+      body: unknown,
+    ) => number[];
+    expect(typeof unconfirmed).toBe("function");
+    const tabs = [
+      { id: 1, url: "https://app.example/#/document/B" },
+      { id: 2, url: "https://same.example/page#top" },
+      { id: 3, url: "https://unknown.example/#/x" },
+      { id: 4, url: "https://unknown.example/plain" },
+      { id: 5, url: "https://new.example/" },
+    ];
+    const body = {
+      itemIds: ["item-5"],
+      duplicates: [
+        duplicate(0, tabs[0]!.url, ["https://app.example/#/document/A"]),
+        duplicate(1, tabs[1]!.url, ["https://same.example/page#top"]),
+        duplicate(2, tabs[2]!.url, [undefined]),
+        duplicate(3, tabs[3]!.url, [undefined]),
+      ],
+    };
+    expect(unconfirmed(tabs, body)).toEqual([1, 3]);
+  });
+});

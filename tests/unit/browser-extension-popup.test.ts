@@ -168,4 +168,49 @@ describe("browser extension popup save", () => {
       /2 tabs changed page and were left open/,
     );
   });
+
+  it("keeps open a hash-routed tab matched to a saved page with another fragment", async () => {
+    await openPopup([
+      { id: 1, url: "https://plain.example/" },
+      { id: 2, url: "https://app.example/#/document/B" },
+    ]);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        batchId: "b",
+        canvasId: "c",
+        itemIds: ["item-0"],
+        replayed: false,
+        duplicates: [
+          {
+            index: 1,
+            url: "https://app.example/#/document/B",
+            savedItemId: null,
+            existing: [
+              {
+                itemId: "i",
+                canvasId: "c",
+                canvasName: "Inbox",
+                title: "Doc A",
+                url: "https://app.example/#/document/A",
+                path: "/canvas/c?item=i",
+              },
+            ],
+          },
+        ],
+      }),
+    } as never);
+
+    saveButton().click();
+    await flush();
+
+    expect(removed.flat()).toEqual([1]);
+    expect(document.getElementById("save-status")!.textContent).toMatch(
+      /Saved 1 tab/,
+    );
+    expect(document.getElementById("save-status")!.textContent).toMatch(
+      /left open/,
+    );
+  });
 });
