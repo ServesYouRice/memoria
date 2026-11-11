@@ -1138,6 +1138,36 @@ export async function claimSuggestionForExecution(input: {
 
 export { executeExternalWebhook } from "@/lib/agents/external-webhook-service";
 
+const REVERTABLE_ITEM_FIELDS = [
+  "positionX",
+  "positionY",
+  "width",
+  "height",
+  "zIndex",
+  "content",
+  "tags",
+] as const;
+type RevertableItemField = (typeof REVERTABLE_ITEM_FIELDS)[number];
+
+/** Structural equality for JSON-shaped values, ignoring object key order. */
+function sameJson(left: unknown, right: unknown): boolean {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object" && !(value instanceof Date)) {
+      return Object.fromEntries(
+        Object.keys(value as Record<string, unknown>)
+          .sort()
+          .map((key) => [
+            key,
+            canonical((value as Record<string, unknown>)[key]),
+          ]),
+      );
+    }
+    return value;
+  };
+  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
+}
+
 async function applyRevertOperation(
   tx: Prisma.TransactionClient,
   changeRecord: {
@@ -1581,16 +1611,51 @@ async function applyRevertOperation(
     }
 
     await lockCanvasForMutation(tx, existing.canvasId);
+    // Restore a field only while it still holds the value the change set
+    // left, so later edits (a note's text after a pile sort moved it) are
+    // kept. Records without an `after` snapshot (older rows) restore every
+    // field as before. A trashed item is left alone either way.
+    const leftBy = changeRecord.after as unknown as Partial<
+      Record<RevertableItemField, unknown>
+    > | null;
+    const data: Prisma.CanvasItemUncheckedUpdateInput = {};
+    if (!existing.deletedAt) {
+      for (const field of REVERTABLE_ITEM_FIELDS) {
+        if (
+          leftBy &&
+          (!(field in leftBy) || !sameJson(existing[field], leftBy[field]))
+        ) {
+          continue;
+        }
+        if (sameJson(existing[field], snapshot[field])) continue;
+        Object.assign(data, {
+          [field]:
+            field === "content"
+              ? toJsonValue(snapshot.content)
+              : snapshot[field],
+        });
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      await tx.changeRecord.create({
+        data: {
+          changeSetId: rollbackChangeSetId,
+          targetType: "CanvasItem",
+          targetId: changeRecord.targetId,
+          operation: "ROLLBACK_UPDATE",
+          before: toJsonValue(existing),
+          after: toJsonValue(existing),
+          reversible: false,
+        },
+      });
+      return;
+    }
+
     const reverted = await tx.canvasItem.update({
       where: { id: changeRecord.targetId },
       data: {
-        positionX: snapshot.positionX,
-        positionY: snapshot.positionY,
-        width: snapshot.width,
-        height: snapshot.height,
-        zIndex: snapshot.zIndex,
-        content: toJsonValue(snapshot.content),
-        tags: snapshot.tags,
+        ...data,
         version: {
           increment: 1,
         },
@@ -1612,8 +1677,9 @@ async function applyRevertOperation(
         targetId: changeRecord.targetId,
         operation: "ROLLBACK_UPDATE",
         before: toJsonValue(existing),
-        after: toJsonValue(snapshot),
-        reversible: true,
+        after: toJsonValue(reverted),
+        // There is no inverse for a rollback; undo it by editing again.
+        reversible: false,
       },
     });
     return;
