@@ -86,6 +86,10 @@ export function ShareDialog({
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [rotatingLink, setRotatingLink] = useState(false);
+  const [publicStatusLoading, setPublicStatusLoading] = useState(false);
+  // Bumped by every public-link change and by closing the dialog, so a status
+  // response that was requested before either never overwrites newer state.
+  const publicStateEpochRef = useRef(0);
 
   // Individual sharing
   const [email, setEmail] = useState("");
@@ -111,10 +115,13 @@ export function ShareDialog({
   }, [canvasId]);
 
   const checkPublicStatus = useCallback(async () => {
+    const epoch = publicStateEpochRef.current;
+    setPublicStatusLoading(true);
     try {
       const response = await apiFetch(`/api/v1/canvases/${canvasId}`);
       if (response.ok) {
         const canvas = await response.json();
+        if (epoch !== publicStateEpochRef.current) return;
         setIsPublic(canvas.isPublic || false);
         if (canvas.shareToken) {
           const url = `${window.location.origin}/share/${canvas.shareToken}`;
@@ -122,7 +129,10 @@ export function ShareDialog({
         }
       }
     } catch (err) {
+      if (epoch !== publicStateEpochRef.current) return;
       setError(formatShareError(err, "Failed to check public status"));
+    } finally {
+      if (epoch === publicStateEpochRef.current) setPublicStatusLoading(false);
     }
   }, [canvasId]);
 
@@ -130,6 +140,9 @@ export function ShareDialog({
     if (open) {
       loadShares();
       checkPublicStatus();
+    } else {
+      publicStateEpochRef.current += 1;
+      setPublicStatusLoading(false);
     }
   }, [open, loadShares, checkPublicStatus]);
 
@@ -144,6 +157,8 @@ export function ShareDialog({
       });
       if (!confirmed) return;
     }
+    publicStateEpochRef.current += 1;
+    setPublicStatusLoading(false);
     setGeneratingLink(true);
     setError(null);
 
@@ -195,6 +210,8 @@ export function ShareDialog({
       destructive: true,
     });
     if (!confirmed) return;
+    publicStateEpochRef.current += 1;
+    setPublicStatusLoading(false);
     setRotatingLink(true);
     setError(null);
     try {
@@ -348,7 +365,9 @@ export function ShareDialog({
                 <Switch
                   checked={isPublic}
                   onChange={() => void handleTogglePublic()}
-                  disabled={generatingLink || rotatingLink}
+                  disabled={
+                    generatingLink || rotatingLink || publicStatusLoading
+                  }
                 />
               }
               label="Anyone with the link can view"
@@ -398,7 +417,7 @@ export function ShareDialog({
               <Button
                 variant="outlined"
                 onClick={() => void handleRotateLink()}
-                disabled={rotatingLink || generatingLink}
+                disabled={rotatingLink || generatingLink || publicStatusLoading}
                 sx={{ mt: 1 }}
               >
                 {rotatingLink ? "Rotating…" : "Rotate public link"}
