@@ -7,12 +7,15 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/lib/auth/password";
 import { createCredentialAccount } from "../src/lib/auth/credentials";
+import { assertSeedAllowed } from "./seed-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 });
 
 async function main() {
+  // Before any cleanup or account creation.
+  assertSeedAllowed(process.env);
   console.log("Starting database seed...");
 
   // Clean up existing data in development
@@ -207,7 +210,8 @@ async function main() {
 main()
   .catch((error) => {
     console.error("Error seeding database:", error);
-    process.exit(1);
+    // exitCode, not exit(): the finally below still disconnects Prisma.
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();
