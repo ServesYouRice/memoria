@@ -15,29 +15,54 @@ export async function claimOutboxJobs(
 ): Promise<OutboxJob[]> {
   if (options.types.length === 0) return [];
   const leaseExpiresAt = new Date(Date.now() + options.leaseMs);
-  return prisma.$queryRaw<OutboxJob[]>`
-    WITH candidates AS (
-      SELECT "id"
-      FROM "OutboxJob"
-      WHERE "type" IN (${Prisma.join(options.types)})
-        AND (
-          ("status" = 'PENDING' AND "nextRunAt" <= NOW())
-          OR ("status" = 'RUNNING' AND "leaseExpiresAt" < NOW())
-        )
-      ORDER BY "nextRunAt", "createdAt"
-      FOR UPDATE SKIP LOCKED
-      LIMIT ${options.limit}
-    )
-    UPDATE "OutboxJob" AS job
-    SET "status" = 'RUNNING',
-        "leaseOwner" = ${options.owner},
-        "leaseExpiresAt" = ${leaseExpiresAt},
-        "attempts" = job."attempts" + 1,
-        "updatedAt" = NOW()
-    FROM candidates
-    WHERE job."id" = candidates."id"
-    RETURNING job.*
-  `;
+  const types = Prisma.join(options.types);
+  // A job whose worker died (or lost its lease) on the final attempt never
+  // reaches failOutboxJob, so it goes DEAD here instead of being reclaimed
+  // forever. Both statements run in one transaction; each is also guarded on
+  // its own (the claim never picks an exhausted job), so several workers at
+  // once stay safe.
+  const [, claimed] = await prisma.$transaction([
+    prisma.$executeRaw`
+      UPDATE "OutboxJob"
+      SET "status" = 'DEAD',
+          "leaseOwner" = NULL,
+          "leaseExpiresAt" = NULL,
+          "lastError" = 'Lease expired after the final attempt',
+          "updatedAt" = NOW()
+      WHERE "type" IN (${types})
+        AND "status" = 'RUNNING'
+        AND "leaseExpiresAt" < NOW()
+        AND "attempts" >= "maxAttempts"
+    `,
+    prisma.$queryRaw<OutboxJob[]>`
+      WITH candidates AS (
+        SELECT "id"
+        FROM "OutboxJob"
+        WHERE "type" IN (${types})
+          AND (
+            ("status" = 'PENDING' AND "nextRunAt" <= NOW())
+            OR (
+              "status" = 'RUNNING'
+              AND "leaseExpiresAt" < NOW()
+              AND "attempts" < "maxAttempts"
+            )
+          )
+        ORDER BY "nextRunAt", "createdAt"
+        FOR UPDATE SKIP LOCKED
+        LIMIT ${options.limit}
+      )
+      UPDATE "OutboxJob" AS job
+      SET "status" = 'RUNNING',
+          "leaseOwner" = ${options.owner},
+          "leaseExpiresAt" = ${leaseExpiresAt},
+          "attempts" = job."attempts" + 1,
+          "updatedAt" = NOW()
+      FROM candidates
+      WHERE job."id" = candidates."id"
+      RETURNING job.*
+    `,
+  ]);
+  return claimed;
 }
 
 export async function completeOutboxJob(
