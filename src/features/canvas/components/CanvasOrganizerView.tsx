@@ -438,6 +438,10 @@ function renderEntityCard(
   );
 }
 
+/** Rows asked of the server, and rows of each list the view renders. */
+const TIMELINE_LIMIT = 100;
+const LIST_PREVIEW = 8;
+
 export function CanvasOrganizerView({
   canvasId,
   items,
@@ -461,7 +465,9 @@ export function CanvasOrganizerView({
     CanvasViewType.ORGANIZER,
   );
   const knowledgeQuery = useAgentKnowledge(canvasId);
-  const timelineQuery = useAgentTimeline(100);
+  // The server filters by this canvas, so newer records on other canvases
+  // cannot push this canvas's older ones out of the page.
+  const timelineQuery = useAgentTimeline(TIMELINE_LIMIT, { canvasId });
 
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
   const [suggestionStatusFilter, setSuggestionStatusFilter] = useState("OPEN");
@@ -892,7 +898,7 @@ export function CanvasOrganizerView({
                 disablePadding
                 sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}
               >
-                {suggestions.slice(0, 8).map((suggestion) => (
+                {suggestions.slice(0, LIST_PREVIEW).map((suggestion) => (
                   <Paper
                     key={suggestion.id}
                     variant="outlined"
@@ -948,6 +954,13 @@ export function CanvasOrganizerView({
                 ))}
               </List>
             )}
+            {(suggestions.length > LIST_PREVIEW ||
+              timelineQuery.data?.suggestionsHasMore) && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                Only the newest suggestions are shown. Older ones exist for this
+                canvas.
+              </Alert>
+            )}
           </Paper>
 
           <Paper
@@ -986,7 +999,7 @@ export function CanvasOrganizerView({
               </Alert>
             ) : (
               <Stack spacing={1.5}>
-                {changeSets.slice(0, 8).map((changeSet) => (
+                {changeSets.slice(0, LIST_PREVIEW).map((changeSet) => (
                   <Paper
                     key={changeSet.id}
                     variant="outlined"
@@ -1040,6 +1053,13 @@ export function CanvasOrganizerView({
                   </Paper>
                 ))}
               </Stack>
+            )}
+            {(changeSets.length > LIST_PREVIEW ||
+              timelineQuery.data?.changeSetsHasMore) && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                Only the newest change sets are shown. Older ones exist for this
+                canvas.
+              </Alert>
             )}
           </Paper>
         </Stack>
