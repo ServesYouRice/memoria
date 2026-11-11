@@ -16,6 +16,10 @@ import type { Prisma } from "@/generated/prisma/client";
 
 const logger = createLogger("api");
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+/** An in-flight request holds its key this long past its last renewal. */
+const IN_FLIGHT_LEASE_MS = 60 * 1000;
+/** How often a running request renews its lease (lockedAt). */
+const LEASE_RENEW_MS = 20 * 1000;
 
 /** Standard error response shape */
 interface ErrorResponse {
@@ -222,7 +226,6 @@ export async function runIdempotent<T>(
   };
 
   const expiryCutoff = new Date(Date.now() - IDEMPOTENCY_TTL_MS);
-  const IN_FLIGHT_LEASE_MS = 60 * 1000;
 
   let existing = await prisma.idempotencyKey.findUnique({
     where: { key_userId_method_path: scope },
@@ -249,22 +252,47 @@ export async function runIdempotent<T>(
       );
     }
 
-    // If an in-flight lease has expired without completion, recover it
+    // The lease runs from lockedAt, which the running request renews. Only a
+    // lease nobody has renewed for IN_FLIGHT_LEASE_MS is taken over, and only
+    // if the row is still the one observed (same id, same lockedAt, no
+    // response yet), so two retries cannot both win the takeover.
     const isLeaseExpired =
-      Date.now() - existing.createdAt.getTime() > IN_FLIGHT_LEASE_MS;
-    if (isLeaseExpired) {
-      await prisma.idempotencyKey
-        .delete({ where: { id: existing.id } })
-        .catch(() => {});
-      existing = null;
-    } else {
+      Date.now() - existing.lockedAt.getTime() > IN_FLIGHT_LEASE_MS;
+    if (!isLeaseExpired) {
       throw new ConflictError("Request is currently being processed");
     }
+    const takeover = await prisma.idempotencyKey.deleteMany({
+      where: {
+        id: existing.id,
+        responseCode: null,
+        lockedAt: existing.lockedAt,
+      },
+    });
+    if (takeover.count === 0) {
+      const current = await prisma.idempotencyKey.findUnique({
+        where: { key_userId_method_path: scope },
+      });
+      if (
+        current?.responseCode !== null &&
+        current?.responseCode !== undefined &&
+        (!current.requestHash || current.requestHash === requestHash)
+      ) {
+        return buildReplayResponse(
+          current.responseCode,
+          current.responseBody,
+          true,
+        );
+      }
+      throw new ConflictError("Request is currently being processed");
+    }
+    existing = null;
   }
 
+  let own: { id: string };
   try {
-    await prisma.idempotencyKey.create({
-      data: { ...scope, requestHash },
+    own = await prisma.idempotencyKey.create({
+      data: { ...scope, requestHash, lockedAt: new Date() },
+      select: { id: true },
     });
   } catch {
     const raced = await prisma.idempotencyKey.findUnique({
@@ -278,50 +306,64 @@ export async function runIdempotent<T>(
     }
 
     if (raced?.responseCode !== null && raced?.responseCode !== undefined) {
-      return buildReplayResponse(
-        raced.responseCode,
-        raced.responseBody,
-        true,
-      );
+      return buildReplayResponse(raced.responseCode, raced.responseBody, true);
     }
 
     throw new ConflictError("Idempotency key conflict");
   }
 
+  // Renew the lease while this request runs so a slow handler is not taken
+  // over and run a second time.
+  const heartbeat = setInterval(() => {
+    void prisma.idempotencyKey
+      .updateMany({
+        where: { id: own.id, responseCode: null },
+        data: { lockedAt: new Date() },
+      })
+      .catch((error) =>
+        logger.warn({ error, key, userId }, "Idempotency lease renewal failed"),
+      );
+  }, LEASE_RENEW_MS);
+  heartbeat.unref?.();
+
+  // Journal only to this request's own row: if its lease was taken over, the
+  // replacement row's journal is not overwritten.
+  const journal = async (status: number, body: unknown) => {
+    const result = await prisma.idempotencyKey.updateMany({
+      where: { id: own.id },
+      data: {
+        responseCode: status,
+        responseBody: body as Prisma.InputJsonValue,
+      },
+    });
+    if (result.count === 0) {
+      logger.warn(
+        { key, userId },
+        "Idempotency lease was superseded; response not journaled",
+      );
+    }
+  };
+
   try {
     const response = await handler();
     const body = await readResponseBody(response);
 
-    await prisma.idempotencyKey
-      .update({
-        where: { key_userId_method_path: scope },
-        data: {
-          responseCode: response.status,
-          responseBody: body as Prisma.InputJsonValue,
-        },
-      })
-      .catch((error) =>
-        logger.error(
-          { error, key, userId },
-          "Mutation succeeded but idempotency response journaling failed",
-        ),
-      );
+    await journal(response.status, body).catch((error) =>
+      logger.error(
+        { error, key, userId },
+        "Mutation succeeded but idempotency response journaling failed",
+      ),
+    );
 
     return response;
   } catch (error) {
     const failureResponse = errorResponse(error, req.url);
     const body = await readResponseBody(failureResponse);
 
-    await prisma.idempotencyKey
-      .update({
-        where: { key_userId_method_path: scope },
-        data: {
-          responseCode: failureResponse.status,
-          responseBody: body as Prisma.InputJsonValue,
-        },
-      })
-      .catch(() => {});
+    await journal(failureResponse.status, body).catch(() => {});
 
     return failureResponse;
+  } finally {
+    clearInterval(heartbeat);
   }
 }
