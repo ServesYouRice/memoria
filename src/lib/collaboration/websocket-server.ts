@@ -173,26 +173,77 @@ if (redisSubscriber) {
   });
 }
 
+// Channels this process is subscribed to, and one promise chain per canvas
+// so SUBSCRIBE/UNSUBSCRIBE never interleave. The reference count in
+// `subscriptions` changes synchronously; each chain step re-reads it after
+// the previous Redis call and issues only the transition still needed.
+const subscribedCanvases = new Set<string>();
+const subscriptionChains = new Map<string, Promise<void>>();
+
+function reconcileSubscription(canvasId: string): Promise<void> {
+  const subscriber = redisSubscriber;
+  if (!subscriber) return Promise.resolve();
+  const previous = subscriptionChains.get(canvasId) ?? Promise.resolve();
+  const step = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const wanted = (subscriptions.get(canvasId) ?? 0) > 0;
+      const subscribed = subscribedCanvases.has(canvasId);
+      if (wanted && !subscribed) {
+        await subscriber.subscribe(canvasChannel(canvasId));
+        subscribedCanvases.add(canvasId);
+      } else if (!wanted && subscribed) {
+        await subscriber.unsubscribe(canvasChannel(canvasId));
+        subscribedCanvases.delete(canvasId);
+        // Remote state goes only when no local socket holds the canvas.
+        if ((subscriptions.get(canvasId) ?? 0) === 0) {
+          remotePresence.deleteCanvas(canvasId);
+          remoteCursors.deleteCanvas(canvasId);
+        }
+      }
+    });
+  subscriptionChains.set(canvasId, step);
+  void step
+    .catch(() => undefined)
+    .then(() => {
+      if (subscriptionChains.get(canvasId) === step) {
+        subscriptionChains.delete(canvasId);
+      }
+    });
+  return step;
+}
+
+function changeSubscriptionCount(canvasId: string, delta: number): void {
+  const count = Math.max(0, (subscriptions.get(canvasId) ?? 0) + delta);
+  if (count === 0) subscriptions.delete(canvasId);
+  else subscriptions.set(canvasId, count);
+}
+
 async function subscribeToCanvas(canvasId: string): Promise<void> {
   if (!redisSubscriber) return;
-  const count = subscriptions.get(canvasId) || 0;
-  if (count === 0) {
-    await redisSubscriber.subscribe(canvasChannel(canvasId));
+  changeSubscriptionCount(canvasId, 1);
+  try {
+    await reconcileSubscription(canvasId);
+  } catch (error) {
+    // This caller holds no subscription; a later step settles the channel
+    // for whoever still does.
+    changeSubscriptionCount(canvasId, -1);
+    void reconcileSubscription(canvasId).catch((reconcileError) =>
+      logger.error(
+        { error: reconcileError, canvasId },
+        "Redis subscription reconcile failed",
+      ),
+    );
+    throw error;
   }
-  subscriptions.set(canvasId, count + 1);
 }
 
 async function unsubscribeFromCanvas(canvasId: string): Promise<void> {
   if (!redisSubscriber) return;
-  const count = subscriptions.get(canvasId) || 0;
-  if (count <= 1) {
-    await redisSubscriber.unsubscribe(canvasChannel(canvasId));
-    subscriptions.delete(canvasId);
-    remotePresence.deleteCanvas(canvasId);
-    remoteCursors.deleteCanvas(canvasId);
-  } else {
-    subscriptions.set(canvasId, count - 1);
-  }
+  changeSubscriptionCount(canvasId, -1);
+  await reconcileSubscription(canvasId).catch((error) =>
+    logger.error({ error, canvasId }, "Redis unsubscribe failed"),
+  );
 }
 
 function publishMessage(message: CollaborationBusMessage): void {
