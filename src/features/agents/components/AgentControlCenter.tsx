@@ -24,7 +24,7 @@ import {
   useAgentIntegrations,
   useAgentProfiles,
   useAgentProviders,
-  useAgentTimeline,
+  useAgentTimelinePages,
   useApproveSuggestion,
   useDisableAgentProfile,
   useExecuteSuggestion,
@@ -96,11 +96,27 @@ function SectionError({
   );
 }
 
+const PAGE_SIZE = 12;
+const ACTIONABLE_SUGGESTION_STATUSES = ["OPEN", "APPROVED"];
+
+/** Pages can overlap after a refetch; keep the first copy of each record. */
+function uniqueById<T extends { id: string }>(records: T[]) {
+  return [...new Map(records.map((record) => [record.id, record])).values()];
+}
+
 export function AgentControlCenter() {
   const profilesQuery = useAgentProfiles();
   const providersQuery = useAgentProviders();
   const integrationsQuery = useAgentIntegrations();
-  const timelineQuery = useAgentTimeline(60);
+  // The queue lists what can still be acted on and the rollback list what can
+  // still be reverted, both filtered on the server and read page by page, so
+  // newer resolved records cannot push an older actionable one out of reach.
+  const suggestionPages = useAgentTimelinePages("suggestions", PAGE_SIZE, {
+    suggestionStatuses: ACTIONABLE_SUGGESTION_STATUSES,
+  });
+  const changeSetPages = useAgentTimelinePages("changeSets", PAGE_SIZE, {
+    revertableOnly: true,
+  });
   const approveSuggestion = useApproveSuggestion();
   const rejectSuggestion = useRejectSuggestion();
   const executeSuggestion = useExecuteSuggestion();
@@ -116,22 +132,27 @@ export function AgentControlCenter() {
     profilesQuery.isLoading ||
     providersQuery.isLoading ||
     integrationsQuery.isLoading ||
-    timelineQuery.isLoading;
+    suggestionPages.isLoading ||
+    changeSetPages.isLoading;
 
   // A query that failed before ever returning data has nothing to show.
   const profilesFailed = profilesQuery.isError && !profilesQuery.data;
   const providersFailed = providersQuery.isError && !providersQuery.data;
   const integrationsFailed =
     integrationsQuery.isError && !integrationsQuery.data;
-  const timelineFailed = timelineQuery.isError && !timelineQuery.data;
-  const retryTimeline = () => void timelineQuery.refetch();
+  const suggestionsFailed = suggestionPages.isError && !suggestionPages.data;
+  const changeSetsFailed = changeSetPages.isError && !changeSetPages.data;
 
   const agentProfiles = profilesQuery.data?.agentProfiles || [];
   const providerSlots = providersQuery.data?.providerSlots || [];
   const credentials = providersQuery.data?.credentials || [];
   const integrationAccounts = integrationsQuery.data?.integrationAccounts || [];
-  const suggestions = timelineQuery.data?.suggestions || [];
-  const changeSets = timelineQuery.data?.changeSets || [];
+  const suggestions = uniqueById(
+    (suggestionPages.data?.pages ?? []).flatMap((page) => page.suggestions),
+  );
+  const changeSets = uniqueById(
+    (changeSetPages.data?.pages ?? []).flatMap((page) => page.changeSets),
+  );
 
   const profilesById = new Map(
     agentProfiles.map((profile) => [profile.id, profile]),
@@ -555,18 +576,18 @@ export function AgentControlCenter() {
           </Typography>
 
           <Stack spacing={1.5}>
-            {timelineFailed ? (
+            {suggestionsFailed ? (
               <SectionError
                 message="Agent activity could not be loaded."
                 retryLabel="Retry loading suggestions"
-                onRetry={retryTimeline}
+                onRetry={() => void suggestionPages.refetch()}
               />
             ) : suggestions.length === 0 ? (
               <Alert severity="info">
                 No suggestions are waiting for review.
               </Alert>
             ) : (
-              suggestions.slice(0, 12).map((suggestion) => (
+              suggestions.map((suggestion) => (
                 <Paper
                   key={suggestion.id}
                   variant="outlined"
@@ -693,6 +714,15 @@ export function AgentControlCenter() {
                 </Paper>
               ))
             )}
+            {suggestionPages.hasNextPage && (
+              <Button
+                size="small"
+                disabled={suggestionPages.isFetchingNextPage}
+                onClick={() => void suggestionPages.fetchNextPage()}
+              >
+                Load more suggestions
+              </Button>
+            )}
           </Stack>
         </Paper>
 
@@ -727,18 +757,18 @@ export function AgentControlCenter() {
             partial state by hand.
           </Typography>
           <Stack spacing={1.5}>
-            {timelineFailed ? (
+            {changeSetsFailed ? (
               <SectionError
                 message="Agent activity could not be loaded."
                 retryLabel="Retry loading change sets"
-                onRetry={retryTimeline}
+                onRetry={() => void changeSetPages.refetch()}
               />
             ) : changeSets.length === 0 ? (
               <Alert severity="info">
-                No change sets have been recorded yet.
+                No change sets are waiting to be rolled back.
               </Alert>
             ) : (
-              changeSets.slice(0, 12).map((changeSet) => (
+              changeSets.map((changeSet) => (
                 <Paper
                   key={changeSet.id}
                   variant="outlined"
@@ -810,6 +840,15 @@ export function AgentControlCenter() {
                   </Stack>
                 </Paper>
               ))
+            )}
+            {changeSetPages.hasNextPage && (
+              <Button
+                size="small"
+                disabled={changeSetPages.isFetchingNextPage}
+                onClick={() => void changeSetPages.fetchNextPage()}
+              >
+                Load more change sets
+              </Button>
             )}
           </Stack>
         </Paper>
