@@ -47,7 +47,11 @@ export async function fetchLinkPage(
   return {
     ok: true,
     html: fetched.data,
-    metadata: validateMetadata(extractMetadata(fetched.data, url)),
+    // Relative favicon, image and canonical links belong to the page that
+    // was served, which after redirects is not the requested URL.
+    metadata: validateMetadata(
+      extractMetadata(fetched.data, fetched.finalUrl || url),
+    ),
   };
 }
 

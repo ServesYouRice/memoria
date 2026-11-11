@@ -377,6 +377,8 @@ export async function safeFetchBuffer(
   body?: Buffer;
   headers?: http.IncomingHttpHeaders;
   error?: string;
+  /** On success, the URL of the response that was read, after redirects. */
+  finalUrl?: string;
 }> {
   const {
     maxRedirects = 5,
@@ -457,6 +459,7 @@ export async function safeFetchBuffer(
         status: response.status,
         body: response.rawBody,
         headers: response.headers,
+        finalUrl: currentUrl,
       };
     } catch (error) {
       if (combined.aborted) return aborted();
@@ -483,7 +486,14 @@ export async function safeFetchBuffer(
 export async function safeFetch(
   urlString: string,
   options: Omit<SafeFetchOptions, "headers"> = {},
-): Promise<{ ok: boolean; status: number; data?: string; error?: string }> {
+): Promise<{
+  ok: boolean;
+  status: number;
+  data?: string;
+  error?: string;
+  /** On success, the URL of the response that was read, after redirects. */
+  finalUrl?: string;
+}> {
   const result = await safeFetchBuffer(urlString, options);
   if (!result.ok) {
     return { ok: false, status: result.status, error: result.error };
@@ -492,5 +502,6 @@ export async function safeFetch(
     ok: true,
     status: result.status,
     data: (result.body ?? Buffer.alloc(0)).toString("utf8"),
+    finalUrl: result.finalUrl,
   };
 }
