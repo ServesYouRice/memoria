@@ -249,17 +249,18 @@ export async function runIdempotent<T>(
       );
     }
 
-    // If an in-flight lease has expired without completion, recover it
+    // An expired lease with no journaled response is not proof the mutation
+    // failed: it may have committed before the journal update was lost.
+    // Running the handler again could repeat it, so the key is refused until
+    // its TTL frees it (Q-001).
     const isLeaseExpired =
       Date.now() - existing.createdAt.getTime() > IN_FLIGHT_LEASE_MS;
     if (isLeaseExpired) {
-      await prisma.idempotencyKey
-        .delete({ where: { id: existing.id } })
-        .catch(() => {});
-      existing = null;
-    } else {
-      throw new ConflictError("Request is currently being processed");
+      throw new ConflictError(
+        "The earlier request with this idempotency key did not finish recording its result, so its outcome is unknown. Check the current state or retry with a new idempotency key.",
+      );
     }
+    throw new ConflictError("Request is currently being processed");
   }
 
   try {
