@@ -186,6 +186,12 @@ describe("upload.note handler", () => {
 
   function fakePrisma() {
     const tx = {
+      // The in-transaction access recheck reads the canvas owner and then the
+      // share row (FOR SHARE); both answer from the same mocked canvas.
+      canvas: { findUnique: mocks.findCanvas },
+      $queryRaw: vi.fn(
+        async () => ((await mocks.findCanvas()) ?? { shares: [] }).shares,
+      ),
       uploadAsset: {
         findUnique: vi.fn(async () => ({
           status: asset.status,
@@ -319,6 +325,24 @@ describe("upload.note handler", () => {
     mocks.readImageText.mockResolvedValue("Shared\n\nok");
     await createUploadNoteHandler(fakePrisma())(job());
     expect(created).toHaveLength(1);
+  });
+
+  it("writes no note when edit access is revoked during the AI call", async () => {
+    mocks.findCanvas.mockResolvedValue({
+      userId: "owner",
+      shares: [{ role: "EDIT" }],
+    });
+    mocks.readImageText.mockImplementation(async () => {
+      mocks.findCanvas.mockResolvedValue({ userId: "owner", shares: [] });
+      return "Shared\n\nok";
+    });
+    await expect(
+      createUploadNoteHandler(fakePrisma())(job()),
+    ).rejects.toMatchObject({
+      retryable: false,
+      message: "The requester can no longer edit this canvas",
+    });
+    expect(created).toHaveLength(0);
   });
 
   it("applies the AI budget to the job", async () => {
