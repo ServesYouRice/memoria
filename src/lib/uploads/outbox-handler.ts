@@ -1,50 +1,12 @@
 import type { OutboxHandler } from "@/lib/outbox/types";
 import {
-  type Prisma,
   UploadAssetStatus,
   type PrismaClient,
 } from "@/generated/prisma/client";
+import { createLogger } from "@/lib/logger";
 import { deletePrivateUploadObject } from "./private-storage";
 
-/**
- * Statuses whose bytes are still charged to the owner's UploadQuota. FAILED
- * reservations were released by failUploadReservation and DELETED assets by
- * the upload.delete handler below.
- */
-export const QUOTA_CHARGED_UPLOAD_STATUSES: readonly UploadAssetStatus[] = [
-  UploadAssetStatus.PENDING,
-  UploadAssetStatus.ACTIVE,
-  UploadAssetStatus.DELETING,
-  UploadAssetStatus.RECONCILING,
-];
-
-/**
- * Release the quota of assets whose rows are about to disappear (a canvas
- * delete cascades its UploadAsset rows before their upload.delete jobs run).
- * Call it inside the transaction that deletes the rows, with the assets read
- * under row locks. Counters are clamped at zero.
- */
-export async function releaseUploadQuotaForAssets(
-  tx: Prisma.TransactionClient,
-  assets: ReadonlyArray<{ userId: string; size: number }>,
-) {
-  const perUser = new Map<string, { count: number; bytes: bigint }>();
-  for (const asset of assets) {
-    const entry = perUser.get(asset.userId) ?? { count: 0, bytes: 0n };
-    entry.count += 1;
-    entry.bytes += BigInt(asset.size);
-    perUser.set(asset.userId, entry);
-  }
-  for (const [userId, { count, bytes }] of perUser) {
-    await tx.$executeRaw`
-      UPDATE "UploadQuota"
-      SET "assetCount" = GREATEST("assetCount" - ${count}::int, 0),
-          "totalBytes" = GREATEST("totalBytes" - ${bytes}::bigint, 0),
-          "updatedAt" = NOW()
-      WHERE "userId" = ${userId}
-    `;
-  }
-}
+const logger = createLogger("uploads/delete");
 
 export function createUploadDeleteHandler(prisma: PrismaClient): OutboxHandler {
   return async (job, context) => {
@@ -54,6 +16,8 @@ export function createUploadDeleteHandler(prisma: PrismaClient): OutboxHandler {
       storageMode: string;
       storageKey: string;
       size: number;
+      /** Set by enqueueUploadDeletion once it releases the quota itself. */
+      quotaReleased?: boolean;
     };
     await deletePrivateUploadObject(
       payload.storageMode,
@@ -68,10 +32,11 @@ export function createUploadDeleteHandler(prisma: PrismaClient): OutboxHandler {
         },
         data: { status: UploadAssetStatus.DELETED },
       });
-      // No DELETING row: either this job already ran, or the row was removed
-      // by a cascade (canvas delete) whose transaction released the quota
-      // itself. Either way releasing here would release it twice.
-      if (marked.count !== 1) return;
+      // No DELETING row: this job already ran, or a cascade (canvas or
+      // account delete) removed the row. Jobs queued since the quota moved
+      // to enqueueUploadDeletion carry quotaReleased and never release here.
+      if (marked.count !== 1 || payload.quotaReleased === true) return;
+      // A job queued before that change: release its charge once.
       const quota = await tx.uploadQuota.updateMany({
         where: {
           userId: payload.userId,
@@ -84,7 +49,12 @@ export function createUploadDeleteHandler(prisma: PrismaClient): OutboxHandler {
         },
       });
       if (quota.count !== 1) {
-        throw new Error("Upload quota invariant prevented deletion accounting");
+        // A retry would read the same row, so failing the job only buries it
+        // as DEAD. Finish the deletion and leave the mismatch for an operator.
+        logger.error(
+          { assetId: payload.assetId, userId: payload.userId },
+          "Upload quota was lower than the deleted asset; quota left unchanged",
+        );
       }
     });
   };
