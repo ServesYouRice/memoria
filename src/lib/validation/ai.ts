@@ -5,9 +5,30 @@ export const tagSchema = z.object({
   content: z.string().min(1).max(5000),
 });
 
+/** Longest canvas context one chat request may carry. */
+export const CHAT_CONTEXT_MAX_CHARS = 8_000;
+const CONTEXT_TRUNCATED_MARKER = "\n…(truncated)";
+
+/**
+ * Cuts chat context to the schema limit, at a line or word boundary where
+ * one is near, with a marker counted inside the limit. Text that fits is
+ * returned unchanged.
+ */
+export function boundChatContext(
+  text: string,
+  max: number = CHAT_CONTEXT_MAX_CHARS,
+): string {
+  if (text.length <= max) return text;
+  const room = Math.max(0, max - CONTEXT_TRUNCATED_MARKER.length);
+  let cut = text.slice(0, room);
+  const boundary = Math.max(cut.lastIndexOf("\n"), cut.lastIndexOf(" "));
+  if (boundary > room * 0.8) cut = cut.slice(0, boundary);
+  return `${cut.trimEnd()}${CONTEXT_TRUNCATED_MARKER}`;
+}
+
 export const chatSchema = z.object({
   message: z.string().min(1).max(5000),
-  context: z.string().max(8_000).optional(),
+  context: z.string().max(CHAT_CONTEXT_MAX_CHARS).optional(),
   persona: z.enum(["creative", "socratic", "architect"]),
 });
 

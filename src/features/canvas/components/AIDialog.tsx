@@ -27,6 +27,7 @@ import {
 } from "@mui/icons-material";
 import { PERSONAS, type PersonaKey } from "@/lib/ai/personas";
 import { boundChatHistory } from "@/lib/ai/chat-history";
+import { boundChatContext } from "@/lib/validation/ai";
 
 interface AIDialogProps {
   open: boolean;
@@ -122,7 +123,11 @@ export function AIDialog({
 
     try {
       // Retrieve context if available
-      const contextStr = typeof getContext === "function" ? getContext() : "";
+      // The server rejects context over its limit, so a large canvas sends the
+      // leading part of its notes.
+      const contextStr = boundChatContext(
+        typeof getContext === "function" ? getContext() : "",
+      );
 
       const response = await fetch("/api/v1/ai/chat", {
         method: "POST",
@@ -135,6 +140,18 @@ export function AIDialog({
         }),
       });
 
+      if (response.status === 400 || response.status === 422) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              "That message was too large or invalid to send. Try a shorter message.",
+            failed: true,
+          },
+        ]);
+        return;
+      }
       if (!response.ok) throw new Error("Chat failed");
       const data = await response.json();
       setChatMessages((prev) => [
