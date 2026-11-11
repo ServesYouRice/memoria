@@ -101,12 +101,20 @@ export function AskPalette({
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [settled, setSettled] = useState<string | null>(null);
+  // Settled text belongs to the suggestion it was reached for, so finishing
+  // an older suggestion can never mark a newer one as done.
+  const [settled, setSettled] = useState<{
+    suggestionId: string;
+    text: string;
+  } | null>(null);
   const approve = useApproveSuggestion();
   const execute = useExecuteSuggestion();
   const reject = useRejectSuggestion();
   const revert = useRevertChangeSet();
   const controller = useRef<AbortController | null>(null);
+  // Bumped per question: late approve/dismiss results for an earlier answer
+  // are ignored.
+  const resultToken = useRef(0);
 
   useEffect(() => {
     if (!open) {
@@ -121,7 +129,8 @@ export function AskPalette({
   async function submit(event?: React.FormEvent) {
     event?.preventDefault();
     const trimmed = question.trim();
-    if (trimmed.length < 2 || asking) return;
+    if (trimmed.length < 2 || asking || applying) return;
+    resultToken.current += 1;
     setAsking(true);
     setError(null);
     setResult(null);
@@ -140,6 +149,8 @@ export function AskPalette({
   async function approveSuggestion() {
     const suggestion = result?.suggestion;
     if (!suggestion) return;
+    const token = resultToken.current;
+    const isCurrent = () => resultToken.current === token;
     setApplying(true);
     setError(null);
     try {
@@ -148,7 +159,8 @@ export function AskPalette({
         executed?: { changeSetId?: string };
       };
       const changeSetId = executed.executed?.changeSetId;
-      setSettled("Done.");
+      if (isCurrent())
+        setSettled({ suggestionId: suggestion.id, text: "Done." });
       toast.success(
         suggestion.summary,
         changeSetId
@@ -166,6 +178,7 @@ export function AskPalette({
           : undefined,
       );
     } catch (applyError) {
+      if (!isCurrent()) return;
       setError(
         applyError instanceof Error
           ? applyError.message
@@ -179,8 +192,13 @@ export function AskPalette({
   async function dismissSuggestion() {
     const suggestion = result?.suggestion;
     if (!suggestion) return;
+    const token = resultToken.current;
     await reject.mutateAsync(suggestion.id).catch(() => undefined);
-    setSettled("Dismissed. Nothing changed.");
+    if (resultToken.current !== token) return;
+    setSettled({
+      suggestionId: suggestion.id,
+      text: "Dismissed. Nothing changed.",
+    });
   }
 
   const rejection = result?.commandRejected
@@ -229,7 +247,7 @@ export function AskPalette({
         <IconButton
           type="submit"
           aria-label="Ask"
-          disabled={asking || question.trim().length < 2}
+          disabled={asking || applying || question.trim().length < 2}
         >
           {asking ? <CircularProgress size={20} /> : <SendIcon />}
         </IconButton>
@@ -293,9 +311,9 @@ export function AskPalette({
                 <Typography sx={{ mb: 1.5 }}>
                   {result.suggestion.summary}
                 </Typography>
-                {settled ? (
+                {settled?.suggestionId === result.suggestion.id ? (
                   <Typography variant="body2" color="text.secondary">
-                    {settled}
+                    {settled.text}
                   </Typography>
                 ) : (
                   <Stack direction="row" spacing={1}>
