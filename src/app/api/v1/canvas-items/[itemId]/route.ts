@@ -185,6 +185,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
         data: {
           deletedAt: new Date(),
           deletedById: userId,
+          // A normal delete is never an archive: the trash sweep may purge it.
+          archivedAt: null,
           version: { increment: 1 },
         },
       });

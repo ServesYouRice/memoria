@@ -135,6 +135,7 @@ export async function projectDocumentChanges(
           ...fields,
           deletedAt: null,
           deletedById: null,
+          archivedAt: null,
           updatedById: actorId,
           version: { increment: 1 },
         },
@@ -182,6 +183,7 @@ export async function projectDocumentChanges(
       data: {
         deletedAt: now,
         deletedById: actorId,
+        archivedAt: null,
         version: { increment: 1 },
       },
       select: { version: true },

@@ -117,7 +117,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           "positionY" = input."positionY", "width" = input."width", "height" = input."height",
           "zIndex" = input."zIndex", "content" = input."content",
           "tags" = ARRAY(SELECT jsonb_array_elements_text(input."tags")),
-          "deletedAt" = NULL, "deletedById" = NULL, "updatedById" = ${userId},
+          "deletedAt" = NULL, "deletedById" = NULL, "archivedAt" = NULL, "updatedById" = ${userId},
           "version" = item."version" + 1, "updatedAt" = NOW()
         FROM input WHERE item."id" = input."id" AND item."canvasId" = ${canvasId}
       `;
@@ -147,6 +147,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           data: {
             deletedAt: new Date(),
             deletedById: userId,
+            // A normal delete is never an archive (only live rows match).
+            archivedAt: null,
             updatedById: userId,
             version: { increment: 1 },
           },
