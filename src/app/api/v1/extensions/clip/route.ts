@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { withApiHandler, withValidation } from "@/lib/api/route-handler";
 import { clipSchema } from "@/lib/validation/extension";
+import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { ItemType } from "@/types/canvas";
 import {
   authenticateApiKey,
@@ -98,6 +99,15 @@ export const POST = withApiHandler(
         });
       }
 
+      // The same bookmark rules as every other write path (scheme check,
+      // URL sanitization, length caps); a refusal is a 400.
+      const baseTitle = (title || url).slice(0, 500);
+      const content = parseCanvasItemContent(ItemType.BOOKMARK, {
+        url,
+        title: baseTitle,
+        description: selection,
+      }) as { url: string };
+
       // Create Item
       // Note: We random position avoid stacking if possible but random is fine for MVC
       const item = await prisma.$transaction(async (tx) => {
@@ -111,12 +121,8 @@ export const POST = withApiHandler(
             positionY: Math.random() * 400,
             width: 300,
             height: 100,
-            content: {
-              url,
-              title: title || url,
-              description: selection,
-            },
-            normalizedUrl: normalizeLinkUrl(url),
+            content,
+            normalizedUrl: normalizeLinkUrl(content.url),
             createdById: user.id,
           },
         });
@@ -129,7 +135,7 @@ export const POST = withApiHandler(
         });
         // Name, tag and summarize the link in the background (IMP-064).
         await enqueueLinkEnrichment(tx, user.id, [
-          { itemId: created.id, baseTitle: title || url },
+          { itemId: created.id, baseTitle },
         ]);
         return created;
       });
