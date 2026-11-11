@@ -3,7 +3,6 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { once } from "node:events";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
@@ -69,8 +68,61 @@ function serializeRecord(record: unknown): Buffer {
   );
 }
 
-async function writeChunk(stream: NodeJS.WritableStream, chunk: Buffer) {
-  if (!stream.write(chunk)) await once(stream, "drain");
+/**
+ * Writes one chunk to the archive's head stream and waits for backpressure to
+ * clear. Once the pipeline has failed (archive budget, disk error) a
+ * destroyed stream emits neither 'drain' nor 'error', so the write rejects
+ * with the pipeline's own error instead of waiting forever.
+ */
+export async function writeChunk(
+  stream: NodeJS.WritableStream & { destroyed?: boolean },
+  chunk: Buffer,
+  options: {
+    getFailure: () => unknown;
+    completion: Promise<unknown>;
+    signal?: AbortSignal;
+  },
+) {
+  const closedError = () => new Error("Account export archive stream closed");
+  const failure = options.getFailure();
+  if (failure !== undefined) throw failure;
+  if (options.signal?.aborted) {
+    throw options.signal.reason || new Error("Export aborted");
+  }
+  if (stream.destroyed) {
+    await options.completion;
+    throw closedError();
+  }
+  if (stream.write(chunk)) return;
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const settle = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      stream.removeListener("drain", onDrain);
+      stream.removeListener("error", onError);
+      stream.removeListener("close", onClose);
+      options.signal?.removeEventListener("abort", onAbort);
+      if (error === undefined) resolve();
+      else reject(error);
+    };
+    const onDrain = () => settle();
+    const onError = (error: unknown) => settle(error);
+    const onClose = () => {
+      options.completion.then(
+        () => settle(options.getFailure() ?? closedError()),
+        (error: unknown) => settle(error),
+      );
+    };
+    const onAbort = () =>
+      settle(options.signal?.reason || new Error("Export aborted"));
+    stream.on("drain", onDrain);
+    stream.on("error", onError);
+    stream.on("close", onClose);
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    // The stream may have been destroyed by the write itself.
+    if (stream.destroyed) onClose();
+  });
 }
 
 async function assertNotCancelled(
@@ -124,6 +176,12 @@ async function buildArchive(
     },
   });
   const completion = pipeline(gzip, meter, output, { signal: input.signal });
+  // Observe the pipeline from the start: it can fail while the producer awaits
+  // a database or storage read, and that rejection must not go unhandled.
+  let pipelineError: unknown;
+  completion.catch((error: unknown) => {
+    pipelineError ??= error;
+  });
 
   const write = async (recordType: string, value: unknown) => {
     if (input.signal?.aborted) {
@@ -136,7 +194,11 @@ async function buildArchive(
         `Account export exceeds the ${budgets.maxUncompressedBytes}-byte input budget`,
       );
     }
-    await writeChunk(gzip, chunk);
+    await writeChunk(gzip, chunk, {
+      getFailure: () => pipelineError,
+      completion,
+      signal: input.signal,
+    });
     counts[recordType] = (counts[recordType] || 0) + 1;
   };
 
