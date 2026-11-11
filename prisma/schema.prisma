@@ -771,6 +771,9 @@ model AgentProfile {
   maxCapabilityRung Int        @default(3)
   enabledRungs Int[]           @default([0, 1, 2, 3])
   allowedCanvasIds String[]    @default([])
+  /// Marks a built-in profile ("organizer"). Set only by the server, never
+  /// from the API; NULL for every profile a user creates.
+  systemKey String?
   defaultModelCredentialId String?
   defaultModelCredential ModelCredential? @relation("DefaultModelCredential", fields: [defaultModelCredentialId], references: [id], onDelete: SetNull)
   integrationAccounts IntegrationAccount[]
@@ -783,6 +786,7 @@ model AgentProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, systemKey])
   @@index([userId, status])
   @@index([defaultModelCredentialId])
 }
