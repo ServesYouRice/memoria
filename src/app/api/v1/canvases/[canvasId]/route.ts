@@ -11,6 +11,10 @@ import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
+import {
+  QUOTA_CHARGED_UPLOAD_STATUSES,
+  releaseUploadQuotaForAssets,
+} from "@/lib/uploads/outbox-handler";
 
 const updateCanvasSchema = z
   .object({
@@ -170,11 +174,28 @@ export const DELETE = withApiHandler(
 
     // Delete canvas (cascade will delete items, shares, etc.)
     const deletedCanvas = await prisma.$transaction(async (tx) => {
-      const assets = await tx.uploadAsset.findMany({
-        where: { canvasId, status: { not: "DELETED" } },
-        select: { id: true },
-      });
+      // Lock the rows so a concurrent upload.delete job cannot release an
+      // asset's quota between this read and the cascade below.
+      const assets = await tx.$queryRaw<
+        Array<{ id: string; userId: string; size: number; status: string }>
+      >`
+        SELECT "id", "userId", "size", "status"::text AS "status"
+        FROM "UploadAsset"
+        WHERE "canvasId" = ${canvasId} AND "status" <> 'DELETED'
+        FOR UPDATE
+      `;
       for (const asset of assets) await enqueueUploadDeletion(tx, asset.id);
+      // The cascade removes these rows before their upload.delete jobs run,
+      // and a job that finds no DELETING row releases nothing, so release the
+      // owners' quota here, once.
+      await releaseUploadQuotaForAssets(
+        tx,
+        assets.filter((asset) =>
+          (QUOTA_CHARGED_UPLOAD_STATUSES as readonly string[]).includes(
+            asset.status,
+          ),
+        ),
+      );
       return tx.canvas.delete({ where: { id: canvasId } });
     });
 
