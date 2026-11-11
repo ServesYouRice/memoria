@@ -294,23 +294,123 @@ export function noteDocumentFromContent(content: unknown): TiptapNode {
   }
 }
 
-function plainTextNode(document: TiptapNode): ProseMirrorNode {
-  const schema = collaborativeNoteSchema();
-  const lines: string[] = [];
+const LIST_TYPES = new Set(["bulletList", "orderedList"]);
+const TEXT_BLOCK_TYPES = new Set(["paragraph", "heading", "codeBlock"]);
+
+function emptyParagraph(): TiptapNode {
+  return { type: "paragraph", content: [] };
+}
+
+/**
+ * Unambiguous structural fixes for shapes the note format admits but
+ * TipTap's schema rejects: list items outside a list are wrapped in a bullet
+ * list, lists without items are dropped, an empty blockquote gets an empty
+ * paragraph, and a list item that does not start with a paragraph gets an
+ * empty one first. Text and its order are untouched.
+ */
+function repairChildren(nodes: TiptapNode[], parentType: string): TiptapNode[] {
+  const repaired: TiptapNode[] = [];
+  let looseItems: TiptapNode[] = [];
+  const flushLooseItems = () => {
+    if (looseItems.length) {
+      repaired.push({ type: "bulletList", content: looseItems });
+      looseItems = [];
+    }
+  };
+  for (const node of nodes) {
+    const fixed = repairNode(node);
+    if (!fixed) continue;
+    if (fixed.type === "listItem" && !LIST_TYPES.has(parentType)) {
+      looseItems.push(fixed);
+      continue;
+    }
+    flushLooseItems();
+    repaired.push(fixed);
+  }
+  flushLooseItems();
+  return repaired;
+}
+
+function repairNode(node: TiptapNode): TiptapNode | null {
+  if (!node.content) return node;
+  const content = repairChildren(node.content, node.type);
+  if (LIST_TYPES.has(node.type) && content.length === 0) return null;
+  if (node.type === "blockquote" && content.length === 0) {
+    return { ...node, content: [emptyParagraph()] };
+  }
+  if (node.type === "listItem" && content[0]?.type !== "paragraph") {
+    return { ...node, content: [emptyParagraph(), ...content] };
+  }
+  return { ...node, content };
+}
+
+function repairNoteDocument(document: TiptapNode): TiptapNode {
+  const content = repairChildren(document.content ?? [], document.type);
+  return {
+    ...document,
+    content: content.length ? content : [emptyParagraph()],
+  };
+}
+
+/** Paragraphs, headings and code blocks of a document, in order. */
+function textBlocks(document: TiptapNode): TiptapNode[] {
+  const blocks: TiptapNode[] = [];
   const visit = (node: TiptapNode) => {
-    if (node.type === "text") lines.push(node.text ?? "");
+    if (TEXT_BLOCK_TYPES.has(node.type)) {
+      blocks.push(node);
+      return;
+    }
     node.content?.forEach(visit);
   };
   visit(document);
-  return schema.nodeFromJSON({
-    type: "doc",
-    content: [
-      {
+  return blocks;
+}
+
+function blockText(node: TiptapNode): string {
+  if (node.type === "text") return node.text ?? "";
+  if (node.type === "hardBreak") return " ";
+  return (node.content ?? []).map(blockText).join("");
+}
+
+function checkedNode(json: TiptapNode): ProseMirrorNode {
+  const node = collaborativeNoteSchema().nodeFromJSON(json);
+  node.check();
+  return node;
+}
+
+/**
+ * Last resort when even the repaired document is rejected: one paragraph per
+ * text block, keeping text marks and hard breaks, and failing that one
+ * plain-text paragraph per block. Words from separate blocks are never
+ * joined.
+ */
+function blockParagraphsNode(document: TiptapNode): ProseMirrorNode {
+  const blocks = textBlocks(document);
+  try {
+    const content = blocks.map((block) => ({
+      type: "paragraph",
+      content: (block.content ?? []).filter(
+        (child) =>
+          (child.type === "text" && child.text) || child.type === "hardBreak",
+      ),
+    }));
+    return checkedNode({
+      type: "doc",
+      content: content.length ? content : [emptyParagraph()],
+    });
+  } catch {
+    const content = blocks.map((block) => {
+      const text = blockText(block);
+      return {
         type: "paragraph",
-        content: lines.join("") ? [{ type: "text", text: lines.join("") }] : [],
-      },
-    ],
-  });
+        content: text ? [{ type: "text", text }] : [],
+      };
+    });
+    return collaborativeNoteSchema().nodeFromJSON({
+      type: "doc",
+      content: content.length ? content : [emptyParagraph()],
+    });
+  }
 }
 
 /**
@@ -322,15 +422,20 @@ export function writeNoteFragment(
   fragment: Y.XmlFragment,
   document: TiptapNode,
 ): void {
-  const schema = collaborativeNoteSchema();
   let node: ProseMirrorNode;
   try {
-    node = schema.nodeFromJSON(document);
-    node.check();
+    node = checkedNode(document);
   } catch {
-    // The stored format admits a few shapes TipTap's schema does not (for
-    // example a list item at the top level); keep the words.
-    node = plainTextNode(document);
+    // The stored format admits a few shapes TipTap's schema does not (an
+    // empty list, a top-level list item, a list item that does not start
+    // with a paragraph, an empty blockquote). Repair the structure first;
+    // if that is still rejected, keep one paragraph per text block so the
+    // words of separate blocks never run together.
+    try {
+      node = checkedNode(repairNoteDocument(document));
+    } catch {
+      node = blockParagraphsNode(document);
+    }
   }
   prosemirrorToYXmlFragment(node, fragment);
 }
