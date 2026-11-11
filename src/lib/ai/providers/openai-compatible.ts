@@ -80,6 +80,10 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       model: config.model,
       messages: [
         { role: "system", content: request.system },
+        ...(request.history ?? []).map(({ role, content }) => ({
+          role,
+          content,
+        })),
         { role: "user", content: request.prompt },
       ],
     };

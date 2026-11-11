@@ -9,6 +9,7 @@ import {
   type ResolvedAiProvider,
 } from "./provider-resolution";
 import { AiUpstreamError } from "./providers";
+import type { AiChatTurn } from "./chat-history";
 
 const logger = createLogger("ai-provider");
 export const AI_SUMMARY_ITEM_LIMIT = 500;
@@ -26,6 +27,8 @@ export interface GenerateOptions {
    * fallback applies. Budgets are enforced by the caller (`runBudgetedAi`).
    */
   userId?: string;
+  /** Earlier chat turns, oldest first, sent before `prompt`. */
+  history?: AiChatTurn[];
   signal?: AbortSignal;
 }
 
@@ -47,6 +50,7 @@ export async function generateText(options: GenerateOptions): Promise<string> {
       system: options.system || DEFAULT_SYSTEM_PROMPT,
       temperature: options.temperature ?? 0.7,
       maxTokens: options.maxTokens ?? 500,
+      ...(options.history?.length ? { history: options.history } : {}),
       signal: options.signal,
     });
   } catch (error) {

@@ -26,6 +26,7 @@ import {
   Send as SendIcon,
 } from "@mui/icons-material";
 import { PERSONAS, type PersonaKey } from "@/lib/ai/personas";
+import { boundChatHistory } from "@/lib/ai/chat-history";
 
 interface AIDialogProps {
   open: boolean;
@@ -38,6 +39,8 @@ interface AIDialogProps {
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** A local error notice, never sent back as a model answer. */
+  failed?: boolean;
 }
 
 export function AIDialog({
@@ -105,6 +108,13 @@ export function AIDialog({
     chatInFlightRef.current = true;
 
     const userMsg = chatInput;
+    // Completed earlier turns, so follow-ups can refer to them; the message
+    // being sent goes separately.
+    const history = boundChatHistory(
+      chatMessages
+        .filter((msg) => !msg.failed)
+        .map(({ role, content }) => ({ role, content })),
+    );
     setChatMessages((prev) => [...prev, { role: "user", content: userMsg }]);
     setChatInput("");
     setChatLoading(true);
@@ -120,6 +130,7 @@ export function AIDialog({
           message: userMsg,
           context: contextStr,
           persona,
+          ...(history.length ? { history } : {}),
         }),
       });
 
@@ -132,7 +143,11 @@ export function AIDialog({
     } catch {
       setChatMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Sorry, I encountered an error." },
+        {
+          role: "assistant",
+          content: "Sorry, I encountered an error.",
+          failed: true,
+        },
       ]);
     } finally {
       chatInFlightRef.current = false;

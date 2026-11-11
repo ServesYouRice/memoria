@@ -1,5 +1,6 @@
 import type { ModelProvider } from "@/generated/prisma/client";
 import { pinnedHttpRequest } from "@/lib/utils/ssrf-protection";
+import type { AiChatTurn } from "../chat-history";
 
 /**
  * Optional capabilities an adapter can advertise. Each optional capability
@@ -30,6 +31,8 @@ export interface AiProviderConfig {
 export interface AiTextRequest {
   prompt: string;
   system: string;
+  /** Earlier chat turns, oldest first, sent before `prompt`. */
+  history?: AiChatTurn[];
   temperature?: number;
   maxTokens: number;
   signal?: AbortSignal;
