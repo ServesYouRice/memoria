@@ -20,6 +20,18 @@ const SENSITIVE_BETTER_AUTH_ROUTES = new Set([
 const SENSITIVE_BETTER_AUTH_PREFIXES = ["/api/auth/two-factor/"];
 
 /**
+ * Account routes that verify the current password (Argon2). Matched on the
+ * exact method and path so the account exports and other reads stay out.
+ */
+const SENSITIVE_ACCOUNT_ROUTES: ReadonlyArray<{
+  method: string;
+  pathname: string;
+}> = [
+  { method: "POST", pathname: "/api/v1/users/change-password" },
+  { method: "DELETE", pathname: "/api/v1/users/account" },
+];
+
+/**
  * Limit credential-changing operations without throttling the session reads
  * and sign-out requests used during normal page rendering.
  */
@@ -27,7 +39,15 @@ export function shouldApplyStrictAuthRateLimit(
   pathname: string,
   method: string,
 ): boolean {
-  if (method.toUpperCase() !== "POST") return false;
+  const upperMethod = method.toUpperCase();
+  if (
+    SENSITIVE_ACCOUNT_ROUTES.some(
+      (route) => route.method === upperMethod && route.pathname === pathname,
+    )
+  ) {
+    return true;
+  }
+  if (upperMethod !== "POST") return false;
 
   return (
     SENSITIVE_V1_AUTH_ROUTES.has(pathname) ||
