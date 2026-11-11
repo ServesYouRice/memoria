@@ -4,10 +4,10 @@ import { BadRequestError } from "@/lib/errors";
 const mocks = vi.hoisted(() => {
   const tx = {
     agentAction: { create: vi.fn(), update: vi.fn() },
-    changeSet: { create: vi.fn(), update: vi.fn() },
-    changeRecord: { create: vi.fn(), updateMany: vi.fn() },
+    changeSet: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    changeRecord: { create: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     canvas: { findUnique: vi.fn(), delete: vi.fn() },
-    canvasItem: { count: vi.fn() },
+    canvasItem: { count: vi.fn(), findMany: vi.fn() },
     uploadAsset: { count: vi.fn() },
     agentProfile: { findFirst: vi.fn(), update: vi.fn() },
   };
@@ -32,6 +32,15 @@ const actor = { userId: "user-123", agentProfileId: "prof-hermes" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // revertChangeSet claims the change set and re-reads its records in the
+  // transaction (TASK-142).
+  mocks.tx.changeSet.updateMany.mockResolvedValue({ count: 1 });
+  mocks.tx.changeRecord.findMany.mockImplementation(
+    async () =>
+      (await mocks.changeSetFindFirst.mock.results.at(-1)?.value)
+        ?.changeRecords ?? [],
+  );
+  mocks.tx.canvasItem.findMany.mockResolvedValue([]);
   mocks.changeSetFindFirst.mockResolvedValue({
     id: "cs-board",
     scopeType: "canvas",

@@ -5,8 +5,13 @@ import type * as ServiceCore from "@/lib/agents/service-core";
 const mocks = vi.hoisted(() => {
   const tx = {
     agentAction: { create: vi.fn(), update: vi.fn() },
-    changeSet: { create: vi.fn(), update: vi.fn() },
-    changeRecord: { create: vi.fn(), createMany: vi.fn(), updateMany: vi.fn() },
+    changeSet: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    changeRecord: {
+      create: vi.fn(),
+      createMany: vi.fn(),
+      updateMany: vi.fn(),
+      findMany: vi.fn(),
+    },
     canvas: { findFirst: vi.fn(), create: vi.fn() },
     canvasItem: {
       findMany: vi.fn(),
@@ -108,6 +113,15 @@ function canvasItem(id: string, canvasId = "canvas-a", type = "BOOKMARK") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // revertChangeSet claims the change set and re-reads its records in the
+  // transaction (TASK-142).
+  mocks.tx.changeSet.updateMany.mockResolvedValue({ count: 1 });
+  mocks.tx.changeRecord.findMany.mockImplementation(
+    async () =>
+      (await mocks.changeSetFindFirst.mock.results.at(-1)?.value)
+        ?.changeRecords ?? [],
+  );
+  mocks.tx.canvasItem.findMany.mockResolvedValue([]);
   mocks.profileFindFirst.mockResolvedValue(profile);
   mocks.createSuggestionRecord.mockResolvedValue({
     suggestion: { id: "sugg-1", summary: "s" },

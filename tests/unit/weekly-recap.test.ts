@@ -4,8 +4,8 @@ import type { OutboxJob, PrismaClient } from "@/generated/prisma/client";
 const mocks = vi.hoisted(() => {
   const tx = {
     agentAction: { create: vi.fn(), update: vi.fn() },
-    changeSet: { create: vi.fn(), update: vi.fn() },
-    changeRecord: { create: vi.fn(), updateMany: vi.fn() },
+    changeSet: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    changeRecord: { create: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     canvasItem: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   };
   return {
@@ -149,6 +149,15 @@ const suggestPiles = vi.fn(async () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // revertChangeSet claims the change set and re-reads its records in the
+  // transaction (TASK-142).
+  mocks.tx.changeSet.updateMany.mockResolvedValue({ count: 1 });
+  mocks.tx.changeRecord.findMany.mockImplementation(
+    async () =>
+      (await mocks.changeSetFindFirst.mock.results.at(-1)?.value)
+        ?.changeRecords ?? [],
+  );
+  mocks.tx.canvasItem.findMany.mockResolvedValue([]);
 });
 
 describe("recap weeks", () => {

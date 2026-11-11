@@ -12,7 +12,12 @@ import {
 } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "@/lib/errors";
 import {
   DEFAULT_SUGGESTION_TTL_DAYS,
   AGENT_CAPABILITY_RUNGS,
@@ -1648,6 +1653,81 @@ export async function assertAgentMayRevertChangeSet(input: {
   }
 }
 
+function snapshotCanvasId(value: Prisma.JsonValue | null) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const canvasId = (value as Record<string, unknown>).canvasId;
+  return typeof canvasId === "string" ? canvasId : null;
+}
+
+/**
+ * Locks every canvas a revert can touch, in ascending id order, before the
+ * first record is applied: archive and Ask move change sets are user-scoped
+ * and span boards, and locking them lazily in record order can deadlock
+ * against archiveItems, which locks in sorted order. The per-record locks in
+ * applyRevertOperation then re-lock canvases already held.
+ */
+async function lockRevertCanvases(
+  tx: Prisma.TransactionClient,
+  input: {
+    scopeType: string;
+    scopeId: string;
+    changeRecords: Array<{
+      targetType: string;
+      targetId: string;
+      operation: string;
+      before: Prisma.JsonValue | null;
+      after: Prisma.JsonValue | null;
+    }>;
+  },
+) {
+  const canvasIds = new Set<string>();
+  if (input.scopeType === "canvas") canvasIds.add(input.scopeId);
+  const itemIds = new Set<string>();
+  for (const record of input.changeRecords) {
+    if (record.targetType === "CanvasItem") {
+      itemIds.add(record.targetId);
+      for (const snapshot of [record.before, record.after]) {
+        const canvasId = snapshotCanvasId(snapshot);
+        if (canvasId) canvasIds.add(canvasId);
+      }
+    } else if (record.targetType === "ItemConnection") {
+      const canvasId =
+        snapshotCanvasId(record.before) ?? snapshotCanvasId(record.after);
+      if (canvasId) canvasIds.add(canvasId);
+    } else if (
+      record.targetType === "Canvas" &&
+      record.operation === "CREATE"
+    ) {
+      canvasIds.add(record.targetId);
+    }
+  }
+
+  const currentCanvasIds = async () =>
+    itemIds.size === 0
+      ? []
+      : (
+          await tx.canvasItem.findMany({
+            where: { id: { in: Array.from(itemIds) } },
+            select: { canvasId: true },
+          })
+        ).map((item) => item.canvasId);
+
+  for (const canvasId of await currentCanvasIds()) canvasIds.add(canvasId);
+  const locked = Array.from(canvasIds).sort();
+  for (const canvasId of locked) {
+    await lockCanvasForMutation(tx, canvasId);
+  }
+
+  // An item moved to another board between the read and the locks: taking
+  // that lock now would break the order, so ask for a retry instead.
+  const lockedSet = new Set(locked);
+  if ((await currentCanvasIds()).some((canvasId) => !lockedSet.has(canvasId))) {
+    throw new ConflictError(
+      "Items in this change moved while it was being undone. Try again.",
+    );
+  }
+}
+
 export async function revertChangeSet(input: {
   actor: ActorContext;
   changeSetId: string;
@@ -1657,11 +1737,7 @@ export async function revertChangeSet(input: {
       id: input.changeSetId,
       userId: input.actor.userId,
     },
-    include: {
-      changeRecords: {
-        orderBy: { createdAt: "desc" },
-      },
-    },
+    select: { id: true, scopeType: true, scopeId: true, revertedAt: true },
   });
 
   if (!originalChangeSet) {
@@ -1673,9 +1749,31 @@ export async function revertChangeSet(input: {
   }
 
   return prisma.$transaction(async (tx) => {
-    if (originalChangeSet.scopeType === "canvas") {
-      await lockCanvasForMutation(tx, originalChangeSet.scopeId);
+    const revertedAt = new Date();
+    // Claim the change set first: a concurrent revert blocks on this row and
+    // then matches nothing, so the inverse is applied at most once. A failed
+    // revert rolls the claim back with the transaction.
+    const claim = await tx.changeSet.updateMany({
+      where: {
+        id: originalChangeSet.id,
+        userId: input.actor.userId,
+        revertedAt: null,
+      },
+      data: { status: ChangeSetStatus.REVERTED, revertedAt },
+    });
+    if (claim.count !== 1) {
+      throw new ForbiddenError("This change set has already been reverted.");
     }
+    const changeRecords = await tx.changeRecord.findMany({
+      where: { changeSetId: originalChangeSet.id },
+      orderBy: { createdAt: "desc" },
+    });
+    await lockRevertCanvases(tx, {
+      scopeType: originalChangeSet.scopeType,
+      scopeId: originalChangeSet.scopeId,
+      changeRecords,
+    });
+
     const rollbackAction = await tx.agentAction.create({
       data: {
         userId: input.actor.userId,
@@ -1705,7 +1803,7 @@ export async function revertChangeSet(input: {
       },
     });
 
-    for (const changeRecord of originalChangeSet.changeRecords) {
+    for (const changeRecord of changeRecords) {
       await applyRevertOperation(
         tx,
         changeRecord,
@@ -1713,8 +1811,6 @@ export async function revertChangeSet(input: {
         rollbackChangeSet.id,
       );
     }
-
-    const revertedAt = new Date();
 
     await tx.changeRecord.updateMany({
       where: {
@@ -1726,6 +1822,7 @@ export async function revertChangeSet(input: {
       },
     });
 
+    // Already set by the claim; kept so the row's final write is explicit.
     await tx.changeSet.update({
       where: { id: originalChangeSet.id },
       data: {
