@@ -27,6 +27,7 @@ vi.mock("@/lib/outbox/enqueue", () => ({
   enqueueOutboxJob: mocks.enqueueOutboxJob,
 }));
 vi.mock("@/lib/validation/password", () => ({
+  PASSWORD_MAX_LENGTH: 128,
   validatePasswordStrength: async () => ({
     isValid: true,
     score: 4,

@@ -10,7 +10,10 @@ import { prisma } from "@/lib/db";
 import { errorResponse, BadRequestError, NotFoundError } from "@/lib/errors";
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/password";
-import { validatePasswordStrength } from "@/lib/validation/password";
+import {
+  PASSWORD_MAX_LENGTH,
+  validatePasswordStrength,
+} from "@/lib/validation/password";
 import { createHash } from "crypto";
 import {
   createCredentialAccount,
@@ -19,7 +22,13 @@ import {
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(
+      PASSWORD_MAX_LENGTH,
+      `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+    ),
 });
 
 export async function POST(request: NextRequest) {
