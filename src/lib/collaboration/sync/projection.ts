@@ -92,6 +92,33 @@ export async function projectDocumentChanges(
   );
   if (changes.length === 0) return result;
 
+  // Deletions apply first, like the HTTP commands route, so the capacity
+  // check sees the rows this update removes and judges its net change. Each
+  // item has at most one change per update.
+  for (const change of changes) {
+    if (change.kind !== "delete") continue;
+    const existing = rowsById.get(change.id);
+    if (!existing || existing.deletedAt) continue;
+    const deleted = await tx.canvasItem.update({
+      where: { id: change.id },
+      data: {
+        deletedAt: now,
+        deletedById: actorId,
+        archivedAt: null,
+        version: { increment: 1 },
+      },
+      select: { version: true },
+    });
+    events.push({
+      canvasId,
+      actorId,
+      itemId: change.id,
+      version: deleted.version,
+      operation: "deleted",
+    });
+    result.deleted += 1;
+  }
+
   // New rows and restored ones count against the canvas item limit.
   const additions = changes.filter((change) => {
     if (change.kind !== "create") return false;
@@ -170,37 +197,15 @@ export async function projectDocumentChanges(
       continue;
     }
 
+    if (change.kind === "delete") continue;
     const existing = rowsById.get(change.id);
     if (!existing || existing.deletedAt) continue;
-
-    if (change.kind === "update") {
-      if (existing.type !== change.type) continue;
-      const updated = await tx.canvasItem.update({
-        where: { id: change.id },
-        data: {
-          ...rowData(change.fields),
-          updatedById: actorId,
-          version: { increment: 1 },
-        },
-        select: { version: true },
-      });
-      events.push({
-        canvasId,
-        actorId,
-        itemId: change.id,
-        version: updated.version,
-        operation: "updated",
-      });
-      result.updated += 1;
-      continue;
-    }
-
-    const deleted = await tx.canvasItem.update({
+    if (existing.type !== change.type) continue;
+    const updated = await tx.canvasItem.update({
       where: { id: change.id },
       data: {
-        deletedAt: now,
-        deletedById: actorId,
-        archivedAt: null,
+        ...rowData(change.fields),
+        updatedById: actorId,
         version: { increment: 1 },
       },
       select: { version: true },
@@ -209,10 +214,10 @@ export async function projectDocumentChanges(
       canvasId,
       actorId,
       itemId: change.id,
-      version: deleted.version,
-      operation: "deleted",
+      version: updated.version,
+      operation: "updated",
     });
-    result.deleted += 1;
+    result.updated += 1;
   }
 
   await recordCanvasItemEventsBatch(tx, events);
