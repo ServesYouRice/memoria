@@ -180,6 +180,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   const {
     commitGeometry,
+    nudgeGeometry,
     status: geometrySaveStatus,
     error: geometrySaveError,
   } = useItemGeometry({
@@ -241,7 +242,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const { mutateAsync: deleteItem } = useDeleteCanvasItem();
   const { mutateAsync: createItem } = useCreateCanvasItem();
   const updateItemMutation = useUpdateCanvasItem();
-  const { mutate: updateItem } = updateItemMutation;
   const updateThumbnail = useUpdateCanvasThumbnail();
   const { mutateAsync: restoreVersion } = useRestoreVersion();
 
@@ -490,7 +490,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     selectedItemIds,
     selectedItemId,
     allItems, // Use all items for finding targets
-    updateItem,
+    nudgeItem: nudgeGeometry,
   });
 
   useEffect(() => {
@@ -771,10 +771,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     deltaX: number,
     deltaY: number,
   ) => {
-    commitGeometry(item, {
-      positionX: item.positionX + deltaX,
-      positionY: item.positionY + deltaY,
-    });
+    nudgeGeometry(item, deltaX, deltaY);
   };
 
   const handleDeleteItem = (item: CanvasItem) => {
@@ -992,10 +989,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           break;
       }
       if (newX !== item.positionX || newY !== item.positionY) {
-        updateItem({
-          itemId: item.id,
-          data: { positionX: newX, positionY: newY, version: item.version },
-        });
+        commitGeometry(item, { positionX: newX, positionY: newY });
       }
     });
   };
@@ -1018,9 +1012,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       let currentX = first.positionX;
       selectedItems.forEach((item, index) => {
         if (index > 0 && index < selectedItems.length) {
-          updateItem({
-            itemId: item.id,
-            data: { positionX: currentX, version: item.version },
+          commitGeometry(item, {
+            positionX: currentX,
+            positionY: item.positionY,
           });
         }
         currentX += item.width + gap;
@@ -1039,9 +1033,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       let currentY = first.positionY;
       selectedItems.forEach((item, index) => {
         if (index > 0 && index < selectedItems.length) {
-          updateItem({
-            itemId: item.id,
-            data: { positionY: currentY, version: item.version },
+          commitGeometry(item, {
+            positionX: item.positionX,
+            positionY: currentY,
           });
         }
         currentY += item.height + gap;

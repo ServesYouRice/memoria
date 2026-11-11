@@ -33,6 +33,12 @@ export interface ItemGeometryController {
    * it, so callers can tell "not permitted" from "queued".
    */
   commitGeometry: (item: CanvasItem, geometry: ItemGeometryCommit) => boolean;
+  /**
+   * Move an item by a delta (keyboard nudge) through the same queue. The
+   * delta applies to the latest committed position, so repeated presses
+   * while a save is in flight accumulate instead of reusing a stale one.
+   */
+  nudgeGeometry: (item: CanvasItem, deltaX: number, deltaY: number) => boolean;
   status: AutosaveStatus;
   error: Error | null;
 }
@@ -89,6 +95,10 @@ export function useItemGeometry({
   const queuesRef = useRef(
     new Map<string, SerializedDeltaQueue<UpdateCanvasItemInput>>(),
   );
+  // Position last committed per item while its queue has unsaved work.
+  const latestPositionRef = useRef(
+    new Map<string, { positionX: number; positionY: number }>(),
+  );
 
   // Flush anything still queued when the canvas unmounts, so a move made just
   // before navigation is not silently dropped.
@@ -125,8 +135,10 @@ export function useItemGeometry({
             mutationRef.current.mutateAsync({ itemId: item.id, data: delta }),
           (nextStatus, nextError) => {
             const statuses = statusesRef.current;
-            if (nextStatus === "saved") statuses.delete(item.id);
-            else
+            if (nextStatus === "saved") {
+              statuses.delete(item.id);
+              latestPositionRef.current.delete(item.id);
+            } else
               statuses.set(item.id, {
                 status: nextStatus,
                 error: nextError || null,
@@ -138,6 +150,10 @@ export function useItemGeometry({
         queuesRef.current.set(item.id, queue);
       }
 
+      latestPositionRef.current.set(item.id, {
+        positionX: geometry.positionX,
+        positionY: geometry.positionY,
+      });
       queue.enqueue({
         positionX: geometry.positionX,
         positionY: geometry.positionY,
@@ -151,5 +167,21 @@ export function useItemGeometry({
     [],
   );
 
-  return { commitGeometry, status: aggregate.status, error: aggregate.error };
+  const nudgeGeometry = useCallback(
+    (item: CanvasItem, deltaX: number, deltaY: number): boolean => {
+      const base = latestPositionRef.current.get(item.id) ?? item;
+      return commitGeometry(item, {
+        positionX: base.positionX + deltaX,
+        positionY: base.positionY + deltaY,
+      });
+    },
+    [commitGeometry],
+  );
+
+  return {
+    commitGeometry,
+    nudgeGeometry,
+    status: aggregate.status,
+    error: aggregate.error,
+  };
 }
