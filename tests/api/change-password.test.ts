@@ -6,6 +6,7 @@ const prismaMocks = vi.hoisted(() => ({
   accountFindUnique: vi.fn(),
   accountUpdateMany: vi.fn(),
   sessionDeleteMany: vi.fn(),
+  apiKeyUpdateMany: vi.fn(),
   $transaction: vi.fn(),
 }));
 
@@ -87,6 +88,7 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
       const tx = {
         account: { updateMany: prismaMocks.accountUpdateMany },
         session: { deleteMany: prismaMocks.sessionDeleteMany },
+        apiKey: { updateMany: prismaMocks.apiKeyUpdateMany },
       };
       return callback(tx);
     });
@@ -210,6 +212,12 @@ describe("POST /api/v1/users/change-password (IMP-057)", () => {
       // WebSockets at their next authorization refresh.
       expect(prismaMocks.sessionDeleteMany).toHaveBeenCalledWith({
         where: { userId },
+      });
+
+      // Effect 3: live API keys are revoked in that transaction (TASK-036).
+      expect(prismaMocks.apiKeyUpdateMany).toHaveBeenCalledWith({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
       });
     });
 

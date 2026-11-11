@@ -106,4 +106,27 @@ describe("API key expiry date", () => {
       ),
     );
   });
+
+  it("keeps the dialog open with a sign-in-again notice when the session is not recent", async () => {
+    mutateAsync.mockRejectedValue(
+      new ApiError(403, "Sign in again to create an API key.", {
+        code: "recent_sign_in_required",
+      }),
+    );
+    render(<ApiKeysContent />);
+    openDialogAndFill("2026-11-12");
+    const createButtons = screen.getAllByRole("button", { name: /^create$/i });
+    await act(async () => {
+      fireEvent.click(createButtons[createButtons.length - 1]!);
+    });
+
+    expect(
+      await screen.findByText("Sign in again to create an API key."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Sign in again" }).getAttribute("href"),
+    ).toBe("/auth/login?callbackUrl=%2Fapi-keys");
+    expect(screen.getByLabelText("Key name")).toBeTruthy();
+    expect(toastError).not.toHaveBeenCalled();
+  });
 });

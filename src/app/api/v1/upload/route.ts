@@ -464,6 +464,35 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
       }
     };
 
+    // Everything that can reject the upload without touching storage runs
+    // before the reservation: a PENDING asset holds quota until it is failed.
+    let s3Target: { bucket: string; client: S3Client } | null = null;
+    if (storageMode === "s3") {
+      const bucket = process.env.S3_BUCKET;
+      if (!bucket) {
+        throw new ApiError(
+          500,
+          "https://memoria.local/errors/upload-storage",
+          "Upload storage misconfigured",
+          "S3_BUCKET is not configured",
+        );
+      }
+      s3Target = { bucket, client: getS3Client() };
+    }
+
+    const uploadRoot = resolve(join(process.cwd(), ".data", "uploads"));
+    const uploadDir = resolve(join(uploadRoot, safeUserId));
+    const filePath = resolve(uploadDir, uniqueFilename);
+    const uploadPrefix = uploadDir.endsWith(sep) ? uploadDir : uploadDir + sep;
+    if (!s3Target && !filePath.startsWith(uploadPrefix)) {
+      throw new ApiError(
+        400,
+        "https://memoria.local/errors/upload",
+        "Bad Request",
+        "Invalid upload path",
+      );
+    }
+
     return withUploadLock(userId, async () => {
       const storageKey = `uploads/${safeUserId}/${uniqueFilename}`;
       const asset = await reserveUploadAsset(prisma, {
@@ -478,22 +507,11 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
         maxBytes: MAX_TOTAL_BYTES_PER_USER,
       });
 
-      if (storageMode === "s3") {
-        const bucket = process.env.S3_BUCKET;
-        if (!bucket) {
-          throw new ApiError(
-            500,
-            "https://memoria.local/errors/upload-storage",
-            "Upload storage misconfigured",
-            "S3_BUCKET is not configured",
-          );
-        }
-
-        const client = getS3Client();
+      if (s3Target) {
         try {
-          await client.send(
+          await s3Target.client.send(
             new PutObjectCommand({
-              Bucket: bucket,
+              Bucket: s3Target.bucket,
               Key: storageKey,
               Body: buffer,
               ContentType: detectedType.mime,
@@ -515,22 +533,6 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
           storage: "s3",
           ...(await voiceNote(asset.id)),
         });
-      }
-
-      const uploadRoot = resolve(join(process.cwd(), ".data", "uploads"));
-      const uploadDir = resolve(join(uploadRoot, safeUserId));
-      const filePath = resolve(uploadDir, uniqueFilename);
-
-      const uploadPrefix = uploadDir.endsWith(sep)
-        ? uploadDir
-        : uploadDir + sep;
-      if (!filePath.startsWith(uploadPrefix)) {
-        throw new ApiError(
-          400,
-          "https://memoria.local/errors/upload",
-          "Bad Request",
-          "Invalid upload path",
-        );
       }
 
       try {

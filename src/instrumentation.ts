@@ -143,6 +143,29 @@ export function createUncaughtExceptionHandler(
   };
 }
 
+/**
+ * Next.js calls this for errors thrown while rendering or handling a request
+ * on the server (the ones users see only as a digest). Sentry is loaded
+ * lazily, and only when server telemetry is enabled.
+ */
+export async function onRequestError(
+  error: unknown,
+  request: {
+    path: string;
+    method: string;
+    headers: Record<string, string | string[] | undefined>;
+  },
+  context: { routerKind: string; routePath: string; routeType: string },
+): Promise<void> {
+  if (process.env.NODE_ENV !== "production" || !process.env.SENTRY_DSN) return;
+  try {
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.captureRequestError(error, request, context);
+  } catch {
+    // Telemetry failure must not affect the response.
+  }
+}
+
 export async function register() {
   if (process.env["NEXT_RUNTIME"] === "nodejs") {
     const sentryEnabled =
