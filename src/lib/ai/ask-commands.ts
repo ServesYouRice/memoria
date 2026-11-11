@@ -163,7 +163,11 @@ export async function proposeAskCommand(input: {
     return suggestion;
   }
 
-  assertMovable(items);
+  // Archive takes any item type (archiveItems does not filter); only moves
+  // keep images, frames and arrows on their board.
+  if (command.type === "move_items" || command.type === "create_board") {
+    assertMovable(items);
+  }
 
   let boardName: string | undefined;
   if (command.type === "move_items") {

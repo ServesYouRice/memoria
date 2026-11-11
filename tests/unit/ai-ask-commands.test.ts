@@ -228,10 +228,38 @@ describe("proposeAskCommand files suggestions only", () => {
     await expect(
       proposeAskCommand({
         userId: "user-1",
-        question: "archive",
-        command: { type: "archive", itemIds: ["i3"] },
+        question: "move",
+        command: { type: "move_items", boardId: "canvas-b", itemIds: ["i3"] },
       }),
     ).rejects.toBeInstanceOf(BadRequestError);
+    await expect(
+      proposeAskCommand({
+        userId: "user-1",
+        question: "board",
+        command: { type: "create_board", name: "Pics", itemIds: ["i3"] },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestError);
+    expect(mocks.createSuggestionRecord).not.toHaveBeenCalled();
+  });
+
+  it("files an archive suggestion for images, frames and arrows (VAL-268)", async () => {
+    mocks.itemFindMany.mockResolvedValue([
+      canvasItem("i3", "canvas-a", "IMAGE"),
+      canvasItem("i4", "canvas-a", "FRAME"),
+      canvasItem("i5", "canvas-a", "ARROW"),
+    ]);
+    await proposeAskCommand({
+      userId: "user-1",
+      question: "archive these",
+      command: { type: "archive", itemIds: ["i3", "i4", "i5"] },
+    });
+    expect(mocks.createSuggestionRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          command: { type: "archive", itemIds: ["i3", "i4", "i5"] },
+        }),
+      }),
+    );
   });
 
   it("rejects a command type outside the allow-list", async () => {
