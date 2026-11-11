@@ -826,7 +826,7 @@ model IntegrationAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([providerType, externalAccountId])
+  @@unique([agentProfileId, providerType, externalAccountId])
   @@index([agentProfileId, status])
   @@index([secretPrefix, secretSuffix])
 }
