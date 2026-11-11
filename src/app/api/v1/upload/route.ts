@@ -222,38 +222,82 @@ async function runMalwareScan(
   );
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(scanUrl, {
-      method: "POST",
-      body: formData,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    throw new ApiError(
+  const unavailable = (detail: string) =>
+    new ApiError(
       503,
       "https://memoria.local/errors/upload-scan",
       "Malware scan unavailable",
-      error instanceof Error ? error.message : "Scan service unavailable",
+      detail,
     );
+
+  // fetch resolves once headers arrive, so the deadline must also cover the
+  // body: a scanner that sends 200 and then stalls would otherwise hold the
+  // upload forever.
+  let response: Response;
+  let bodyText: string;
+  try {
+    try {
+      response = await fetch(scanUrl, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw unavailable(
+        error instanceof Error ? error.message : "Scan service unavailable",
+      );
+    }
+
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new ApiError(
+        503,
+        "https://memoria.local/errors/upload-scan",
+        "Malware scan failed",
+        `Scan service returned ${response.status}`,
+      );
+    }
+
+    const body = response;
+    bodyText = await new Promise<string>((resolve, reject) => {
+      const onAbort = () => {
+        void body.body?.cancel().catch(() => undefined);
+        reject(unavailable("Scan service response timed out"));
+      };
+      if (controller.signal.aborted) return onAbort();
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      body.text().then(
+        (text) => {
+          controller.signal.removeEventListener("abort", onAbort);
+          resolve(text);
+        },
+        (error: unknown) => {
+          controller.signal.removeEventListener("abort", onAbort);
+          reject(
+            controller.signal.aborted
+              ? unavailable("Scan service response timed out")
+              : unavailable(
+                  error instanceof Error
+                    ? error.message
+                    : "Scan service unavailable",
+                ),
+          );
+        },
+      );
+    });
   } finally {
     clearTimeout(timeout);
   }
 
-  if (!response.ok) {
-    throw new ApiError(
-      503,
-      "https://memoria.local/errors/upload-scan",
-      "Malware scan failed",
-      `Scan service returned ${response.status}`,
-    );
+  let scanResult: { clean?: boolean; reason?: string } | null;
+  try {
+    scanResult = JSON.parse(bodyText) as {
+      clean?: boolean;
+      reason?: string;
+    } | null;
+  } catch {
+    scanResult = null;
   }
-
-  const scanResult = (await response.json().catch(() => null)) as {
-    clean?: boolean;
-    reason?: string;
-  } | null;
   if (!scanResult || typeof scanResult.clean !== "boolean") {
     throw new ApiError(
       502,
