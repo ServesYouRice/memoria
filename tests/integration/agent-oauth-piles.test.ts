@@ -273,12 +273,6 @@ describe("connected app: sign in, save, sort into piles, approve, undo", () => {
       refreshToken: tokens.refresh_token,
     });
     expect(await resolveAccessToken(tokens.access_token)).toBeNull();
-    await expect(
-      refreshAccessToken({
-        clientId: registration.client_id,
-        refreshToken: tokens.refresh_token,
-      }),
-    ).rejects.toMatchObject({ error: "invalid_grant" });
     expect(await resolveAccessToken(rotated.access_token)).not.toBeNull();
 
     await prisma.agentProfile.update({
@@ -287,5 +281,14 @@ describe("connected app: sign in, save, sort into piles, approve, undo", () => {
     });
     const afterDisable = await callMcp(rotated.access_token, "tools/list");
     expect(afterDisable.status).toBe(401);
+
+    // Replaying the rotated-out refresh token is refused (and, as reuse,
+    // revokes the family; see oauth-refresh-reuse.test.ts).
+    await expect(
+      refreshAccessToken({
+        clientId: registration.client_id,
+        refreshToken: tokens.refresh_token,
+      }),
+    ).rejects.toMatchObject({ error: "invalid_grant" });
   });
 });

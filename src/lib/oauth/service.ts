@@ -1,6 +1,7 @@
 import { AgentProfileStatus, type Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import {
   AGENT_CAPABILITY_RUNGS,
   DEFAULT_AGENT_ENABLED_RUNGS,
@@ -475,23 +476,57 @@ export async function exchangeAuthorizationCode(input: {
   return issueTokens(prisma, record);
 }
 
+/**
+ * Every token issued from one consent shares its agent profile: consent
+ * creates a fresh profile with a single authorization code, and refreshes
+ * carry it forward. That profile is the grant's token family.
+ */
+async function revokeTokenFamily(record: {
+  agentProfileId: string;
+  clientId: string;
+  userId: string;
+}) {
+  const result = await prisma.oAuthToken.updateMany({
+    where: {
+      agentProfileId: record.agentProfileId,
+      clientId: record.clientId,
+      userId: record.userId,
+      revokedAt: null,
+    },
+    data: { revokedAt: new Date() },
+  });
+  logger.warn(
+    {
+      event: "oauth.refresh_token_reuse",
+      clientId: record.clientId,
+      userId: record.userId,
+      agentProfileId: record.agentProfileId,
+      revokedTokens: result.count,
+    },
+    "Refresh token reuse detected; revoked the token family",
+  );
+}
+
 export async function refreshAccessToken(input: {
   clientId: string;
   refreshToken: string;
 }) {
   const now = new Date();
 
-  return prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
     const record = await tx.oAuthToken.findUnique({
       where: { refreshTokenHash: hashOAuthSecret(input.refreshToken) },
       include: { agentProfile: { select: { status: true } } },
     });
 
+    if (!record || record.clientId !== input.clientId) {
+      throw new OAuthError("invalid_grant", "The refresh token is invalid.");
+    }
+    // A rotated (or revoked) refresh token presented again means it leaked:
+    // whoever refreshed first may be the attacker (RFC 9700 4.14.2).
+    if (record.revokedAt) return { kind: "reuse" as const, record };
     if (
-      !record ||
-      record.revokedAt ||
       record.refreshExpiresAt <= now ||
-      record.clientId !== input.clientId ||
       record.agentProfile.status !== AgentProfileStatus.ACTIVE
     ) {
       throw new OAuthError("invalid_grant", "The refresh token is invalid.");
@@ -503,11 +538,20 @@ export async function refreshAccessToken(input: {
       data: { revokedAt: now },
     });
     if (revoked.count !== 1) {
-      throw new OAuthError("invalid_grant", "The refresh token is invalid.");
+      // Another request rotated it first: the same token was used twice.
+      return { kind: "reuse" as const, record };
     }
 
-    return issueTokens(tx, record);
+    return { kind: "issued" as const, tokens: await issueTokens(tx, record) };
   });
+
+  if (outcome.kind === "reuse") {
+    // Outside the transaction, so the revocation commits even though this
+    // request fails.
+    await revokeTokenFamily(outcome.record);
+    throw new OAuthError("invalid_grant", "The refresh token is invalid.");
+  }
+  return outcome.tokens;
 }
 
 export async function revokeToken(input: { clientId: string; token: string }) {
