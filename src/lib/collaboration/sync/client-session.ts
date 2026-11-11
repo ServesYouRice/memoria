@@ -103,6 +103,11 @@ export interface CanvasDocumentSnapshot {
    * the session keeps its unsaved edits and retries with a growing delay.
    */
   sendBlocked?: boolean;
+  /**
+   * Reading, writing or clearing the copy kept on this device failed, so
+   * edits made since are held only in this tab until the server stores them.
+   */
+  deviceCopyFailed?: boolean;
   items: ReadonlyMap<string, CanvasDocumentEntry>;
 }
 
@@ -248,6 +253,7 @@ export class CanvasDocumentSession {
     forbidden: false,
     generation: 0,
     accessRevision: 0,
+    deviceCopyFailed: false,
     items: new Map(),
   };
   private readonly listeners = new Set<() => void>();
@@ -652,7 +658,7 @@ export class CanvasDocumentSession {
       stored = await cache.load();
     } catch {
       // IndexedDB is unavailable (private mode, quota): stay online-only.
-      this.cacheStopped = true;
+      this.stopFailedCache();
     }
     if (this.destroyed) return;
     if (stored && stored.updates.length > 0) {
@@ -692,8 +698,15 @@ export class CanvasDocumentSession {
     this.cacheWrites = write(cache).catch(() => {
       // Quota or a closed database: keep editing online-only. What is stored
       // stays a consistent, older copy.
-      this.cacheStopped = true;
+      this.stopFailedCache();
     });
+  }
+
+  /** The device copy failed: stop writing it and say so in the snapshot. */
+  private stopFailedCache(): void {
+    this.cacheStopped = true;
+    if (!this.destroyed && !this.snapshot.deviceCopyFailed)
+      this.update({ deviceCopyFailed: true });
   }
 
   private clearCache(): void {
@@ -701,7 +714,7 @@ export class CanvasDocumentSession {
     if (!cache) return;
     this.updatesSinceCompaction = 0;
     this.cacheWrites = cache.clear().catch(() => {
-      this.cacheStopped = true;
+      this.stopFailedCache();
     });
   }
 

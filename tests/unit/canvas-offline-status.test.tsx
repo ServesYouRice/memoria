@@ -93,22 +93,65 @@ describe("documentSaveStatus", () => {
 
 describe("describeSaveStatus", () => {
   it("counts the edits kept on this device", () => {
-    expect(describeSaveStatus("offline/retrying", 3).label).toBe(
-      "Offline · 3 unsaved changes",
-    );
-    expect(describeSaveStatus("offline/retrying", 1)).toEqual({
+    expect(
+      describeSaveStatus("offline/retrying", { offlineChanges: 3 }).label,
+    ).toBe("Offline · 3 unsaved changes");
+    expect(
+      describeSaveStatus("offline/retrying", { offlineChanges: 1 }),
+    ).toEqual({
       label: "Offline · 1 unsaved change",
       tooltip:
         "Offline. 1 change is kept on this device and will sync when you reconnect.",
     });
-    expect(describeSaveStatus("offline/retrying", 0).label).toBe("Offline");
+    expect(
+      describeSaveStatus("offline/retrying", { offlineChanges: 0 }).label,
+    ).toBe("Offline");
+  });
+
+  it("says edits are only in this tab when the device copy failed", () => {
+    const failed = describeSaveStatus("offline/retrying", {
+      offlineChanges: 2,
+      deviceCopyFailed: true,
+    });
+    expect(failed.label).toBe("Offline · 2 unsaved changes");
+    expect(failed.tooltip).not.toMatch(/kept on this device/);
+    expect(failed.tooltip).toBe(
+      "Offline. 2 changes could not be stored on this device and are held only in this tab until you reconnect. Keep this tab open.",
+    );
+    expect(
+      describeSaveStatus("offline/retrying", {
+        offlineChanges: 1,
+        deviceCopyFailed: true,
+      }).tooltip,
+    ).toBe(
+      "Offline. 1 change could not be stored on this device and is held only in this tab until you reconnect. Keep this tab open.",
+    );
+    const none = describeSaveStatus("offline/retrying", {
+      offlineChanges: 0,
+      deviceCopyFailed: true,
+    });
+    expect(none.label).toBe("Offline");
+    expect(none.tooltip).not.toMatch(/kept (on this device|here)/);
+    expect(none.tooltip).toMatch(/only in this tab/);
+    // Other statuses, and the HTTP wording, do not change.
+    expect(
+      describeSaveStatus("saved", {
+        offlineChanges: 2,
+        deviceCopyFailed: true,
+      }),
+    ).toEqual(describeSaveStatus("saved"));
+    expect(
+      describeSaveStatus("offline/retrying", { deviceCopyFailed: true }),
+    ).toEqual(describeSaveStatus("offline/retrying"));
   });
 
   it("keeps the HTTP wording when the document is not the source", () => {
     expect(describeSaveStatus("offline/retrying").label).toBe(
       "Offline · retrying",
     );
-    expect(describeSaveStatus("saved", 4).label).toBe("Saved");
+    expect(describeSaveStatus("saved", { offlineChanges: 4 }).label).toBe(
+      "Saved",
+    );
   });
 });
 

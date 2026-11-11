@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -18,11 +18,17 @@ import {
 import { Download, Description, Code, PictureAsPdf } from "@mui/icons-material";
 import { type CanvasItem } from "@/types/canvas";
 import {
+  BoardExportCaptureContext,
+  EXPORT_EXCLUDE_NAME,
+  captureStageRegion,
+  computeItemsBounds,
   exportToJSON,
   exportToMarkdown,
   exportToPDF,
   fetchAllCanvasItems,
 } from "@/lib/export/export-utils";
+
+const EXPORT_PADDING = 40;
 
 export type ExportFormat = "json" | "markdown" | "pdf" | "png";
 
@@ -51,6 +57,26 @@ export function ExportDialog({
   const [format, setFormat] = useState<ExportFormat>("png");
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const boardCapture = useContext(BoardExportCaptureContext);
+
+  /** PNG data URL of the whole board; null without a stage to capture. */
+  const captureBoard = async (): Promise<string | null> => {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const session = boardCapture.current
+      ? await boardCapture.current.prepare()
+      : { items, restore: () => undefined };
+    try {
+      const bounds = computeItemsBounds(session.items, EXPORT_PADDING);
+      if (!bounds) throw new Error("The canvas has no items to export");
+      return captureStageRegion(stage, bounds, {
+        pixelRatio: 2,
+        exclude: EXPORT_EXCLUDE_NAME,
+      });
+    } finally {
+      session.restore();
+    }
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -69,10 +95,11 @@ export function ExportDialog({
         const md = await exportToMarkdown(canvasId, canvasName, allItems);
         downloadFile(md, `${filename}.md`, "text/markdown");
       } else if (format === "pdf") {
-        await exportToPDF(filename, stageRef.current);
+        const dataUrl = await captureBoard();
+        if (dataUrl) await exportToPDF(filename, dataUrl);
       } else if (format === "png") {
-        if (stageRef.current) {
-          const dataUrl = stageRef.current.toDataURL({ pixelRatio: 2 });
+        const dataUrl = await captureBoard();
+        if (dataUrl) {
           const link = document.createElement("a");
           link.download = `${filename}.png`;
           link.href = dataUrl;

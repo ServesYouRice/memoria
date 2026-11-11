@@ -358,6 +358,73 @@ describe("offline canvas document session", () => {
     expect(broken.append).not.toHaveBeenCalled();
   });
 
+  it("reports a device copy it could not write, and keeps editing", async () => {
+    const full: CanvasDocumentCache = {
+      load: () => Promise.resolve(null),
+      append: vi.fn(() => Promise.reject(new Error("QuotaExceededError"))),
+      saveMeta: vi.fn(() => Promise.resolve()),
+      compact: vi.fn(() => Promise.resolve()),
+      clear: vi.fn(() => Promise.resolve()),
+    };
+    const session = open({ cache: full });
+    await waitFor(() => providers.created.length === 1);
+    serverSyncs();
+    await waitFor(() => session.acceptsWrites);
+    await session.whenCached();
+    expect(session.getSnapshot().deviceCopyFailed).toBe(false);
+
+    goOffline();
+    session.createItem(shape());
+    await session.whenCached();
+    expect(full.append).toHaveBeenCalledTimes(1);
+    expect(session.getSnapshot()).toMatchObject({
+      deviceCopyFailed: true,
+      unsavedChanges: 1,
+    });
+
+    // Editing goes on, in memory only; nothing more is written.
+    session.createItem(shape(40));
+    await session.whenCached();
+    expect(full.append).toHaveBeenCalledTimes(1);
+    expect(session.getSnapshot()).toMatchObject({
+      deviceCopyFailed: true,
+      unsavedChanges: 2,
+    });
+  });
+
+  it("reports a device copy it could not read or clear", async () => {
+    const unreadable: CanvasDocumentCache = {
+      load: () => Promise.reject(new Error("IndexedDB unavailable")),
+      append: vi.fn(() => Promise.resolve()),
+      saveMeta: vi.fn(() => Promise.resolve()),
+      compact: vi.fn(() => Promise.resolve()),
+      clear: vi.fn(() => Promise.resolve()),
+    };
+    const first = open({ cache: unreadable });
+    await waitFor(() => providers.created.length === 1);
+    expect(first.getSnapshot().deviceCopyFailed).toBe(true);
+
+    const onRejectedChange = vi.fn();
+    const unclearable: CanvasDocumentCache = {
+      ...unreadable,
+      load: () => Promise.resolve(null),
+      clear: vi.fn(() => Promise.reject(new Error("closed"))),
+    };
+    const second = open({ cache: unclearable, onRejectedChange });
+    await waitFor(() => providers.created.length === 2);
+    serverSyncs();
+    await waitFor(() => second.acceptsWrites);
+    expect(second.getSnapshot().deviceCopyFailed).toBe(false);
+    // A refused change resets the document, which clears the copy.
+    latestProvider().config.onClose({
+      event: { reason: SYNC_CLOSE_REASONS.invalidUpdate },
+    });
+    await waitFor(() => onRejectedChange.mock.calls.length === 1);
+    await second.whenCached();
+    expect(unclearable.clear).toHaveBeenCalled();
+    expect(second.getSnapshot().deviceCopyFailed).toBe(true);
+  });
+
   it("restores the same document after compacting the copy", async () => {
     const session = open({ cacheCompactAfter: 3 });
     await waitFor(() => providers.created.length === 1);

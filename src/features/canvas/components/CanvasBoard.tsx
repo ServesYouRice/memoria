@@ -60,6 +60,12 @@ import { HomeBoardSuggestions, isInboxBoardName } from "./HomeBoardSuggestions";
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
 import { toast } from "sonner";
+import {
+  BoardExportCaptureContext,
+  type BoardExportCapture,
+  fetchAllCanvasItems,
+  preloadItemImages,
+} from "@/lib/export/export-utils";
 
 import type {
   CanvasAccessLevel,
@@ -145,12 +151,18 @@ export function CanvasBoard({ canvasId }: CanvasBoardProps) {
         "A change could not be saved and was undone. The canvas now shows the latest saved state.",
       ),
   });
+  const exportCaptureRef = useRef<BoardExportCapture | null>(null);
   return (
     <CanvasDocumentContext.Provider value={documentSession}>
-      <CanvasBoardContent canvasId={canvasId} />
+      <BoardExportCaptureContext.Provider value={exportCaptureRef}>
+        <CanvasBoardContent canvasId={canvasId} />
+      </BoardExportCaptureContext.Provider>
     </CanvasDocumentContext.Provider>
   );
 }
+
+// Never mutated: the export render shows nothing selected.
+const NO_SELECTION = new Set<string>();
 
 function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // Refs
@@ -1136,6 +1148,49 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
   }, [boundsKey, fitAfterSortFrom, fitToScreen]);
 
+  // Raster export (TASK-119): while set, the stage renders exactly these
+  // items, unculled and unselected. Pan and zoom state are untouched.
+  const [exportItems, setExportItems] = useState<CanvasItem[] | null>(null);
+  const exportCommittedRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const committed = exportCommittedRef.current;
+    if (!exportItems || !committed) return;
+    exportCommittedRef.current = null;
+    // Two frames after the commit, so Konva has the new nodes and the
+    // preloaded pictures of newly mounted image items have been set.
+    requestAnimationFrame(() => requestAnimationFrame(() => committed()));
+  }, [exportItems]);
+  const exportCaptureRef = React.useContext(BoardExportCaptureContext);
+  useEffect(() => {
+    const capture: BoardExportCapture = {
+      prepare: async () => {
+        // A time-machine preview exports the snapshot it shows; otherwise
+        // every stored item, since the board only loads the viewport.
+        const captured = isTimeMachineActive
+          ? items
+          : await fetchAllCanvasItems(canvasId, allItems);
+        await preloadItemImages(captured);
+        await new Promise<void>((resolve) => {
+          exportCommittedRef.current = resolve;
+          setExportItems(captured);
+        });
+        return {
+          items: captured,
+          restore: () => {
+            exportCommittedRef.current = null;
+            setExportItems(null);
+          },
+        };
+      },
+    };
+    exportCaptureRef.current = capture;
+    return () => {
+      if (exportCaptureRef.current === capture) {
+        exportCaptureRef.current = null;
+      }
+    };
+  }, [allItems, canvasId, exportCaptureRef, isTimeMachineActive, items]);
+
   return (
     <Box
       ref={containerRef}
@@ -1197,6 +1252,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             ? documentState.unsavedChanges
             : undefined
         }
+        deviceCopyFailed={documentState.deviceCopyFailed}
         saveError={
           updateItemMutation.isError &&
           updateItemMutation.error instanceof Error
@@ -1458,16 +1514,16 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               stroke={gridStroke}
             />
             <CanvasItemLayer
-              items={renderedItems}
-              selectedItemIds={selectedItemIds}
-              isSelecting={isSelecting}
-              selectionBox={selectionBox}
+              items={exportItems ?? renderedItems}
+              selectedItemIds={exportItems ? NO_SELECTION : selectedItemIds}
+              isSelecting={exportItems ? false : isSelecting}
+              selectionBox={exportItems ? null : selectionBox}
               capabilities={capabilities}
               onSelectItem={(id) => handleSelectItem(id, false)}
               onContextMenu={handleContextMenu}
               onActivateItem={handleActivateItem}
               onCommitGeometry={handleCommitGeometry}
-              searchActive={Boolean(searchQuery.trim())}
+              searchActive={!exportItems && Boolean(searchQuery.trim())}
               searchMatchIds={searchMatchIds}
             />
             <DrawingPreview
