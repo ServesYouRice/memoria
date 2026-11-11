@@ -21,6 +21,19 @@ import { UploadAssetStatus } from "@/generated/prisma/client";
 
 const logger = createLogger("users/account");
 
+/**
+ * Account deletion is one interactive transaction, so it gets its own limits
+ * instead of Prisma's 5 s default. Measured on a local PostgreSQL 16 shared
+ * with other load: 200 canvases of 200 items took about 4.3 s, and the full
+ * LAUNCH_LIMITS fixture (500 uploads, 200 canvases of 2,000 items, 1,000
+ * foreign items) about 18 s. The timeout leaves roughly 3x headroom over
+ * that; maxWait bounds the wait for a pooled connection.
+ */
+const ACCOUNT_DELETION_TRANSACTION = {
+  timeout: 60_000,
+  maxWait: 10_000,
+} as const;
+
 const deleteAccountSchema = z.object({
   password: z.string().min(1, "Password is required for account deletion"),
   confirmation: z.literal("DELETE", {
@@ -167,14 +180,19 @@ export async function DELETE(request: NextRequest) {
       // Preserve content contributed to another owner's canvas by
       // transferring immutable authorship to that canvas owner. Optional
       // update/delete attribution can safely be cleared.
-      const foreignItems = await tx.canvasItem.findMany({
-        where: { createdById: userId, canvas: { userId: { not: userId } } },
-        select: { id: true, canvas: { select: { userId: true } } },
+      // One statement per distinct foreign owner, not one per item.
+      const foreignOwners = await tx.canvas.findMany({
+        where: {
+          userId: { not: userId },
+          items: { some: { createdById: userId } },
+        },
+        select: { userId: true },
+        distinct: ["userId"],
       });
-      for (const item of foreignItems) {
-        await tx.canvasItem.update({
-          where: { id: item.id },
-          data: { createdById: item.canvas.userId },
+      for (const { userId: ownerId } of foreignOwners) {
+        await tx.canvasItem.updateMany({
+          where: { createdById: userId, canvas: { userId: ownerId } },
+          data: { createdById: ownerId },
         });
       }
       await tx.canvasItem.updateMany({
@@ -243,7 +261,7 @@ export async function DELETE(request: NextRequest) {
       await tx.user.delete({
         where: { id: userId },
       });
-    });
+    }, ACCOUNT_DELETION_TRANSACTION);
 
     logger.info({ userId, email }, "User account deleted");
 
