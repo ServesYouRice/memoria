@@ -23,10 +23,12 @@ import { createS3Client } from "@/lib/uploads/s3-client.mjs";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import {
   activateUploadAsset,
+  compensateWrittenUpload,
   failUploadReservation,
   reserveUploadAsset,
 } from "@/lib/uploads/lifecycle";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import { createLogger } from "@/lib/logger";
 import { boundRequestBody, payloadTooLarge } from "@/lib/uploads/body-limit";
 import { checkImageBounds } from "@/lib/uploads/image-bounds";
 import {
@@ -54,6 +56,7 @@ const VOICE_NOTE_PURPOSE = "voice-note";
 
 const DEFAULT_SCAN_TIMEOUT_MS = 10000;
 
+const uploadLogger = createLogger("upload");
 let s3Client: S3Client | null = null;
 const uploadLockWaiters = new Map<string, Promise<void>>();
 
@@ -383,6 +386,40 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
           }
         : {};
 
+    /**
+     * Activate an asset whose object is already stored. On failure the
+     * object must not be left behind: fail the reservation and queue its
+     * deletion. If that compensation itself fails, the object stays until
+     * an operator removes it, so its key is logged (residual risk).
+     */
+    const activateWrittenUpload = async (asset: {
+      id: string;
+      storageKey: string;
+      storageMode: string;
+      size: number;
+    }) => {
+      try {
+        await activateUploadAsset(prisma, asset.id);
+      } catch (activationError) {
+        try {
+          await compensateWrittenUpload(prisma, {
+            assetId: asset.id,
+            userId,
+            storageMode: asset.storageMode,
+            storageKey: asset.storageKey,
+            size: asset.size,
+            reason: "activation_failed",
+          });
+        } catch {
+          uploadLogger.error(
+            { assetId: asset.id, storageKey: asset.storageKey },
+            "Upload activation and its cleanup both failed; object retained",
+          );
+        }
+        throw activationError;
+      }
+    };
+
     return withUploadLock(userId, async () => {
       const storageKey = `uploads/${safeUserId}/${uniqueFilename}`;
       const asset = await reserveUploadAsset(prisma, {
@@ -419,11 +456,11 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
               CacheControl: "private, no-store",
             }),
           );
-          await activateUploadAsset(prisma, asset.id);
         } catch (error) {
           await failUploadReservation(prisma, asset.id, "object_write_failed");
           throw error;
         }
+        await activateWrittenUpload(asset);
 
         return NextResponse.json({
           assetId: asset.id,
@@ -455,11 +492,11 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
       try {
         await mkdir(uploadDir, { recursive: true });
         await writeFile(filePath, buffer);
-        await activateUploadAsset(prisma, asset.id);
       } catch (error) {
         await failUploadReservation(prisma, asset.id, "object_write_failed");
         throw error;
       }
+      await activateWrittenUpload(asset);
 
       return NextResponse.json({
         assetId: asset.id,

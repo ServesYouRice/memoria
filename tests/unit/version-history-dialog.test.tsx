@@ -168,6 +168,29 @@ describe("VersionHistoryDialog", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it("sends one restore request when confirm is clicked twice", async () => {
+    let finish: (value: unknown) => void = () => {};
+    hooks.restore.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const onClose = renderDialog(true);
+    fireEvent.click(screen.getByText("Before the workshop"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore This Version" }),
+    );
+    const confirm = await screen.findByRole("button", { name: "Restore" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(hooks.restore).toHaveBeenCalled());
+    fireEvent.click(confirm);
+    expect(hooks.restore).toHaveBeenCalledTimes(1);
+    finish({});
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(hooks.restore).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a restore failure instead of closing", async () => {
     hooks.restore.mockRejectedValue(new Error("Restore refused"));
     const onClose = renderDialog(true);

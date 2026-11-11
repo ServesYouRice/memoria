@@ -10,9 +10,9 @@ import {
   isNoteContent,
   isDrawingContent,
   isShapeContent,
-  isArrowContent,
-  isTextContent,
-  isFrameContent,
+  isArrowItemContent,
+  isTextItemContent,
+  isFrameItemContent,
   isEmbedContent,
   isPollContent,
 } from "@/types/canvas";
@@ -95,13 +95,13 @@ export function CanvasItemLayer({
         if (item.type === ItemType.SHAPE && isShapeContent(item.content)) {
           rendered = <ShapeItem {...adapterProps} />;
         }
-        if (item.type === ItemType.ARROW && isArrowContent(item.content)) {
+        if (item.type === ItemType.ARROW && isArrowItemContent(item.content)) {
           rendered = <ArrowItem {...adapterProps} />;
         }
-        if (item.type === ItemType.TEXT && isTextContent(item.content)) {
+        if (item.type === ItemType.TEXT && isTextItemContent(item.content)) {
           rendered = <TextItem {...adapterProps} />;
         }
-        if (item.type === ItemType.FRAME && isFrameContent(item.content)) {
+        if (item.type === ItemType.FRAME && isFrameItemContent(item.content)) {
           rendered = <FrameItem {...adapterProps} />;
         }
         if (item.type === ItemType.EMBED && isEmbedContent(item.content)) {

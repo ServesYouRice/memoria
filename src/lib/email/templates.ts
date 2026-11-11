@@ -60,15 +60,15 @@ The Memoria Team
   <div style="background-color: #f8f9fa; padding: 30px; border-radius: 8px;">
     <h1 style="color: #1976d2; margin-top: 0;">Reset Your Password</h1>
 
-    <p>Hi ${userName},</p>
+    <p>Hi ${escapeHtml(userName)},</p>
 
     <p>We received a request to reset your password for your Memoria account.</p>
 
     <div style="margin: 30px 0;">
-      <a href="${resetUrl}" style="display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Reset Password</a>
+      <a href="${escapeHtml(resetUrl)}" style="display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Reset Password</a>
     </div>
 
-    <p style="font-size: 14px; color: #666;">This link will expire in ${expiresIn}.</p>
+    <p style="font-size: 14px; color: #666;">This link will expire in ${escapeHtml(expiresIn)}.</p>
 
     <p style="font-size: 14px; color: #666;">If you didn't request this password reset, you can safely ignore this email.</p>
 
@@ -121,15 +121,15 @@ The Memoria Team
   <div style="background-color: #f8f9fa; padding: 30px; border-radius: 8px;">
     <h1 style="color: #1976d2; margin-top: 0;">Verify Your Email</h1>
 
-    <p>Hi ${userName},</p>
+    <p>Hi ${escapeHtml(userName)},</p>
 
     <p>Welcome to Memoria! Please verify your email address to complete your account setup.</p>
 
     <div style="margin: 30px 0;">
-      <a href="${verificationUrl}" style="display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Verify Email</a>
+      <a href="${escapeHtml(verificationUrl)}" style="display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Verify Email</a>
     </div>
 
-    <p style="font-size: 14px; color: #666;">This link will expire in ${expiresIn}.</p>
+    <p style="font-size: 14px; color: #666;">This link will expire in ${escapeHtml(expiresIn)}.</p>
 
     <p style="font-size: 14px; color: #666;">If you didn't create a Memoria account, you can safely ignore this email.</p>
 
@@ -185,7 +185,7 @@ The Memoria Team
   <div style="background-color: #f8f9fa; padding: 30px; border-radius: 8px;">
     <h1 style="color: #1976d2; margin-top: 0;">Welcome to Memoria!</h1>
 
-    <p>Hi ${userName},</p>
+    <p>Hi ${escapeHtml(userName)},</p>
 
     <p>Welcome to Memoria! We're excited to have you on board.</p>
 
@@ -199,7 +199,7 @@ The Memoria Team
     </ul>
 
     <div style="margin: 30px 0;">
-      <a href="${loginUrl}" style="display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Get Started</a>
+      <a href="${escapeHtml(loginUrl)}" style="display: inline-block; background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Get Started</a>
     </div>
 
     <p style="font-size: 14px; color: #666;">If you have any questions, feel free to reach out to our support team.</p>

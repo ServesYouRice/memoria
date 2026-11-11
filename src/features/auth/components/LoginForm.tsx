@@ -22,7 +22,7 @@ import { authClient } from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLayout } from "./AuthLayout";
 import { VerificationResendForm } from "./VerificationResendForm";
-import { safeAuthCallbackUrl } from "@/lib/auth/redirect";
+import { toSafeCallbackPath } from "@/lib/auth/redirect";
 import type { RegistrationMode } from "./RegisterForm";
 
 interface LoginFormProps {
@@ -48,9 +48,13 @@ const LOCKED_MESSAGE =
 
 type AuthErrorLike = { code?: string; status?: number } | null | undefined;
 
-function secondFactorErrorMessage(error: AuthErrorLike): string {
+export function secondFactorErrorMessage(error: AuthErrorLike): string {
+  // The proxy rate-limits /api/auth/two-factor/ with a 429 that has no code.
+  if (error?.status === 429) {
+    return "Too many attempts. Please wait and try again.";
+  }
   switch (error?.code) {
-    case "ACCOUNT_TEMPORARILY_LOCKED":
+    case "ACCOUNT_LOCKED":
       return LOCKED_MESSAGE;
     case "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE":
     case "INVALID_TWO_FACTOR_COOKIE":
@@ -88,15 +92,9 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
   });
 
   const goToDestination = () => {
-    const safeDestination = safeAuthCallbackUrl(
-      callbackUrl,
-      window.location.origin,
+    router.push(
+      toSafeCallbackPath(callbackUrl, window.location.origin, "/dashboard"),
     );
-    const destination =
-      new URL(safeDestination).pathname +
-      new URL(safeDestination).search +
-      new URL(safeDestination).hash;
-    router.push(callbackUrl ? destination : "/dashboard");
     router.refresh();
   };
 
@@ -123,6 +121,14 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
           );
         } else if (signInError.status === 429) {
           setError("Too many sign-in attempts. Please wait and try again.");
+        } else if (
+          signInError.code === "LOGIN_SAFETY_UNAVAILABLE" ||
+          signInError.status === 503
+        ) {
+          // The lockout store is down; the server refuses every sign-in.
+          setError(
+            "Sign-in is temporarily unavailable. Please try again in a few minutes.",
+          );
         } else {
           setError("Invalid email or password");
         }

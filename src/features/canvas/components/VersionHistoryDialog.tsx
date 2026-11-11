@@ -6,7 +6,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -79,6 +79,9 @@ export function VersionHistoryDialog({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [pendingRestore, setPendingRestore] = useState(false);
+  // The confirm button stays enabled while a restore is pending; the ref
+  // also covers repeat clicks that land before `restoring` re-renders.
+  const restoreInFlightRef = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const {
     data,
@@ -117,7 +120,8 @@ export function VersionHistoryDialog({
   };
 
   const handleRestore = async () => {
-    if (!activeId) return;
+    if (!activeId || restoring || restoreInFlightRef.current) return;
+    restoreInFlightRef.current = true;
     setRestoring(true);
     setActionError(null);
     try {
@@ -133,6 +137,7 @@ export function VersionHistoryDialog({
         err instanceof Error ? err.message : "Failed to restore version",
       );
     } finally {
+      restoreInFlightRef.current = false;
       setRestoring(false);
       setPendingRestore(false);
     }

@@ -50,6 +50,9 @@ import {
   type AutopilotAction,
   type AutopilotItem,
 } from "@/lib/ai/autopilot-service";
+import { useObservedStageSize } from "@/features/canvas/components/use-observed-stage-size";
+import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
+import { resolveBoardCapabilities } from "@/features/canvas/hooks/time-machine-capabilities";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 import { UploadNoteOffer } from "./UploadNoteOffer";
 import { HomeBoardSuggestions, isInboxBoardName } from "./HomeBoardSuggestions";
@@ -134,14 +137,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // Refs
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const stageContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const focusedItemRef = useRef<string | null>(null);
   const lastThumbnailRevisionRef = useRef<string | null>(null);
   const theme = useTheme();
   const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  const { ref: stageContainerRef, size: stageSize } = useObservedStageSize();
 
   // Data Hook (Single source of truth for display)
   const {
@@ -176,9 +178,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   } = useCanvasData({ canvasId, viewportSize: stageSize });
   // IMP-008: one capability contract, derived once and passed down. Every
   // surface reads these flags instead of re-deriving a role comparison.
-  const capabilities = React.useMemo(
+  const baseCapabilities = React.useMemo(
     () => resolveCanvasCapabilities(accessLevel as CanvasAccessLevel),
     [accessLevel],
+  );
+  // A time-machine preview renders snapshot items under live ids: every
+  // item write is off there, while restore stays with live-canvas editors.
+  const { capabilities, canRestore } = React.useMemo(
+    () => resolveBoardCapabilities(baseCapabilities, isTimeMachineActive),
+    [baseCapabilities, isTimeMachineActive],
   );
   const canEdit = capabilities.canEditItems;
   const isOwner = capabilities.canManageCanvas;
@@ -460,7 +468,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       setSelectedItemId(null);
     },
     onDuplicate: async () => {
-      if (!selectedItemId) return;
+      if (!capabilities.canCreateItems || !selectedItemId) return;
       const selectedItem = allItems.find((item) => item.id === selectedItemId);
       if (selectedItem) {
         try {
@@ -524,21 +532,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     stageSize.width,
     zoom,
   ]);
-  useEffect(() => {
-    const target = stageContainerRef.current;
-    if (!target) return;
-    const updateSize = () => {
-      const bounds = target.getBoundingClientRect();
-      setStageSize({
-        width: Math.max(1, Math.floor(bounds.width)),
-        height: Math.max(1, Math.floor(bounds.height)),
-      });
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, []);
 
   // Gesture (Zoom)
   useGesture(
@@ -692,8 +685,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   // Handlers
   const handleAddNoteFromAI = (text: string) => {
-    const centerX = (-position.x + stageSize.width / 2) / zoom;
-    const centerY = (-position.y + stageSize.height / 2) / zoom;
+    const { x: centerX, y: centerY } = viewportCenterWorld(
+      position,
+      stageSize,
+      zoom,
+    );
 
     createItem({
       canvasId,
@@ -717,12 +713,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   const handleAddSerendipityItems = async (items: any[]) => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
     for (const item of items) {
       await createItem({
         content: item.content,
         type: item.type,
-        positionX: -position.x + stageSize.width / 2 + Math.random() * 100,
-        positionY: -position.y + stageSize.height / 2 + Math.random() * 100,
+        positionX: center.x + Math.random() * 100,
+        positionY: center.y + Math.random() * 100,
         width: 300,
         height: 200,
         canvasId: canvasId,
@@ -733,11 +730,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   const handleWhisperSend = async (text: string) => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
     await createItem({
       content: { text },
       type: ItemType.NOTE,
-      positionX: -position.x + stageSize.width / 2,
-      positionY: -position.y + stageSize.height / 2,
+      positionX: center.x,
+      positionY: center.y,
       width: 300,
       height: 200,
       canvasId: canvasId,
@@ -958,7 +956,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const handleAlign = (
     type: "left" | "center" | "right" | "top" | "middle" | "bottom",
   ) => {
-    if (selectedItemIds.size < 2) return;
+    if (!capabilities.canMoveItems || selectedItemIds.size < 2) return;
     const selectedItems = allItems.filter((item) =>
       selectedItemIds.has(item.id),
     );
@@ -1004,7 +1002,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     });
   };
   const handleDistribute = (type: "horizontal" | "vertical") => {
-    if (selectedItemIds.size < 3) return;
+    if (!capabilities.canMoveItems || selectedItemIds.size < 3) return;
     const selectedItems = allItems.filter((item) =>
       selectedItemIds.has(item.id),
     );
@@ -1374,10 +1372,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                     null)
                   : null
               }
-              getViewportCenter={() => ({
-                x: (-position.x + stageSize.width / 2) / zoom,
-                y: (-position.y + stageSize.height / 2) / zoom,
-              })}
+              getViewportCenter={() =>
+                viewportCenterWorld(position, stageSize, zoom)
+              }
             />
           )}
 
@@ -1587,7 +1584,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       )}
 
       <CanvasDialogs
-        capabilities={capabilities}
+        // Every opener of an item dialog reads the preview capabilities;
+        // the base ones keep version restore available while previewing.
+        capabilities={baseCapabilities}
         canvasId={canvasId}
         canvasName={canvasName}
         items={allItems}
@@ -1652,7 +1651,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
           onRestore={
-            canEdit
+            canRestore
               ? async (version) => {
                   setPendingRestoreVersionId(version.id);
                 }

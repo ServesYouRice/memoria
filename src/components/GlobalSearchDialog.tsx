@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -19,6 +19,7 @@ import {
   IconButton,
   Divider,
   Alert,
+  Button,
 } from "@mui/material";
 import {
   Search as SearchIcon,
@@ -66,10 +67,18 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
     tags: [],
   });
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
 
   const debouncedQuery = useDebounce(query, 300);
 
   useEffect(() => {
+    // A new query (or closing) drops any page still loading for the old one.
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = null;
+    setLoadingMore(false);
+    setHasMore(false);
     if (!open) {
       setQuery("");
       setResults([]);
@@ -96,6 +105,7 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
         );
         const data = await response.json();
         setResults(data.results || []);
+        setHasMore(data.pagination?.hasMore === true);
         setTotalResults(
           typeof data.totalResults === "number" ? data.totalResults : 0,
         );
@@ -125,6 +135,56 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
     void searchItems();
     return () => controller.abort();
   }, [debouncedQuery, open]);
+
+  useEffect(() => () => loadMoreControllerRef.current?.abort(), []);
+
+  const describeError = (err: unknown) => {
+    if (err instanceof ApiError) {
+      const retry = err.retryAfterSeconds
+        ? ` Try again in ${err.retryAfterSeconds} seconds.`
+        : "";
+      const request = err.requestId ? ` Request ID: ${err.requestId}.` : "";
+      return `${err.message}${retry}${request}`;
+    }
+    return "Search failed. Please try again.";
+  };
+
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
+    setLoadingMore(true);
+    setSearchError(null);
+    try {
+      const response = await apiFetch(
+        `/api/v1/search?q=${encodeURIComponent(debouncedQuery)}&offset=${results.length}`,
+        { signal: controller.signal },
+      );
+      const data = await response.json();
+      if (controller.signal.aborted) return;
+      const next: SearchResult[] = data.results || [];
+      setResults((current) => {
+        const seen = new Set(current.map((result) => result.itemId));
+        return [
+          ...current,
+          ...next.filter((result) => !seen.has(result.itemId)),
+        ];
+      });
+      setHasMore(data.pagination?.hasMore === true);
+    } catch (err) {
+      if (
+        !controller.signal.aborted &&
+        !(err instanceof Error && err.name === "AbortError")
+      ) {
+        setSearchError(describeError(err));
+      }
+    } finally {
+      if (loadMoreControllerRef.current === controller) {
+        loadMoreControllerRef.current = null;
+        setLoadingMore(false);
+      }
+    }
+  };
 
   const handleResultClick = (result: SearchResult) => {
     router.push(
@@ -323,6 +383,19 @@ export function GlobalSearchDialog({ open, onClose }: GlobalSearchDialogProps) {
                 </React.Fragment>
               ))}
             </List>
+            {hasMore && (
+              <Box sx={{ display: "flex", justifyContent: "center", mt: 1 }}>
+                <Button
+                  onClick={() => void handleLoadMore()}
+                  disabled={loadingMore}
+                  startIcon={
+                    loadingMore ? <CircularProgress size={16} /> : undefined
+                  }
+                >
+                  Load more results
+                </Button>
+              </Box>
+            )}
           </>
         )}
       </DialogContent>

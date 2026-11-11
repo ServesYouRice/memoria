@@ -11,7 +11,9 @@ function normalizeIp(value: string): string | null {
   return isIP(address) ? address : null;
 }
 
-function createTrustedProxyList(cidrs: string): BlockList {
+// Parses a comma-separated list of IPv4/IPv6 CIDRs or bare addresses. Throws
+// naming the first invalid entry; env.ts uses it to validate at startup.
+export function parseTrustedProxyCidrs(cidrs: string): BlockList {
   const list = new BlockList();
   for (const rawCidr of cidrs.split(",")) {
     const cidr = rawCidr.trim();
@@ -30,6 +32,15 @@ function createTrustedProxyList(cidrs: string): BlockList {
   return list;
 }
 
+let cachedProxyList: { source: string; list: BlockList } | undefined;
+
+function trustedProxyList(cidrs: string): BlockList {
+  if (cachedProxyList?.source !== cidrs) {
+    cachedProxyList = { source: cidrs, list: parseTrustedProxyCidrs(cidrs) };
+  }
+  return cachedProxyList.list;
+}
+
 export function deriveClientIp(
   socketAddress: string | undefined,
   forwardedFor: string | string[] | undefined,
@@ -39,7 +50,7 @@ export function deriveClientIp(
   if (!peer) return "unknown";
   if (!trustedProxyCidrs?.trim()) return peer;
 
-  const trusted = createTrustedProxyList(trustedProxyCidrs);
+  const trusted = trustedProxyList(trustedProxyCidrs);
   const isTrusted = (address: string) =>
     trusted.check(address, isIP(address) === 4 ? "ipv4" : "ipv6");
   if (!isTrusted(peer)) return peer;
@@ -47,13 +58,25 @@ export function deriveClientIp(
   const rawHeader = Array.isArray(forwardedFor)
     ? forwardedFor.join(",")
     : forwardedFor || "";
-  const chain = rawHeader.split(",").map(normalizeIp);
-  if (chain.some((address) => !address)) return peer;
+  const chain = rawHeader.split(",");
 
+  // Right to left, parsing each hop only when it is reached: entries left of
+  // the first untrusted hop are client-controlled and must not matter.
   let client = peer;
   for (let index = chain.length - 1; index >= 0; index -= 1) {
-    if (!isTrusted(client)) return client;
-    client = chain[index] as string;
+    const hop = normalizeForwardedIp(chain[index] as string);
+    // A malformed boundary hop (e.g. "unknown" from an upstream proxy)
+    // keeps the old fallback to the peer.
+    if (!hop) return peer;
+    client = hop;
+    if (!isTrusted(hop)) return hop;
   }
   return client;
+}
+
+/** An X-Forwarded-For entry; unlike CIDR entries it may carry a port. */
+function normalizeForwardedIp(value: string): string | null {
+  const ipv4WithPort = /^\s*(\d+\.\d+\.\d+\.\d+):\d{1,5}\s*$/.exec(value);
+  if (ipv4WithPort?.[1]) return isIP(ipv4WithPort[1]) ? ipv4WithPort[1] : null;
+  return normalizeIp(value);
 }

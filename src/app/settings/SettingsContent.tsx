@@ -145,6 +145,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
+  const [cancellingExport, setCancellingExport] = useState(false);
   const exportControllerRef = useRef<AbortController | null>(null);
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   const [usageUnavailable, setUsageUnavailable] = useState(false);
@@ -227,13 +228,26 @@ export function SettingsContent({ user }: SettingsContentProps) {
   };
 
   const handleCancelExport = async () => {
-    if (!activeExportId) return;
+    if (!activeExportId || cancellingExport) return;
     const exportId = activeExportId;
-    exportControllerRef.current?.abort();
-    await fetch(`/api/v1/users/account/exports/${exportId}`, {
-      method: "DELETE",
-    }).catch(() => undefined);
-    toast.info("Account export cancelled");
+    setCancellingExport(true);
+    try {
+      const response = await fetch(
+        `/api/v1/users/account/exports/${exportId}`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (!response.ok) throw new Error("Failed to cancel account export");
+      // Stop polling only once the server confirms; the poll loop treats the
+      // abort as a quiet AbortError, so this is the one cancelled toast.
+      exportControllerRef.current?.abort();
+      toast.info("Account export cancelled");
+    } catch {
+      toast.error("Could not cancel the account export. Try again.");
+    } finally {
+      setCancellingExport(false);
+    }
   };
 
   // Profile update
@@ -284,12 +298,15 @@ export function SettingsContent({ user }: SettingsContentProps) {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast.success("Password changed");
+      toast.success("Password changed. Please sign in with your new password.");
+      // The server revoked every session, this one included. Leave through
+      // sign-out (clears auth state and the offline cache); savingPassword
+      // stays true until the page navigates away.
+      await signOutAndRedirect("/auth/login", { navigateOnError: true });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to change password",
       );
-    } finally {
       setSavingPassword(false);
     }
   };
@@ -690,7 +707,11 @@ export function SettingsContent({ user }: SettingsContentProps) {
               {exporting ? "Building secure archive…" : "Download account data"}
             </Button>
             {exporting && activeExportId && (
-              <Button color="error" onClick={handleCancelExport}>
+              <Button
+                color="error"
+                onClick={handleCancelExport}
+                disabled={cancellingExport}
+              >
                 Cancel export
               </Button>
             )}

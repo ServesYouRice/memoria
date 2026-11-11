@@ -110,9 +110,15 @@ export const DELETE = withApiHandler(
       "OWNER",
     );
 
-    await prisma.$transaction((tx) => enqueueUploadDeletion(tx, asset.id));
+    // An upload still being written answers 409 (ConflictError).
+    const deleted = await prisma.$transaction((tx) =>
+      enqueueUploadDeletion(tx, asset.id, { inProgress: "conflict" }),
+    );
     return NextResponse.json(
-      { success: true, status: "deleting" },
+      {
+        success: true,
+        status: deleted.status === "DELETED" ? "deleted" : "deleting",
+      },
       { status: 202 },
     );
   },
