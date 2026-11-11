@@ -439,8 +439,23 @@ export async function listScopedActionTimeline(
       where,
       orderBy: { startedAt: "desc" },
       take: input.limit,
+      // Metadata only: the before/after snapshots hold whole serialized items
+      // (one per item in a bulk write) and the timeline never shows them.
+      // revertChangeSet loads the full records itself.
       include: {
-        changeRecords: true,
+        changeRecords: {
+          select: {
+            id: true,
+            changeSetId: true,
+            targetType: true,
+            targetId: true,
+            operation: true,
+            reversible: true,
+            revertedAt: true,
+            createdAt: true,
+          },
+        },
+        _count: { select: { changeRecords: true } },
       },
     }),
     prisma.suggestion.findMany({
@@ -452,7 +467,10 @@ export async function listScopedActionTimeline(
 
   return {
     actions,
-    changeSets,
+    changeSets: changeSets.map(({ _count, ...changeSet }) => ({
+      ...changeSet,
+      changeRecordCount: _count.changeRecords,
+    })),
     suggestions,
   };
 }
