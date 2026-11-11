@@ -190,8 +190,16 @@ function getHost(url: string | null) {
   }
 }
 
+const MAX_PILE_TITLE_LENGTH = 80;
+
+/** A pile title pilesSchema accepts: trimmed, at most 80 characters. */
+function boundTitle(title: string, fallback: string) {
+  const bounded = title.trim().slice(0, MAX_PILE_TITLE_LENGTH).trim();
+  return bounded || fallback;
+}
+
 function toTitle(keyword: string) {
-  return keyword.charAt(0).toUpperCase() + keyword.slice(1);
+  return boundTitle(keyword.charAt(0).toUpperCase() + keyword.slice(1), "Pile");
 }
 
 /**
@@ -236,8 +244,10 @@ export function suggestPiles(
   const maxShare = Math.max(2, Math.floor(items.length * 0.6));
   const unsorted = new Set(items.map((item) => item.id));
   const piles: PileInput[] = [];
+  // pilesSchema caps the whole sort at MAX_PILE_ITEMS items.
+  let budget = MAX_PILE_ITEMS;
 
-  while (piles.length < maxPiles && unsorted.size >= 2) {
+  while (piles.length < maxPiles && unsorted.size >= 2 && budget >= 2) {
     const counts = new Map<string, number>();
     for (const itemId of unsorted) {
       for (const keyword of keywordsByItem.get(itemId) ?? []) {
@@ -265,14 +275,21 @@ export function suggestPiles(
 
     if (!best) break;
 
-    const members = [...unsorted].filter((itemId) =>
-      keywordsByItem.get(itemId)?.has(best.keyword),
-    );
-    members.forEach((itemId) => unsorted.delete(itemId));
+    const members = [...unsorted]
+      .filter((itemId) => keywordsByItem.get(itemId)?.has(best.keyword))
+      .slice(0, budget);
+    // Every match leaves the pool, even past the budget, so the next round
+    // does not pick the same keyword for the overflow.
+    for (const itemId of unsorted) {
+      if (keywordsByItem.get(itemId)?.has(best.keyword)) {
+        unsorted.delete(itemId);
+      }
+    }
+    budget -= members.length;
     piles.push({ title: toTitle(best.keyword), itemIds: members });
   }
 
-  if (piles.length < maxPiles) {
+  if (piles.length < maxPiles && budget >= 2) {
     const byHost = new Map<string, string[]>();
     for (const item of items) {
       if (!unsorted.has(item.id)) continue;
@@ -282,8 +299,11 @@ export function suggestPiles(
     for (const [host, itemIds] of [...byHost].sort(
       (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
     )) {
-      if (itemIds.length < 2 || piles.length >= maxPiles) continue;
-      piles.push({ title: host, itemIds });
+      if (piles.length >= maxPiles || budget < 2) break;
+      if (itemIds.length < 2) continue;
+      const members = itemIds.slice(0, budget);
+      budget -= members.length;
+      piles.push({ title: boundTitle(host, "Website"), itemIds: members });
     }
   }
 
@@ -308,7 +328,14 @@ export async function suggestPilesForOwner(input: {
     items: input.items,
     instruction: input.instruction,
     maxPiles,
-    fallback: () => suggestPiles(input.items, { maxPiles }),
+    // The words fallback is held to the same schema as an AI answer; a
+    // grouping it rejects proposes nothing rather than failing later.
+    fallback: () => {
+      const result = pilesSchema.safeParse(
+        suggestPiles(input.items, { maxPiles }),
+      );
+      return result.success ? result.data : [];
+    },
     validate: (piles) => {
       const result = pilesSchema.safeParse(piles);
       return result.success ? result.data : null;
