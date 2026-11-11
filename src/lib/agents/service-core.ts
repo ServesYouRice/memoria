@@ -1197,6 +1197,7 @@ async function applyRevertOperation(
       targetId: changeRecord.targetId,
       userId,
       rollbackChangeSetId,
+      after: changeRecord.after,
     });
     return;
   }

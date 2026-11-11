@@ -173,9 +173,46 @@ export async function archiveItems(input: {
   return result;
 }
 
+function isoOrNull(value: unknown) {
+  if (value instanceof Date) return value.toISOString();
+  return typeof value === "string" ? new Date(value).toISOString() : null;
+}
+
+/**
+ * Whether the item is still in the state this archive left it: deleted and
+ * archived at the archive's timestamps (and at its version when recorded).
+ * A later restore followed by a delete or a second archive changes these, so
+ * that deletion is never undone here. Records without an `after` snapshot
+ * (older rows) only require the item to be archived, a weaker guard.
+ */
+function isThisArchive(
+  existing: {
+    deletedAt: Date | null;
+    archivedAt: Date | null;
+    version: number;
+  },
+  after: Prisma.JsonValue | null,
+) {
+  if (!after || typeof after !== "object" || Array.isArray(after)) {
+    return existing.archivedAt !== null;
+  }
+  const snapshot = after as Record<string, unknown>;
+  if (isoOrNull(existing.archivedAt) !== isoOrNull(snapshot.archivedAt)) {
+    return false;
+  }
+  // Every Trash restore, delete or edit bumps the version, so an unchanged
+  // version proves nothing happened since; the deletion time alone may be
+  // rewritten (backdated) without anyone touching the item.
+  if (typeof snapshot.version === "number") {
+    return existing.version === snapshot.version;
+  }
+  return isoOrNull(existing.deletedAt) === isoOrNull(snapshot.deletedAt);
+}
+
 /**
  * Undo of one archived item, inside `revertChangeSet`. An item the user
- * already restored from Trash is left alone.
+ * already restored from Trash, or deleted or archived again since, is left
+ * alone. The decision is made from a read under the item's canvas lock.
  */
 export async function revertArchivedItem(
   tx: Prisma.TransactionClient,
@@ -183,14 +220,21 @@ export async function revertArchivedItem(
     targetId: string;
     userId: string;
     rollbackChangeSetId: string;
+    /** The archive record's `after` snapshot: the state it left the item in. */
+    after: Prisma.JsonValue | null;
   },
 ) {
-  const existing = await tx.canvasItem.findFirst({
+  const located = await tx.canvasItem.findFirst({
     where: { id: input.targetId, canvas: { userId: input.userId } },
+    select: { canvasId: true },
+  });
+  if (!located) return;
+  await lockCanvasForMutation(tx, located.canvasId);
+  const existing = await tx.canvasItem.findUnique({
+    where: { id: input.targetId },
   });
   if (!existing) return;
-  await lockCanvasForMutation(tx, existing.canvasId);
-  if (existing.deletedAt === null) {
+  if (existing.deletedAt === null || !isThisArchive(existing, input.after)) {
     await tx.changeRecord.create({
       data: {
         changeSetId: input.rollbackChangeSetId,

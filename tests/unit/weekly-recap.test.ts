@@ -6,7 +6,12 @@ const mocks = vi.hoisted(() => {
     agentAction: { create: vi.fn(), update: vi.fn() },
     changeSet: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     changeRecord: { create: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
-    canvasItem: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    canvasItem: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
   };
   return {
     tx,
@@ -451,6 +456,8 @@ describe("archiving links and undoing it", () => {
   });
 
   it("undo puts every archived link back on its board", async () => {
+    const archivedAt = new Date("2026-11-05T10:00:00.000Z");
+    const archivedState = { deletedAt: archivedAt, archivedAt };
     mocks.changeSetFindFirst.mockResolvedValue({
       id: "cs-1",
       scopeType: "user",
@@ -463,7 +470,7 @@ describe("archiving links and undoing it", () => {
           targetId: "i2",
           operation: ARCHIVE_OPERATION,
           before: bookmark("i2"),
-          after: bookmark("i2"),
+          after: JSON.parse(JSON.stringify(bookmark("i2", archivedState))),
           reversible: true,
         },
         {
@@ -472,15 +479,16 @@ describe("archiving links and undoing it", () => {
           targetId: "i1",
           operation: ARCHIVE_OPERATION,
           before: bookmark("i1"),
-          after: bookmark("i1"),
+          after: JSON.parse(JSON.stringify(bookmark("i1", archivedState))),
           reversible: true,
         },
       ],
     });
     mocks.tx.agentAction.create.mockResolvedValue({ id: "act-rb" });
     mocks.tx.changeSet.create.mockResolvedValue({ id: "cs-rb" });
-    mocks.tx.canvasItem.findFirst
-      .mockResolvedValueOnce(bookmark("i2", { deletedAt: new Date() }))
+    mocks.tx.canvasItem.findFirst.mockResolvedValue({ canvasId: "canvas-a" });
+    mocks.tx.canvasItem.findUnique
+      .mockResolvedValueOnce(bookmark("i2", archivedState))
       // Already restored from Trash by hand: left alone.
       .mockResolvedValueOnce(bookmark("i1"));
     mocks.tx.canvasItem.update.mockImplementation(async ({ where, data }) => ({
@@ -497,6 +505,7 @@ describe("archiving links and undoing it", () => {
     expect(result.revertedChangeSetId).toBe("cs-1");
     expect(mocks.tx.canvasItem.findFirst).toHaveBeenCalledWith({
       where: { id: "i2", canvas: { userId: "user-1" } },
+      select: { canvasId: true },
     });
     expect(mocks.tx.canvasItem.update).toHaveBeenCalledTimes(1);
     expect(mocks.tx.canvasItem.update).toHaveBeenCalledWith({
