@@ -16,26 +16,15 @@ export async function findSerendipitousItems(
   userId: string,
   currentCanvasId: string,
   contextKeywords: string[] = [],
-  userEmail?: string,
   limit: number = 3,
 ): Promise<SerendipityResult[]> {
-  const normalizedEmail = userEmail?.toLowerCase();
-  const canvasAccessFilter = normalizedEmail
-    ? {
-        id: { not: currentCanvasId },
-        OR: [
-          { userId },
-          {
-            shares: {
-              some: { email: normalizedEmail },
-            },
-          },
-        ],
-      }
-    : {
-        id: { not: currentCanvasId },
-        userId,
-      };
+  // Mirrors getCanvasAccess in src/lib/api/auth.ts: a canvas is readable by
+  // its owner or through a share bound to the caller's recipientId. A share
+  // matched only by email (a legacy unbound row) grants nothing.
+  const canvasAccessFilter = {
+    id: { not: currentCanvasId },
+    OR: [{ userId }, { shares: { some: { recipientId: userId } } }],
+  };
 
   // 1. Fetch candidate items from OTHER canvases owned by the user
   // We restrict to Notes and Text to ensure content relevance
