@@ -97,4 +97,22 @@ describe("UploadNoteOffer microphone lifecycle", () => {
     await act(async () => pending[0](fakeStream().stream));
     expect(starts).toHaveLength(1);
   });
+
+  it("stops the stream when the MediaRecorder cannot be created", async () => {
+    vi.stubGlobal(
+      "MediaRecorder",
+      Object.assign(
+        function Broken() {
+          throw new Error("NotSupportedError");
+        },
+        { isTypeSupported: () => true },
+      ),
+    );
+    renderOffer();
+    fireEvent.click(screen.getByLabelText("Record voice note"));
+    const { stream, track } = fakeStream();
+    await act(async () => pending[0](stream));
+    expect(track.stop).toHaveBeenCalled();
+    expect(tracker.fail).toHaveBeenCalled();
+  });
 });

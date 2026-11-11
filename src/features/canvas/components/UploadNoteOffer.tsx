@@ -149,10 +149,18 @@ export function UploadNoteOffer({
       stream.getTracks().forEach((track) => track.stop());
       return;
     }
-    const recorder = new MediaRecorder(stream, {
-      mimeType,
-      audioBitsPerSecond: 32_000,
-    });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 32_000,
+      });
+    } catch {
+      // Do not leave the microphone open without a recorder to stop it.
+      stream.getTracks().forEach((track) => track.stop());
+      tracker.fail(new Error("This browser cannot record audio."));
+      return;
+    }
     const chunks: Blob[] = [];
     const center = getViewportCenter();
     cancelledRef.current = false;
