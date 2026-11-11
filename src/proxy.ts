@@ -146,8 +146,13 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Apply rate limiting for canvas operations
-  if (request.nextUrl.pathname.startsWith("/api/v1/canvases")) {
+  // Apply rate limiting for canvas operations. Thumbnail GETs are asset
+  // reads and take the assets budget below instead.
+  const readBudget = classifyReadBudget(pathname, request.method);
+  if (
+    request.nextUrl.pathname.startsWith("/api/v1/canvases") &&
+    readBudget !== "assets"
+  ) {
     specificRateLimitApplied = true;
     const rateLimitResponse =
       (await canvasesRateLimit(request)) ??
@@ -170,7 +175,6 @@ export async function proxy(request: NextRequest) {
 
   // Asset GETs, the notification poll and search have their own budgets, so
   // they neither exhaust nor are starved by the general API budget.
-  const readBudget = classifyReadBudget(pathname, request.method);
   if (readBudget && !specificRateLimitApplied) {
     specificRateLimitApplied = true;
     for (const limiter of readBudgetLimiters[readBudget]) {

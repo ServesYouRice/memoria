@@ -288,6 +288,10 @@ export function classifyReadBudget(
 ): ReadBudget | null {
   if (method !== "GET") return null;
   if (/^\/api\/v1\/uploads\/[^/]+$/.test(pathname)) return "assets";
+  // Dashboard cards each load one, so they must not spend the canvases budget.
+  if (/^\/api\/v1\/canvases\/[^/]+\/thumbnail$/.test(pathname)) {
+    return "assets";
+  }
   if (pathname === "/api/v1/notifications") return "notifications";
   if (pathname === "/api/v1/search") return "search";
   return null;
