@@ -69,6 +69,8 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | IMP-094 |
 | [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | IMP-081 |
 | [IMP-112](tasks/IMP-112.md) | Publish a licence and a "never paywalled" promise | DEC-017 |
+| [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | IMP-094 |
+| [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | IMP-094, DEC-018 |
 
 ## USER DECISIONS
 
@@ -83,3 +85,4 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | DEC-005 | Run `pnpm gate integration`, `pnpm gate e2e`, `pnpm gate container` and `pnpm smoke` on Node 26 on the dev machine (agent sessions are blocked by Prisma's AI guard on `migrate reset` and by the sandbox proxy's TLS in the image build) | Run on the dev machine | Done, no errors reported (owner, 2026-11-07) | IMP-058, IMP-056 |
 | DEC-016 | Which single word does the app use for a user's space: "canvas" or "board"? | "canvas" (already used on the dashboard and in most screens) | "canvas" (owner, 2026-11-11) | IMP-088 |
 | DEC-017 | Which licence does Memoria publish under, and which features are promised to stay free? | AGPL-3.0 (used by comparable self-hosted tools); always free: self-hosting, passkeys and two-step codes, export, AI on your own key | | IMP-112 |
+| DEC-018 | May Memoria fetch video transcripts automatically? YouTube has no open official way to read captions of other people's videos; unofficial tools work but can break and sit in a grey area of its terms | No automatic fetching: ship time-stamped notes and pasted transcripts only | | IMP-114 |
