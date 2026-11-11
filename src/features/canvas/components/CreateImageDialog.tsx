@@ -113,11 +113,17 @@ export function CreateImageDialog({
     },
   });
 
+  // Each file pick gets an id; work from an earlier pick (or a pick the
+  // dialog was closed during) is ignored.
+  const selectionRef = useRef(0);
+
   const handleClose = () => {
+    selectionRef.current += 1;
     discardPending();
     reset();
     setError(null);
     setUploadedImage(null);
+    setUploading(false);
     setMakeNote(false);
     onClose();
   };
@@ -127,9 +133,14 @@ export function CreateImageDialog({
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const selection = ++selectionRef.current;
+    const isCurrent = () => selection === selectionRef.current;
 
     try {
       setError(null);
+      // The previous image must not be submitted while its replacement
+      // uploads and loads; Add stays disabled until this pick settles.
+      setUploadedImage(null);
       setUploading(true);
 
       // Create form data
@@ -153,30 +164,33 @@ export function CreateImageDialog({
         typeof data.assetId === "string"
           ? data.assetId
           : uploadAssetIdFromUrl(data.url);
+      if (!isCurrent()) {
+        // A newer pick (or closing) replaced this upload before it finished.
+        if (assetId) discardUpload(assetId);
+        return;
+      }
       // "Change Image": the previous upload is no longer wanted.
       discardPending();
       pendingAssetRef.current = assetId;
 
       // Load image to get dimensions
       const img = new globalThis.Image();
-      img.onload = () => {
+      const settle = (dimensions: { width?: number; height?: number }) => {
+        if (!isCurrent()) return;
         setUploadedImage({
           url: data.url,
           filename: data.filename,
-          width: img.naturalWidth,
-          height: img.naturalHeight,
+          ...dimensions,
         });
+        setUploading(false);
       };
-      img.onerror = () => {
-        setUploadedImage({
-          url: data.url,
-          filename: data.filename,
-        });
-      };
+      img.onload = () =>
+        settle({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => settle({});
       img.src = data.url;
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : "Failed to upload image");
-    } finally {
       setUploading(false);
     }
   };
