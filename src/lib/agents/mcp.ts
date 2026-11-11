@@ -990,6 +990,9 @@ export async function executeMcpTool(
               : `Propose knowledge relation ${parsed.relationType}`,
           payload: {
             kind: KNOWLEDGE_RELATION_SUGGESTION_KIND,
+            // Display only: lets the organizer place the proposal on its
+            // canvas. Execution recomputes the shared canvas.
+            canvasId: sharedCanvasId,
             sourceEntityId: parsed.sourceEntityId,
             targetEntityId: parsed.targetEntityId,
             relationType: parsed.relationType,
