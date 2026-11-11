@@ -335,7 +335,11 @@ export async function markAiCredentialRejected(
 ): Promise<void> {
   await prisma.modelCredential
     .updateMany({
-      where: { id: credentialId, secretFingerprint },
+      where: {
+        id: credentialId,
+        secretFingerprint,
+        status: { in: USABLE_STATUSES },
+      },
       data: { status: CredentialStatus.ERROR },
     })
     .catch((error) => {

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const prismaMocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   update: vi.fn(),
+  updateMany: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -10,6 +11,7 @@ vi.mock("@/lib/db", () => ({
     modelCredential: {
       findMany: prismaMocks.findMany,
       update: prismaMocks.update,
+      updateMany: prismaMocks.updateMany,
     },
   },
 }));
@@ -21,6 +23,7 @@ import {
   assertSafeAiBaseUrl,
   findAiProvider,
   getAiAvailability,
+  markAiCredentialRejected,
   resolveAiProvider,
 } from "@/lib/ai/provider-resolution";
 import { ServiceUnavailableError } from "@/lib/errors";
@@ -131,7 +134,9 @@ describe("AI provider lookup order", () => {
     // rejected built-in row.
     prismaMocks.findMany.mockImplementation(
       async (args: { where: { status?: unknown } }) =>
-        args.where.status ? [] : [{ id: "cred-1", ...credential({ status: "ERROR" }) }],
+        args.where.status
+          ? []
+          : [{ id: "cred-1", ...credential({ status: "ERROR" }) }],
     );
     await expect(findAiProvider("user-1")).resolves.toBeNull();
     await expect(getAiAvailability("user-1")).resolves.toMatchObject({
@@ -215,6 +220,21 @@ describe("AI provider lookup order", () => {
     await expect(getAiAvailability("user-1")).resolves.toMatchObject({
       configured: false,
       source: null,
+    });
+  });
+});
+
+describe("markAiCredentialRejected", () => {
+  it("flags the row only while it holds the failing secret and is usable", async () => {
+    prismaMocks.updateMany.mockResolvedValue({ count: 0 });
+    await markAiCredentialRejected("cred-1", "fp-old");
+    expect(prismaMocks.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "cred-1",
+        secretFingerprint: "fp-old",
+        status: { in: ["ACTIVE", "UNVERIFIED"] },
+      },
+      data: { status: "ERROR" },
     });
   });
 });
