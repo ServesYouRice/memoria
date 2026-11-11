@@ -138,7 +138,9 @@ export function withAuthValidation<T, C = unknown>(
   return withAuth<unknown, C>(async (req, session, context) => {
     let body: unknown;
     try {
-      body = await req.json();
+      // Parse a clone: runIdempotent hashes the request body through
+      // req.clone(), which throws once the original body has been read.
+      body = await req.clone().json();
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new BadRequestError("Invalid JSON");
