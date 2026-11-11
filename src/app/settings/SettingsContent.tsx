@@ -284,12 +284,15 @@ export function SettingsContent({ user }: SettingsContentProps) {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast.success("Password changed");
+      toast.success("Password changed. Please sign in with your new password.");
+      // The server revoked every session, this one included. Leave through
+      // sign-out (clears auth state and the offline cache); savingPassword
+      // stays true until the page navigates away.
+      await signOutAndRedirect("/auth/login", { navigateOnError: true });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to change password",
       );
-    } finally {
       setSavingPassword(false);
     }
   };
