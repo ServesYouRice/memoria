@@ -2,9 +2,7 @@
 
 import React from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import Link from "@tiptap/extension-link";
 import Collaboration from "@tiptap/extension-collaboration";
 import type * as Y from "yjs";
 import {
@@ -12,7 +10,10 @@ import {
   type TiptapNode,
   type VersionedNoteContent,
 } from "@/lib/rich-text/note-format";
-import { collaborativeNoteExtensions } from "@/lib/collaboration/sync/note-schema";
+import {
+  collaborativeNoteExtensions,
+  standaloneNoteExtensions,
+} from "@/lib/collaboration/sync/note-schema";
 import { toCanonicalNoteDocument } from "@/lib/rich-text/editor-json";
 import {
   Box,
@@ -120,23 +121,7 @@ export function RichTextEditor({
           Placeholder.configure({ placeholder }),
           Collaboration.configure({ fragment: collaboration.fragment }),
         ]
-      : [
-          StarterKit.configure({
-            heading: {
-              levels: [1, 2, 3],
-            },
-          }),
-          Placeholder.configure({
-            placeholder,
-          }),
-          Link.configure({
-            openOnClick: false,
-            HTMLAttributes: {
-              target: "_blank",
-              rel: "noopener noreferrer",
-            },
-          }),
-        ],
+      : [...standaloneNoteExtensions(), Placeholder.configure({ placeholder })],
     ...(collaboration ? {} : { content: initialDocument }),
     editable,
     onUpdate: ({ editor }) => {
