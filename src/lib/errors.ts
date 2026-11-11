@@ -433,6 +433,13 @@ export const Problems = {
 /**
  * NextResponse error handler (for Next.js API routes)
  */
+function captureServerError(error: unknown, requestId: string | undefined) {
+  Sentry.withScope((scope) => {
+    if (requestId) scope.setTag("request_id", requestId);
+    Sentry.captureException(error);
+  });
+}
+
 export function errorResponse(
   error: unknown,
   instance?: string,
@@ -449,6 +456,10 @@ export function errorResponse(
   logger.error({ error, instance: safeInstance, requestId }, "API Error");
 
   if (error instanceof ApiError) {
+    // A 5xx ApiError is a server failure (a broken response contract, an
+    // unavailable dependency), so it is reported like any other. 4xx errors
+    // describe the caller's request and are not.
+    if (error.status >= 500) captureServerError(error, requestId);
     const problemDetail = { ...error.toProblemDetail(safeInstance), requestId };
     return NextResponse.json(problemDetail, {
       status: error.status,
@@ -487,10 +498,7 @@ export function errorResponse(
     requestId,
   };
 
-  Sentry.withScope((scope) => {
-    if (requestId) scope.setTag("request_id", requestId);
-    Sentry.captureException(error);
-  });
+  captureServerError(error, requestId);
 
   return NextResponse.json(problemDetail, {
     status: 500,

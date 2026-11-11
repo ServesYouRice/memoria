@@ -22,12 +22,7 @@ Sentry.init({
   // Useful for debugging issues
   debug: false,
 
-  // Capture unhandled promise rejections
-  beforeSend(event) {
-    // Filter out common noise
-    if (event.exception?.values?.[0]?.value?.includes("ECONNREFUSED")) {
-      return null;
-    }
-    return event;
-  },
+  // No beforeSend filter: connection errors such as ECONNREFUSED are how a
+  // dependency outage (Redis, SMTP, an AI provider) shows up, so they are
+  // reported like any other error.
 });
