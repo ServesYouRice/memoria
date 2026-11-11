@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  Alert,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -30,7 +31,7 @@ interface SerendipityDialogProps {
   open: boolean;
   onClose: () => void;
   canvasId: string;
-  onAddItems: (items: any[]) => void;
+  onAddItems: (items: any[]) => void | Promise<void>;
 }
 
 export function SerendipityDialog({
@@ -42,6 +43,8 @@ export function SerendipityDialog({
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SerendipityResult[]>([]);
   const [scanned, setScanned] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const handleScan = async () => {
     setLoading(true);
@@ -61,9 +64,26 @@ export function SerendipityDialog({
     }
   };
 
-  const handleUsage = (item: any) => {
-    onAddItems([item]);
-    onClose();
+  // Close only once the item exists; on failure keep the results so the
+  // user can retry.
+  const handleUsage = async (item: any) => {
+    if (adding) return;
+    setAdding(true);
+    setAddError(null);
+    let added = false;
+    try {
+      await onAddItems([item]);
+      added = true;
+    } catch (error) {
+      setAddError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Could not add this item. Please try again.",
+      );
+    } finally {
+      setAdding(false);
+    }
+    if (added) onClose();
   };
 
   return (
@@ -106,6 +126,15 @@ export function SerendipityDialog({
             >
               Found {results.length} connections:
             </Typography>
+            {addError && (
+              <Alert
+                severity="error"
+                sx={{ mb: 2 }}
+                onClose={() => setAddError(null)}
+              >
+                {addError}
+              </Alert>
+            )}
             <List>
               {results.map((res, i) => (
                 <Card key={i} variant="outlined" sx={{ mb: 1 }}>
@@ -139,7 +168,8 @@ export function SerendipityDialog({
                       <Button
                         size="small"
                         startIcon={<AddIcon />}
-                        onClick={() => handleUsage(res.item)}
+                        onClick={() => void handleUsage(res.item)}
+                        disabled={adding}
                       >
                         Add
                       </Button>
