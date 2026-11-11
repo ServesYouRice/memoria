@@ -177,6 +177,50 @@ describe("live committed-event gap detection", () => {
   });
 });
 
+describe("interleaved global sequences (VAL-240)", () => {
+  it("applies a run of events with non-contiguous global cursors without any replay", async () => {
+    const { socket, delivered, unmount } = await connected();
+    // Holes left by other canvases and by rolled-back transactions.
+    const cursors = [3, 4, 9, 17, 18, 40, 41, 97];
+    act(() => {
+      cursors.forEach((cursor, index) =>
+        socket.receive(live(cursor, index + 1)),
+      );
+    });
+    await settle();
+    expect(replayCalls()).toEqual([]);
+    expect(delivered()).toEqual(cursors.map(String));
+    unmount();
+  });
+
+  it("recovers one dropped event of this canvas with a single replay", async () => {
+    const { socket, delivered, unmount } = await connected();
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).includes("cursor=9&")
+        ? json({
+            events: [envelope(17, 4), envelope(18, 5)],
+            nextCursor: "18",
+            hasMore: false,
+          })
+        : json({ events: [], nextCursor: "0", hasMore: false }),
+    );
+    act(() => {
+      socket.receive(live(3, 1));
+      socket.receive(live(4, 2));
+      socket.receive(live(9, 3));
+      // 17 (the canvas's fourth event) is dropped by the fan-out.
+      socket.receive(live(18, 5));
+    });
+    await settle();
+    act(() => socket.receive(live(40, 6)));
+    await settle();
+    expect(replayCalls()).toHaveLength(1);
+    expect(replayCalls()[0]).toContain("cursor=9&");
+    expect(delivered()).toEqual(["3", "4", "9", "17", "18", "40"]);
+    unmount();
+  });
+});
+
 describe("isCommittedEventGap", () => {
   const gap = (last: bigint | null, canvasCursor?: string) =>
     collaboration.isCommittedEventGap(last, { canvasCursor });
