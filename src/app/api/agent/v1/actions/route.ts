@@ -225,6 +225,7 @@ async function resolveRequiredAgentProfile(
 
 export const GET = withApiHandler(async (request: NextRequest) => {
   const context = await resolveAgentRequestContext(request);
+  assertAgentCapability(context.agentProfile, AGENT_CAPABILITY_RUNGS.READ);
 
   const { limit } = parsePagination(request.nextUrl.searchParams, {
     defaultLimit: 50,

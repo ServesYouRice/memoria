@@ -414,6 +414,46 @@ export async function listScopedKnowledgeEntities(
   return { entities };
 }
 
+function readPayloadString(payload: Prisma.JsonValue, key: string) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload))
+    return null;
+  const value = (payload as Record<string, Prisma.JsonValue>)[key];
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * Keeps an agent's suggestions to canvases in its current scope: the canvas
+ * comes from `payload.canvasId` or the canvas of `payload.itemId`. A
+ * suggestion whose canvas cannot be determined is left out.
+ */
+async function filterSuggestionsToScope<
+  T extends { payload: Prisma.JsonValue },
+>(userId: string, allowedCanvasIds: Set<string>, suggestions: T[]) {
+  const itemIds = [
+    ...new Set(
+      suggestions
+        .map((suggestion) => readPayloadString(suggestion.payload, "itemId"))
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const items = itemIds.length
+    ? await prisma.canvasItem.findMany({
+        where: { id: { in: itemIds }, canvas: { userId } },
+        select: { id: true, canvasId: true },
+      })
+    : [];
+  const itemCanvas = new Map(items.map((item) => [item.id, item.canvasId]));
+  return suggestions.filter((suggestion) => {
+    const canvasId = readPayloadString(suggestion.payload, "canvasId");
+    const itemId = readPayloadString(suggestion.payload, "itemId");
+    const itemCanvasId = itemId ? itemCanvas.get(itemId) : undefined;
+    if (canvasId && !allowedCanvasIds.has(canvasId)) return false;
+    if (itemId && (!itemCanvasId || !allowedCanvasIds.has(itemCanvasId)))
+      return false;
+    return Boolean(canvasId || itemCanvasId);
+  });
+}
+
 export async function listScopedActionTimeline(
   actor: ScopedActor,
   input: {
@@ -428,6 +468,11 @@ export async function listScopedActionTimeline(
     : {
         userId: actor.userId,
       };
+  // An agent sees history only for canvases in its current scope (the same
+  // rule assertCanvasScope applies); a user session sees everything it owns.
+  const allowedCanvasIds = actor.agentProfile
+    ? new Set(actor.agentProfile.allowedCanvasIds)
+    : null;
 
   const [actions, changeSets, suggestions] = await Promise.all([
     prisma.agentAction.findMany({
@@ -436,7 +481,13 @@ export async function listScopedActionTimeline(
       take: input.limit,
     }),
     prisma.changeSet.findMany({
-      where,
+      where: allowedCanvasIds
+        ? {
+            ...where,
+            scopeType: "canvas",
+            scopeId: { in: [...allowedCanvasIds] },
+          }
+        : where,
       orderBy: { startedAt: "desc" },
       take: input.limit,
       include: {
@@ -453,7 +504,13 @@ export async function listScopedActionTimeline(
   return {
     actions,
     changeSets,
-    suggestions,
+    suggestions: allowedCanvasIds
+      ? await filterSuggestionsToScope(
+          actor.userId,
+          allowedCanvasIds,
+          suggestions,
+        )
+      : suggestions,
   };
 }
 
