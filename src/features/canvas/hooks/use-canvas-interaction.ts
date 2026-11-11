@@ -1,4 +1,5 @@
 import type React from "react";
+import { useRef } from "react";
 import type Konva from "konva";
 import { useDrawingInteraction } from "./use-drawing-interaction";
 import { type CanvasCapabilities, type CanvasItem } from "@/types/canvas";
@@ -66,8 +67,12 @@ export function useCanvasInteraction({
   const drawing = useDrawingInteraction({ canvasId, canCreateItems });
   const effectiveTool = resolveEffectiveTool(activeTool, { canCreateItems });
   const isDrawingOrCreating = CREATING_TOOLS.has(effectiveTool);
+  // A marquee drag ends with a click on the empty stage; that click must not
+  // clear the selection the drag just made.
+  const suppressNextStageClickRef = useRef(false);
 
   const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    suppressNextStageClickRef.current = false;
     if (isDrawingOrCreating) {
       drawing.handleMouseDown(e);
       return;
@@ -134,6 +139,7 @@ export function useCanvasInteraction({
         });
         setSelectedItemIds(selected);
         setSelectedItemId(null);
+        suppressNextStageClickRef.current = true;
       } else {
         // If it was a tiny drag (click), logic handled in onClick usually,
         // but here we ensure cleanup
@@ -143,6 +149,10 @@ export function useCanvasInteraction({
   };
 
   const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (suppressNextStageClickRef.current) {
+      suppressNextStageClickRef.current = false;
+      return;
+    }
     // Deselect if clicking on empty stage
     if (e.target === e.target.getStage()) {
       setSelectedItemId(null);
