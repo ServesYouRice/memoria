@@ -228,3 +228,94 @@ describe("writeNoteFragment", () => {
     expect(readNoteFragment(fragment).plainText).toBe("Hello x");
   });
 });
+
+describe("writeNoteFragment for shapes TipTap's schema rejects", () => {
+  const p = (text: string): TiptapNode => ({
+    type: "paragraph",
+    content: [{ type: "text", text }],
+  });
+  const shapes: Record<string, TiptapNode> = {
+    "an empty bullet list": {
+      type: "doc",
+      content: [
+        p("Buy milk"),
+        { type: "bulletList", content: [] },
+        p("Call mom"),
+      ],
+    },
+    "an empty ordered list": {
+      type: "doc",
+      content: [
+        p("Buy milk"),
+        { type: "orderedList", content: [] },
+        p("Call mom"),
+      ],
+    },
+    "a list item that does not start with a paragraph": {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "bulletList",
+                  content: [{ type: "listItem", content: [p("Buy milk")] }],
+                },
+                p("Call mom"),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    "a top-level list item": {
+      type: "doc",
+      content: [
+        { type: "listItem", content: [p("Buy milk")] },
+        { type: "listItem", content: [p("Call mom")] },
+      ],
+    },
+    "an empty blockquote": {
+      type: "doc",
+      content: [
+        p("Buy milk"),
+        { type: "blockquote", content: [] },
+        p("Call mom"),
+      ],
+    },
+  };
+
+  for (const [name, document] of Object.entries(shapes)) {
+    it(`keeps words from separate blocks apart for ${name}`, () => {
+      const fragment = new Y.Doc().getXmlFragment("text");
+      writeNoteFragment(fragment, document);
+      const { plainText } = readNoteFragment(fragment);
+      expect(plainText).not.toContain("milkCall");
+      expect(plainText).toMatch(/Buy milk\n+(?:.*\n)*Call mom/);
+    });
+  }
+
+  it("keeps marks and hard breaks when it has to rebuild the note", () => {
+    const fragment = new Y.Doc().getXmlFragment("text");
+    writeNoteFragment(fragment, {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Buy", marks: [{ type: "bold" }] },
+            { type: "hardBreak" },
+            { type: "text", text: "milk" },
+          ],
+        },
+        { type: "blockquote", content: [] },
+      ],
+    });
+    const { document, plainText } = readNoteFragment(fragment);
+    expect(plainText).toContain("Buy\nmilk");
+    expect(JSON.stringify(document)).toContain('"bold"');
+  });
+});

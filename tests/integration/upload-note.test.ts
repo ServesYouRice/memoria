@@ -265,4 +265,36 @@ describe("upload.note job against PostgreSQL", () => {
     expect(await notesOn(canvas.id)).toHaveLength(0);
     expect(ai.readImageText).not.toHaveBeenCalled();
   });
+  it("writes no note when the requester loses edit access during the AI call", async () => {
+    const { canvas, asset } = await setup("image");
+    const editor = await prisma.user.create({
+      data: { email: `editor-${randomBytes(6).toString("hex")}@example.com` },
+    });
+    const share = await prisma.canvasShare.create({
+      data: {
+        canvasId: canvas.id,
+        email: editor.email,
+        recipientId: editor.id,
+        role: "EDIT",
+      },
+    });
+    await requestUploadNote(prisma, { userId: editor.id, assetId: asset.id });
+    const job = await noteJob(asset.id);
+    // The owner revokes the share while the model is still answering.
+    ai.readImageText.mockImplementation(async () => {
+      await prisma.canvasShare.delete({ where: { id: share.id } });
+      return "Receipt\n\nMilk 1.20";
+    });
+
+    await expect(handler(job)).rejects.toMatchObject({
+      message: "The requester can no longer edit this canvas",
+      retryable: false,
+    });
+    expect(ai.readImageText).toHaveBeenCalledTimes(1);
+    expect(await notesOn(canvas.id)).toHaveLength(0);
+    const current = await prisma.uploadAsset.findUniqueOrThrow({
+      where: { id: asset.id },
+    });
+    expect(current.noteItemId).toBeNull();
+  });
 });

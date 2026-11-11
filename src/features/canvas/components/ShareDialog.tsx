@@ -50,6 +50,14 @@ interface Share {
   createdAt: string;
 }
 
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: "VIEW" | "COMMENT" | "EDIT";
+  expiresAt: string;
+  createdAt: string;
+}
+
 function formatShareError(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
     const retry = error.retryAfterSeconds
@@ -78,11 +86,17 @@ export function ShareDialog({
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [rotatingLink, setRotatingLink] = useState(false);
+  const [publicStatusLoading, setPublicStatusLoading] = useState(false);
+  // Bumped by every public-link change and by closing the dialog, so a status
+  // response that was requested before either never overwrites newer state.
+  const publicStateEpochRef = useRef(0);
 
   // Individual sharing
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
   const [shares, setShares] = useState<Share[]>([]);
+  // Sharing by email sends an invitation; it stays here until it is answered.
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
   const [sharingWithUser, setSharingWithUser] = useState(false);
   const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
 
@@ -93,6 +107,7 @@ export function ShareDialog({
       if (response.ok) {
         const data = await response.json();
         setShares(data.shares || []);
+        setInvitations(data.invitations || []);
       }
     } catch (err) {
       setError(formatShareError(err, "Failed to load shares"));
@@ -100,10 +115,13 @@ export function ShareDialog({
   }, [canvasId]);
 
   const checkPublicStatus = useCallback(async () => {
+    const epoch = publicStateEpochRef.current;
+    setPublicStatusLoading(true);
     try {
       const response = await apiFetch(`/api/v1/canvases/${canvasId}`);
       if (response.ok) {
         const canvas = await response.json();
+        if (epoch !== publicStateEpochRef.current) return;
         setIsPublic(canvas.isPublic || false);
         if (canvas.shareToken) {
           const url = `${window.location.origin}/share/${canvas.shareToken}`;
@@ -111,7 +129,10 @@ export function ShareDialog({
         }
       }
     } catch (err) {
+      if (epoch !== publicStateEpochRef.current) return;
       setError(formatShareError(err, "Failed to check public status"));
+    } finally {
+      if (epoch === publicStateEpochRef.current) setPublicStatusLoading(false);
     }
   }, [canvasId]);
 
@@ -119,6 +140,9 @@ export function ShareDialog({
     if (open) {
       loadShares();
       checkPublicStatus();
+    } else {
+      publicStateEpochRef.current += 1;
+      setPublicStatusLoading(false);
     }
   }, [open, loadShares, checkPublicStatus]);
 
@@ -133,6 +157,8 @@ export function ShareDialog({
       });
       if (!confirmed) return;
     }
+    publicStateEpochRef.current += 1;
+    setPublicStatusLoading(false);
     setGeneratingLink(true);
     setError(null);
 
@@ -184,6 +210,8 @@ export function ShareDialog({
       destructive: true,
     });
     if (!confirmed) return;
+    publicStateEpochRef.current += 1;
+    setPublicStatusLoading(false);
     setRotatingLink(true);
     setError(null);
     try {
@@ -264,6 +292,34 @@ export function ShareDialog({
     }
   };
 
+  const handleRevokeInvitation = async (
+    invitationId: string,
+    invitationEmail: string,
+  ) => {
+    const confirmed = await confirmDialog({
+      title: "Revoke invitation?",
+      message: `The invitation sent to ${invitationEmail} will stop working.`,
+      confirmText: "Revoke invitation",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setRevokingShareId(invitationId);
+    setError(null);
+    try {
+      await apiFetch(`/api/v1/canvases/${canvasId}/share/${invitationId}`, {
+        method: "DELETE",
+      });
+      setSuccess(`Invitation revoked for ${invitationEmail}`);
+    } catch (err) {
+      // A conflict means the invitation was answered meanwhile; the reload
+      // below moves an accepted invitee into the collaborator list.
+      setError(formatShareError(err, "Failed to revoke invitation"));
+    } finally {
+      setRevokingShareId(null);
+      loadShares();
+    }
+  };
+
   return (
     <Dialog
       open={open}
@@ -309,7 +365,9 @@ export function ShareDialog({
                 <Switch
                   checked={isPublic}
                   onChange={() => void handleTogglePublic()}
-                  disabled={generatingLink || rotatingLink}
+                  disabled={
+                    generatingLink || rotatingLink || publicStatusLoading
+                  }
                 />
               }
               label="Anyone with the link can view"
@@ -359,7 +417,7 @@ export function ShareDialog({
               <Button
                 variant="outlined"
                 onClick={() => void handleRotateLink()}
-                disabled={rotatingLink || generatingLink}
+                disabled={rotatingLink || generatingLink || publicStatusLoading}
                 sx={{ mt: 1 }}
               >
                 {rotatingLink ? "Rotating…" : "Rotate public link"}
@@ -444,6 +502,42 @@ export function ShareDialog({
                   </ListItem>
                 ))}
               </List>
+            )}
+
+            {invitations.length > 0 && (
+              <>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ mt: 1, color: "text.secondary" }}
+                >
+                  Pending invitations
+                </Typography>
+                <List dense aria-label="Pending invitations">
+                  {invitations.map((invitation) => (
+                    <ListItem key={invitation.id}>
+                      <ListItemText
+                        primary={invitation.email}
+                        secondary={`Invited to ${invitation.role.toLowerCase()}`}
+                      />
+                      <ListItemSecondaryAction>
+                        <IconButton
+                          edge="end"
+                          aria-label={`Revoke invitation for ${invitation.email}`}
+                          onClick={() =>
+                            void handleRevokeInvitation(
+                              invitation.id,
+                              invitation.email,
+                            )
+                          }
+                          disabled={revokingShareId !== null}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                </List>
+              </>
             )}
           </Box>
 

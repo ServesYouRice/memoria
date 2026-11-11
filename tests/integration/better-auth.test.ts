@@ -202,6 +202,53 @@ describe("Better Auth on PostgreSQL (IMP-041)", () => {
     expect((await readSession(fresh))?.user.id).toBe(user.id);
   });
 
+  it("counts wrong passwords on password-checking two-factor endpoints toward the account lockout", async () => {
+    const user = await createUser();
+    const jar = new CookieJar();
+    expect((await signIn(user.email, PASSWORD, jar)).status).toBe(200);
+
+    // A correct password does not count as a failure.
+    const enabled = await callAuth(auth.handler, jar, "/two-factor/enable", {
+      body: { password: PASSWORD },
+    });
+    expect(enabled.status).toBe(200);
+    const verified = await callAuth(
+      auth.handler,
+      jar,
+      "/two-factor/verify-totp",
+      { body: { code: totpFromUri(enabled.body.totpURI as string) } },
+    );
+    expect(verified.status).toBe(200);
+
+    const paths = [
+      "/two-factor/enable",
+      "/two-factor/disable",
+      "/two-factor/generate-backup-codes",
+      "/two-factor/enable",
+      "/two-factor/disable",
+    ];
+    for (const path of paths) {
+      const wrong = await callAuth(auth.handler, jar, path, {
+        body: { password: "wrong-password-123" },
+      });
+      expect(wrong.status).toBe(400);
+    }
+
+    // Locked now: the endpoints refuse before checking the password, even a
+    // correct one, and so does email sign-in.
+    const locked = await callAuth(
+      auth.handler,
+      jar,
+      "/two-factor/generate-backup-codes",
+      { body: { password: PASSWORD } },
+    );
+    expect(locked.status).toBe(429);
+    expect(locked.body).toMatchObject({ code: "ACCOUNT_LOCKED" });
+    const signInLocked = await signIn(user.email, PASSWORD);
+    expect(signInLocked.status).toBe(429);
+    expect(signInLocked.body).toMatchObject({ code: "ACCOUNT_LOCKED" });
+  });
+
   it("enrols a passkey, signs in with it, and cascades on account deletion", async () => {
     const user = await createUser();
     const jar = new CookieJar();

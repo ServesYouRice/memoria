@@ -324,7 +324,8 @@ export interface PileTransformResult {
   item: Awaited<ReturnType<typeof prisma.canvasItem.create>>;
   kind: PileTransformKind;
   itemsConsumed: number;
-  usage: AiUsageSnapshot;
+  /** Null when the usage store could not be read after the call. */
+  usage: AiUsageSnapshot | null;
 }
 
 export async function transformPileIntoNote(input: {

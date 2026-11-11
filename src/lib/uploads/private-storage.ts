@@ -108,12 +108,15 @@ export interface PrivateUploadRead {
 export async function readPrivateUploadObject(
   storageMode: string,
   storageKey: string,
+  signal?: AbortSignal,
 ): Promise<PrivateUploadRead> {
+  signal?.throwIfAborted();
   if (storageMode === "s3") {
     const bucket = process.env.S3_BUCKET;
     if (!bucket) throw new Error("Private upload bucket is not configured");
     const object = await getS3Client().send(
       new GetObjectCommand({ Bucket: bucket, Key: storageKey }),
+      { abortSignal: signal },
     );
     if (!object.Body) throw new Error("Private upload object body is missing");
     return {
