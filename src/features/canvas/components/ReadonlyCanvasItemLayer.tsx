@@ -17,16 +17,16 @@ import useImage from "use-image";
 import type { CanvasItem } from "@/types/canvas";
 import {
   ItemType,
-  isArrowContent,
+  isArrowItemContent,
   isBookmarkContent,
   isDrawingContent,
   isEmbedContent,
-  isFrameContent,
+  isFrameItemContent,
   isImageContent,
   isNoteContent,
   isPollContent,
   isShapeContent,
-  isTextContent,
+  isTextItemContent,
 } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
@@ -388,7 +388,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
     );
   }
 
-  if (item.type === ItemType.ARROW && isArrowContent(item.content)) {
+  if (item.type === ItemType.ARROW && isArrowItemContent(item.content)) {
     const start = item.content.startPoint || { x: 0, y: 0 };
     const end = item.content.endPoint || { x: item.width, y: item.height };
 
@@ -415,7 +415,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
     );
   }
 
-  if (item.type === ItemType.TEXT && isTextContent(item.content)) {
+  if (item.type === ItemType.TEXT && isTextItemContent(item.content)) {
     return (
       <Group x={item.positionX} y={item.positionY}>
         <Text
@@ -430,7 +430,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
     );
   }
 
-  if (item.type === ItemType.FRAME && isFrameContent(item.content)) {
+  if (item.type === ItemType.FRAME && isFrameItemContent(item.content)) {
     return (
       <Group x={item.positionX} y={item.positionY}>
         <Rect

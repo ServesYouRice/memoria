@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { Box, Button, Container, Typography, alpha } from "@mui/material";
 import {
   Refresh as RefreshIcon,
@@ -16,7 +17,9 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log the error to an error reporting service
+    // React does not raise window errors for errors a boundary catches, so
+    // report them here. Sentry is a no-op unless browser telemetry is enabled.
+    Sentry.captureException(error);
     console.error("Application error:", error);
   }, [error]);
 

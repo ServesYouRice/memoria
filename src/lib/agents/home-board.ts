@@ -39,11 +39,13 @@ import {
   createSuggestionRecordTx,
   markSuggestionExecuted,
   rejectSuggestion,
+  releaseSuggestionClaim,
   revertChangeSet,
   type ActorContext,
 } from "@/lib/agents/service-core";
 import {
   ASK_COMMAND_SUGGESTION_KIND,
+  ASK_MOVE_OPERATION,
   executeAskCommandSuggestion,
   getAskAssistantProfile,
 } from "@/lib/ai/ask-commands";
@@ -615,6 +617,64 @@ async function closeStale(itemId: string, suggestionId: string | null) {
 }
 
 /**
+ * Finishes an accept whose move transaction committed before the suggestion
+ * and the HomeBoardSuggestion row were updated. It finds the Ask move that
+ * filed this item and records it, so undo and "recently filed" work. Without
+ * that change set it refuses rather than guess.
+ */
+async function recordCommittedMove(input: {
+  userId: string;
+  row: { itemId: string; targetCanvasId: string; createdAt: Date };
+  suggestion: { id: string; status: SuggestionStatus };
+  automatic?: boolean;
+}) {
+  const record = await defaultPrisma.changeRecord.findFirst({
+    where: {
+      targetType: "CanvasItem",
+      targetId: input.row.itemId,
+      operation: ASK_MOVE_OPERATION,
+      revertedAt: null,
+      createdAt: { gte: input.row.createdAt },
+      changeSet: { userId: input.userId, revertedAt: null },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { changeSetId: true, after: true },
+  });
+  const after = record?.after as { canvasId?: unknown } | null | undefined;
+  if (!record || after?.canvasId !== input.row.targetCanvasId) {
+    throw new BadRequestError(
+      "This suggestion's move could not be confirmed; try again later.",
+    );
+  }
+  if (input.suggestion.status === SuggestionStatus.EXECUTING) {
+    await markSuggestionExecuted({
+      userId: input.userId,
+      suggestionId: input.suggestion.id,
+    });
+  }
+  await defaultPrisma.homeBoardSuggestion.updateMany({
+    where: { itemId: input.row.itemId, status: HomeBoardSuggestionStatus.OPEN },
+    data: {
+      status: input.automatic
+        ? HomeBoardSuggestionStatus.AUTO_FILED
+        : HomeBoardSuggestionStatus.ACCEPTED,
+      changeSetId: record.changeSetId,
+      actedAt: new Date(),
+    },
+  });
+  const board = await defaultPrisma.canvas.findFirst({
+    where: { id: input.row.targetCanvasId, userId: input.userId },
+    select: { name: true },
+  });
+  return {
+    itemId: input.row.itemId,
+    boardId: input.row.targetCanvasId,
+    boardName: board?.name ?? "",
+    changeSetId: record.changeSetId,
+  };
+}
+
+/**
  * Moves the item to its suggested board as one ChangeSet: approve, claim and
  * run the suggestion through the Ask move executor.
  */
@@ -634,17 +694,46 @@ export async function acceptHomeBoardSuggestion(input: {
     where: { id: input.itemId, deletedAt: null },
     select: { canvasId: true },
   });
-  if (!suggestion || !item || item.canvasId !== row.sourceCanvasId) {
+  const dropStale = async () => {
     await closeStale(row.itemId, row.suggestionId);
     throw new BadRequestError(
       "This item has already moved, so the suggestion was dropped.",
     );
-  }
+  };
+  if (!suggestion || !item) return dropStale();
 
-  await approveSuggestion({
-    userId: input.userId,
-    suggestionId: suggestion.id,
-  });
+  const claimed =
+    suggestion.status === SuggestionStatus.EXECUTING ||
+    suggestion.status === SuggestionStatus.EXECUTED;
+
+  // A rerun after an interrupted accept: the move committed but its
+  // bookkeeping did not. Record the committed move instead of dismissing it.
+  if (item.canvasId === row.targetCanvasId && claimed) {
+    return recordCommittedMove({
+      userId: input.userId,
+      row,
+      suggestion,
+      automatic: input.automatic,
+    });
+  }
+  if (item.canvasId !== row.sourceCanvasId) return dropStale();
+
+  // Resume from whichever step the last attempt reached. The item is still
+  // on the source board, so no move has committed for this suggestion.
+  if (suggestion.status === SuggestionStatus.OPEN) {
+    await approveSuggestion({
+      userId: input.userId,
+      suggestionId: suggestion.id,
+    });
+  } else if (suggestion.status === SuggestionStatus.EXECUTING) {
+    // The executor rolled back (or the worker died) without a release.
+    await releaseSuggestionClaim({
+      userId: input.userId,
+      suggestionId: suggestion.id,
+    });
+  } else if (suggestion.status !== SuggestionStatus.APPROVED) {
+    return dropStale();
+  }
   await claimSuggestionForExecution({
     userId: input.userId,
     suggestionId: suggestion.id,
@@ -661,6 +750,9 @@ export async function acceptHomeBoardSuggestion(input: {
       agentProfile: profile,
       payload: suggestion.payload,
       summary: suggestion.summary,
+      // The check above ran before any lock; the executor repeats it under
+      // the board locks so a manual move in between is never overwritten.
+      expectedSourceCanvasId: row.sourceCanvasId,
     });
   } catch (error) {
     await closeStale(row.itemId, suggestion.id);
@@ -690,6 +782,30 @@ export async function acceptHomeBoardSuggestion(input: {
     boardName: result.boardName,
     changeSetId: result.changeSetId,
   };
+}
+
+/**
+ * Finalizes the home-board row of an Ask suggestion executed through the
+ * generic execute path, as an accept does, so the Inbox lists it as filed and
+ * its Undo works. Matches no row for other Ask suggestions.
+ */
+export async function recordHomeBoardExecution(input: {
+  userId: string;
+  suggestionId: string;
+  changeSetId: string;
+}) {
+  await defaultPrisma.homeBoardSuggestion.updateMany({
+    where: {
+      userId: input.userId,
+      suggestionId: input.suggestionId,
+      status: HomeBoardSuggestionStatus.OPEN,
+    },
+    data: {
+      status: HomeBoardSuggestionStatus.ACCEPTED,
+      changeSetId: input.changeSetId,
+      actedAt: new Date(),
+    },
+  });
 }
 
 /** Keeps the item where it is; the same item is never proposed again. */
@@ -741,6 +857,18 @@ export async function undoHomeBoardMove(input: {
     select: { id: true, agentProfileId: true, revertedAt: true },
   });
   if (!changeSet) throw new NotFoundError("Change set not found.");
+  if (!changeSet.revertedAt) {
+    // Never pull back an item the user has moved on or trashed since.
+    const item = await defaultPrisma.canvasItem.findFirst({
+      where: { id: row.itemId },
+      select: { canvasId: true, deletedAt: true },
+    });
+    if (!item || item.deletedAt || item.canvasId !== row.targetCanvasId) {
+      throw new BadRequestError(
+        "This item has moved since, so the move cannot be undone.",
+      );
+    }
+  }
   let rollbackChangeSetId: string | null = null;
   if (!changeSet.revertedAt) {
     const { actor } = await assistantActor(

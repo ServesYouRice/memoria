@@ -26,7 +26,7 @@ import {
 } from "@/lib/validation/canvas-item";
 import type { CanvasItem } from "@/generated/prisma/client";
 import { ActivityType, logActivity } from "@/lib/activity";
-import { requirePollsEnabled } from "@/lib/polls/availability";
+import { arePollsEnabled, requirePollsEnabled } from "@/lib/polls/availability";
 import {
   recordCanvasItemEvent,
   recordCanvasItemEventsBatch,
@@ -225,6 +225,8 @@ export async function GET(request: NextRequest) {
           canvasId: query.canvasId,
           id: { in: query.ids },
           deletedAt: null,
+          // Hidden like the list read while polls are disabled.
+          ...(arePollsEnabled() ? {} : { type: { not: ItemType.POLL } }),
         },
       });
       return NextResponse.json({ items });

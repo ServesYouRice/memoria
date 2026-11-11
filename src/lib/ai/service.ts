@@ -9,6 +9,7 @@ import {
   type ResolvedAiProvider,
 } from "./provider-resolution";
 import { AiUpstreamError } from "./providers";
+import type { AiChatTurn } from "./chat-history";
 
 const logger = createLogger("ai-provider");
 export const AI_SUMMARY_ITEM_LIMIT = 500;
@@ -26,15 +27,18 @@ export interface GenerateOptions {
    * fallback applies. Budgets are enforced by the caller (`runBudgetedAi`).
    */
   userId?: string;
+  /** Earlier chat turns, oldest first, sent before `prompt`. */
+  history?: AiChatTurn[];
   signal?: AbortSignal;
 }
 
+/** Validates a saved custom base URL and pins requests to the checked IP. */
 async function assertUsableBaseUrl(resolved: ResolvedAiProvider) {
   if (resolved.source !== "user") return;
   if (resolved.baseUrl === getProviderSlot(resolved.provider).defaultBaseUrl) {
     return;
   }
-  await assertSafeAiBaseUrl(resolved.baseUrl);
+  resolved.pinnedIp = await assertSafeAiBaseUrl(resolved.baseUrl);
 }
 
 export async function generateText(options: GenerateOptions): Promise<string> {
@@ -46,6 +50,7 @@ export async function generateText(options: GenerateOptions): Promise<string> {
       system: options.system || DEFAULT_SYSTEM_PROMPT,
       temperature: options.temperature ?? 0.7,
       maxTokens: options.maxTokens ?? 500,
+      ...(options.history?.length ? { history: options.history } : {}),
       signal: options.signal,
     });
   } catch (error) {
@@ -62,8 +67,15 @@ export async function generateText(options: GenerateOptions): Promise<string> {
       },
       "AI provider request failed",
     );
-    if (upstream?.authFailed && resolved.credentialId) {
-      await markAiCredentialRejected(resolved.credentialId);
+    if (
+      upstream?.authFailed &&
+      resolved.credentialId &&
+      resolved.secretFingerprint
+    ) {
+      await markAiCredentialRejected(
+        resolved.credentialId,
+        resolved.secretFingerprint,
+      );
       throw new AiProviderError(
         "The AI provider rejected the saved key. Update it in Settings.",
       );
@@ -100,8 +112,15 @@ async function providerFailure(
     },
     "AI provider request failed",
   );
-  if (upstream?.authFailed && resolved.credentialId) {
-    await markAiCredentialRejected(resolved.credentialId);
+  if (
+    upstream?.authFailed &&
+    resolved.credentialId &&
+    resolved.secretFingerprint
+  ) {
+    await markAiCredentialRejected(
+      resolved.credentialId,
+      resolved.secretFingerprint,
+    );
     throw new AiProviderError(
       "The AI provider rejected the saved key. Update it in Settings.",
     );

@@ -95,18 +95,23 @@ function parseJpeg(buf: Buffer): ImageInfo | null {
 
 function parseGif(buf: Buffer): ImageInfo | null {
   if (buf.length < 13) return null;
-  const width = buf.readUInt16LE(6);
-  const height = buf.readUInt16LE(8);
+  // Decoders grow the canvas to fit any frame that overflows the logical
+  // screen, so the effective size covers every image descriptor too.
+  let width = buf.readUInt16LE(6);
+  let height = buf.readUInt16LE(8);
   const flags = buf[10];
   let pos = 13;
   if (flags & 0x80) pos += 3 * 2 ** ((flags & 0x07) + 1);
+  if (pos > buf.length) return null;
 
-  const skipSubBlocks = (): void => {
+  // Returns false when the sub-block chain runs past the end of the buffer.
+  const skipSubBlocks = (): boolean => {
     while (pos < buf.length) {
-      const size = buf[pos];
+      const size = buf[pos] as number;
       pos += 1 + size;
-      if (size === 0) return;
+      if (size === 0) return true;
     }
+    return false;
   };
 
   let frames = 0;
@@ -115,16 +120,22 @@ function parseGif(buf: Buffer): ImageInfo | null {
     if (block === 0x3b) break; // trailer
     if (block === 0x21) {
       pos += 2; // introducer + label
-      skipSubBlocks();
+      if (!skipSubBlocks()) return null;
     } else if (block === 0x2c) {
       frames += 1;
       if (frames > MAX_IMAGE_FRAMES) break; // already over; stop walking
-      if (pos + 10 > buf.length) break;
-      const imageFlags = buf[pos + 9];
+      if (pos + 10 > buf.length) return null;
+      const left = buf.readUInt16LE(pos + 1);
+      const top = buf.readUInt16LE(pos + 3);
+      const frameWidth = buf.readUInt16LE(pos + 5);
+      const frameHeight = buf.readUInt16LE(pos + 7);
+      width = Math.max(width, left + frameWidth);
+      height = Math.max(height, top + frameHeight);
+      const imageFlags = buf[pos + 9] as number;
       pos += 10;
       if (imageFlags & 0x80) pos += 3 * 2 ** ((imageFlags & 0x07) + 1);
       pos += 1; // LZW minimum code size
-      skipSubBlocks();
+      if (pos > buf.length || !skipSubBlocks()) return null;
     } else {
       return null; // malformed block stream
     }

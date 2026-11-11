@@ -98,12 +98,23 @@ function openSession(input: {
   onRejectedChange?: () => void;
   /** While `down`, every connection attempt fails, as without a network. */
   network?: { down: boolean };
+  /** Collects the byte size of every frame the session sends. */
+  sentSizes?: number[];
 }) {
   const headers = { origin: TEST_ORIGIN, cookie: input.member.cookie };
   const network = input.network;
+  const sentSizes = input.sentSizes;
   class SessionWebSocket extends WebSocket {
     constructor(address: string) {
       super(network?.down ? OFFLINE_URL : address, { headers });
+    }
+    override send(...args: Parameters<WebSocket["send"]>): void {
+      const data = args[0] as unknown as {
+        byteLength?: number;
+        length?: number;
+      };
+      sentSizes?.push(data.byteLength ?? data.length ?? 0);
+      super.send(...args);
     }
   }
   const session = new CanvasDocumentSession({
@@ -375,4 +386,49 @@ describe("offline canvas edits", () => {
     )!.load();
     expect(cached).toBeNull();
   });
+
+  it("reconnects with a small offline edit without uploading the whole document", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const url = await startServer();
+    // A large accepted document: many notes stored while online.
+    const online = openSession({ url, canvasId: canvas.id, member: owner });
+    await waitFor(() => online.acceptsWrites);
+    const filler = "x".repeat(2_000);
+    for (let index = 0; index < 150; index++) {
+      online.createItem(noteInput(canvas.id, `${filler}-${index}`, index));
+    }
+    await waitForStored(online, 15_000);
+    await reload(online);
+
+    // Offline: an edit, then a reload, still offline.
+    const first = await openOffline(canvas.id, owner);
+    const created = first.createItem(noteInput(canvas.id, "Small", 9_000));
+    await reload(first);
+
+    // The reloaded page builds on that edit, then the network comes back.
+    const network = { down: true };
+    const sentSizes: number[] = [];
+    const rejected = vi.fn();
+    const page = openSession({
+      url,
+      canvasId: canvas.id,
+      member: owner,
+      network,
+      sentSizes,
+      onRejectedChange: rejected,
+    });
+    await waitFor(() => page.getSnapshot().restored);
+    page.updateItem(created.id, { positionX: 9_100 });
+    expect(page.getSnapshot().unsavedChanges).toBe(2);
+    network.down = false;
+
+    await waitForStored(page, 20_000);
+    expect(rejected).not.toHaveBeenCalled();
+    const row = await prisma.canvasItem.findUnique({
+      where: { id: created.id },
+    });
+    expect(row?.positionX).toBe(9_100);
+    // The document holds ~300 KB of notes; the edits are a few hundred bytes.
+    expect(Math.max(...sentSizes)).toBeLessThan(50_000);
+  }, 40_000);
 });

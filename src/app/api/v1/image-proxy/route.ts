@@ -97,6 +97,8 @@ async function loadImage(
   const result = await safeFetchBuffer(url, {
     maxRedirects: IMAGE_PROXY_MAX_REDIRECTS,
     timeout: IMAGE_PROXY_TIMEOUT_MS,
+    // Whole fetch, redirects included; a dripping server cannot hold it open.
+    deadlineMs: IMAGE_PROXY_TIMEOUT_MS,
     maxSize: IMAGE_PROXY_MAX_BYTES,
     headers: {
       Accept:

@@ -112,10 +112,20 @@ export function useCollaboration(
   > | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(true);
+  /** A socket of the current canvas session has opened at least once. */
+  const sessionOpenedRef = useRef(false);
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
   const cursorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCursorRef = useRef<bigint>(0n);
   const replayInFlightRef = useRef(false);
+  // Bumped whenever replay state is reset (canvas change, socket close,
+  // unmount): a replay that started under an older value is discarded.
+  const replaySessionRef = useRef(0);
+  const replayAbortRef = useRef<AbortController | null>(null);
+  const replayRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const replayFailuresRef = useRef(0);
   const deferredCommittedEventsRef = useRef(
     new Map<string, CommittedCanvasItemEvent>(),
   );
@@ -136,6 +146,9 @@ export function useCollaboration(
   const onSnapshotRequiredRef = useRef(onSnapshotRequired);
 
   const MAX_RECONNECT_ATTEMPTS = 8;
+  // A failing replay is retried after 1 s, 2 s and 4 s, then given up.
+  const MAX_REPLAY_ATTEMPTS = 4;
+  const REPLAY_RETRY_BASE_MS = 1_000;
   const STABLE_CONNECTION_MS = 30_000;
   const COMMITTED_EVENT_BATCH_MS = 40;
 
@@ -150,36 +163,52 @@ export function useCollaboration(
     statusRef.current = status;
   }, [status]);
 
-  // Handle incoming WebSocket messages
-  const handleMessage = useCallback((message: any) => {
-    switch (message.type) {
-      case "presence":
-        // Update user presence
-        setUsers(message.users || []);
-        break;
-
-      case "cursors":
-        // Update cursor positions
-        setCursors(message.cursors || []);
-        break;
-
-      case "message":
-        // Handle generic broadcast messages
-        if (onMessageRef.current) {
-          onMessageRef.current(message.payload);
-        }
-        break;
-
-      case "committed-event":
-      case "event": {
-        const event = message.event ?? message.payload;
-        if (isCommittedCanvasItemEvent(event)) {
-          acceptCommittedEventRef.current?.(event);
-        }
-        break;
-      }
-    }
+  /** Move the committed-event cursor forward to a snapshot's cursor. */
+  const advanceCursor = useCallback((value: unknown) => {
+    if (typeof value !== "string" || !/^\d+$/.test(value)) return;
+    const cursor = BigInt(value);
+    if (cursor > lastCursorRef.current) lastCursorRef.current = cursor;
   }, []);
+
+  // Handle incoming WebSocket messages
+  const handleMessage = useCallback(
+    (message: any) => {
+      switch (message.type) {
+        case "presence":
+          // Update user presence
+          setUsers(message.users || []);
+          break;
+
+        case "cursors":
+          // Update cursor positions
+          setCursors(message.cursors || []);
+          break;
+
+        case "message":
+          // A version restore replaced the canvas: reload it and continue
+          // after the restore's sequence.
+          if (message.payload?.type === "canvas-restore-required") {
+            advanceCursor(message.payload.cursor);
+            onSnapshotRequiredRef.current?.();
+          }
+          // Handle generic broadcast messages
+          if (onMessageRef.current) {
+            onMessageRef.current(message.payload);
+          }
+          break;
+
+        case "committed-event":
+        case "event": {
+          const event = message.event ?? message.payload;
+          if (isCommittedCanvasItemEvent(event)) {
+            acceptCommittedEventRef.current?.(event);
+          }
+          break;
+        }
+      }
+    },
+    [advanceCursor],
+  );
 
   const flushCommittedEvents = useCallback(() => {
     committedFlushTimeoutRef.current = null;
@@ -234,7 +263,10 @@ export function useCollaboration(
       const cursor = BigInt(event.cursor);
       const lastCursor = lastCursorRef.current;
       if (cursor <= lastCursor) return;
-      if (detectGap && replayInFlightRef.current) {
+      if (
+        detectGap &&
+        (replayInFlightRef.current || replayRetryTimeoutRef.current)
+      ) {
         deferredCommittedEventsRef.current.set(event.cursor, event);
         return;
       }
@@ -253,16 +285,50 @@ export function useCollaboration(
     acceptCommittedEventRef.current = acceptCommittedEvent;
   }, [acceptCommittedEvent]);
 
+  /** Drop every replay in flight or scheduled, and the events it held. */
+  const resetReplay = useCallback(() => {
+    replaySessionRef.current += 1;
+    replayAbortRef.current?.abort();
+    replayAbortRef.current = null;
+    if (replayRetryTimeoutRef.current) {
+      clearTimeout(replayRetryTimeoutRef.current);
+      replayRetryTimeoutRef.current = null;
+    }
+    replayFailuresRef.current = 0;
+    replayInFlightRef.current = false;
+    deferredCommittedEventsRef.current.clear();
+  }, []);
+
+  const drainDeferredEvents = useCallback(
+    (detectGap: boolean) => {
+      const deferred = Array.from(
+        deferredCommittedEventsRef.current.values(),
+      ).sort((left, right) =>
+        BigInt(left.cursor) < BigInt(right.cursor) ? -1 : 1,
+      );
+      deferredCommittedEventsRef.current.clear();
+      for (const event of deferred) acceptCommittedEvent(event, detectGap);
+    },
+    [acceptCommittedEvent],
+  );
+
   const replayCommittedEvents = useCallback(
     async (cursor: bigint) => {
       if (replayInFlightRef.current) return;
+      const session = replaySessionRef.current;
+      const stale = () => session !== replaySessionRef.current;
+      const controller = new AbortController();
+      replayAbortRef.current = controller;
       replayInFlightRef.current = true;
+      let failed = false;
       try {
         let nextCursor = cursor;
         for (let page = 0; page < 10; page += 1) {
           const response = await fetch(
             `/api/v1/canvases/${encodeURIComponent(canvasId)}/events?cursor=${nextCursor.toString()}&limit=200`,
+            { signal: controller.signal },
           );
+          if (stale()) return;
           if (!response.ok) throw new Error("Committed event replay failed");
           const payload = (await response.json()) as {
             events?: unknown[];
@@ -270,7 +336,12 @@ export function useCollaboration(
             hasMore?: boolean;
             snapshotRequired?: boolean;
           };
+          if (stale()) return;
           if (payload.snapshotRequired) {
+            // The snapshot covers everything up to nextCursor (a restore, or
+            // events no longer kept): adopt it, so deferred events at or below
+            // it are dropped and the same gap is not replayed again.
+            advanceCursor(payload.nextCursor);
             onSnapshotRequiredRef.current?.();
             return;
           }
@@ -287,23 +358,50 @@ export function useCollaboration(
         }
         onSnapshotRequiredRef.current?.();
       } catch (error) {
-        logger.warn(
-          { error },
-          "Committed event replay failed; requesting snapshot",
-        );
-        onSnapshotRequiredRef.current?.();
+        if (stale()) return;
+        failed = true;
+        logger.warn({ error }, "Committed event replay failed");
       } finally {
-        replayInFlightRef.current = false;
-        const deferred = Array.from(
-          deferredCommittedEventsRef.current.values(),
-        ).sort((left, right) =>
-          BigInt(left.cursor) < BigInt(right.cursor) ? -1 : 1,
-        );
-        deferredCommittedEventsRef.current.clear();
-        for (const event of deferred) acceptCommittedEvent(event);
+        if (!stale()) {
+          replayInFlightRef.current = false;
+          replayAbortRef.current = null;
+          if (!failed) {
+            replayFailuresRef.current = 0;
+            drainDeferredEvents(true);
+          } else {
+            replayFailuresRef.current += 1;
+            const failures = replayFailuresRef.current;
+            if (failures < MAX_REPLAY_ATTEMPTS) {
+              // Keep the deferred events and try the same gap again later.
+              replayRetryTimeoutRef.current = setTimeout(
+                () => {
+                  replayRetryTimeoutRef.current = null;
+                  void replayCommittedEventsRef.current?.(
+                    lastCursorRef.current,
+                  );
+                },
+                REPLAY_RETRY_BASE_MS * 2 ** (failures - 1),
+              );
+            } else {
+              // Out of attempts: refetch the item list once, then apply the
+              // held events without gap detection. Each event re-reads its
+              // item from the server, and mergeCommittedCanvasItemEvents
+              // never lets a tombstone or an older version replace a newer
+              // cached item, so an event the snapshot already covers is
+              // harmless.
+              replayFailuresRef.current = 0;
+              logger.warn(
+                { failures },
+                "Committed event replay gave up; requesting snapshot",
+              );
+              onSnapshotRequiredRef.current?.();
+              drainDeferredEvents(false);
+            }
+          }
+        }
       }
     },
-    [acceptCommittedEvent, canvasId],
+    [acceptCommittedEvent, advanceCursor, canvasId, drainDeferredEvents],
   );
 
   useEffect(() => {
@@ -313,15 +411,14 @@ export function useCollaboration(
   useEffect(() => {
     committedBatchGenerationRef.current += 1;
     lastCursorRef.current = 0n;
-    replayInFlightRef.current = false;
-    deferredCommittedEventsRef.current.clear();
+    resetReplay();
     pendingCommittedEventsRef.current = [];
     committedFlushInFlightRef.current = false;
     if (committedFlushTimeoutRef.current) {
       clearTimeout(committedFlushTimeoutRef.current);
       committedFlushTimeoutRef.current = null;
     }
-  }, [canvasId]);
+  }, [canvasId, resetReplay]);
 
   // Connect to WebSocket server with reconnect/backoff
   useEffect(() => {
@@ -333,9 +430,9 @@ export function useCollaboration(
     }
 
     shouldReconnectRef.current = true;
+    sessionOpenedRef.current = false;
     reconnectAttemptsRef.current = 0;
     setConnectionMessage(null);
-    const deferredCommittedEvents = deferredCommittedEventsRef.current;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/api/collaboration/${canvasId}`;
@@ -395,6 +492,7 @@ export function useCollaboration(
 
       ws.onopen = () => {
         opened = true;
+        sessionOpenedRef.current = true;
         logger.info("Connected to collaboration server");
         if (reconnectStableTimeoutRef.current) {
           clearTimeout(reconnectStableTimeoutRef.current);
@@ -439,10 +537,14 @@ export function useCollaboration(
         setConnected(false);
         setUsers([]);
         setCursors([]);
+        // The next open replays from the last cursor; nothing held for the
+        // closed socket's gap is still needed.
+        resetReplay();
         const disposition = collaborationCloseDisposition({
           code: event.code,
           opened,
           intentional: !shouldReconnectRef.current,
+          sessionHasOpened: sessionOpenedRef.current,
         });
         if (disposition === "stop") {
           if (shouldReconnectRef.current) {
@@ -498,7 +600,7 @@ export function useCollaboration(
       pendingCommittedEventsRef.current = [];
       committedFlushInFlightRef.current = false;
       committedBatchGenerationRef.current += 1;
-      deferredCommittedEvents.clear();
+      resetReplay();
       const activeSocket = wsRef.current;
       wsRef.current = null;
       activeSocket?.close();
@@ -516,6 +618,7 @@ export function useCollaboration(
     enabled,
     handleMessage,
     replayCommittedEvents,
+    resetReplay,
   ]);
 
   // Coalesce pointer movement to the same cadence as the server cursor tick.

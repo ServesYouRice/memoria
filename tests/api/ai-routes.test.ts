@@ -497,7 +497,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
         });
       });
 
-      it("invokes findSerendipitousItems with user ID, canvas ID, keywords, and email on owned canvas, returning { results }", async () => {
+      it("invokes findSerendipitousItems with user ID, canvas ID, and keywords (no email) on owned canvas, returning { results }", async () => {
         prismaMocks.canvasFindFirst.mockResolvedValue({ id: validCanvasId });
         const mockResults = [
           { itemId: "item-10", score: 0.95, text: "Serendipitous match" },
@@ -519,7 +519,6 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
           sessionUser.id,
           validCanvasId,
           ["quantum", "gravity"],
-          sessionUser.email,
         );
       });
     });

@@ -93,4 +93,37 @@ describe("bookmark refresh outbox handler", () => {
     expect(mocks.recordEvent).toHaveBeenCalledOnce();
     expect(mocks.invalidate).toHaveBeenCalledWith("clxxxxxxxxxxxxxxxxxxxxxxx");
   });
+
+  it.each([
+    ["javascript:", "javascript:alert(1)"],
+    ["data:", "data:text/html;base64,PHNjcmlwdD4="],
+    ["file:", "file:///etc/passwd"],
+  ])("never stores a %s image from the remote page", async (_s, image) => {
+    mocks.validateMetadata.mockReturnValue({ title: "Changed", image });
+    const { client, updateMany } = fakePrisma();
+    await createBookmarkRefreshHandler(client)({
+      payload: { itemId: "clzzzzzzzzzzzzzzzzzzzzzzz" },
+    } as never);
+    expect(updateMany).toHaveBeenCalledOnce();
+    const stored = updateMany.mock.calls[0][0].data.content;
+    expect(JSON.stringify(stored)).not.toContain(image.split(":")[0] + ":");
+    expect(stored.title).toBe("Changed");
+    expect(stored.url).toBe("https://example.com");
+    expect(stored.history).toHaveLength(1);
+  });
+
+  it("does not write content over the schema's limits", async () => {
+    mocks.validateMetadata.mockReturnValue({
+      title: "Changed",
+      description: "x".repeat(5000),
+    });
+    const { client, updateMany, executeRaw } = fakePrisma();
+    await createBookmarkRefreshHandler(client)({
+      payload: { itemId: "clzzzzzzzzzzzzzzzzzzzzzzz" },
+    } as never);
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(mocks.recordEvent).not.toHaveBeenCalled();
+    // The attempt is still stamped so the item is not refreshed in a loop.
+    expect(executeRaw).toHaveBeenCalledOnce();
+  });
 });

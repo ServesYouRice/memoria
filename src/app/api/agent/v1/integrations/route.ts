@@ -1,7 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import {
   IntegrationAuthMode,
   IntegrationProviderType,
+  Prisma,
 } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -13,7 +15,7 @@ import {
 } from "@/lib/agents/auth";
 import { encryptSecret } from "@/lib/agents/crypto";
 import { listOwnedIntegrationAccounts } from "@/lib/agents/query-core";
-import { ForbiddenError, BadRequestError } from "@/lib/errors";
+import { ForbiddenError, BadRequestError, ConflictError } from "@/lib/errors";
 
 const createIntegrationAccountSchema = z.object({
   agentProfileId: z.string().cuid(),
@@ -72,41 +74,61 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   }
 
   const token = await generateIntegrationToken();
-  const replayCursor =
+  // A WEBHOOK account signs outbound deliveries with its own random secret.
+  // Receivers must hold that secret to verify signatures, so it must not be
+  // the bearer token, which would hand them a working API credential and keep
+  // a reversible copy of a token that is otherwise stored only as a hash.
+  const webhookSigningSecret =
     data.providerType === IntegrationProviderType.WEBHOOK
-      ? {
-          outboundSigningSecret: encryptSecret(token.plaintextToken),
-        }
-      : undefined;
+      ? randomBytes(32).toString("base64url")
+      : null;
+  const replayCursor = webhookSigningSecret
+    ? { outboundSigningSecret: encryptSecret(webhookSigningSecret) }
+    : undefined;
 
-  const integrationAccount = await prisma.integrationAccount.create({
-    data: {
-      agentProfileId: data.agentProfileId,
-      providerType: data.providerType,
-      externalAccountId: data.externalAccountId,
-      authMode: data.authMode,
-      encryptedSecretOrHash: token.hash,
-      secretPrefix: token.prefix,
-      secretSuffix: token.suffix,
-      replayCursor,
-    },
-    select: {
-      id: true,
-      agentProfileId: true,
-      providerType: true,
-      externalAccountId: true,
-      authMode: true,
-      status: true,
-      lastSeenAt: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  const integrationAccount = await prisma.integrationAccount
+    .create({
+      data: {
+        agentProfileId: data.agentProfileId,
+        providerType: data.providerType,
+        externalAccountId: data.externalAccountId,
+        authMode: data.authMode,
+        encryptedSecretOrHash: token.hash,
+        secretPrefix: token.prefix,
+        secretSuffix: token.suffix,
+        replayCursor,
+      },
+      select: {
+        id: true,
+        agentProfileId: true,
+        providerType: true,
+        externalAccountId: true,
+        authMode: true,
+        status: true,
+        lastSeenAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+    .catch((error: unknown) => {
+      // Uniqueness is scoped to the agent profile, so a violation only ever
+      // describes the caller's own profile and says nothing about other tenants.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ConflictError(
+          "This agent profile already has that integration account.",
+        );
+      }
+      throw error;
+    });
 
   return NextResponse.json(
     {
       integrationAccount,
       plaintextToken: token.plaintextToken,
+      ...(webhookSigningSecret ? { webhookSigningSecret } : {}),
     },
     { status: 201 },
   );

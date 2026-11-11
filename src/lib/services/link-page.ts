@@ -23,7 +23,25 @@ export const LINK_PAGE_TEXT_MAX_CHARS = 100_000;
 
 export type LinkPageResult =
   | { ok: true; html: string; metadata: ExtractedMetadata }
-  | { ok: false; status: number; error: string };
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      /**
+       * Set only when the failure is the remote site's own answer (a non-OK
+       * status, or a redirect without Location): that code belongs to the
+       * site, never to Memoria's own response.
+       */
+      upstreamStatus?: number;
+    };
+
+/** safeFetch's error texts for failures that are the remote site's answer. */
+function isUpstreamFailure(error: string | undefined) {
+  return (
+    error === "Redirect without location header" ||
+    /^HTTP \d+$/.test(error ?? "")
+  );
+}
 
 export async function fetchLinkPage(
   url: string,
@@ -39,6 +57,9 @@ export async function fetchLinkPage(
       ok: false,
       status: fetched.status || 500,
       error: fetched.error || "Failed to fetch URL",
+      ...(isUpstreamFailure(fetched.error)
+        ? { upstreamStatus: fetched.status }
+        : {}),
     };
   }
   if (!fetched.data) {
@@ -47,7 +68,11 @@ export async function fetchLinkPage(
   return {
     ok: true,
     html: fetched.data,
-    metadata: validateMetadata(extractMetadata(fetched.data, url)),
+    // Relative favicon, image and canonical links belong to the page that
+    // was served, which after redirects is not the requested URL.
+    metadata: validateMetadata(
+      extractMetadata(fetched.data, fetched.finalUrl || url),
+    ),
   };
 }
 

@@ -58,37 +58,61 @@ export function SortIntoPilesDialog({
   const [sorting, setSorting] = useState(false);
   const [applying, setApplying] = useState(false);
   const requested = useRef(false);
+  // The suggestion already approved; a retry after a failed execute must not
+  // approve again (it is no longer OPEN) but run the execute step only.
+  const approvedSuggestionIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    approvedSuggestionIdRef.current = null;
+  }, [proposal]);
+  // Each sort (and each close) bumps the generation; callbacks of an older
+  // request see a newer generation and leave the current state alone.
+  const generationRef = useRef(0);
 
   const runSort = useCallback(
     (nextInstruction?: string) => {
+      const generation = ++generationRef.current;
+      const isCurrent = () => generation === generationRef.current;
       setSorting(true);
       setError(null);
       organize
         .mutateAsync({ canvasId, instruction: nextInstruction })
         .then((result) => {
+          if (!isCurrent()) {
+            // Nobody will see or dismiss this proposal; do not leave it open.
+            if (result.suggestionId) {
+              reject.mutateAsync(result.suggestionId).catch(() => undefined);
+            }
+            return;
+          }
           setProposal(result);
           if (nextInstruction === undefined) {
             setInstruction(result.instruction ?? "");
           }
         })
-        .catch((organizeError: unknown) =>
+        .catch((organizeError: unknown) => {
+          if (!isCurrent()) return;
           setError(
             organizeError instanceof Error
               ? organizeError.message
               : "Could not sort this board.",
-          ),
-        )
-        .finally(() => setSorting(false));
+          );
+        })
+        .finally(() => {
+          if (isCurrent()) setSorting(false);
+        });
     },
-    [canvasId, organize],
+    [canvasId, organize, reject],
   );
 
   useEffect(() => {
     if (!open) {
+      generationRef.current += 1;
       requested.current = false;
       setProposal(null);
       setInstruction("");
       setError(null);
+      setSorting(false);
       return;
     }
     if (requested.current) return;
@@ -116,7 +140,10 @@ export function SortIntoPilesDialog({
     setApplying(true);
     setError(null);
     try {
-      await approve.mutateAsync(proposal.suggestionId);
+      if (approvedSuggestionIdRef.current !== proposal.suggestionId) {
+        await approve.mutateAsync(proposal.suggestionId);
+        approvedSuggestionIdRef.current = proposal.suggestionId;
+      }
       const result = (await execute.mutateAsync(proposal.suggestionId)) as {
         executed?: { changeSetId?: string; movedItemCount?: number };
       };

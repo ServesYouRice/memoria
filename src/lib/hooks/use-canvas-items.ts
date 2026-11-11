@@ -38,6 +38,7 @@ import {
   useInfiniteQuery,
   useSuspenseQuery,
   useQueryClient,
+  hashKey,
 } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
@@ -290,8 +291,19 @@ const api = {
 export const canvasItemKeys = {
   all: ["canvas-items"] as const,
   lists: () => [...canvasItemKeys.all, "list"] as const,
+  // Only defined filters become own keys. TanStack's partial matching checks
+  // every key of a filter object, so `viewport: undefined` would never match
+  // the board's viewport query; hashes are unchanged because hashing already
+  // drops undefined values.
   list: (canvasId: string, type?: ItemType, viewport?: ViewportParams) =>
-    [...canvasItemKeys.lists(), { canvasId, type, viewport }] as const,
+    [
+      ...canvasItemKeys.lists(),
+      {
+        canvasId,
+        ...(type !== undefined ? { type } : {}),
+        ...(viewport !== undefined ? { viewport } : {}),
+      } as { canvasId: string; type?: ItemType; viewport?: ViewportParams },
+    ] as const,
   detail: (itemId: string) =>
     [...canvasItemKeys.all, "detail", itemId] as const,
 };
@@ -389,6 +401,36 @@ function newestCommittedEvents(
   );
 }
 
+/**
+ * Whether a new item belongs in the item list cached under `queryKey`:
+ * the list's canvas, type filter and viewport window (by the same edge
+ * intersection the list route uses). "unknown" when the key's filters cannot
+ * be checked here (tag filters); such a list is refetched instead.
+ */
+function listAcceptsItem(
+  queryKey: readonly unknown[],
+  item: CanvasItem,
+): boolean | "unknown" {
+  const filter = queryKey[2] as
+    | { canvasId?: string; type?: ItemType; viewport?: ViewportParams }
+    | undefined;
+  if (!filter || typeof filter !== "object") return "unknown";
+  if (filter.canvasId !== item.canvasId) return false;
+  if (filter.type !== undefined && filter.type !== item.type) return false;
+  const viewport = filter.viewport;
+  if (!viewport) return true;
+  if (viewport.tags?.length) return "unknown";
+  const bounds = [viewport.minX, viewport.maxX, viewport.minY, viewport.maxY];
+  const geometry = [item.positionX, item.positionY, item.width, item.height];
+  if (![...bounds, ...geometry].every(Number.isFinite)) return "unknown";
+  return (
+    item.positionX + item.width >= viewport.minX &&
+    item.positionX <= viewport.maxX &&
+    item.positionY + item.height >= viewport.minY &&
+    item.positionY <= viewport.maxY
+  );
+}
+
 function applyCommittedCanvasItemBatch(
   queryClient: QueryClient,
   events: CommittedCanvasItemEvent[],
@@ -444,73 +486,95 @@ function applyCommittedCanvasItemBatch(
     return { items: merged, changed, removed };
   };
 
-  queryClient.setQueriesData(
-    { queryKey: canvasItemKeys.lists() },
-    (
-      old:
-        | { items?: CanvasItem[] }
-        | {
-            pages?: Array<{
-              items: CanvasItem[];
-              total?: number;
-              hasMore?: boolean;
-            }>;
-            pageParams?: unknown[];
-          }
-        | undefined,
-    ) => {
-      const seen = new Set<string>();
-
-      // The accessible item list is an infinite (cursor-paged) query; keep it
-      // in step with live events like the board's flat list.
-      if (old && "pages" in old && Array.isArray(old.pages)) {
-        let changed = false;
-        let removed = 0;
-        const pages = old.pages.map((page) => {
-          const result = mergeItems(page.items, seen);
-          changed ||= result.changed;
-          removed += result.removed;
-          return result.changed ? { ...page, items: result.items } : page;
-        });
-        const added = [...incoming.values()].filter(
-          (item) => !seen.has(item.id),
-        );
-        const last = pages[pages.length - 1];
-        // Unseen items belong at the end; only append once every page is
-        // loaded, otherwise the next page fetch will return them.
-        const appended = last && !last.hasMore ? added.length : 0;
-        if (last && appended > 0) {
-          pages[pages.length - 1] = {
-            ...last,
-            items: [...last.items, ...added],
-          };
-          changed = true;
-        }
-        if (!changed) return old;
-        const first = pages[0];
-        if (first && typeof first.total === "number") {
-          pages[0] = {
-            ...first,
-            total: Math.max(0, first.total + added.length - removed),
-          };
-        }
-        return { ...old, pages };
+  type ListCache =
+    | { items?: CanvasItem[] }
+    | {
+        pages?: Array<{
+          items: CanvasItem[];
+          total?: number;
+          hasMore?: boolean;
+        }>;
+        pageParams?: unknown[];
       }
+    | undefined;
 
-      if (!old || !("items" in old) || !old.items) return old;
-      const result = mergeItems(old.items, seen);
-      const items = result.items;
-      let changed = result.changed;
+  const refetch = new Set<string>();
+  const updateList = (
+    queryKey: readonly unknown[],
+    old: ListCache,
+  ): ListCache => {
+    const seen = new Set<string>();
+    // New items go only into lists of their canvas and windows that hold
+    // them; updates and deletions of listed items apply everywhere.
+    const unseenFor = () => {
+      const added: CanvasItem[] = [];
       for (const item of incoming.values()) {
-        if (!seen.has(item.id)) {
-          items.push(item);
-          changed = true;
-        }
+        if (seen.has(item.id)) continue;
+        const accepts = listAcceptsItem(queryKey, item);
+        if (accepts === true) added.push(item);
+        else if (accepts === "unknown") refetch.add(hashKey(queryKey));
       }
+      return added;
+    };
 
-      return changed ? { ...old, items } : old;
-    },
-  );
+    // The accessible item list is an infinite (cursor-paged) query; keep it
+    // in step with live events like the board's flat list.
+    if (old && "pages" in old && Array.isArray(old.pages)) {
+      let changed = false;
+      let removed = 0;
+      const pages = old.pages.map((page) => {
+        const result = mergeItems(page.items, seen);
+        changed ||= result.changed;
+        removed += result.removed;
+        return result.changed ? { ...page, items: result.items } : page;
+      });
+      const added = unseenFor();
+      const last = pages[pages.length - 1];
+      // Unseen items belong at the end; only append once every page is
+      // loaded, otherwise the next page fetch will return them.
+      const appended = last && !last.hasMore ? added.length : 0;
+      if (last && appended > 0) {
+        pages[pages.length - 1] = {
+          ...last,
+          items: [...last.items, ...added],
+        };
+        changed = true;
+      }
+      if (!changed) return old;
+      const first = pages[0];
+      if (first && typeof first.total === "number") {
+        pages[0] = {
+          ...first,
+          total: Math.max(0, first.total + added.length - removed),
+        };
+      }
+      return { ...old, pages };
+    }
+
+    if (!old || !("items" in old) || !old.items) return old;
+    const result = mergeItems(old.items, seen);
+    const items = result.items;
+    let changed = result.changed;
+    for (const item of unseenFor()) {
+      items.push(item);
+      changed = true;
+    }
+
+    return changed ? { ...old, items } : old;
+  };
+
+  for (const [queryKey, old] of queryClient.getQueriesData<ListCache>({
+    queryKey: canvasItemKeys.lists(),
+  })) {
+    const next = updateList(queryKey, old);
+    if (next !== old) queryClient.setQueryData(queryKey, next);
+  }
+  if (refetch.size > 0) {
+    void queryClient.invalidateQueries({
+      queryKey: canvasItemKeys.lists(),
+      predicate: (query) => refetch.has(query.queryHash),
+    });
+  }
 }
 
 const OFFLINE_PLACEHOLDER = "offlinePlaceholder";
@@ -762,12 +826,14 @@ export function useCreateCanvasItem() {
 
       queryClient.setQueriesData(
         { queryKey: canvasItemKeys.list(newItem.canvasId) },
-        (old: { items?: CanvasItem[] } | undefined) => ({
-          ...old,
-          items: old?.items
-            ? [...old.items, optimisticItem as unknown as CanvasItem]
-            : [optimisticItem as unknown as CanvasItem],
-        }),
+        (old: { items?: CanvasItem[] } | undefined) => {
+          // Paged or unloaded caches keep their shape; they refetch below.
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: [...old.items, optimisticItem as unknown as CanvasItem],
+          };
+        },
       );
 
       return { tempId, canvasId: newItem.canvasId, route: "http" as const };
@@ -867,9 +933,10 @@ export function useUpdateCanvasItem() {
           canvasItemKeys.detail(itemId),
           (old: CanvasItem | undefined) => {
             if (!old) return old;
+            const { version: _version, ...changes } = data;
             return {
               ...old,
-              ...data,
+              ...changes,
               updatedAt: new Date(),
             };
           },
@@ -881,11 +948,17 @@ export function useUpdateCanvasItem() {
             if (!old?.items) return old;
             return {
               ...old,
-              items: old.items.map((item) =>
-                item.id === itemId
-                  ? ({ ...item, ...data, updatedAt: new Date() } as CanvasItem)
-                  : item,
-              ),
+              items: old.items.map((item) => {
+                if (item.id !== itemId) return item;
+                // The caller's version is the precondition it sent; the
+                // cached version moves only when the server returns one.
+                const { version: _version, ...changes } = data;
+                return {
+                  ...item,
+                  ...changes,
+                  updatedAt: new Date(),
+                } as CanvasItem;
+              }),
             };
           },
         );
@@ -898,16 +971,27 @@ export function useUpdateCanvasItem() {
         canvasItemKeys.detail(updatedItem.id),
         updatedItem,
       );
+      const replace = (items: CanvasItem[]) =>
+        items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
       queryClient.setQueriesData(
         { queryKey: canvasItemKeys.list(updatedItem.canvasId) },
-        (old: { items?: CanvasItem[] } | undefined) => {
-          if (!old?.items) return old;
-          return {
-            ...old,
-            items: old.items.map((item) =>
-              item.id === updatedItem.id ? updatedItem : item,
-            ),
-          };
+        (
+          old:
+            | { items?: CanvasItem[]; pages?: undefined }
+            | { items?: undefined; pages?: Array<{ items: CanvasItem[] }> }
+            | undefined,
+        ) => {
+          if (old?.items) return { ...old, items: replace(old.items) };
+          if (Array.isArray(old?.pages)) {
+            return {
+              ...old,
+              pages: old.pages.map((page) => ({
+                ...page,
+                items: replace(page.items),
+              })),
+            };
+          }
+          return old;
         },
       );
       // A document write is not stored yet; the board refreshes the index
@@ -1021,16 +1105,22 @@ export function useDeleteCanvasItem() {
           canvasItemKeys.detail(context.itemId),
           context.deletedItem,
         );
-        queryClient.setQueriesData(
-          { queryKey: canvasItemKeys.lists() },
-          (old: { items?: CanvasItem[] } | undefined) => {
-            if (!old?.items) return old;
-            return {
+        const deletedItem = context.deletedItem;
+        for (const [queryKey, old] of queryClient.getQueriesData<{
+          items?: CanvasItem[];
+        }>({ queryKey: canvasItemKeys.lists() })) {
+          if (!old?.items) continue;
+          if (old.items.some((item) => item.id === deletedItem.id)) continue;
+          const accepts = listAcceptsItem(queryKey, deletedItem);
+          if (accepts === "unknown") {
+            void queryClient.invalidateQueries({ queryKey, exact: true });
+          } else if (accepts) {
+            queryClient.setQueryData(queryKey, {
               ...old,
-              items: [...old.items, context.deletedItem as CanvasItem],
-            };
-          },
-        );
+              items: [...old.items, deletedItem],
+            });
+          }
+        }
       }
     },
     onSuccess: (_result, _variables, context) => {

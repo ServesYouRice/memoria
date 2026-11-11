@@ -186,6 +186,12 @@ describe("upload.note handler", () => {
 
   function fakePrisma() {
     const tx = {
+      // The in-transaction access recheck reads the canvas owner and then the
+      // share row (FOR SHARE); both answer from the same mocked canvas.
+      canvas: { findUnique: mocks.findCanvas },
+      $queryRaw: vi.fn(
+        async () => ((await mocks.findCanvas()) ?? { shares: [] }).shares,
+      ),
       uploadAsset: {
         findUnique: vi.fn(async () => ({
           status: asset.status,
@@ -319,6 +325,59 @@ describe("upload.note handler", () => {
     mocks.readImageText.mockResolvedValue("Shared\n\nok");
     await createUploadNoteHandler(fakePrisma())(job());
     expect(created).toHaveLength(1);
+  });
+
+  it("writes no note when edit access is revoked during the AI call", async () => {
+    mocks.findCanvas.mockResolvedValue({
+      userId: "owner",
+      shares: [{ role: "EDIT" }],
+    });
+    mocks.readImageText.mockImplementation(async () => {
+      mocks.findCanvas.mockResolvedValue({ userId: "owner", shares: [] });
+      return "Shared\n\nok";
+    });
+    await expect(
+      createUploadNoteHandler(fakePrisma())(job()),
+    ).rejects.toMatchObject({
+      retryable: false,
+      message: "The requester can no longer edit this canvas",
+    });
+    expect(created).toHaveLength(0);
+  });
+
+  it("cancels a stalled storage read when the worker aborts the job", async () => {
+    const cancelled = vi.fn();
+    mocks.readPrivateUploadObject.mockImplementation(async () => ({
+      // A body that never delivers a chunk, like a stalled S3 response.
+      body: new ReadableStream<Uint8Array>({
+        pull: () => new Promise<void>(() => undefined),
+        cancel: cancelled,
+      }),
+      etag: "e",
+    }));
+    const controller = new AbortController();
+    const run = createUploadNoteHandler(fakePrisma())(job(), {
+      signal: controller.signal,
+    } as never);
+    const outcome = run.then(
+      () => "resolved",
+      () => "rejected",
+    );
+    await vi.waitFor(() =>
+      expect(mocks.readPrivateUploadObject).toHaveBeenCalled(),
+    );
+    expect(mocks.readPrivateUploadObject.mock.calls[0]![2]).toBe(
+      controller.signal,
+    );
+    controller.abort(new Error("job timed out"));
+    const settled = await Promise.race([
+      outcome,
+      new Promise((resolve) => setTimeout(() => resolve("hung"), 500)),
+    ]);
+    expect(settled).toBe("rejected");
+    expect(cancelled).toHaveBeenCalled();
+    expect(mocks.readImageText).not.toHaveBeenCalled();
+    expect(created).toHaveLength(0);
   });
 
   it("applies the AI budget to the job", async () => {

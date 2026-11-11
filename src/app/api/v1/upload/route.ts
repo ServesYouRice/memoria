@@ -23,10 +23,12 @@ import { createS3Client } from "@/lib/uploads/s3-client.mjs";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import {
   activateUploadAsset,
+  compensateWrittenUpload,
   failUploadReservation,
   reserveUploadAsset,
 } from "@/lib/uploads/lifecycle";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import { createLogger } from "@/lib/logger";
 import { boundRequestBody, payloadTooLarge } from "@/lib/uploads/body-limit";
 import { checkImageBounds } from "@/lib/uploads/image-bounds";
 import {
@@ -54,6 +56,7 @@ const VOICE_NOTE_PURPOSE = "voice-note";
 
 const DEFAULT_SCAN_TIMEOUT_MS = 10000;
 
+const uploadLogger = createLogger("upload");
 let s3Client: S3Client | null = null;
 const uploadLockWaiters = new Map<string, Promise<void>>();
 
@@ -222,38 +225,82 @@ async function runMalwareScan(
   );
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(scanUrl, {
-      method: "POST",
-      body: formData,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    throw new ApiError(
+  const unavailable = (detail: string) =>
+    new ApiError(
       503,
       "https://memoria.local/errors/upload-scan",
       "Malware scan unavailable",
-      error instanceof Error ? error.message : "Scan service unavailable",
+      detail,
     );
+
+  // fetch resolves once headers arrive, so the deadline must also cover the
+  // body: a scanner that sends 200 and then stalls would otherwise hold the
+  // upload forever.
+  let response: Response;
+  let bodyText: string;
+  try {
+    try {
+      response = await fetch(scanUrl, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw unavailable(
+        error instanceof Error ? error.message : "Scan service unavailable",
+      );
+    }
+
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new ApiError(
+        503,
+        "https://memoria.local/errors/upload-scan",
+        "Malware scan failed",
+        `Scan service returned ${response.status}`,
+      );
+    }
+
+    const body = response;
+    bodyText = await new Promise<string>((resolve, reject) => {
+      const onAbort = () => {
+        void body.body?.cancel().catch(() => undefined);
+        reject(unavailable("Scan service response timed out"));
+      };
+      if (controller.signal.aborted) return onAbort();
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      body.text().then(
+        (text) => {
+          controller.signal.removeEventListener("abort", onAbort);
+          resolve(text);
+        },
+        (error: unknown) => {
+          controller.signal.removeEventListener("abort", onAbort);
+          reject(
+            controller.signal.aborted
+              ? unavailable("Scan service response timed out")
+              : unavailable(
+                  error instanceof Error
+                    ? error.message
+                    : "Scan service unavailable",
+                ),
+          );
+        },
+      );
+    });
   } finally {
     clearTimeout(timeout);
   }
 
-  if (!response.ok) {
-    throw new ApiError(
-      503,
-      "https://memoria.local/errors/upload-scan",
-      "Malware scan failed",
-      `Scan service returned ${response.status}`,
-    );
+  let scanResult: { clean?: boolean; reason?: string } | null;
+  try {
+    scanResult = JSON.parse(bodyText) as {
+      clean?: boolean;
+      reason?: string;
+    } | null;
+  } catch {
+    scanResult = null;
   }
-
-  const scanResult = (await response.json().catch(() => null)) as {
-    clean?: boolean;
-    reason?: string;
-  } | null;
   if (!scanResult || typeof scanResult.clean !== "boolean") {
     throw new ApiError(
       502,
@@ -383,6 +430,40 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
           }
         : {};
 
+    /**
+     * Activate an asset whose object is already stored. On failure the
+     * object must not be left behind: fail the reservation and queue its
+     * deletion. If that compensation itself fails, the object stays until
+     * an operator removes it, so its key is logged (residual risk).
+     */
+    const activateWrittenUpload = async (asset: {
+      id: string;
+      storageKey: string;
+      storageMode: string;
+      size: number;
+    }) => {
+      try {
+        await activateUploadAsset(prisma, asset.id);
+      } catch (activationError) {
+        try {
+          await compensateWrittenUpload(prisma, {
+            assetId: asset.id,
+            userId,
+            storageMode: asset.storageMode,
+            storageKey: asset.storageKey,
+            size: asset.size,
+            reason: "activation_failed",
+          });
+        } catch {
+          uploadLogger.error(
+            { assetId: asset.id, storageKey: asset.storageKey },
+            "Upload activation and its cleanup both failed; object retained",
+          );
+        }
+        throw activationError;
+      }
+    };
+
     return withUploadLock(userId, async () => {
       const storageKey = `uploads/${safeUserId}/${uniqueFilename}`;
       const asset = await reserveUploadAsset(prisma, {
@@ -419,11 +500,11 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
               CacheControl: "private, no-store",
             }),
           );
-          await activateUploadAsset(prisma, asset.id);
         } catch (error) {
           await failUploadReservation(prisma, asset.id, "object_write_failed");
           throw error;
         }
+        await activateWrittenUpload(asset);
 
         return NextResponse.json({
           assetId: asset.id,
@@ -455,11 +536,11 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
       try {
         await mkdir(uploadDir, { recursive: true });
         await writeFile(filePath, buffer);
-        await activateUploadAsset(prisma, asset.id);
       } catch (error) {
         await failUploadReservation(prisma, asset.id, "object_write_failed");
         throw error;
       }
+      await activateWrittenUpload(asset);
 
       return NextResponse.json({
         assetId: asset.id,

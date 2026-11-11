@@ -9,6 +9,11 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Circle, Text, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
+import {
+  cornerHandlePosition,
+  resizeFromCorner,
+  type ResizeCorner,
+} from "@/features/canvas/lib/geometry-adapter";
 import { isImageContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
@@ -82,6 +87,8 @@ export function ImageItem({
   };
 
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    // Only the item body moves the item; a resize handle's drag is its own.
+    if (e.target !== e.currentTarget) return;
     const node = e.target;
     const newPos = {
       x: node.x(),
@@ -91,65 +98,45 @@ export function ImageItem({
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
+    if (e.target !== e.currentTarget) return;
     const node = e.target;
     onCommitGeometry({ positionX: node.x(), positionY: node.y() });
   };
 
   const handleResize = (
-    corner: "se" | "sw" | "ne" | "nw",
-    e: Konva.KonvaEventObject<MouseEvent>,
+    corner: ResizeCorner,
+    e: Konva.KonvaEventObject<DragEvent>,
   ) => {
+    // The handle's drag must not bubble into the Group's move handlers.
+    e.cancelBubble = true;
     const stage = e.target.getStage();
     if (!stage) return;
 
-    const pointerPos = stage.getPointerPosition();
+    // Item geometry is in world space; the Stage is zoomed and panned.
+    const pointerPos = stage.getRelativePointerPosition();
     if (!pointerPos) return;
 
-    let newWidth = localSize.width;
-    let newHeight = localSize.height;
-    let newX = localPosition.x;
-    let newY = localPosition.y;
-
-    switch (corner) {
-      case "se": // Bottom-right
-        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
-        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
-        break;
-      case "sw": // Bottom-left
-        newWidth = Math.max(
-          MIN_WIDTH,
-          localPosition.x + localSize.width - pointerPos.x,
-        );
-        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
-        newX = localPosition.x + localSize.width - newWidth;
-        break;
-      case "ne": // Top-right
-        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
-        newHeight = Math.max(
-          MIN_HEIGHT,
-          localPosition.y + localSize.height - pointerPos.y,
-        );
-        newY = localPosition.y + localSize.height - newHeight;
-        break;
-      case "nw": // Top-left
-        newWidth = Math.max(
-          MIN_WIDTH,
-          localPosition.x + localSize.width - pointerPos.x,
-        );
-        newHeight = Math.max(
-          MIN_HEIGHT,
-          localPosition.y + localSize.height - pointerPos.y,
-        );
-        newX = localPosition.x + localSize.width - newWidth;
-        newY = localPosition.y + localSize.height - newHeight;
-        break;
-    }
-
-    setLocalSize({ width: newWidth, height: newHeight });
-    setLocalPosition({ x: newX, y: newY });
+    const next = resizeFromCorner(
+      corner,
+      pointerPos,
+      localPosition,
+      localSize,
+      {
+        width: MIN_WIDTH,
+        height: MIN_HEIGHT,
+      },
+    );
+    setLocalSize({ width: next.width, height: next.height });
+    setLocalPosition({ x: next.x, y: next.y });
   };
 
-  const handleResizeEnd = () => {
+  const handleResizeEnd = (
+    corner: ResizeCorner,
+    e: Konva.KonvaEventObject<DragEvent>,
+  ) => {
+    e.cancelBubble = true;
+    // Put the dragged handle back on its corner of the new size.
+    e.target.position(cornerHandlePosition(corner, localSize));
     onCommitGeometry({
       positionX: localPosition.x,
       positionY: localPosition.y,
@@ -268,7 +255,7 @@ export function ImageItem({
             fill="#2196F3"
             draggable
             onDragMove={(e) => handleResize("se", e)}
-            onDragEnd={handleResizeEnd}
+            onDragEnd={(e) => handleResizeEnd("se", e)}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nwse-resize";
@@ -286,7 +273,7 @@ export function ImageItem({
             fill="#2196F3"
             draggable
             onDragMove={(e) => handleResize("sw", e)}
-            onDragEnd={handleResizeEnd}
+            onDragEnd={(e) => handleResizeEnd("sw", e)}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nesw-resize";
@@ -304,7 +291,7 @@ export function ImageItem({
             fill="#2196F3"
             draggable
             onDragMove={(e) => handleResize("ne", e)}
-            onDragEnd={handleResizeEnd}
+            onDragEnd={(e) => handleResizeEnd("ne", e)}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nesw-resize";
@@ -322,7 +309,7 @@ export function ImageItem({
             fill="#2196F3"
             draggable
             onDragMove={(e) => handleResize("nw", e)}
-            onDragEnd={handleResizeEnd}
+            onDragEnd={(e) => handleResizeEnd("nw", e)}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nwse-resize";

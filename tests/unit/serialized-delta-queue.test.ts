@@ -66,4 +66,80 @@ describe("SerializedDeltaQueue", () => {
     await expect(queue.flush()).rejects.toThrow();
     expect(statuses.at(-1)).toBe("conflict");
   });
+
+  it("after a conflict sends only the new gesture at the observed version", async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(409, "conflict"))
+      .mockResolvedValueOnce({ version: 8 });
+    const queue = new SerializedDeltaQueue<{
+      positionX: number;
+      positionY: number;
+    }>(3, save, vi.fn());
+    queue.enqueue({ positionX: 1, positionY: 1 });
+    await expect(queue.flush()).rejects.toThrow();
+
+    queue.observeVersion(7);
+    queue.enqueue({ positionX: 5 });
+    await queue.flush();
+
+    expect(save).toHaveBeenLastCalledWith({ positionX: 5, version: 7 });
+  });
+
+  it("does not replay a conflicted delta", async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(409, "conflict"))
+      .mockResolvedValueOnce({ version: 4 });
+    const queue = new SerializedDeltaQueue<{
+      positionX: number;
+      positionY: number;
+    }>(3, save, vi.fn());
+    queue.enqueue({ positionX: 1, positionY: 1 });
+    await expect(queue.flush()).rejects.toThrow();
+    queue.enqueue({ positionX: 5 });
+    await queue.flush();
+    expect(save).toHaveBeenLastCalledWith({ positionX: 5, version: 3 });
+  });
+
+  it("never lowers the version it sends", async () => {
+    const save = vi.fn().mockResolvedValue({ version: 6 });
+    const queue = new SerializedDeltaQueue(5, save, vi.fn());
+    queue.observeVersion(2);
+    queue.enqueue({ text: "x" });
+    await queue.flush();
+    expect(save).toHaveBeenLastCalledWith({ text: "x", version: 5 });
+  });
+
+  it("keeps a version observed while a save is in flight", async () => {
+    let resolveFirst!: (value: { version: number }) => void;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ version: number }>(
+            (resolve) => (resolveFirst = resolve),
+          ),
+      )
+      .mockResolvedValueOnce({ version: 11 });
+    const queue = new SerializedDeltaQueue(1, save, vi.fn());
+    queue.enqueue({ text: "a" });
+    const flushing = queue.flush();
+    queue.observeVersion(9);
+    queue.enqueue({ text: "b" });
+    resolveFirst({ version: 2 });
+    await flushing;
+    expect(save).toHaveBeenLastCalledWith({ text: "b", version: 9 });
+  });
+
+  it("shares one in-flight save between concurrent flushes", async () => {
+    const save = vi.fn().mockResolvedValue({ version: 2 });
+    const queue = new SerializedDeltaQueue(1, save, vi.fn());
+    queue.enqueue({ text: "a" });
+    const first = queue.flush();
+    const second = queue.flush();
+    expect(second).toBe(first);
+    await first;
+    expect(save).toHaveBeenCalledTimes(1);
+  });
 });

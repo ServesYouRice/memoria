@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { OAuthError } from "@/lib/oauth/service";
 import { logger } from "@/lib/logger";
+import { readBodyWithLimit } from "@/lib/uploads/body-limit";
+
+/** Token and revocation requests are a few short fields. */
+export const MAX_OAUTH_FORM_BYTES = 64 * 1024;
 
 const NO_STORE = { "Cache-Control": "no-store", Pragma: "no-cache" };
 
@@ -46,8 +50,27 @@ export async function readOAuthForm(request: Request) {
   const contentType = request.headers.get("content-type") || "";
   let values: Record<string, string> = {};
 
+  // Bounded before parsing: a declared length over the cap is refused
+  // unread, and a chunked or lying body is cut off at the cap.
+  let text: string;
+  try {
+    text = new TextDecoder().decode(
+      await readBodyWithLimit(request, MAX_OAUTH_FORM_BYTES),
+    );
+  } catch {
+    throw new OAuthError(
+      "invalid_request",
+      `Request body is invalid or larger than ${MAX_OAUTH_FORM_BYTES} bytes.`,
+    );
+  }
+
   if (contentType.includes("application/json")) {
-    const body = (await request.json().catch(() => null)) as unknown;
+    let body: unknown = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
     if (body && typeof body === "object" && !Array.isArray(body)) {
       values = Object.fromEntries(
         Object.entries(body).filter(
@@ -56,7 +79,6 @@ export async function readOAuthForm(request: Request) {
       );
     }
   } else {
-    const text = await request.text();
     values = Object.fromEntries(new URLSearchParams(text));
   }
 

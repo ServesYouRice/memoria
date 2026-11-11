@@ -25,6 +25,7 @@ const serviceCoreMocks = vi.hoisted(() => ({
   createKnowledgeRelationWrite: vi.fn(),
   claimSuggestionForExecution: vi.fn(),
   markSuggestionExecuted: vi.fn(),
+  releaseSuggestionClaim: vi.fn(),
   executeExternalWebhook: vi.fn(),
   executeAgentAction: vi.fn(),
   ingestAgentKnowledge: vi.fn(),
@@ -75,6 +76,7 @@ vi.mock("@/lib/agents/service-core", () => ({
   createKnowledgeRelationWrite: serviceCoreMocks.createKnowledgeRelationWrite,
   claimSuggestionForExecution: serviceCoreMocks.claimSuggestionForExecution,
   markSuggestionExecuted: serviceCoreMocks.markSuggestionExecuted,
+  releaseSuggestionClaim: serviceCoreMocks.releaseSuggestionClaim,
   executeExternalWebhook: serviceCoreMocks.executeExternalWebhook,
   normalizeAgentItemWriteData: (item: unknown) => item,
   normalizeAgentItemWriteBatch: (items: unknown) => items,
@@ -526,7 +528,10 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
       prismaMocks.suggestionFindFirst.mockResolvedValue({
         id: suggestionId,
         agentProfileId: proposeOnlyProfile.id,
-        kind: "WRITE",
+        kind:
+          payload.kind === "external-webhook"
+            ? "EXTERNAL_ACTION"
+            : "INTERNAL_ORGANIZATION",
         status: overrides?.status ?? "APPROVED",
         summary: "Suggested change",
         payload,
@@ -606,6 +611,75 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
       expect(serviceCoreMocks.createCanvasItemWrite).not.toHaveBeenCalled();
     });
 
+    it.each([
+      [
+        "an out-of-scope canvas",
+        () =>
+          arrange(payloads["canvas-item-create"], {
+            profile: {
+              ...proposeOnlyProfile,
+              allowedCanvasIds: [otherCanvasId],
+            },
+          }),
+        403,
+      ],
+      [
+        "a disabled propose rung",
+        () =>
+          arrange(payloads["canvas-item-create"], {
+            profile: { ...proposeOnlyProfile, enabledRungs: [0, 1, 2] },
+          }),
+        403,
+      ],
+      [
+        "an unsupported payload kind",
+        () => arrange({ kind: "not-a-kind" }),
+        400,
+      ],
+      [
+        "an invalid payload",
+        () =>
+          arrange({ kind: "canvas-item-batch-create", canvasId, items: [] }),
+        400,
+      ],
+    ])(
+      "refuses %s before claiming the suggestion",
+      async (_case, setup, status) => {
+        setup();
+
+        const res = await execute();
+
+        expect(res.status).toBe(status);
+        expect(
+          serviceCoreMocks.claimSuggestionForExecution,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it("releases the claim when the internal write fails, so a retry runs", async () => {
+      arrange(payloads["canvas-item-create"]);
+      serviceCoreMocks.createCanvasItemWrite.mockRejectedValueOnce(
+        new Error("Canvas is full"),
+      );
+
+      const failed = await execute();
+
+      expect(failed.status).toBe(500);
+      expect(serviceCoreMocks.releaseSuggestionClaim).toHaveBeenCalledWith({
+        userId: "user-123",
+        suggestionId,
+      });
+      expect(serviceCoreMocks.markSuggestionExecuted).not.toHaveBeenCalled();
+
+      const retried = await execute();
+
+      expect(retried.status).toBe(200);
+      expect(
+        serviceCoreMocks.claimSuggestionForExecution,
+      ).toHaveBeenCalledTimes(2);
+      expect(serviceCoreMocks.markSuggestionExecuted).toHaveBeenCalledTimes(1);
+    });
+
     it("still requires rung 8 to execute an approved external webhook", async () => {
       arrange({
         kind: "external-webhook",
@@ -623,6 +697,90 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
 
       expect(res.status).toBe(403);
       expect(serviceCoreMocks.executeExternalWebhook).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["another agent profile", "prof-other"],
+      ["no agent profile", null],
+    ])(
+      "refuses a token executing a suggestion of %s before claiming it",
+      async (_label, ownerProfileId) => {
+        arrange(payloads["canvas-item-create"]);
+        authMocks.resolveAgentRequestContext.mockResolvedValue({
+          actorType: "integration",
+          userId: "user-123",
+          agentProfile: proposeOnlyProfile,
+          integrationAccountId: "int-1",
+        });
+        prismaMocks.suggestionFindFirst.mockResolvedValue({
+          id: suggestionId,
+          agentProfileId: ownerProfileId,
+          kind: "WRITE",
+          status: "APPROVED",
+          summary: "Suggested change",
+          payload: payloads["canvas-item-create"],
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+
+        const res = await execute();
+
+        expect(res.status).toBe(403);
+        expect(
+          serviceCoreMocks.claimSuggestionForExecution,
+        ).not.toHaveBeenCalled();
+        expect(serviceCoreMocks.createCanvasItemWrite).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ["EXTERNAL_ACTION", payloads["canvas-item-batch-create"]],
+      [
+        "INTERNAL_ORGANIZATION",
+        {
+          kind: "external-webhook",
+          integrationAccountId: "cint0000000000000000000001",
+          request: { method: "POST", body: {} },
+        },
+      ],
+    ])(
+      "refuses a %s suggestion whose payload kind disagrees, before claiming",
+      async (kind, payload) => {
+        arrange(payload);
+        prismaMocks.suggestionFindFirst.mockResolvedValue({
+          id: suggestionId,
+          agentProfileId: proposeOnlyProfile.id,
+          kind,
+          status: "APPROVED",
+          summary: "Mismatched",
+          payload,
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+
+        const res = await execute();
+
+        expect(res.status).toBe(400);
+        expect(
+          serviceCoreMocks.claimSuggestionForExecution,
+        ).not.toHaveBeenCalled();
+        expect(
+          serviceCoreMocks.createCanvasItemBatchWrite,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it("lets a token execute its own profile's approved suggestion", async () => {
+      arrange(payloads["canvas-item-create"]);
+      authMocks.resolveAgentRequestContext.mockResolvedValue({
+        actorType: "integration",
+        userId: "user-123",
+        agentProfile: proposeOnlyProfile,
+        integrationAccountId: "int-1",
+      });
+
+      const res = await execute();
+
+      expect(res.status).toBe(200);
+      expect(serviceCoreMocks.claimSuggestionForExecution).toHaveBeenCalled();
     });
   });
 

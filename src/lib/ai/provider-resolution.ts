@@ -31,12 +31,23 @@ export const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-5-5";
 export const AI_NOT_CONFIGURED_DETAIL =
   "AI not configured. Save an AI provider key in Settings, or set OPENAI_API_KEY or ANTHROPIC_API_KEY on the server.";
 
+export const AI_SAVED_CREDENTIAL_UNUSABLE_DETAIL =
+  "Your saved AI provider key cannot be used. Update it in Settings.";
+
 export type AiProviderSource = "user" | "env";
+
+/**
+ * Why no provider resolved even though the user saved one for built-in AI.
+ * The env keys are not used in its place: the user chose their provider.
+ */
+export type AiUnavailableReason = "saved-credential-unusable";
 
 export interface ResolvedAiProvider extends AiProviderConfig {
   source: AiProviderSource;
   /** The saved credential, when `source` is "user". */
   credentialId: string | null;
+  /** Fingerprint of the saved secret this resolution decrypted. */
+  secretFingerprint: string | null;
   adapter: AiProviderAdapter;
   capabilities: AiCapabilities;
 }
@@ -47,6 +58,8 @@ export interface AiAvailability {
   provider: ModelProvider | null;
   model: string | null;
   capabilities: AiCapabilities | null;
+  /** Set only when a saved built-in credential exists but cannot be used. */
+  reason?: AiUnavailableReason;
 }
 
 const USABLE_STATUSES = [CredentialStatus.ACTIVE, CredentialStatus.UNVERIFIED];
@@ -64,8 +77,14 @@ export function allowsPrivateAiBaseUrls(): boolean {
  * Owner-supplied base URLs are fetched by the server, so they pass the same
  * SSRF rules as bookmark unfurling. Self-hosters who run a local model server
  * opt in to private addresses with AI_ALLOW_PRIVATE_BASE_URLS=true.
+ *
+ * Returns the address the check validated, so the request can connect to it
+ * rather than resolve the host again (DNS rebinding); null when private
+ * addresses are allowed and no address was checked.
  */
-export async function assertSafeAiBaseUrl(baseUrl: string): Promise<void> {
+export async function assertSafeAiBaseUrl(
+  baseUrl: string,
+): Promise<string | null> {
   if (allowsPrivateAiBaseUrls()) {
     let url: URL;
     try {
@@ -80,17 +99,18 @@ export async function assertSafeAiBaseUrl(baseUrl: string): Promise<void> {
     ) {
       throw new ServiceUnavailableError("The saved AI base URL is invalid.");
     }
-    return;
+    return null;
   }
   const syntactic = validateUrlForSsrf(baseUrl);
   const result = syntactic.valid
     ? await validateUrlForSsrfWithDns(baseUrl)
-    : syntactic;
-  if (!result.valid) {
+    : { ...syntactic, pinnedIp: undefined };
+  if (!result.valid || !result.pinnedIp) {
     throw new ServiceUnavailableError(
       `The saved AI base URL cannot be used: ${result.error ?? "blocked"}.`,
     );
   }
+  return result.pinnedIp;
 }
 
 function resolvedFrom(
@@ -100,6 +120,7 @@ function resolvedFrom(
   apiKey: string,
   baseUrl: string,
   credentialId: string | null,
+  secretFingerprint: string | null = null,
 ): ResolvedAiProvider {
   const adapter = getAiAdapter(provider);
   return {
@@ -109,6 +130,7 @@ function resolvedFrom(
     apiKey,
     baseUrl,
     credentialId,
+    secretFingerprint,
     adapter,
     capabilities: getAiCapabilities(provider),
   };
@@ -120,6 +142,7 @@ interface CredentialRow {
   baseUrl: string | null;
   defaultModel: string;
   encryptedSecret: string;
+  secretFingerprint: string;
   capabilities: unknown;
 }
 
@@ -130,26 +153,49 @@ function isBuiltinCredential(row: Pick<CredentialRow, "capabilities">) {
   );
 }
 
+const CREDENTIAL_SELECT = {
+  id: true,
+  provider: true,
+  baseUrl: true,
+  defaultModel: true,
+  encryptedSecret: true,
+  secretFingerprint: true,
+  capabilities: true,
+} as const;
+
 /**
  * The credential built-in AI uses for this user: the usable one Settings
  * saved for built-in AI. Agent-profile credentials are never picked up
  * implicitly.
  */
 export async function findUserAiCredential(userId: string) {
+  // The tag filter runs in the query: agent-profile credentials share this
+  // table, so a window taken before the tag check could hide the built-in row.
   const rows = await prisma.modelCredential.findMany({
-    where: { userId, status: { in: USABLE_STATUSES } },
-    orderBy: { updatedAt: "desc" },
-    take: 25,
-    select: {
-      id: true,
-      provider: true,
-      baseUrl: true,
-      defaultModel: true,
-      encryptedSecret: true,
-      capabilities: true,
+    where: {
+      userId,
+      status: { in: USABLE_STATUSES },
+      capabilities: { array_contains: [BUILTIN_AI_CAPABILITY] },
     },
+    orderBy: { updatedAt: "desc" },
+    take: 1,
+    select: CREDENTIAL_SELECT,
   });
   return rows.find(isBuiltinCredential) ?? null;
+}
+
+/** Whether the user saved a built-in AI credential, in any status. */
+async function hasSavedBuiltinCredential(userId: string): Promise<boolean> {
+  const rows = await prisma.modelCredential.findMany({
+    where: {
+      userId,
+      capabilities: { array_contains: [BUILTIN_AI_CAPABILITY] },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 1,
+    select: { id: true, capabilities: true },
+  });
+  return rows.some(isBuiltinCredential);
 }
 
 function fromCredential(row: CredentialRow): ResolvedAiProvider | null {
@@ -173,6 +219,7 @@ function fromCredential(row: CredentialRow): ResolvedAiProvider | null {
     apiKey,
     baseUrl,
     row.id,
+    row.secretFingerprint,
   );
 }
 
@@ -202,28 +249,54 @@ function fromEnvironment(): ResolvedAiProvider | null {
   return null;
 }
 
+interface AiProviderLookup {
+  resolved: ResolvedAiProvider | null;
+  reason?: AiUnavailableReason;
+}
+
 /**
  * Lookup order: the user's saved credential, then server env
- * (OPENAI_API_KEY, then ANTHROPIC_API_KEY). Returns null when neither exists.
- * Does not touch the network; callers validate custom base URLs before use.
+ * (OPENAI_API_KEY, then ANTHROPIC_API_KEY). A user who saved a built-in
+ * credential that cannot be used (rejected, undecryptable, no base URL) gets
+ * no provider rather than the server's key: their content stays off a
+ * provider they did not choose.
+ */
+async function lookupAiProvider(
+  userId?: string | null,
+): Promise<AiProviderLookup> {
+  if (userId) {
+    const row = await findUserAiCredential(userId);
+    const resolved = row ? fromCredential(row) : null;
+    if (resolved) return { resolved };
+    if (row || (await hasSavedBuiltinCredential(userId))) {
+      return { resolved: null, reason: "saved-credential-unusable" };
+    }
+  }
+  return { resolved: fromEnvironment() };
+}
+
+/**
+ * The provider built-in AI uses, or null when none can be used. Does not
+ * touch the network; callers validate custom base URLs before use.
  */
 export async function findAiProvider(
   userId?: string | null,
 ): Promise<ResolvedAiProvider | null> {
-  if (userId) {
-    const row = await findUserAiCredential(userId);
-    const resolved = row ? fromCredential(row) : null;
-    if (resolved) return resolved;
-  }
-  return fromEnvironment();
+  return (await lookupAiProvider(userId)).resolved;
 }
 
 /** Like `findAiProvider`, but throws the "AI not configured" 503. */
 export async function resolveAiProvider(
   userId?: string | null,
 ): Promise<ResolvedAiProvider> {
-  const resolved = await findAiProvider(userId);
-  if (!resolved) throw new ServiceUnavailableError(AI_NOT_CONFIGURED_DETAIL);
+  const { resolved, reason } = await lookupAiProvider(userId);
+  if (!resolved) {
+    throw new ServiceUnavailableError(
+      reason === "saved-credential-unusable"
+        ? AI_SAVED_CREDENTIAL_UNUSABLE_DETAIL
+        : AI_NOT_CONFIGURED_DETAIL,
+    );
+  }
   return resolved;
 }
 
@@ -231,7 +304,7 @@ export async function resolveAiProvider(
 export async function getAiAvailability(
   userId?: string | null,
 ): Promise<AiAvailability> {
-  const resolved = await findAiProvider(userId);
+  const { resolved, reason } = await lookupAiProvider(userId);
   if (!resolved) {
     return {
       configured: false,
@@ -239,6 +312,7 @@ export async function getAiAvailability(
       provider: null,
       model: null,
       capabilities: null,
+      ...(reason ? { reason } : {}),
     };
   }
   return {
@@ -250,13 +324,22 @@ export async function getAiAvailability(
   };
 }
 
-/** Marks a saved credential whose key the provider rejected. */
+/**
+ * Marks a saved credential whose key the provider rejected. Only the secret
+ * that failed is flagged: if Settings replaced the key while the request was
+ * in flight, the row's fingerprint no longer matches and nothing changes.
+ */
 export async function markAiCredentialRejected(
   credentialId: string,
+  secretFingerprint: string,
 ): Promise<void> {
   await prisma.modelCredential
-    .update({
-      where: { id: credentialId },
+    .updateMany({
+      where: {
+        id: credentialId,
+        secretFingerprint,
+        status: { in: USABLE_STATUSES },
+      },
       data: { status: CredentialStatus.ERROR },
     })
     .catch((error) => {

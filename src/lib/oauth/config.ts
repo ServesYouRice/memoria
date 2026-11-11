@@ -60,7 +60,18 @@ export function buildProtectedResourceMetadata() {
   };
 }
 
-/** Accepts the canonical resource with or without a trailing slash. */
+/** Resource indicators (RFC 8707) are ordinary absolute URIs. */
+export const MAX_RESOURCE_LENGTH = 2048;
+
+/**
+ * Accepts the canonical resource with or without trailing slashes. Trims
+ * with a linear scan: an unanchored `/\/+$/` is quadratic on a long run of
+ * slashes followed by another character, and this value comes straight from
+ * an anonymous token request.
+ */
 export function isMcpResource(resource: string) {
-  return resource.replace(/\/+$/, "") === getMcpResourceUrl();
+  if (resource.length > MAX_RESOURCE_LENGTH) return false;
+  let end = resource.length;
+  while (end > 0 && resource.charCodeAt(end - 1) === 47) end -= 1;
+  return resource.slice(0, end) === getMcpResourceUrl();
 }

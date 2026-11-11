@@ -5,8 +5,13 @@ import type * as ServiceCore from "@/lib/agents/service-core";
 const mocks = vi.hoisted(() => {
   const tx = {
     agentAction: { create: vi.fn(), update: vi.fn() },
-    changeSet: { create: vi.fn(), update: vi.fn() },
-    changeRecord: { create: vi.fn(), createMany: vi.fn(), updateMany: vi.fn() },
+    changeSet: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    changeRecord: {
+      create: vi.fn(),
+      createMany: vi.fn(),
+      updateMany: vi.fn(),
+      findMany: vi.fn(),
+    },
     canvas: { findFirst: vi.fn(), create: vi.fn() },
     canvasItem: {
       findMany: vi.fn(),
@@ -79,6 +84,7 @@ import {
   proposeAskCommand,
 } from "@/lib/ai/ask-commands";
 import { revertChangeSet } from "@/lib/agents/service-core";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 
 const profile = {
   id: "prof-ask",
@@ -108,6 +114,16 @@ function canvasItem(id: string, canvasId = "canvas-a", type = "BOOKMARK") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // revertChangeSet claims the change set and re-reads its records in the
+  // transaction (TASK-142).
+  mocks.tx.changeSet.updateMany.mockResolvedValue({ count: 1 });
+  mocks.tx.changeRecord.findMany.mockImplementation(
+    async () =>
+      (await mocks.changeSetFindFirst.mock.results.at(-1)?.value)
+        ?.changeRecords ?? [],
+  );
+  mocks.tx.canvasItem.findMany.mockResolvedValue([]);
+  mocks.tx.itemConnection?.findMany.mockResolvedValue([]);
   mocks.profileFindFirst.mockResolvedValue(profile);
   mocks.createSuggestionRecord.mockResolvedValue({
     suggestion: { id: "sugg-1", summary: "s" },
@@ -228,10 +244,38 @@ describe("proposeAskCommand files suggestions only", () => {
     await expect(
       proposeAskCommand({
         userId: "user-1",
-        question: "archive",
-        command: { type: "archive", itemIds: ["i3"] },
+        question: "move",
+        command: { type: "move_items", boardId: "canvas-b", itemIds: ["i3"] },
       }),
     ).rejects.toBeInstanceOf(BadRequestError);
+    await expect(
+      proposeAskCommand({
+        userId: "user-1",
+        question: "board",
+        command: { type: "create_board", name: "Pics", itemIds: ["i3"] },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestError);
+    expect(mocks.createSuggestionRecord).not.toHaveBeenCalled();
+  });
+
+  it("files an archive suggestion for images, frames and arrows (VAL-268)", async () => {
+    mocks.itemFindMany.mockResolvedValue([
+      canvasItem("i3", "canvas-a", "IMAGE"),
+      canvasItem("i4", "canvas-a", "FRAME"),
+      canvasItem("i5", "canvas-a", "ARROW"),
+    ]);
+    await proposeAskCommand({
+      userId: "user-1",
+      question: "archive these",
+      command: { type: "archive", itemIds: ["i3", "i4", "i5"] },
+    });
+    expect(mocks.createSuggestionRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          command: { type: "archive", itemIds: ["i3", "i4", "i5"] },
+        }),
+      }),
+    );
   });
 
   it("rejects a command type outside the allow-list", async () => {
@@ -263,7 +307,9 @@ describe("executing an approved Ask command", () => {
       id: "board-new",
       name: "Japan",
     });
+    // First read, the re-read under the locks, then the target's items.
     mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1"), canvasItem("i2", "canvas-b")])
       .mockResolvedValueOnce([canvasItem("i1"), canvasItem("i2", "canvas-b")])
       .mockResolvedValueOnce([]);
 
@@ -292,7 +338,7 @@ describe("executing an approved Ask command", () => {
     });
     expect(mocks.tx.canvasItem.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "i1" },
+        where: { id: "i1", canvasId: "canvas-a", deletedAt: null },
         data: expect.objectContaining({ canvasId: "board-new" }),
       }),
     );
@@ -309,6 +355,7 @@ describe("executing an approved Ask command", () => {
   it("drops the moved item's lines on the old board in the same change set", async () => {
     mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
     mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1")])
       .mockResolvedValueOnce([canvasItem("i1")])
       .mockResolvedValueOnce([]);
     const lines = [
@@ -380,6 +427,59 @@ describe("executing an approved Ask command", () => {
         operation: "deleted",
       }),
     );
+  });
+
+  it("re-reads the items once the boards are locked and stops if one moved", async () => {
+    mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
+    mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1")])
+      .mockResolvedValueOnce([canvasItem("i1", "canvas-c")]);
+
+    await expect(
+      executeAskCommandSuggestion({
+        actor: { userId: "user-1", agentProfileId: "prof-ask" },
+        agentProfile: profile as never,
+        payload: {
+          kind: ASK_COMMAND_SUGGESTION_KIND,
+          command: { type: "move_items", itemIds: ["i1"], boardId: "board-b" },
+        },
+        summary: "Move 1 item",
+      }),
+    ).rejects.toMatchObject({ detail: "Items moved while filing; try again." });
+
+    const [lockA, lockB] = vi.mocked(lockCanvasForMutation).mock.calls;
+    expect([lockA?.[1], lockB?.[1]]).toEqual(["board-b", "canvas-a"]);
+    const lastLock = Math.max(
+      ...vi.mocked(lockCanvasForMutation).mock.invocationCallOrder,
+    );
+    expect(
+      mocks.tx.canvasItem.findMany.mock.invocationCallOrder[1],
+    ).toBeGreaterThan(lastLock);
+    expect(mocks.tx.canvasItem.update).not.toHaveBeenCalled();
+    expect(mocks.tx.changeRecord.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses an expected source board an item is no longer on", async () => {
+    mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
+    mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1", "canvas-c")])
+      .mockResolvedValueOnce([canvasItem("i1", "canvas-c")]);
+
+    await expect(
+      executeAskCommandSuggestion({
+        actor: { userId: "user-1", agentProfileId: "prof-ask" },
+        agentProfile: profile as never,
+        payload: {
+          kind: ASK_COMMAND_SUGGESTION_KIND,
+          command: { type: "move_items", itemIds: ["i1"], boardId: "board-b" },
+        },
+        summary: "Move 1 item",
+        expectedSourceCanvasId: "canvas-a",
+      }),
+    ).rejects.toMatchObject({
+      detail: "This item has already moved, so the suggestion was dropped.",
+    });
+    expect(mocks.tx.canvasItem.update).not.toHaveBeenCalled();
   });
 
   it("archives into the trash-backed archive instead of an Archive board", async () => {
@@ -491,6 +591,99 @@ describe("undoing an Ask move", () => {
       mocks.tx,
       expect.objectContaining({ canvasId: "canvas-a", operation: "created" }),
     );
+  });
+
+  function moveChangeSet() {
+    mocks.changeSetFindFirst.mockResolvedValue({
+      id: "cs-1",
+      scopeType: "user",
+      scopeId: "user-1",
+      revertedAt: null,
+      changeRecords: [
+        {
+          id: "cr-1",
+          targetType: "CanvasItem",
+          targetId: "i1",
+          operation: "MOVE",
+          before: canvasItem("i1", "canvas-a"),
+          after: canvasItem("i1", "board-new"),
+          reversible: true,
+        },
+      ],
+    });
+    mocks.tx.agentAction.create.mockResolvedValue({ id: "act-rb" });
+    mocks.tx.changeSet.create.mockResolvedValue({ id: "cs-rb" });
+    mocks.tx.canvas.findFirst.mockResolvedValue({ id: "canvas-a" });
+    mocks.tx.canvasItem.update.mockResolvedValue({
+      ...canvasItem("i1", "canvas-a"),
+      version: 3,
+    });
+  }
+
+  it.each([
+    [
+      "moved to a third board",
+      { ...canvasItem("i1", "board-c"), deletedAt: null },
+    ],
+    ["trashed", { ...canvasItem("i1", "board-new"), deletedAt: new Date() }],
+  ])("refuses to undo once the user has %s the item", async (_case, item) => {
+    moveChangeSet();
+    mocks.tx.canvasItem.findFirst.mockResolvedValue(item);
+
+    await expect(
+      revertChangeSet({
+        actor: { userId: "user-1", agentProfileId: "prof-ask" },
+        changeSetId: "cs-1",
+      }),
+    ).rejects.toMatchObject({ detail: expect.stringMatching(/moved since/) });
+    expect(mocks.tx.canvasItem.update).not.toHaveBeenCalled();
+  });
+
+  it("drops lines drawn on the destination board before the item goes back", async () => {
+    moveChangeSet();
+    mocks.tx.canvasItem.findFirst.mockResolvedValue({
+      ...canvasItem("i1", "board-new"),
+      deletedAt: null,
+    });
+    const line = {
+      id: "conn-new",
+      canvasId: "board-new",
+      fromId: "i1",
+      toId: "i7",
+      label: null,
+      style: "SOLID",
+      createdAt: "2026-02-01T00:00:00.000Z",
+    };
+    mocks.tx.itemConnection.findMany.mockResolvedValue([line]);
+
+    await revertChangeSet({
+      actor: { userId: "user-1", agentProfileId: "prof-ask" },
+      changeSetId: "cs-1",
+    });
+
+    expect(mocks.tx.itemConnection.findMany).toHaveBeenCalledWith({
+      where: {
+        canvasId: "board-new",
+        OR: [{ fromId: "i1" }, { toId: "i1" }],
+      },
+    });
+    expect(mocks.tx.itemConnection.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["conn-new"] } },
+    });
+    expect(mocks.tx.changeRecord.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          changeSetId: "cs-rb",
+          targetType: "ItemConnection",
+          targetId: "conn-new",
+          operation: "ROLLBACK_DELETE",
+          reversible: false,
+        }),
+      ],
+    });
+    expect(
+      mocks.tx.itemConnection.deleteMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.tx.canvasItem.update.mock.invocationCallOrder[0]!);
   });
 
   it("restores the lines the move dropped once the item is back", async () => {

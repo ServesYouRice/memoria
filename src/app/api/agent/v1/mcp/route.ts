@@ -1,5 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { ApiError, BadRequestError, UnauthorizedError } from "@/lib/errors";
+import { ZodError } from "zod";
+import {
+  ApiError,
+  BadRequestError,
+  internalErrorMessage,
+  reportServerError,
+  UnauthorizedError,
+} from "@/lib/errors";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { getBearerToken, resolveAgentRequestContext } from "@/lib/agents/auth";
 import type { McpToolCallResult } from "@/lib/agents/mcp-schema";
@@ -16,6 +23,8 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
+const MCP_INSTANCE = "/api/agent/v1/mcp";
+
 function createJsonRpcSuccess(id: JsonRpcRequest["id"], result: unknown) {
   return NextResponse.json({
     jsonrpc: "2.0",
@@ -25,6 +34,7 @@ function createJsonRpcSuccess(id: JsonRpcRequest["id"], result: unknown) {
 }
 
 function mapJsonRpcErrorCode(error: unknown) {
+  if (error instanceof ZodError) return -32602;
   if (error instanceof ApiError) {
     switch (error.status) {
       case 400:
@@ -47,13 +57,33 @@ function mapJsonRpcErrorCode(error: unknown) {
   return -32000;
 }
 
+/** A short, stack-free summary of what failed validation. */
+function summarizeZodError(error: ZodError) {
+  const summary = error.issues
+    .slice(0, 5)
+    .map((issue) =>
+      issue.path.length > 0
+        ? `${issue.path.join(".")}: ${issue.message}`
+        : issue.message,
+    )
+    .join("; ");
+  return `Invalid params: ${summary || "validation failed"}`;
+}
+
 function createJsonRpcError(id: JsonRpcRequest["id"], error: unknown) {
-  const message =
-    error instanceof ApiError
-      ? error.detail || error.title
-      : error instanceof Error
-        ? error.message
-        : "Unknown MCP error.";
+  // ApiError details are written for clients. Anything else (Prisma,
+  // argon2, a TypeError) is a server failure: logged, reported and, outside
+  // development, replaced by the same generic text errorResponse uses.
+  let message: string;
+  if (error instanceof ZodError) {
+    message = summarizeZodError(error);
+  } else if (error instanceof ApiError) {
+    if (error.status >= 500) reportServerError(error, MCP_INSTANCE);
+    message = error.detail || error.title;
+  } else {
+    reportServerError(error, MCP_INSTANCE);
+    message = internalErrorMessage(error);
+  }
 
   return NextResponse.json({
     jsonrpc: "2.0",
@@ -160,6 +190,18 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         jsonrpc: "2.0",
         id: null,
         error: { code: -32700, message: "Parse error." },
+      },
+      { status: 400 },
+    );
+  }
+
+  // JSON-RPC 2.0: a request must be an object (batches are not supported).
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json(
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32600, message: "Invalid Request." },
       },
       { status: 400 },
     );

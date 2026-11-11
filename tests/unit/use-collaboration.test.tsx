@@ -191,6 +191,45 @@ describe("useCollaboration transport behavior", () => {
     unmount();
   });
 
+  it("retries failed reconnect handshakes of a session that opened, then recovers online (TASK-186)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { result, unmount } = renderHook(() => useCollaboration(options));
+    await act(async () => {
+      MockWebSocket.instances[0]!.open();
+      await Promise.resolve();
+      MockWebSocket.instances[0]!.serverClose(1011);
+    });
+
+    // Every reconnect is answered by a 502 from the upgrade proxy: the
+    // socket closes without opening.
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      expect(result.current.status).toBe("reconnecting");
+      expect(result.current.connectionMessage ?? "").not.toMatch(
+        /access could not be established/i,
+      );
+      const delay = Math.min(15_000, 1_000 * 2 ** (attempt - 1));
+      act(() => vi.advanceTimersByTime(delay));
+      expect(MockWebSocket.instances).toHaveLength(attempt + 1);
+      act(() => MockWebSocket.instances[attempt]!.serverClose(1006));
+    }
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.connectionMessage).toMatch(/could not reconnect/i);
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(MockWebSocket.instances).toHaveLength(9);
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(MockWebSocket.instances).toHaveLength(10);
+    await act(async () => {
+      MockWebSocket.instances[9]!.open();
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("connected");
+    unmount();
+  });
+
   it("coalesces a committed-event burst into one consumer batch", () => {
     const onCommittedEvents = vi.fn();
     const { unmount } = renderHook(() =>
@@ -219,6 +258,93 @@ describe("useCollaboration transport behavior", () => {
     act(() => vi.advanceTimersByTime(40));
     expect(onCommittedEvents).toHaveBeenCalledTimes(1);
     expect(onCommittedEvents.mock.calls[0]![0]).toHaveLength(50);
+    unmount();
+  });
+
+  it("continues after a restore instead of replaying it again (TASK-172)", async () => {
+    const onCommittedEvents = vi.fn();
+    const onSnapshotRequired = vi.fn();
+    const fetchMock = vi.fn().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            events: [],
+            nextCursor: "11",
+            hasMore: true,
+            snapshotRequired: true,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = renderHook(() =>
+      useCollaboration({ ...options, onCommittedEvents, onSnapshotRequired }),
+    );
+    const socket = MockWebSocket.instances[0]!;
+    const event = (cursor: number) => ({
+      type: "committed-event",
+      event: {
+        schemaVersion: 1,
+        cursor: String(cursor),
+        operation: "updated",
+        entity: { type: "canvas-item", id: `item-${cursor}`, version: 2 },
+      },
+    });
+
+    // Live events up to 9, then the restore (sequence 11) is announced.
+    act(() => {
+      for (let cursor = 1; cursor <= 9; cursor += 1)
+        socket.receive(event(cursor));
+    });
+    act(() => {
+      socket.receive({
+        type: "message",
+        payload: {
+          type: "canvas-restore-required",
+          restoreRevision: 2,
+          cursor: "11",
+        },
+      });
+    });
+    expect(onSnapshotRequired).toHaveBeenCalledTimes(1);
+    // The next item event follows the restore: no gap, no replay.
+    act(() => socket.receive(event(12)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onCommittedEvents.mock.calls.flat(2).map((e) => e.cursor)).toContain(
+      "12",
+    );
+
+    // A gap whose replay hits a restore at 20: one replay, then the cursor
+    // is past it and the deferred event 21 follows without another replay.
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            events: [],
+            nextCursor: "20",
+            hasMore: true,
+            snapshotRequired: true,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    act(() => socket.receive(event(21)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onSnapshotRequired).toHaveBeenCalledTimes(2);
+    act(() => socket.receive(event(22)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onCommittedEvents.mock.calls.flat(2).map((e) => e.cursor)).toEqual(
+      expect.arrayContaining(["21", "22"]),
+    );
     unmount();
   });
 });

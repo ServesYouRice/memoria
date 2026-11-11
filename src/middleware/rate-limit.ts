@@ -23,6 +23,10 @@ import {
 } from "@/lib/constants";
 import { createHash } from "node:crypto";
 import { createRateLimiter } from "@/lib/rate-limit";
+import {
+  AUTH_RATE_LIMIT_GROUPS,
+  type AuthRateLimitGroup,
+} from "./auth-rate-limit";
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -153,14 +157,32 @@ export function userRateLimit(config: RateLimitConfig) {
 /**
  * Endpoint-specific rate limits
  */
-export const authRateLimit = rateLimit({
-  maxRequests: configuredMaxRequests(
-    "AUTH_RATE_LIMIT_MAX_REQUESTS",
-    AUTH_RATE_LIMIT_MAX_REQUESTS,
-  ),
-  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
-  keyPrefix: "auth",
-});
+/**
+ * One per-IP bucket per strict auth route group (keyPrefix `auth-<group>`).
+ * Each group reads `AUTH_<GROUP>_RATE_LIMIT_MAX_REQUESTS` and falls back to
+ * AUTH_RATE_LIMIT_MAX_REQUESTS, so existing deployments keep their budget.
+ */
+const defaultAuthMaxRequests = configuredMaxRequests(
+  "AUTH_RATE_LIMIT_MAX_REQUESTS",
+  AUTH_RATE_LIMIT_MAX_REQUESTS,
+);
+
+export const authGroupRateLimits = Object.fromEntries(
+  AUTH_RATE_LIMIT_GROUPS.map((group) => [
+    group,
+    rateLimit({
+      maxRequests: configuredMaxRequests(
+        `AUTH_${group.toUpperCase().replace(/-/g, "_")}_RATE_LIMIT_MAX_REQUESTS`,
+        defaultAuthMaxRequests,
+      ),
+      windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+      keyPrefix: `auth-${group}`,
+    }),
+  ]),
+) as Record<
+  AuthRateLimitGroup,
+  (request: NextRequest) => Promise<NextResponseType | null>
+>;
 
 export const apiRateLimit = rateLimit({
   maxRequests: configuredMaxRequests(
@@ -202,6 +224,16 @@ export const sensitiveEndpointRateLimit = rateLimit({
   maxRequests: 20,
   windowMs: 60 * 1000,
   keyPrefix: "sensitive",
+});
+
+/**
+ * Browsers post CSP violation reports on their own, so they get a bucket of
+ * their own and cannot spend the OAuth/setup budget above.
+ */
+export const cspReportRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests("CSP_REPORT_RATE_LIMIT_MAX_REQUESTS", 20),
+  windowMs: 60 * 1000,
+  keyPrefix: "csp-report",
 });
 
 const MINUTE_MS = 60 * 1000;
@@ -275,6 +307,30 @@ export const itemsUserRateLimit = userRateLimit({
   keyPrefix: "items-user",
 });
 
+/**
+ * Per-IP ceilings for session-bearing canvas and item requests. They default
+ * to twice the per-user budgets so one user can spend their whole budget and
+ * a shared NAT has room for more; anonymous callers keep the smaller
+ * `canvasesRateLimit` / `itemsRateLimit`. A forged or rotated cookie is still
+ * bounded here.
+ */
+export const canvasesSessionIpRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests(
+    "CANVASES_SESSION_IP_RATE_LIMIT_MAX_REQUESTS",
+    2 * CANVASES_USER_RATE_LIMIT_MAX_REQUESTS,
+  ),
+  windowMs: MINUTE_MS,
+  keyPrefix: "canvases-session-ip",
+});
+export const itemsSessionIpRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests(
+    "ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS",
+    2 * ITEMS_USER_RATE_LIMIT_MAX_REQUESTS,
+  ),
+  windowMs: MINUTE_MS,
+  keyPrefix: "items-session-ip",
+});
+
 export type ReadBudget = "assets" | "notifications" | "search";
 
 /**
@@ -288,6 +344,10 @@ export function classifyReadBudget(
 ): ReadBudget | null {
   if (method !== "GET") return null;
   if (/^\/api\/v1\/uploads\/[^/]+$/.test(pathname)) return "assets";
+  // Dashboard cards each load one, so they must not spend the canvases budget.
+  if (/^\/api\/v1\/canvases\/[^/]+\/thumbnail$/.test(pathname)) {
+    return "assets";
+  }
   if (pathname === "/api/v1/notifications") return "notifications";
   if (pathname === "/api/v1/search") return "search";
   return null;

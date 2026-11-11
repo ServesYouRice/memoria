@@ -27,11 +27,17 @@ export const POST = withAuthValidation(unfurlSchema, async ({ url }) => {
   // enrichment, IMP-064)
   const page = await fetchLinkPage(url);
   if (!page.ok) {
+    // The site's own status is reported as upstreamStatus behind a 502; a
+    // failure of ours keeps its status unless it is not an error status.
+    const upstream = page.upstreamStatus !== undefined;
+    const ownStatus =
+      Number.isInteger(page.status) && page.status >= 400 && page.status <= 599;
     throw new ApiError(
-      page.status,
+      upstream || !ownStatus ? 502 : page.status,
       "https://memoria.local/errors/unfurl",
       "Unfurl Failed",
       page.error,
+      upstream ? { upstreamStatus: page.upstreamStatus } : undefined,
     );
   }
   const cleanedMetadata = page.metadata;

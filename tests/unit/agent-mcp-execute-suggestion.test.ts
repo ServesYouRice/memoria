@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   suggestionFindFirst: vi.fn(),
   claimSuggestionForExecution: vi.fn(),
   markSuggestionExecuted: vi.fn(),
+  releaseSuggestionClaim: vi.fn(),
   createCanvasItemWrite: vi.fn(),
   createCanvasItemBatchWrite: vi.fn(),
   createKnowledgeEntityWrite: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/agents/service-core", () => ({
   claimSuggestionForExecution: mocks.claimSuggestionForExecution,
   markSuggestionExecuted: mocks.markSuggestionExecuted,
+  releaseSuggestionClaim: mocks.releaseSuggestionClaim,
   createCanvasItemWrite: mocks.createCanvasItemWrite,
   createCanvasItemBatchWrite: mocks.createCanvasItemBatchWrite,
   createKnowledgeEntityWrite: mocks.createKnowledgeEntityWrite,
@@ -99,6 +101,10 @@ function arrange(payload: Record<string, unknown>, status = "APPROVED") {
   mocks.suggestionFindFirst.mockResolvedValue({
     id: suggestionId,
     agentProfileId: "prof-propose",
+    kind:
+      payload.kind === "external-webhook"
+        ? "EXTERNAL_ACTION"
+        : "INTERNAL_ORGANIZATION",
     status,
     summary: "Suggested change",
     payload,
@@ -192,5 +198,47 @@ describe("MCP execution of owner-approved suggestions (IMP-068)", () => {
       detail: expect.stringMatching(/capability rung/),
     });
     expect(mocks.executeExternalWebhook).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "an out-of-scope canvas",
+      payloads["canvas-item-create"],
+      profile({ allowedCanvasIds: [otherCanvasId] }),
+    ],
+    [
+      "a disabled propose rung",
+      payloads["canvas-item-create"],
+      profile({ enabledRungs: [0, 1, 2] }),
+    ],
+    ["an unsupported payload kind", { kind: "ask-command" }, profile()],
+    [
+      "an invalid payload",
+      { kind: "knowledge-entity-create", itemId },
+      profile(),
+    ],
+  ])("refuses %s before claiming the suggestion", async (_case, payload, p) => {
+    arrange(payload);
+
+    await expect(execute(p)).rejects.toBeDefined();
+    expect(mocks.claimSuggestionForExecution).not.toHaveBeenCalled();
+  });
+
+  it("releases the claim when the internal write fails, so a retry runs", async () => {
+    arrange(payloads["canvas-item-create"]);
+    mocks.createCanvasItemWrite.mockRejectedValueOnce(
+      new Error("Canvas is full"),
+    );
+
+    await expect(execute(profile())).rejects.toThrow("Canvas is full");
+    expect(mocks.releaseSuggestionClaim).toHaveBeenCalledWith({
+      userId: "user-123",
+      suggestionId,
+    });
+    expect(mocks.markSuggestionExecuted).not.toHaveBeenCalled();
+
+    await expect(execute(profile())).resolves.toBeDefined();
+    expect(mocks.claimSuggestionForExecution).toHaveBeenCalledTimes(2);
+    expect(mocks.markSuggestionExecuted).toHaveBeenCalledTimes(1);
   });
 });

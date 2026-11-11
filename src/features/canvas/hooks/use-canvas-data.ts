@@ -35,6 +35,22 @@ import {
   overlayDocumentItems,
 } from "@/lib/collaboration/sync/canvas-view";
 
+interface PersistedViewport {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
+const VIEWPORT_EPSILON = 1e-6;
+
+function sameViewport(a: PersistedViewport, b: PersistedViewport) {
+  return (
+    Math.abs(a.zoom - b.zoom) < VIEWPORT_EPSILON &&
+    Math.abs(a.x - b.x) < VIEWPORT_EPSILON &&
+    Math.abs(a.y - b.y) < VIEWPORT_EPSILON
+  );
+}
+
 interface UseCanvasDataProps {
   canvasId: string;
   viewportSize: { width: number; height: number };
@@ -77,8 +93,14 @@ function hydrateSnapshotItems(
   });
 }
 
+// Re-exported for existing importers; the rule lives with the board helper.
+export { resolveTimeMachineCapabilities } from "./time-machine-capabilities";
+
 export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
   const viewportInitializedRef = useRef(false);
+  // The viewport the server holds (loaded, or last saved): an unchanged
+  // viewport is not sent again.
+  const savedViewportRef = useRef<PersistedViewport | null>(null);
   // Local UI State
   const [canvasName, setCanvasName] = useState("Untitled Canvas");
   const [zoom, setZoom] = useState(1);
@@ -171,6 +193,7 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
 
   useEffect(() => {
     viewportInitializedRef.current = false;
+    savedViewportRef.current = null;
     setZoom(1);
     setPosition({ x: 0, y: 0 });
     setSearchQuery("");
@@ -185,11 +208,17 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     setCanvasLoadError(null);
     setCanvasName(canvas.name);
     if (!viewportInitializedRef.current) {
-      const viewport = readCanvasViewport(window.localStorage, canvasId, {
+      const stored = {
         zoom: canvas.zoomLevel || 1,
         x: canvas.panX || 0,
         y: canvas.panY || 0,
-      });
+      };
+      savedViewportRef.current = stored;
+      const viewport = readCanvasViewport(
+        window.localStorage,
+        canvasId,
+        stored,
+      );
       setZoom(viewport.zoom);
       setPosition({ x: viewport.x, y: viewport.y });
       viewportInitializedRef.current = true;
@@ -205,7 +234,13 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
         x: position.x,
         y: position.y,
       });
-      if (canvas?.accessLevel === "OWNER") {
+      const next = { zoom, x: position.x, y: position.y };
+      const saved = savedViewportRef.current;
+      if (
+        canvas?.accessLevel === "OWNER" &&
+        !(saved && sameViewport(saved, next))
+      ) {
+        savedViewportRef.current = next;
         updateCanvas({
           canvasId,
           data: {
@@ -216,6 +251,10 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
             },
           },
         }).catch((error) => {
+          // Not saved: let the next settle try again.
+          if (savedViewportRef.current === next) {
+            savedViewportRef.current = saved;
+          }
           setCanvasLoadError(
             error instanceof Error
               ? error.message

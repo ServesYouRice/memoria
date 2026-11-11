@@ -19,7 +19,10 @@ function metricType(name: string, type: "counter" | "gauge"): string {
   return `# TYPE ${name} ${type}`;
 }
 
-function metric(name: string, value: number): string {
+function metric(name: string, value: number, allowInfinity = false): string {
+  if (allowInfinity && value === Number.POSITIVE_INFINITY) {
+    return `${name} +Inf`;
+  }
   return `${name} ${Number.isFinite(value) ? value : 0}`;
 }
 
@@ -28,11 +31,12 @@ function metricBlock(
   description: string,
   type: "counter" | "gauge",
   value: number,
+  allowInfinity = false,
 ): string[] {
   return [
     metricHelp(name, description),
     metricType(name, type),
-    metric(name, value),
+    metric(name, value, allowInfinity),
     "",
   ];
 }
@@ -78,9 +82,14 @@ export async function GET(request: Request) {
   const queueAge = oldestPending
     ? Math.max(0, (Date.now() - oldestPending.nextRunAt.getTime()) / 1_000)
     : 0;
-  const backupAge = backupLastSuccess
+  // readBackupSuccessTimestamp returns 0 when no backup is recorded or Redis
+  // is unavailable. An unknown backup is reported as infinitely stale, so an
+  // "age > N" alert fires instead of seeing a fresh backup.
+  const backupKnown =
+    Number.isFinite(backupLastSuccess) && backupLastSuccess > 0;
+  const backupAge = backupKnown
     ? Math.max(0, Date.now() / 1_000 - backupLastSuccess)
-    : 0;
+    : Number.POSITIVE_INFINITY;
   const configuredAiBudget = Number(
     process.env.AI_ACTION_BUDGET_DAILY || 1_000,
   );
@@ -195,6 +204,13 @@ export async function GET(request: Request) {
       "Age in seconds of the latest verified off-host backup.",
       "gauge",
       backupAge,
+      true,
+    ),
+    ...metricBlock(
+      "memoria_backup_last_success_known",
+      "Whether a verified backup success timestamp is known.",
+      "gauge",
+      backupKnown ? 1 : 0,
     ),
     ...metricBlock(
       "memoria_ai_actions_24h",

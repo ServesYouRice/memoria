@@ -26,6 +26,18 @@ import {
   isArCanvasEnabled,
 } from "@/lib/product-surfaces";
 
+/**
+ * Module scope, so every render passes MUI the same transition type. A type
+ * created during render would remount the dialog subtree (and the video
+ * element) on each re-render.
+ */
+const SlideTransition = React.forwardRef(function SlideTransition(
+  props: SlideProps & { children: React.ReactElement },
+  ref: React.Ref<unknown>,
+) {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
+
 interface ARCanvasLayerProps {
   open: boolean;
   onClose: () => void;
@@ -50,14 +62,23 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
   // Call sites already gate on the deployment flag; re-check here so the camera
   // can never start from a surface that forgot to.
   const enabled = isArCanvasEnabled();
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Bumped by every start and stop: a getUserMedia call that resolves after
+  // a newer start or a stop (close, unmount) belongs to nobody.
+  const cameraRequestRef = useRef(0);
+  // Whichever video element is mounted shows the active stream.
+  const attachVideo = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) node.srcObject = streamRef.current;
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const startCamera = useCallback(async () => {
+    const request = ++cameraRequestRef.current;
     try {
       setError(null);
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -73,12 +94,17 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
           height: { ideal: 720 },
         },
       });
+      if (request !== cameraRequestRef.current) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = mediaStream;
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
     } catch (err) {
+      if (request !== cameraRequestRef.current) return;
       console.error("Camera access error:", err);
       setError(
         "Unable to access camera. Please ensure camera permissions are granted.",
@@ -87,6 +113,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
   }, []);
 
   const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -148,10 +175,6 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
     if (item.content.url) return item.content.url;
     return "Canvas Item";
   };
-
-  const SlideTransition = (props: SlideProps) => (
-    <Slide {...props} direction="up" />
-  );
 
   if (!enabled) return null;
 
@@ -247,7 +270,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
           </Box>
         ) : (
           <video
-            ref={videoRef}
+            ref={attachVideo}
             autoPlay
             playsInline
             muted

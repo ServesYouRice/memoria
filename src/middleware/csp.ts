@@ -88,14 +88,16 @@ export function buildCSP(
 }
 
 /**
- * Middleware to add CSP header with nonce
+ * Middleware to add CSP header with nonce. Pass the policy already forwarded
+ * on the request so the response carries the identical string; Next.js reads
+ * the nonce for its own scripts from the request header.
  */
 export function applyCSP(
   response: NextResponse,
   nonce: string,
   frameAncestors?: readonly string[],
+  csp: string = buildCSP(nonce, frameAncestors),
 ): void {
   response.headers.set("x-nonce", nonce);
-  const csp = buildCSP(nonce, frameAncestors);
   response.headers.set("Content-Security-Policy", csp);
 }

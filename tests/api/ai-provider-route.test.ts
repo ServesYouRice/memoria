@@ -65,7 +65,10 @@ describe("/api/v1/ai/provider", () => {
     prismaMocks.modelCredential.findFirst.mockResolvedValue(null);
     prismaMocks.transaction.mockImplementation(
       async (run: (tx: unknown) => Promise<unknown>) =>
-        run({ modelCredential: prismaMocks.modelCredential }),
+        run({
+          modelCredential: prismaMocks.modelCredential,
+          agentProfile: { count: prismaMocks.agentProfileCount },
+        }),
     );
   });
 
@@ -166,6 +169,63 @@ describe("/api/v1/ai/provider", () => {
     );
   });
 
+  it("saves a new key in its own row when an agent profile uses the current one", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([savedRow]);
+    prismaMocks.modelCredential.create.mockResolvedValue({ id: "cred-new" });
+    prismaMocks.agentProfileCount.mockImplementation(
+      async ({ where }: { where: { defaultModelCredentialId: string } }) =>
+        where.defaultModelCredentialId === "cred-1" ? 1 : 0,
+    );
+
+    const res = await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI",
+        model: "gpt-5.4-mini",
+        apiKey: "sk-new-builtin",
+      }),
+      {} as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMocks.modelCredential.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        provider: "OPENAI",
+        secretFingerprint: fingerprintSecret("sk-new-builtin"),
+        capabilities: [BUILTIN_AI_CAPABILITY],
+      }),
+    });
+    // The profile's row only loses the built-in tag.
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledTimes(1);
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledWith({
+      where: { id: "cred-1" },
+      data: { capabilities: [] },
+    });
+  });
+
+  it("rewrites the current row with a new key when no agent profile uses it", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([savedRow]);
+    prismaMocks.agentProfileCount.mockResolvedValue(0);
+
+    await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI",
+        model: "gpt-5.4-mini",
+        apiKey: "sk-new-builtin",
+      }),
+      {} as never,
+    );
+
+    expect(prismaMocks.modelCredential.create).not.toHaveBeenCalled();
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledWith({
+      where: { id: "cred-1" },
+      data: expect.objectContaining({
+        provider: "OPENAI",
+        secretFingerprint: fingerprintSecret("sk-new-builtin"),
+        capabilities: [BUILTIN_AI_CAPABILITY],
+      }),
+    });
+  });
+
   it("updates the model without a new key only for the same provider", async () => {
     prismaMocks.modelCredential.findMany.mockResolvedValue([savedRow]);
 
@@ -187,6 +247,43 @@ describe("/api/v1/ai/provider", () => {
       {} as never,
     );
     expect(switched.status).toBe(400);
+  });
+
+  it("refuses to move a saved key to a new base URL without the key", async () => {
+    vi.stubEnv("AI_ALLOW_PRIVATE_BASE_URLS", "true");
+    prismaMocks.modelCredential.findMany.mockResolvedValue([
+      {
+        ...savedRow,
+        provider: "OPENAI_COMPAT",
+        baseUrl: "https://llm.example.com/v1",
+      },
+    ]);
+
+    const moved = await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI_COMPAT",
+        model: "llama3",
+        baseUrl: "https://attacker.example.net/v1",
+      }),
+      {} as never,
+    );
+    expect(moved.status).toBe(400);
+    expect((await moved.json()).detail).toMatch(/API key again/);
+    expect(prismaMocks.modelCredential.update).not.toHaveBeenCalled();
+
+    const sameUrl = await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI_COMPAT",
+        model: "llama3.1",
+        baseUrl: "https://llm.example.com/v1",
+      }),
+      {} as never,
+    );
+    expect(sameUrl.status).toBe(200);
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledWith({
+      where: { id: "cred-1" },
+      data: { defaultModel: "llama3.1", baseUrl: "https://llm.example.com/v1" },
+    });
   });
 
   it("requires a key when nothing is saved yet", async () => {

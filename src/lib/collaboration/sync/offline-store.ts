@@ -17,6 +17,8 @@
  * @module lib/collaboration/sync/offline-store
  */
 
+import { mergeUpdates } from "yjs";
+
 export const OFFLINE_DATABASE_NAME = "memoria-offline";
 const DATABASE_VERSION = 1;
 
@@ -259,7 +261,25 @@ class IndexedDbCanvasDocumentCache implements CanvasDocumentCache {
         "readwrite",
       );
       const done = completion(transaction);
-      transaction.objectStore(STATES).put(state, this.key);
+      const states = transaction.objectStore(STATES);
+      // Every tab of this user shares one compacted state. Another tab may
+      // have compacted edits this document never received, so merge into the
+      // stored state instead of replacing it (merging Yjs updates loses
+      // nothing). The read and the write share one readwrite transaction, so
+      // a compaction in another tab cannot run between them.
+      const existing = (await result(states.get(this.key))) as
+        | Uint8Array
+        | undefined;
+      let merged = state;
+      if (existing) {
+        try {
+          merged = mergeUpdates([existing, state]);
+        } catch {
+          // An unreadable stored state cannot be merged; this document's
+          // state replaces it, as before.
+        }
+      }
+      states.put(merged, this.key);
       // Another tab may have appended updates this document has not seen;
       // they stay and are applied again on load (Yjs ignores duplicates).
       const updates = transaction.objectStore(UPDATES);
@@ -270,6 +290,10 @@ class IndexedDbCanvasDocumentCache implements CanvasDocumentCache {
     });
   }
 
+  // This deletes every update row of the canvas, including rows another tab
+  // appended. Right on the forbid path (access is gone); whether the reset
+  // path should keep other tabs' rows is open (plan question Q-004 of section
+  // 7878a3ed849f8bf4ae43d821), so it is unchanged.
   clear(): Promise<void> {
     return this.serial(async (db) => {
       const transaction = db.transaction(

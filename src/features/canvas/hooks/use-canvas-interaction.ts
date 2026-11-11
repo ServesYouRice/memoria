@@ -1,12 +1,32 @@
 import type React from "react";
+import { useRef } from "react";
 import type Konva from "konva";
 import { useDrawingInteraction } from "./use-drawing-interaction";
-import { type CanvasItem } from "@/types/canvas";
+import { type CanvasCapabilities, type CanvasItem } from "@/types/canvas";
+
+const CREATING_TOOLS = new Set(["draw", "shape", "arrow"]);
+
+/**
+ * The tool the stage actually uses. `activeTool` is a persisted preference
+ * shared by every canvas, so a drawing tool saved on an editable board falls
+ * back to select where the user cannot create items (IMP-008), without
+ * touching the saved preference.
+ */
+export function resolveEffectiveTool(
+  activeTool: string,
+  capabilities: Pick<CanvasCapabilities, "canCreateItems">,
+): string {
+  return CREATING_TOOLS.has(activeTool) && !capabilities.canCreateItems
+    ? "select"
+    : activeTool;
+}
 
 interface UseCanvasInteractionProps {
   canvasId: string;
   stageRef: React.RefObject<Konva.Stage>;
   activeTool: string;
+  /** IMP-008 create capability; without it drawing tools act as select. */
+  canCreateItems: boolean;
   zoom: number;
   position: { x: number; y: number };
 
@@ -32,6 +52,7 @@ export function useCanvasInteraction({
   canvasId,
   stageRef: _stageRef,
   activeTool,
+  canCreateItems,
   zoom,
   position,
   isSelecting,
@@ -43,11 +64,15 @@ export function useCanvasInteraction({
   setSelectedItemIds,
   setSelectedItemId,
 }: UseCanvasInteractionProps) {
-  const drawing = useDrawingInteraction({ canvasId });
-  const isDrawingOrCreating =
-    activeTool === "draw" || activeTool === "shape" || activeTool === "arrow";
+  const drawing = useDrawingInteraction({ canvasId, canCreateItems });
+  const effectiveTool = resolveEffectiveTool(activeTool, { canCreateItems });
+  const isDrawingOrCreating = CREATING_TOOLS.has(effectiveTool);
+  // A marquee drag ends with a click on the empty stage; that click must not
+  // clear the selection the drag just made.
+  const suppressNextStageClickRef = useRef(false);
 
   const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    suppressNextStageClickRef.current = false;
     if (isDrawingOrCreating) {
       drawing.handleMouseDown(e);
       return;
@@ -114,6 +139,7 @@ export function useCanvasInteraction({
         });
         setSelectedItemIds(selected);
         setSelectedItemId(null);
+        suppressNextStageClickRef.current = true;
       } else {
         // If it was a tiny drag (click), logic handled in onClick usually,
         // but here we ensure cleanup
@@ -123,6 +149,10 @@ export function useCanvasInteraction({
   };
 
   const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (suppressNextStageClickRef.current) {
+      suppressNextStageClickRef.current = false;
+      return;
+    }
     // Deselect if clicking on empty stage
     if (e.target === e.target.getStage()) {
       setSelectedItemId(null);
@@ -135,6 +165,7 @@ export function useCanvasInteraction({
     handleStageMouseMove,
     handleStageMouseUp,
     handleStageClick,
+    effectiveTool,
 
     // Expose drawing state
     isDrawing: drawing.isDrawing,

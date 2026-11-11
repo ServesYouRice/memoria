@@ -59,8 +59,17 @@ export function SearchContent() {
   const searchParams = useSearchParams();
 
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [filter, setFilter] = useState<{
+    type: string;
+    query: string;
+  } | null>(null);
   const debouncedQuery = useDebounce(query, 300);
+  // A type filter belongs to the query it was chosen for; a new query starts
+  // unfiltered.
+  const typeFilter =
+    filter && filter.query === debouncedQuery ? filter.type : null;
+  const setTypeFilter = (type: string | null) =>
+    setFilter(type ? { type, query: debouncedQuery } : null);
 
   // Keep the URL shareable/deep-linkable as the query changes
   useEffect(() => {
@@ -126,6 +135,11 @@ export function SearchContent() {
     () => Array.from(new Set(allResults.map((r) => r.itemType))),
     [allResults],
   );
+  // The active filter keeps its chip even when no loaded result has its type.
+  const chipTypes =
+    typeFilter && !availableTypes.includes(typeFilter)
+      ? [...availableTypes, typeFilter]
+      : availableTypes;
 
   return (
     <>
@@ -157,7 +171,7 @@ export function SearchContent() {
         sx={{ mb: 2 }}
       />
 
-      {availableTypes.length > 1 && (
+      {(availableTypes.length > 1 || typeFilter !== null) && (
         <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 3 }}>
           <Chip
             label="All"
@@ -165,7 +179,7 @@ export function SearchContent() {
             color={typeFilter === null ? "primary" : "default"}
             onClick={() => setTypeFilter(null)}
           />
-          {availableTypes.map((type) => (
+          {chipTypes.map((type) => (
             <Chip
               key={type}
               label={typeMeta(type).label}
@@ -194,8 +208,16 @@ export function SearchContent() {
       {enabled && !isFetching && !error && results.length === 0 && (
         <EmptyState
           icon={SearchIcon}
-          title={`No results for “${debouncedQuery}”`}
-          description="Try different keywords, or check the spelling."
+          title={
+            typeFilter
+              ? `No ${typeMeta(typeFilter).label.toLowerCase()} for “${debouncedQuery}” yet`
+              : `No results for “${debouncedQuery}”`
+          }
+          description={
+            typeFilter
+              ? "Choose All to see every result, or load more."
+              : "Try different keywords, or check the spelling."
+          }
         />
       )}
 
@@ -281,17 +303,18 @@ export function SearchContent() {
               ))}
             </List>
           </Paper>
-          {hasNextPage && (
-            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-              <Button
-                onClick={() => void fetchNextPage()}
-                disabled={isFetchingNextPage}
-              >
-                {isFetchingNextPage ? "Loading…" : "Load more results"}
-              </Button>
-            </Box>
-          )}
         </>
+      )}
+
+      {enabled && hasNextPage && (
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+          <Button
+            onClick={() => void fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? "Loading…" : "Load more results"}
+          </Button>
+        </Box>
       )}
     </>
   );

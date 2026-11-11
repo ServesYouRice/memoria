@@ -16,11 +16,11 @@ import type { Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 
-export function collaborativeNoteExtensions(): AnyExtension[] {
+function noteExtensions(options: { history: boolean }): AnyExtension[] {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
-      undoRedo: false,
+      ...(options.history ? {} : { undoRedo: false }),
       underline: false,
       horizontalRule: false,
       link: false,
@@ -33,6 +33,18 @@ export function collaborativeNoteExtensions(): AnyExtension[] {
       },
     }),
   ];
+}
+
+export function collaborativeNoteExtensions(): AnyExtension[] {
+  return noteExtensions({ history: false });
+}
+
+/**
+ * The same schema for a note edited alone (no shared fragment), with
+ * StarterKit's own undo/redo history.
+ */
+export function standaloneNoteExtensions(): AnyExtension[] {
+  return noteExtensions({ history: true });
 }
 
 let schema: Schema | null = null;

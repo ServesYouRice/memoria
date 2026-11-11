@@ -24,6 +24,7 @@ import {
   authorizationLeaseMustClose,
   collaborationColorForUser,
   consumeMessageBudget,
+  presentsCurrentShareToken,
   resolveCollaborationAccess,
 } from "./transport-policy";
 import {
@@ -59,7 +60,8 @@ interface ClientConnection {
   authorizationLeaseExpiresAt: number;
   authorizationFailureCount: number;
   clientId: string;
-  guestShareToken?: string;
+  /** Public share token presented at upgrade, re-checked on refresh. */
+  shareToken?: string;
 }
 
 // Presence renewal, zombie detection, and the global authorization batch share
@@ -73,6 +75,93 @@ const MAX_CONNECTIONS_PER_PRINCIPAL = 10;
 const MAX_CONNECTIONS_PER_CLIENT = 30;
 const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
+
+function bytesFromEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/**
+ * Slow-consumer limits on a socket's queued outbound bytes
+ * (`ws.bufferedAmount`). Above the soft limit, ephemeral fanout (cursors,
+ * presence, cursor chat, reactions) is skipped for that socket: the next
+ * update supersedes it. Above the hard limit the socket is terminated, since
+ * a message that must arrive can no longer be delivered in time. Defaults:
+ * 1 MiB soft (a few hundred cursor frames) and 8 MiB hard; override with
+ * COLLABORATION_SEND_SOFT_LIMIT_BYTES / COLLABORATION_SEND_HARD_LIMIT_BYTES.
+ */
+export const SLOW_CONSUMER_LIMITS = Object.freeze({
+  softBytes: bytesFromEnv("COLLABORATION_SEND_SOFT_LIMIT_BYTES", 1024 * 1024),
+  hardBytes: bytesFromEnv(
+    "COLLABORATION_SEND_HARD_LIMIT_BYTES",
+    8 * 1024 * 1024,
+  ),
+});
+
+type SlowConsumerLimits = { softBytes: number; hardBytes: number };
+type SendTarget = {
+  ws: Pick<WebSocket, "readyState" | "bufferedAmount" | "send" | "terminate">;
+};
+
+/**
+ * Every broadcast send goes through here. Droppable messages are skipped for
+ * a backed-up socket; a socket over the hard limit is terminated rather than
+ * left to queue without bound, so a message that must arrive is never
+ * silently dropped.
+ */
+export function sendToClient(
+  client: SendTarget,
+  message: string,
+  options: { droppable: boolean },
+  limits: SlowConsumerLimits = SLOW_CONSUMER_LIMITS,
+): "sent" | "skipped" | "closed" | "not-open" {
+  const { ws } = client;
+  if (ws.readyState !== WebSocket.OPEN) return "not-open";
+  if (ws.bufferedAmount > limits.hardBytes) {
+    ws.terminate();
+    return "closed";
+  }
+  if (options.droppable && ws.bufferedAmount > limits.softBytes)
+    return "skipped";
+  ws.send(message);
+  return "sent";
+}
+
+/**
+ * One client's heartbeat: a socket over the hard limit is terminated even if
+ * it answers pings (pongs can be sent without reading anything); otherwise
+ * the usual ping/pong liveness check.
+ */
+export function heartbeatClient(
+  client: {
+    ws: Pick<WebSocket, "bufferedAmount" | "ping" | "terminate">;
+    isAlive: boolean;
+  },
+  limits: SlowConsumerLimits = SLOW_CONSUMER_LIMITS,
+): "terminated-slow" | "terminated-zombie" | "pinged" {
+  if (client.ws.bufferedAmount > limits.hardBytes) {
+    client.ws.terminate();
+    return "terminated-slow";
+  }
+  if (!client.isAlive) {
+    client.ws.terminate();
+    return "terminated-zombie";
+  }
+  client.isAlive = false;
+  client.ws.ping();
+  return "pinged";
+}
+
+const SOCIAL_MESSAGE_KINDS = new Set(["cursor_chat", "reaction"]);
+
+/** Cursor chat and reactions are ephemeral; anything else must arrive. */
+function isDroppablePayload(payload: unknown): boolean {
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    SOCIAL_MESSAGE_KINDS.has(String((payload as { kind?: unknown }).kind))
+  );
+}
 const dirtyCursorCanvases = new Set<string>();
 
 interface CursorPosition {
@@ -131,9 +220,7 @@ export function isValidGuestShare(
   canvas: { isPublic: boolean; shareToken: string | null },
   suppliedToken: string | null,
 ): boolean {
-  return Boolean(
-    canvas.isPublic && suppliedToken && suppliedToken === canvas.shareToken,
-  );
+  return presentsCurrentShareToken(canvas, suppliedToken);
 }
 
 // Active connections per canvas
@@ -173,26 +260,77 @@ if (redisSubscriber) {
   });
 }
 
+// Channels this process is subscribed to, and one promise chain per canvas
+// so SUBSCRIBE/UNSUBSCRIBE never interleave. The reference count in
+// `subscriptions` changes synchronously; each chain step re-reads it after
+// the previous Redis call and issues only the transition still needed.
+const subscribedCanvases = new Set<string>();
+const subscriptionChains = new Map<string, Promise<void>>();
+
+function reconcileSubscription(canvasId: string): Promise<void> {
+  const subscriber = redisSubscriber;
+  if (!subscriber) return Promise.resolve();
+  const previous = subscriptionChains.get(canvasId) ?? Promise.resolve();
+  const step = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const wanted = (subscriptions.get(canvasId) ?? 0) > 0;
+      const subscribed = subscribedCanvases.has(canvasId);
+      if (wanted && !subscribed) {
+        await subscriber.subscribe(canvasChannel(canvasId));
+        subscribedCanvases.add(canvasId);
+      } else if (!wanted && subscribed) {
+        await subscriber.unsubscribe(canvasChannel(canvasId));
+        subscribedCanvases.delete(canvasId);
+        // Remote state goes only when no local socket holds the canvas.
+        if ((subscriptions.get(canvasId) ?? 0) === 0) {
+          remotePresence.deleteCanvas(canvasId);
+          remoteCursors.deleteCanvas(canvasId);
+        }
+      }
+    });
+  subscriptionChains.set(canvasId, step);
+  void step
+    .catch(() => undefined)
+    .then(() => {
+      if (subscriptionChains.get(canvasId) === step) {
+        subscriptionChains.delete(canvasId);
+      }
+    });
+  return step;
+}
+
+function changeSubscriptionCount(canvasId: string, delta: number): void {
+  const count = Math.max(0, (subscriptions.get(canvasId) ?? 0) + delta);
+  if (count === 0) subscriptions.delete(canvasId);
+  else subscriptions.set(canvasId, count);
+}
+
 async function subscribeToCanvas(canvasId: string): Promise<void> {
   if (!redisSubscriber) return;
-  const count = subscriptions.get(canvasId) || 0;
-  if (count === 0) {
-    await redisSubscriber.subscribe(canvasChannel(canvasId));
+  changeSubscriptionCount(canvasId, 1);
+  try {
+    await reconcileSubscription(canvasId);
+  } catch (error) {
+    // This caller holds no subscription; a later step settles the channel
+    // for whoever still does.
+    changeSubscriptionCount(canvasId, -1);
+    void reconcileSubscription(canvasId).catch((reconcileError) =>
+      logger.error(
+        { error: reconcileError, canvasId },
+        "Redis subscription reconcile failed",
+      ),
+    );
+    throw error;
   }
-  subscriptions.set(canvasId, count + 1);
 }
 
 async function unsubscribeFromCanvas(canvasId: string): Promise<void> {
   if (!redisSubscriber) return;
-  const count = subscriptions.get(canvasId) || 0;
-  if (count <= 1) {
-    await redisSubscriber.unsubscribe(canvasChannel(canvasId));
-    subscriptions.delete(canvasId);
-    remotePresence.deleteCanvas(canvasId);
-    remoteCursors.deleteCanvas(canvasId);
-  } else {
-    subscriptions.set(canvasId, count - 1);
-  }
+  changeSubscriptionCount(canvasId, -1);
+  await reconcileSubscription(canvasId).catch((error) =>
+    logger.error({ error, canvasId }, "Redis unsubscribe failed"),
+  );
 }
 
 function publishMessage(message: CollaborationBusMessage): void {
@@ -202,16 +340,30 @@ function publishMessage(message: CollaborationBusMessage): void {
     .catch((error) => logger.error({ error }, "Redis publish error"));
 }
 
+/**
+ * What presence and chat recipients see of a collaborator: id, a display name
+ * (never the email) and color. Every recipient, guests included, gets the
+ * same payload, so no email is serialized.
+ */
+function publicDisplayName(user: Pick<CollaborationUser, "name">): string {
+  return user.name?.trim() || "Collaborator";
+}
+
+function toPublicUser(user: CollaborationUser): CollaborationUser {
+  return {
+    userId: user.userId,
+    // Kept as an empty string so older replicas and clients still parse it.
+    email: "",
+    name: publicDisplayName(user),
+    color: user.color,
+    accessLevel: user.accessLevel,
+  };
+}
+
 function getLocalUsers(clients: Set<ClientConnection>): CollaborationUser[] {
   const users = new Map<string, CollaborationUser>();
   for (const client of clients) {
-    users.set(client.user.userId, {
-      userId: client.user.userId,
-      email: client.user.email,
-      name: client.user.name,
-      color: client.user.color,
-      accessLevel: client.user.accessLevel,
-    });
+    users.set(client.user.userId, toPublicUser(client.user));
   }
   return Array.from(users.values());
 }
@@ -270,7 +422,8 @@ function getRemoteUsers(
     remoteUsers.forEach((user) => {
       if (!seen.has(user.userId)) {
         seen.add(user.userId);
-        users.push(user);
+        // A replica on older code may still publish emails.
+        users.push(toPublicUser(user));
       }
     });
   });
@@ -346,6 +499,20 @@ async function handleRedisMessage(
   }
 }
 
+const REQUEST_URL_BASE = "http://collaboration.local";
+
+/** Parse only the path and query; never the caller-controlled Host header. */
+function parseRequestUrl(request: Pick<IncomingMessage, "url">): URL {
+  return new URL(request.url || "", REQUEST_URL_BASE);
+}
+
+function isPresencePath(rawUrl: string | undefined): boolean {
+  const path = (rawUrl || "").split("?")[0] ?? "";
+  return (
+    path.startsWith("/api/collaboration/") && path !== COLLABORATION_SYNC_PATH
+  );
+}
+
 /**
  * Initialize WebSocket server
  */
@@ -365,7 +532,18 @@ export function createCollaborationServer(server: any): WebSocketServer {
   server.on(
     "upgrade",
     async (request: IncomingMessage, socket: any, head: Buffer) => {
-      const url = new URL(request.url || "", `http://${request.headers.host}`);
+      // Only the path and query route; the Host header is caller-controlled
+      // and must neither throw here nor influence anything.
+      let url: URL;
+      try {
+        url = parseRequestUrl(request);
+      } catch (error) {
+        logger.warn({ error }, "WebSocket upgrade with an unparsable URL");
+        if (isPresencePath(request.url)) {
+          rejectUpgrade(socket, "HTTP/1.1 400 Bad Request\r\n\r\n");
+        }
+        return;
+      }
 
       // Only handle presence connections; document sync connections belong
       // to the sync server (IMP-042).
@@ -435,7 +613,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
               accessLevel: "VIEW",
             };
             (request as any).clientId = clientId;
-            (request as any).guestShareToken = shareToken;
+            (request as any).shareToken = shareToken;
 
             wss.handleUpgrade(request, socket, head, (ws) => {
               wss.emit("connection", ws, request);
@@ -465,12 +643,15 @@ export function createCollaborationServer(server: any): WebSocketServer {
             },
           });
 
-          if (
-            !canvas ||
-            (canvas.userId !== user.id &&
-              canvas.shares.length === 0 &&
-              !canvas.isPublic)
-          ) {
+          const shareToken = url.searchParams.get("shareToken") || undefined;
+          const accessLevel = resolveCollaborationAccess({
+            principalId: user.id,
+            sessionActive: true,
+            shareToken,
+            canvas,
+            sharedRole: canvas?.shares[0]?.role,
+          });
+          if (!accessLevel) {
             logger.warn(
               { userId: user.id, canvasId },
               `User denied access to canvas`,
@@ -478,11 +659,6 @@ export function createCollaborationServer(server: any): WebSocketServer {
             rejectUpgrade(socket, "HTTP/1.1 403 Forbidden\r\n\r\n");
             return;
           }
-
-          const accessLevel =
-            canvas.userId === user.id
-              ? "OWNER"
-              : canvas.shares[0]?.role || "VIEW";
 
           // Attach user to request for handleConnection
           (request as any).user = {
@@ -494,13 +670,18 @@ export function createCollaborationServer(server: any): WebSocketServer {
             sessionId: authSession.session.id,
           };
           (request as any).clientId = clientId;
+          (request as any).shareToken = shareToken;
 
           wss.handleUpgrade(request, socket, head, (ws) => {
             wss.emit("connection", ws, request);
           });
         } catch (error) {
           logger.error({ error }, "WebSocket upgrade error");
-          rejectUpgrade(socket, "HTTP/1.1 500 Internal Server Error\r\n\r\n");
+          try {
+            rejectUpgrade(socket, "HTTP/1.1 500 Internal Server Error\r\n\r\n");
+          } catch {
+            socket.destroy?.();
+          }
         }
       } else {
         return;
@@ -509,8 +690,11 @@ export function createCollaborationServer(server: any): WebSocketServer {
   );
 
   // Handle new WebSocket connections
-  wss.on("connection", async (ws: WebSocket, request: IncomingMessage) => {
-    await handleConnection(ws, request);
+  wss.on("connection", (ws: WebSocket, request: IncomingMessage) => {
+    void handleConnection(ws, request).catch((error) => {
+      logger.error({ error }, "WebSocket connection setup failed");
+      ws.terminate();
+    });
   });
 
   let authorizationRefreshInFlight: Promise<void> | null = null;
@@ -521,16 +705,17 @@ export function createCollaborationServer(server: any): WebSocketServer {
     const now = Date.now();
     connections.forEach((clients, canvasId) => {
       clients.forEach((client) => {
-        if (!client.isAlive) {
+        const outcome = heartbeatClient(client);
+        if (outcome === "terminated-zombie")
           logger.info(
             { userId: client.user.userId, canvasId },
             "Terminating zombie connection",
           );
-          client.ws.terminate();
-          return;
-        }
-        client.isAlive = false;
-        client.ws.ping();
+        else if (outcome === "terminated-slow")
+          logger.info(
+            { userId: client.user.userId, canvasId },
+            "Terminating slow connection",
+          );
       });
 
       publishPresence(canvasId);
@@ -574,17 +759,31 @@ async function handleConnection(
   ws: WebSocket,
   request: IncomingMessage,
 ): Promise<void> {
-  const url = new URL(request.url || "", `http://${request.headers.host}`);
+  // First, before any await: a malformed frame during admission or the Redis
+  // subscription must not surface as an unhandled EventEmitter error. The
+  // socket closes; whichever setup step is waiting sees it and releases.
+  const logContext: { canvasId?: string } = {};
+  ws.on("error", (error) => {
+    logger.error({ error, ...logContext }, "WebSocket error");
+    if (
+      ws.readyState === WebSocket.CONNECTING ||
+      ws.readyState === WebSocket.OPEN
+    ) {
+      ws.terminate();
+    }
+  });
+
+  const url = parseRequestUrl(request);
   const pathParts = url.pathname.split("/");
   const canvasId = pathParts[pathParts.length - 1];
+  logContext.canvasId = canvasId;
 
   // User is already authenticated and attached to request
   const user = (request as any).user as CollaborationUser & {
     accessLevel?: ClientConnection["accessLevel"];
   };
   const clientId = String((request as any).clientId || "unknown");
-  const guestShareToken = (request as any).guestShareToken as
-    string | undefined;
+  const shareToken = (request as any).shareToken as string | undefined;
 
   if (!user || !canvasId) {
     incrementOperationalCounter("websocket_rejected_total");
@@ -630,7 +829,7 @@ async function handleConnection(
     authorizationLeaseExpiresAt: now + AUTHORIZATION_LEASE_MS,
     authorizationFailureCount: 0,
     clientId,
-    guestShareToken,
+    shareToken,
   };
 
   const clients = canvasConnections ?? new Set<ClientConnection>();
@@ -719,10 +918,6 @@ async function handleConnection(
   ws.on("pong", () => {
     connection.isAlive = true;
   });
-
-  ws.on("error", (error) => {
-    logger.error({ error, canvasId }, "WebSocket error");
-  });
 }
 
 function connectionSnapshot(): ClientConnection[] {
@@ -792,7 +987,7 @@ async function revalidateAllConnections(): Promise<void> {
       sessionActive:
         client.user.sessionId !== undefined &&
         liveSessions.get(client.user.sessionId) === userId,
-      guestShareToken: client.guestShareToken,
+      shareToken: client.shareToken,
       canvas: canvas
         ? {
             userId: canvas.userId,
@@ -894,7 +1089,7 @@ async function handleMessage(
       const payload = {
         ...message.payload,
         userId: connection.user.userId,
-        userName: connection.user.name || connection.user.email || "Guest",
+        userName: publicDisplayName(connection.user),
         userColor: connection.user.color,
         timestamp,
       };
@@ -951,11 +1146,10 @@ function broadcastMessagePayload(
     type: "message",
     payload,
   });
+  const droppable = isDroppablePayload(payload);
 
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
+    sendToClient(client, message, { droppable });
   });
 }
 
@@ -963,8 +1157,10 @@ function broadcastRemoteMessage(canvasId: string, payload: unknown): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
   const message = JSON.stringify({ type: "message", payload });
+  // Remote social payloads are ephemeral; a restore notice must arrive.
+  const droppable = isDroppablePayload(payload);
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
+    sendToClient(client, message, { droppable });
   });
 }
 function broadcastCommittedEvent(canvasId: string, event: unknown): void {
@@ -972,7 +1168,7 @@ function broadcastCommittedEvent(canvasId: string, event: unknown): void {
   if (!clients) return;
   const message = JSON.stringify({ type: "committed-event", event });
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
+    sendToClient(client, message, { droppable: false });
   });
 }
 function broadcastPresence(canvasId: string): void {
@@ -989,9 +1185,7 @@ function broadcastPresence(canvasId: string): void {
   });
 
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
+    sendToClient(client, message, { droppable: true });
   });
 }
 
@@ -1015,9 +1209,7 @@ function broadcastCursors(canvasId: string): void {
   });
 
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
+    sendToClient(client, message, { droppable: true });
   });
 }
 

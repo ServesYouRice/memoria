@@ -9,7 +9,7 @@ import {
 import { createHash } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BadRequestError, NotFoundError } from "@/lib/errors";
+import { BadRequestError, ConflictError, NotFoundError } from "@/lib/errors";
 import { AGENT_CAPABILITY_RUNGS } from "@/lib/agents/constants";
 import { assertAgentCapability } from "@/lib/agents/policy";
 import { proposeCanvasPiles } from "@/lib/agents/piles";
@@ -112,6 +112,11 @@ async function loadOwnedItems(
   return items;
 }
 
+/** An item moved or was trashed between the unlocked and the locked read. */
+function staleAskMove() {
+  return new ConflictError("Items moved while filing; try again.");
+}
+
 function assertMovable(items: { type: string }[]) {
   if (items.some((item) => !MOVABLE_TYPES.has(item.type))) {
     throw new BadRequestError(
@@ -163,7 +168,11 @@ export async function proposeAskCommand(input: {
     return suggestion;
   }
 
-  assertMovable(items);
+  // Archive takes any item type (archiveItems does not filter); only moves
+  // keep images, frames and arrows on their board.
+  if (command.type === "move_items" || command.type === "create_board") {
+    assertMovable(items);
+  }
 
   let boardName: string | undefined;
   if (command.type === "move_items") {
@@ -258,6 +267,11 @@ export async function executeAskCommandSuggestion(input: {
   agentProfile: Parameters<typeof assertAgentCapability>[0];
   payload: unknown;
   summary: string;
+  /**
+   * When set, every item must still be on this board once the boards are
+   * locked; a home-board filing never moves an item the user moved since.
+   */
+  expectedSourceCanvasId?: string;
 }) {
   const { command } = askCommandSuggestionPayloadSchema.parse(input.payload);
   assertAgentCapability(input.agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
@@ -322,21 +336,52 @@ export async function executeAskCommandSuggestion(input: {
 
     if (!target) throw new NotFoundError("Board not found.");
 
-    const items = command.itemIds.length
+    // This first read only picks the boards to lock; everything the move
+    // writes comes from the second read, made while those locks are held.
+    const unlocked = command.itemIds.length
       ? await loadOwnedItems(tx, userId, command.itemIds)
       : [];
-    assertMovable(items);
-    const moving = items.filter((item) => item.canvasId !== target!.id);
+    assertMovable(unlocked);
+    const lockSet = unlocked.filter((item) => item.canvasId !== target!.id);
+    let items = unlocked;
 
-    if (moving.length > 0) {
+    if (lockSet.length > 0) {
       // One lock order for every board involved, so concurrent moves cannot deadlock.
       const canvasIds = Array.from(
-        new Set([target.id, ...moving.map((item) => item.canvasId)]),
+        new Set([target.id, ...lockSet.map((item) => item.canvasId)]),
       ).sort();
       for (const canvasId of canvasIds) {
         await lockCanvasForMutation(tx, canvasId);
         touched.add(canvasId);
       }
+      // Re-read under the locks: an item moved or trashed since the first
+      // read must not be moved from its stale board. No extra locks are
+      // taken out of order; the caller tries again instead.
+      try {
+        items = await loadOwnedItems(tx, userId, command.itemIds);
+      } catch (error) {
+        if (error instanceof BadRequestError) throw staleAskMove();
+        throw error;
+      }
+      // An item that moved between two boards this run holds is safe to
+      // move from where it is now; one that left them is not.
+      const lockedCanvasIds = new Set(canvasIds);
+      if (items.some((item) => !lockedCanvasIds.has(item.canvasId))) {
+        throw staleAskMove();
+      }
+      assertMovable(items);
+    }
+    if (
+      input.expectedSourceCanvasId !== undefined &&
+      items.some((item) => item.canvasId !== input.expectedSourceCanvasId)
+    ) {
+      throw new BadRequestError(
+        "This item has already moved, so the suggestion was dropped.",
+      );
+    }
+    const moving = items.filter((item) => item.canvasId !== target!.id);
+
+    if (moving.length > 0) {
       await assertCanvasItemCapacity(tx, target.id, moving.length);
 
       const existing = await tx.canvasItem.findMany({
@@ -374,16 +419,28 @@ export async function executeAskCommandSuggestion(input: {
             })),
           });
         }
-        const updated = await tx.canvasItem.update({
-          where: { id: item.id },
-          data: {
-            canvasId: target.id,
-            positionX: position.x,
-            positionY: position.y,
-            version: { increment: 1 },
-            updatedById: userId,
-          },
-        });
+        // Only while the item is still where the locked read found it.
+        const updated = await tx.canvasItem
+          .update({
+            where: { id: item.id, canvasId: item.canvasId, deletedAt: null },
+            data: {
+              canvasId: target.id,
+              positionX: position.x,
+              positionY: position.y,
+              version: { increment: 1 },
+              updatedById: userId,
+            },
+          })
+          .catch((error: unknown) => {
+            // P2025: the item left its locked board or was trashed.
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === "P2025"
+            ) {
+              throw staleAskMove();
+            }
+            throw error;
+          });
         await recordCanvasItemEvent(tx, {
           canvasId: item.canvasId,
           actorId: userId,

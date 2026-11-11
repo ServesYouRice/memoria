@@ -10,7 +10,10 @@ import { prisma } from "@/lib/db";
 import { errorResponse, BadRequestError, NotFoundError } from "@/lib/errors";
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/password";
-import { validatePasswordStrength } from "@/lib/validation/password";
+import {
+  PASSWORD_MAX_LENGTH,
+  validatePasswordStrength,
+} from "@/lib/validation/password";
 import { createHash } from "crypto";
 import {
   createCredentialAccount,
@@ -19,7 +22,13 @@ import {
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token is required"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(
+      PASSWORD_MAX_LENGTH,
+      `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+    ),
 });
 
 export async function POST(request: NextRequest) {
@@ -93,6 +102,12 @@ export async function POST(request: NextRequest) {
       }
       // Deleting server-side sessions revokes every signed-in device.
       await tx.session.deleteMany({ where: { userId: user.id } });
+      // A reset is the recovery step after a compromise, so API keys made by
+      // whoever held the account go too. Already-revoked keys keep their time.
+      await tx.apiKey.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
     });
 
     return NextResponse.json({

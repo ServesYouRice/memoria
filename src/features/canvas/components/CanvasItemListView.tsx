@@ -43,7 +43,7 @@ import {
   isShapeContent,
   isTextContent,
 } from "@/types/canvas";
-import { stripHtmlTags } from "@/lib/utils/html";
+import { notePlainText } from "@/features/canvas/search";
 import {
   EMBED_PREVIEW_LABEL,
   describeEmbedTarget,
@@ -57,7 +57,7 @@ export function describeItemHeading(item: CanvasItem): string {
   const content = item.content;
 
   if (isNoteContent(content)) {
-    const text = stripHtmlTags(content.plainText || content.text || "").trim();
+    const text = notePlainText(content).trim();
     return text ? text.split("\n")[0]!.slice(0, 80) : "Empty note";
   }
   if (isBookmarkContent(content)) {
@@ -114,7 +114,7 @@ export function describeItemDetail(
   }
 
   if (isNoteContent(content)) {
-    return stripHtmlTags(content.plainText || content.text || "").slice(0, 280);
+    return notePlainText(content).slice(0, 280);
   }
   if (isBookmarkContent(content)) {
     return content.description || content.url;
@@ -200,6 +200,10 @@ export function CanvasItemListView({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>, item: CanvasItem) => {
+      // Keys pressed on the row's own Edit/Delete buttons bubble here.
+      // Treating them as row commands would preventDefault and cancel the
+      // button's native keyboard activation.
+      if (event.target !== event.currentTarget) return;
       const heading = describeItemHeading(item);
 
       if (event.key === "Enter" || event.key === " ") {

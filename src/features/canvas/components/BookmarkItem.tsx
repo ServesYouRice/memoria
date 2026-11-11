@@ -28,6 +28,39 @@ const RESIZE_HANDLE_SIZE = 8;
 const MIN_WIDTH = 200;
 const MIN_HEIGHT = 80;
 
+type ResizeCorner = "se" | "sw" | "ne" | "nw";
+
+/**
+ * New geometry for dragging one corner to `pointer`, all in world space; the
+ * opposite corner stays put and the size never drops below `min`.
+ */
+export function resizeFromCorner(
+  corner: ResizeCorner,
+  pointer: { x: number; y: number },
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  min: { width: number; height: number },
+) {
+  const right = position.x + size.width;
+  const bottom = position.y + size.height;
+  const fromLeft = corner === "sw" || corner === "nw";
+  const fromTop = corner === "ne" || corner === "nw";
+  const width = Math.max(
+    min.width,
+    fromLeft ? right - pointer.x : pointer.x - position.x,
+  );
+  const height = Math.max(
+    min.height,
+    fromTop ? bottom - pointer.y : pointer.y - position.y,
+  );
+  return {
+    width,
+    height,
+    x: fromLeft ? right - width : position.x,
+    y: fromTop ? bottom - height : position.y,
+  };
+}
+
 function BookmarkItemComponent({
   item,
   isSelected = false,
@@ -83,8 +116,10 @@ function BookmarkItemComponent({
     }
   }, [content.favicon]);
 
-  // Handle drag
+  // Handle drag. Only drags of the Group itself move the bookmark; a resize
+  // handle's drag events must not reach these handlers.
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    if (e.target !== e.currentTarget) return;
     const node = e.target;
     const newPos = {
       x: node.x(),
@@ -94,64 +129,51 @@ function BookmarkItemComponent({
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
+    if (e.target !== e.currentTarget) return;
     const node = e.target;
     onCommitGeometry({ positionX: node.x(), positionY: node.y() });
   };
 
   // Handle resize
   const handleResize = (
-    corner: "se" | "sw" | "ne" | "nw",
+    corner: ResizeCorner,
     e: Konva.KonvaEventObject<MouseEvent>,
   ) => {
     const stage = e.target.getStage();
     if (!stage) return;
 
-    const pointerPos = stage.getPointerPosition();
+    // Item geometry is in world (layer) space; the Stage is zoomed and
+    // panned, so the pointer must be in the same space.
+    const pointerPos = stage.getRelativePointerPosition();
     if (!pointerPos) return;
 
-    let newWidth = localSize.width;
-    let newHeight = localSize.height;
-    let newX = localPosition.x;
-    let newY = localPosition.y;
-
-    switch (corner) {
-      case "se": // Bottom-right
-        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
-        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
-        break;
-      case "sw": // Bottom-left
-        newWidth = Math.max(
-          MIN_WIDTH,
-          localPosition.x + localSize.width - pointerPos.x,
-        );
-        newHeight = Math.max(MIN_HEIGHT, pointerPos.y - localPosition.y);
-        newX = localPosition.x + localSize.width - newWidth;
-        break;
-      case "ne": // Top-right
-        newWidth = Math.max(MIN_WIDTH, pointerPos.x - localPosition.x);
-        newHeight = Math.max(
-          MIN_HEIGHT,
-          localPosition.y + localSize.height - pointerPos.y,
-        );
-        newY = localPosition.y + localSize.height - newHeight;
-        break;
-      case "nw": // Top-left
-        newWidth = Math.max(
-          MIN_WIDTH,
-          localPosition.x + localSize.width - pointerPos.x,
-        );
-        newHeight = Math.max(
-          MIN_HEIGHT,
-          localPosition.y + localSize.height - pointerPos.y,
-        );
-        newX = localPosition.x + localSize.width - newWidth;
-        newY = localPosition.y + localSize.height - newHeight;
-        break;
-    }
-
-    setLocalSize({ width: newWidth, height: newHeight });
-    setLocalPosition({ x: newX, y: newY });
+    const next = resizeFromCorner(
+      corner,
+      pointerPos,
+      localPosition,
+      localSize,
+      {
+        width: MIN_WIDTH,
+        height: MIN_HEIGHT,
+      },
+    );
+    setLocalSize({ width: next.width, height: next.height });
+    setLocalPosition({ x: next.x, y: next.y });
   };
+
+  // Resize handles are draggable children of the draggable Group: stop their
+  // drag events from bubbling to the Group (and the Stage), so one resize
+  // gesture is one geometry write.
+  const resizeHandleEvents = (corner: "se" | "sw" | "ne" | "nw") => ({
+    onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => {
+      e.cancelBubble = true;
+      handleResize(corner, e as unknown as Konva.KonvaEventObject<MouseEvent>);
+    },
+    onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+      e.cancelBubble = true;
+      handleResizeEnd();
+    },
+  });
 
   const handleResizeEnd = () => {
     onCommitGeometry({
@@ -297,8 +319,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("se", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("se")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nwse-resize";
@@ -316,8 +337,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("sw", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("sw")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nesw-resize";
@@ -335,8 +355,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("ne", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("ne")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nesw-resize";
@@ -354,8 +373,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("nw", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("nw")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nwse-resize";
@@ -377,32 +395,53 @@ function BookmarkItemComponent({
  * Same optimization strategy as NoteItem:
  * - Prevents re-renders when other canvas items change
  * - Only re-renders when the item itself is updated
- * - Or when selection state changes
+ * - Or when selection state or capabilities change
  */
+export function areBookmarkItemPropsEqual(
+  prevProps: BookmarkItemProps,
+  nextProps: BookmarkItemProps,
+): boolean {
+  // Re-render if item changed
+  if (prevProps.item.id !== nextProps.item.id) {
+    return false;
+  }
+
+  // Re-render if selection state changed
+  if (prevProps.isSelected !== nextProps.isSelected) {
+    return false;
+  }
+
+  // Re-render if item was updated
+  if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
+    return false;
+  }
+
+  // Re-render if version changed
+  if (prevProps.item.version !== nextProps.item.version) {
+    return false;
+  }
+
+  // Re-render when permissions change (fallback -> loaded, or an access
+  // change from the sync server): draggable, the resize handles and the
+  // activate/commit callbacks all depend on them. Callbacks are rebuilt by
+  // the layer on every render, so they are not compared; a re-render here
+  // also picks up the latest ones.
+  if (prevProps.capabilities !== nextProps.capabilities) {
+    const prev = prevProps.capabilities;
+    const next = nextProps.capabilities;
+    const keys = new Set([...Object.keys(prev), ...Object.keys(next)]) as Set<
+      keyof typeof prev
+    >;
+    for (const key of keys) {
+      if (prev[key] !== next[key]) return false;
+    }
+  }
+
+  // No changes detected, skip re-render
+  return true;
+}
+
 export const BookmarkItem = React.memo(
   BookmarkItemComponent,
-  (prevProps, nextProps) => {
-    // Re-render if item changed
-    if (prevProps.item.id !== nextProps.item.id) {
-      return false;
-    }
-
-    // Re-render if selection state changed
-    if (prevProps.isSelected !== nextProps.isSelected) {
-      return false;
-    }
-
-    // Re-render if item was updated
-    if (prevProps.item.updatedAt !== nextProps.item.updatedAt) {
-      return false;
-    }
-
-    // Re-render if version changed
-    if (prevProps.item.version !== nextProps.item.version) {
-      return false;
-    }
-
-    // No changes detected, skip re-render
-    return true;
-  },
+  areBookmarkItemPropsEqual,
 );

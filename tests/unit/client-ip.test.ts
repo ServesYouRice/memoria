@@ -25,9 +25,14 @@ describe("deriveClientIp", () => {
   });
 
   it("fails safely when a trusted proxy sends a malformed chain", () => {
+    // A malformed hop at the trust boundary falls back to the peer; junk
+    // left of the boundary is client-supplied and ignored (TASK-233).
+    expect(
+      deriveClientIp("10.0.0.2", "203.0.113.8, spoofed", "10.0.0.0/8"),
+    ).toBe("10.0.0.2");
     expect(
       deriveClientIp("10.0.0.2", "spoofed, 203.0.113.8", "10.0.0.0/8"),
-    ).toBe("10.0.0.2");
+    ).toBe("203.0.113.8");
   });
 
   it("normalizes IPv4-mapped peers", () => {

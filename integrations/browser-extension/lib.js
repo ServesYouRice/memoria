@@ -11,17 +11,42 @@ export function isWebUrl(url) {
 }
 
 /**
- * Whether a tab is ticked when the popup opens: normal web tabs are, pinned
- * tabs and browser pages (chrome://, about:, edge://, extension pages) are not.
+ * Longest URL the server accepts. Keep in step with MAX_URL_LENGTH in
+ * src/lib/constants.ts: one longer URL makes the server reject a whole batch.
+ */
+export const MAX_URL_LENGTH = 2048;
+
+/** A web page whose address the server will accept, sent unchanged. */
+export function isSavableUrl(url) {
+  return isWebUrl(url) && url.length <= MAX_URL_LENGTH;
+}
+
+/**
+ * Whether a tab is ticked when the popup opens: normal web tabs are; pinned
+ * tabs, browser pages (chrome://, about:, edge://, extension pages) and pages
+ * with an address too long to save are not.
  */
 export function isPreselected(tab) {
-  return !tab.pinned && isWebUrl(tab.url);
+  return !tab.pinned && isSavableUrl(tab.url);
+}
+
+/**
+ * Loopback development hosts, the only ones plain http:// may reach:
+ * localhost (and *.localhost), 127.0.0.0/8 and [::1]. URL.hostname keeps the
+ * brackets around IPv6 addresses.
+ */
+export function isLoopbackHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "[::1]") return true;
+  return /^127(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(host);
 }
 
 /**
  * Normalize what the person pasted as their Memoria address to an origin
  * ("memoria.example.com" -> "https://memoria.example.com"). Throws on input
- * that is not an http(s) address.
+ * that is not an https address, or a plain http address of a loopback host:
+ * the API key must never cross the network in cleartext.
  */
 export function normalizeServerUrl(input) {
   const trimmed = String(input || "").trim();
@@ -36,6 +61,9 @@ export function normalizeServerUrl(input) {
     throw new Error("That does not look like a web address.");
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("The Memoria address must start with https://.");
+  }
+  if (parsed.protocol === "http:" && !isLoopbackHost(parsed.hostname)) {
     throw new Error("The Memoria address must start with https://.");
   }
   return parsed.origin;
@@ -76,11 +104,19 @@ export function buildBatchBody(tabs, note, idempotencyKey) {
   };
 }
 
-/** Readable message from a problem+json (or other) error response. */
-export async function readError(response) {
+/**
+ * Readable message from a problem+json (or other) error response. With the
+ * submitted `tabs`, a validation error on `links.N.…` names that tab.
+ */
+export async function readError(response, tabs = []) {
   let detail = "";
+  let tabName = "";
   try {
     const body = await response.json();
+    const field = Array.isArray(body?.errors) ? body.errors[0]?.field : null;
+    const index = /^links\.(\d+)(?:\.|$)/.exec(String(field ?? ""))?.[1];
+    const tab = index === undefined ? undefined : tabs[Number(index)];
+    if (tab) tabName = String(tab.title || tab.url || "");
     detail =
       (Array.isArray(body?.errors) && body.errors[0]?.message) ||
       body?.detail ||
@@ -93,9 +129,10 @@ export async function readError(response) {
   if (response.status === 401) {
     return "Memoria did not accept the API key. Check it in the extension settings.";
   }
-  return detail
+  const message = detail
     ? `Memoria could not save the tabs: ${String(detail).replace(/[.!?]?$/, ".")}`
     : `Memoria could not save the tabs (HTTP ${response.status}).`;
+  return tabName ? `${message} Rejected tab: ${tabName}` : message;
 }
 
 /**
@@ -112,26 +149,26 @@ export async function sendBatch({
   idempotencyKey,
   fetchImpl = fetch,
 }) {
+  // Validate the address before the request, so an address that may not
+  // carry the key (plain http to a remote host) never reaches fetch.
+  const url = `${normalizeServerUrl(serverUrl)}${BATCH_PATH}`;
   let response;
   try {
-    response = await fetchImpl(
-      `${normalizeServerUrl(serverUrl)}${BATCH_PATH}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": String(apiKey).trim(),
-        },
-        body: JSON.stringify(buildBatchBody(tabs, note, idempotencyKey)),
+    response = await fetchImpl(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": String(apiKey).trim(),
       },
-    );
+      body: JSON.stringify(buildBatchBody(tabs, note, idempotencyKey)),
+    });
   } catch {
     throw new Error(
       "Could not reach Memoria. Check the address and your connection.",
     );
   }
   if (!response.ok) {
-    throw new Error(await readError(response));
+    throw new Error(await readError(response, tabs));
   }
   const body = await response.json();
   const alreadySaved = alreadySavedLinks(body).length;
@@ -159,11 +196,71 @@ export function alreadySavedLinks(body) {
   );
 }
 
+function hasFragment(url) {
+  const hash = String(url).indexOf("#");
+  return hash !== -1 && hash < String(url).length - 1;
+}
+
+/**
+ * Ids of submitted tabs the server reported as already saved without proof
+ * that the saved copy is the same page. Duplicate matching ignores the URL
+ * fragment, which on hash-routed apps names a different page
+ * (#/document/A vs #/document/B), so such a tab was never saved and must stay
+ * open. A duplicate counts as the same page when one existing copy has the
+ * tab's exact URL; when the response names no URL, only when the tab's URL
+ * has no fragment.
+ */
+export function unconfirmedDuplicateTabIds(tabs, body) {
+  const unconfirmed = [];
+  for (const entry of alreadySavedLinks(body)) {
+    const tab =
+      tabs[entry.index]?.url === entry.url
+        ? tabs[entry.index]
+        : tabs.find((candidate) => candidate.url === entry.url);
+    if (!tab) continue;
+    const savedUrls = entry.existing
+      .map((existing) => existing?.url)
+      .filter((url) => typeof url === "string");
+    const samePage =
+      savedUrls.length > 0
+        ? savedUrls.includes(tab.url)
+        : !hasFragment(tab.url);
+    if (!samePage) unconfirmed.push(tab.id);
+  }
+  return unconfirmed;
+}
+
 /** Address of the existing copy of a link in the Memoria app. */
 export function existingLinkUrl(serverUrl, existing) {
   const path = String(existing?.path || "");
   if (!path.startsWith("/canvas/")) return null;
   return `${normalizeServerUrl(serverUrl)}${path}`;
+}
+
+/**
+ * Which submitted tabs may close after the server confirmed them: those that
+ * still exist and still show the submitted URL (and, when the browser reports
+ * a navigation in progress, whose pendingUrl is that URL too). `current` maps
+ * a tab id to its fresh record, or to null when the tab is gone.
+ */
+export function closableTabIds(submitted, current) {
+  const closable = [];
+  const changed = [];
+  for (const tab of submitted) {
+    const now = current.get(tab.id);
+    if (
+      now &&
+      now.url === tab.url &&
+      (now.pendingUrl === undefined ||
+        now.pendingUrl === "" ||
+        now.pendingUrl === tab.url)
+    ) {
+      closable.push(tab.id);
+    } else {
+      changed.push(tab.id);
+    }
+  }
+  return { closable, changed };
 }
 
 /** Stable fingerprint of what would be sent, to reuse keys on retry. */

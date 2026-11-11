@@ -45,9 +45,12 @@ function isTrackingParam(name: string) {
 
 /**
  * The form two saves of the same link share: lowercase host, no default
- * port, no fragment, no tracking parameters (`utm_*`, `fbclid`, ...), the
- * remaining parameters sorted, and no trailing slash. Returns null for
- * anything that is not an http(s) URL.
+ * port, no tracking parameters (`utm_*`, `fbclid`, ...), the remaining
+ * parameters sorted, and no trailing slash. A fragment is dropped as an
+ * in-page anchor unless it is a hash route (`#/...` or `#!...`), which names
+ * a different page in hash-routed apps and so stays verbatim in the key
+ * (section-275520a7a3648f6070aec172/Q-005). Returns null for anything that
+ * is not an http(s) URL.
  */
 export function normalizeLinkUrl(raw: string): string | null {
   let url: URL;
@@ -57,6 +60,9 @@ export function normalizeLinkUrl(raw: string): string | null {
     return null;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  const fragment = url.hash;
+  const route =
+    fragment.startsWith("#/") || fragment.startsWith("#!") ? fragment : "";
   url.hash = "";
   url.username = "";
   url.password = "";
@@ -69,7 +75,7 @@ export function normalizeLinkUrl(raw: string): string | null {
   for (const [name, value] of kept) url.searchParams.append(name, value);
   const path = url.pathname.replace(/\/+$/, "");
   // URL already lowercases the host and drops a default port.
-  return `${url.protocol}//${url.host}${path}${url.search}`;
+  return `${url.protocol}//${url.host}${path}${url.search}${route}`;
 }
 
 export interface ExistingLink {

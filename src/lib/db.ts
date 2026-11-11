@@ -14,14 +14,18 @@
  * ## ENHANCED: Issue #13, #22 - Connection pool and timeout configuration
  *
  * Connection Pooling Configuration:
- * The database connection pool is configured via DATABASE_URL query parameters:
+ * Prisma 7 talks to PostgreSQL through the node-postgres (pg) pool of the
+ * PrismaPg driver adapter. Two DATABASE_URL query parameters size it:
  *
- * - connection_limit: Max number of connections (default: 10)
- * - pool_timeout: Connection timeout in seconds (default: 10)
- * - connect_timeout: Initial connection timeout (default: 5)
+ * - connection_limit: pool `max` (positive integer; pg default 10)
+ * - pool_timeout: seconds to wait for a free connection, passed as
+ *   `connectionTimeoutMillis` (0 waits without limit, the pg default)
+ *
+ * A malformed value stops startup with an error naming the parameter.
+ * Other Prisma query-engine parameters are not read by the pg pool.
  *
  * Example DATABASE_URL:
- * postgresql://user:pass@host:5432/db?connection_limit=5&pool_timeout=10&connect_timeout=5
+ * postgresql://user:pass@host:5432/db?connection_limit=5&pool_timeout=10
  *
  * Production runs through the supervised Node server in `server.ts`.
  * Set the pool size explicitly in DATABASE_URL for that deployment.
@@ -54,12 +58,53 @@ const skipEagerConnect =
   process.env.MEMORIA_SKIP_DB_EAGER_CONNECT === "true" ||
   process.env.NEXT_PHASE === "phase-production-build";
 
+export interface PoolOptions {
+  max?: number;
+  connectionTimeoutMillis?: number;
+}
+
+/**
+ * Translates DATABASE_URL's connection_limit and pool_timeout (Prisma's names)
+ * into the pg pool's `max` and `connectionTimeoutMillis`. Absent parameters
+ * are left out so pg defaults apply; malformed ones throw.
+ */
+export function poolOptionsFromDatabaseUrl(
+  databaseUrl: string | undefined,
+): PoolOptions {
+  if (!databaseUrl) return {};
+  let params: URLSearchParams;
+  try {
+    params = new URL(databaseUrl).searchParams;
+  } catch {
+    return {};
+  }
+  const options: PoolOptions = {};
+  const limit = params.get("connection_limit");
+  if (limit !== null) {
+    if (!/^\d+$/.test(limit) || Number(limit) < 1) {
+      throw new Error(
+        "DATABASE_URL connection_limit must be a positive integer.",
+      );
+    }
+    options.max = Number(limit);
+  }
+  const timeout = params.get("pool_timeout");
+  if (timeout !== null) {
+    if (!/^\d+$/.test(timeout)) {
+      throw new Error(
+        "DATABASE_URL pool_timeout must be a non-negative whole number of seconds.",
+      );
+    }
+    options.connectionTimeoutMillis = Number(timeout) * 1000;
+  }
+  return options;
+}
+
 // Prisma 7 connects through a driver adapter rather than a `datasources`
-// block. Pooling still comes from the DATABASE_URL query parameters, which the
-// pg pool reads directly.
-// Example: postgresql://user:pass@host:5432/db?connection_limit=5&pool_timeout=10
+// block, so the pool options are passed to the pg pool explicitly.
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
+  ...poolOptionsFromDatabaseUrl(process.env.DATABASE_URL),
 });
 
 export const prisma =
@@ -76,9 +121,11 @@ export const prisma =
         : [{ emit: "stdout", level: "error" }],
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+// Shared through globalThis in every environment: development keeps one client
+// across hot reloads, and in production the custom server and the Next.js
+// route bundles (separate module instances in one process) share one pool, so
+// the server's graceful shutdown disconnects the pool requests actually use.
+globalForPrisma.prisma = prisma;
 
 // Log query events in development for debugging
 if (process.env.NODE_ENV === "development") {
@@ -115,26 +162,28 @@ if (process.env.NODE_ENV === "production") {
     logger.info("Skipping eager database connect during build-time execution");
   }
 
-  // Handle graceful shutdown
-  const shutdown = async (signal: string) => {
-    logger.info({ signal }, "Shutting down database connection");
+  // Process signals belong to the entrypoint (server.ts, the sync server, the
+  // outbox worker). Each one stops its own work first and then calls
+  // `disconnectDatabase()`; a listener here would end the pool and exit while
+  // the HTTP server is still draining in-flight requests.
+  process.on("beforeExit", () => {
+    void disconnectDatabase();
+  });
+}
+
+let disconnecting: Promise<void> | undefined;
+
+/**
+ * Close the Prisma connection pool once. Entrypoints call this at the end of
+ * their own graceful shutdown, after in-flight work has finished.
+ */
+export function disconnectDatabase(): Promise<void> {
+  disconnecting ??= (async () => {
+    logger.info("Shutting down database connection");
     await prisma.$disconnect();
     globalForPrisma.prismaConnected = false;
-  };
-
-  process.on("beforeExit", async () => {
-    await shutdown("beforeExit");
-  });
-
-  process.on("SIGINT", async () => {
-    await shutdown("SIGINT");
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    await shutdown("SIGTERM");
-    process.exit(0);
-  });
+  })();
+  return disconnecting;
 }
 
 /**

@@ -27,6 +27,7 @@ const DESCRIPTIONS = {
 export function NotificationPreferences() {
   const preferences = useNotificationPreferences();
   const updatePreference = useUpdateNotificationPreference();
+  const pendingTypes = new Set(updatePreference.pendingTypes);
 
   if (preferences.isLoading) {
     return (
@@ -55,9 +56,9 @@ export function NotificationPreferences() {
       )}
       <List disablePadding>
         {(preferences.data?.preferences ?? []).map((preference) => {
-          const saving =
-            updatePreference.isPending &&
-            updatePreference.variables?.type === preference.type;
+          // A type stays locked until its own save settles, so a second
+          // change cannot race the first one's response.
+          const saving = pendingTypes.has(preference.type);
           return (
             <ListItem
               key={preference.type}

@@ -93,6 +93,37 @@ describe("Ask palette (IMP-068)", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
+  it("retries only the execution once approval has succeeded", async () => {
+    respond({
+      answer: "I can make a Japan board.",
+      sources: [],
+      suggestion: {
+        id: "sugg-1",
+        summary: 'Create board "Japan" and move 2 items onto it',
+        kind: "create_board",
+      },
+      commandRejected: null,
+      retrievedCount: 2,
+    });
+    mocks.approve.mockResolvedValue({});
+    mocks.execute
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce({ executed: { changeSetId: "cs-1" } });
+    render(<AskPalette open onClose={vi.fn()} />);
+
+    await ask("make a Japan board from everything about Japan");
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    expect(await screen.findByText("Network error")).toBeTruthy();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Approve|Retry/ }),
+    );
+
+    expect(await screen.findByText("Done.")).toBeTruthy();
+    expect(mocks.approve).toHaveBeenCalledTimes(1);
+    expect(mocks.execute).toHaveBeenCalledTimes(2);
+  });
+
   it("changes nothing until the user approves the suggestion", async () => {
     respond({
       answer: "I can make a Japan board.",

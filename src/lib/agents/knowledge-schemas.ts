@@ -4,7 +4,65 @@ export const KNOWLEDGE_ENTITY_SUGGESTION_KIND = "knowledge-entity-create";
 export const KNOWLEDGE_RELATION_SUGGESTION_KIND = "knowledge-relation-create";
 
 const knowledgeActionSchema = z.enum(["propose", "create"]);
-const knowledgeAttributesSchema = z.record(z.string(), z.unknown());
+
+/** Bounds on the free-form attributes blob, which is copied into the entity or
+ * relation, its ChangeRecord and (when proposed) the suggestion payload. */
+export const KNOWLEDGE_ATTRIBUTE_LIMITS = {
+  maxKeys: 50,
+  maxKeyLength: 120,
+  maxDepth: 5,
+  maxStringLength: 2000,
+  maxSerializedLength: 16_384,
+} as const;
+
+/**
+ * Returns why attributes exceed the limits, or null. The walk is iterative
+ * and stops at the depth limit, so hostile nesting cannot overflow the stack.
+ */
+export function knowledgeAttributesProblem(
+  attributes: Record<string, unknown>,
+): string | null {
+  const limits = KNOWLEDGE_ATTRIBUTE_LIMITS;
+  if (Object.keys(attributes).length > limits.maxKeys) {
+    return `attributes may have at most ${limits.maxKeys} keys`;
+  }
+  const stack: Array<{ value: unknown; depth: number }> = [
+    { value: attributes, depth: 1 },
+  ];
+  while (stack.length > 0) {
+    const { value, depth } = stack.pop()!;
+    if (typeof value === "string") {
+      if (value.length > limits.maxStringLength) {
+        return `attribute strings may be at most ${limits.maxStringLength} characters`;
+      }
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    if (depth > limits.maxDepth) {
+      return `attributes may nest at most ${limits.maxDepth} levels (depth)`;
+    }
+    const entries = Array.isArray(value)
+      ? value.map((child) => ["", child] as const)
+      : Object.entries(value as Record<string, unknown>);
+    for (const [key, child] of entries) {
+      if (key.length > limits.maxKeyLength) {
+        return `attribute keys may be at most ${limits.maxKeyLength} characters`;
+      }
+      stack.push({ value: child, depth: depth + 1 });
+    }
+  }
+  if (JSON.stringify(attributes).length > limits.maxSerializedLength) {
+    return `attributes may serialize to at most ${limits.maxSerializedLength} characters`;
+  }
+  return null;
+}
+
+const knowledgeAttributesSchema = z
+  .record(z.string(), z.unknown())
+  .superRefine((attributes, ctx) => {
+    const problem = knowledgeAttributesProblem(attributes);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  });
 
 const knowledgeEntityFields = {
   itemId: z.string().cuid(),

@@ -355,6 +355,49 @@ export function isFrameContent(content: ItemContent): content is FrameContent {
   );
 }
 
+function isContentObject(content: unknown): content is Record<string, unknown> {
+  return (
+    typeof content === "object" && content !== null && !Array.isArray(content)
+  );
+}
+
+function isOptionalPoint(value: unknown) {
+  return (
+    value === undefined ||
+    (isContentObject(value) &&
+      typeof value.x === "number" &&
+      typeof value.y === "number")
+  );
+}
+
+/*
+ * Type-scoped guards: use only after checking item.type. They accept what
+ * the server schemas accept, where every field but TEXT's text is optional;
+ * renderers default the rest. The isXContent guards above stay strict
+ * because some callers use them to tell content shapes apart without a type.
+ */
+export function isTextItemContent(
+  content: ItemContent,
+): content is TextContent {
+  return isContentObject(content) && typeof content.text === "string";
+}
+
+export function isArrowItemContent(
+  content: ItemContent,
+): content is ArrowContent {
+  return (
+    isContentObject(content) &&
+    isOptionalPoint(content.startPoint) &&
+    isOptionalPoint(content.endPoint)
+  );
+}
+
+export function isFrameItemContent(
+  content: ItemContent,
+): content is FrameContent {
+  return isContentObject(content);
+}
+
 export function isEmbedContent(content: ItemContent): content is EmbedContent {
   return "embedType" in content;
 }

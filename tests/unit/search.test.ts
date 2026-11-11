@@ -64,9 +64,14 @@ describe("Search API", () => {
 
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ exists: false }])
-      .mockResolvedValueOnce([{ count: 1 }])
-      .mockResolvedValueOnce([{ value: "NOTE", count: 1 }])
-      .mockResolvedValueOnce([{ value: "tag", count: 1 }])
+      // Count and facets come from one statement.
+      .mockResolvedValueOnce([
+        {
+          count: 1,
+          types: [{ value: "NOTE", count: 1 }],
+          tags: [{ value: "tag", count: 1 }],
+        },
+      ])
       .mockResolvedValueOnce([
         {
           id: "item-1",

@@ -108,4 +108,71 @@ describe("AI resource budgets", () => {
       ),
     ).rejects.toMatchObject<Partial<AiBudgetError>>({ status: 429 });
   });
+  describe("concurrency leases", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("frees a slot whose release never happens once its lease expires", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-11T12:00:00.000Z"));
+      // The operation never settles, as when the process dies mid-call.
+      void runBudgetedAi(
+        "user-a",
+        { prompt: "stuck", maxOutputTokens: 10 },
+        () => new Promise<string>(() => undefined),
+      );
+      await vi.waitFor(async () => {
+        expect((await getAiUsage("user-a")).activeRequests).toBe(1);
+      });
+      await expect(
+        runBudgetedAi(
+          "user-a",
+          { prompt: "blocked", maxOutputTokens: 10 },
+          async () => "blocked",
+        ),
+      ).rejects.toMatchObject({
+        extensions: expect.objectContaining({ code: "AI_CONCURRENCY_BUDGET" }),
+      });
+
+      // Well before UTC midnight, the lease has run out.
+      vi.setSystemTime(new Date("2026-11-11T12:10:00.000Z"));
+      expect((await getAiUsage("user-a")).activeRequests).toBe(0);
+      await expect(
+        runBudgetedAi(
+          "user-a",
+          { prompt: "after", maxOutputTokens: 10 },
+          async () => "after",
+        ),
+      ).resolves.toMatchObject({ value: "after" });
+    });
+
+    it("rejects a third concurrent reservation while two leases are live", async () => {
+      vi.stubEnv("AI_MAX_CONCURRENT_PER_USER", "2");
+      const gates: Array<() => void> = [];
+      const running = [1, 2].map(() =>
+        runBudgetedAi(
+          "user-a",
+          { prompt: "hold", maxOutputTokens: 10 },
+          () =>
+            new Promise<string>((resolve) => gates.push(() => resolve("ok"))),
+        ),
+      );
+      await vi.waitFor(async () => {
+        expect((await getAiUsage("user-a")).activeRequests).toBe(2);
+      });
+      await expect(
+        runBudgetedAi(
+          "user-a",
+          { prompt: "third", maxOutputTokens: 10 },
+          async () => "third",
+        ),
+      ).rejects.toMatchObject({
+        extensions: expect.objectContaining({ code: "AI_CONCURRENCY_BUDGET" }),
+      });
+      gates.forEach((open) => open());
+      await Promise.all(running);
+      expect((await getAiUsage("user-a")).activeRequests).toBe(0);
+    });
+  });
 });

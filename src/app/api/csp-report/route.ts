@@ -27,10 +27,41 @@ const cspViolationSchema = z
   })
   .strip();
 
+/**
+ * Reads the body up to the cap, chunk by chunk, so an oversized request is
+ * refused without buffering it. Returns null once the cap is passed.
+ */
+async function readBoundedBody(request: NextRequest): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_REPORT_BYTES) return null;
+  if (!request.body) return "";
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_REPORT_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const rawBody = await request.text();
-    if (new TextEncoder().encode(rawBody).byteLength > MAX_REPORT_BYTES) {
+    const rawBody = await readBoundedBody(request);
+    if (rawBody === null) {
       return new NextResponse(null, { status: 413 });
     }
     const report = cspViolationSchema.parse(JSON.parse(rawBody));

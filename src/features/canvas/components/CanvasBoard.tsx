@@ -44,7 +44,15 @@ import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
-import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
+import {
+  AutopilotTooLargeError,
+  prepareAutopilot,
+  type AutopilotAction,
+  type AutopilotItem,
+} from "@/lib/ai/autopilot-service";
+import { useObservedStageSize } from "@/features/canvas/components/use-observed-stage-size";
+import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
+import { resolveBoardCapabilities } from "@/features/canvas/hooks/time-machine-capabilities";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 import { UploadNoteOffer } from "./UploadNoteOffer";
 import { HomeBoardSuggestions, isInboxBoardName } from "./HomeBoardSuggestions";
@@ -71,6 +79,7 @@ import type { ContextMenuPosition } from "@/features/canvas/components/CanvasCon
 import { DrawingToolbar } from "@/features/canvas/components/DrawingToolbar";
 import { CanvasHeader } from "@/features/canvas/components/CanvasHeader";
 import { GridOverlay } from "@/features/canvas/components/GridOverlay";
+import { DrawingPreview } from "@/features/canvas/components/DrawingPreview";
 import { CursorChat } from "@/features/canvas/components/CursorChat";
 import { ReactionSelector } from "@/features/canvas/components/ReactionSelector";
 import { RemoteCursorChat } from "@/features/canvas/components/RemoteCursorChat";
@@ -82,6 +91,7 @@ import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganize
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { isVersionConflict } from "@/lib/api/fetch-client";
+import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -107,6 +117,23 @@ interface RemoteReactionMessage {
 }
 
 /**
+ * Runs a confirm-dialog action and reports a failure as an error toast.
+ * Resolves true when the action succeeded; never rejects.
+ */
+export async function runConfirmAction(
+  action: () => Promise<void>,
+  failureMessage: string,
+): Promise<boolean> {
+  try {
+    await action();
+    return true;
+  } catch {
+    toast.error(failureMessage);
+    return false;
+  }
+}
+
+/**
  * IMP-042: the board opens the canvas's collaborative document and edits it
  * live while it is available; item writes fall back to the HTTP API
  * otherwise (see `lib/collaboration/sync/client-session`).
@@ -129,14 +156,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // Refs
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const stageContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const focusedItemRef = useRef<string | null>(null);
   const lastThumbnailRevisionRef = useRef<string | null>(null);
   const theme = useTheme();
   const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  const { ref: stageContainerRef, size: stageSize } = useObservedStageSize();
 
   // Data Hook (Single source of truth for display)
   const {
@@ -171,15 +197,22 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   } = useCanvasData({ canvasId, viewportSize: stageSize });
   // IMP-008: one capability contract, derived once and passed down. Every
   // surface reads these flags instead of re-deriving a role comparison.
-  const capabilities = React.useMemo(
+  const baseCapabilities = React.useMemo(
     () => resolveCanvasCapabilities(accessLevel as CanvasAccessLevel),
     [accessLevel],
+  );
+  // A time-machine preview renders snapshot items under live ids: every
+  // item write is off there, while restore stays with live-canvas editors.
+  const { capabilities, canRestore } = React.useMemo(
+    () => resolveBoardCapabilities(baseCapabilities, isTimeMachineActive),
+    [baseCapabilities, isTimeMachineActive],
   );
   const canEdit = capabilities.canEditItems;
   const isOwner = capabilities.canManageCanvas;
 
   const {
     commitGeometry,
+    nudgeGeometry,
     status: geometrySaveStatus,
     error: geometrySaveError,
   } = useItemGeometry({
@@ -241,7 +274,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const { mutateAsync: deleteItem } = useDeleteCanvasItem();
   const { mutateAsync: createItem } = useCreateCanvasItem();
   const updateItemMutation = useUpdateCanvasItem();
-  const { mutate: updateItem } = updateItemMutation;
   const updateThumbnail = useUpdateCanvasThumbnail();
   const { mutateAsync: restoreVersion } = useRestoreVersion();
 
@@ -269,7 +301,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const [fitAfterSortFrom, setFitAfterSortFrom] = useState<string | null>(null);
   const [whisperOpen, setWhisperOpen] = useState(false);
   const [pendingAutopilotActions, setPendingAutopilotActions] = useState<
-    Awaited<ReturnType<typeof calculateAutopilotLayout>>
+    AutopilotAction[]
+  >([]);
+  // The whole-canvas items the pending layout was computed over; the apply
+  // reads versions from this set, not the viewport-loaded board items.
+  const [pendingAutopilotItems, setPendingAutopilotItems] = useState<
+    AutopilotItem[]
   >([]);
   const [pendingRestoreVersionId, setPendingRestoreVersionId] = useState<
     string | null
@@ -323,10 +360,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     handleStageMouseUp,
     handleStageClick,
     isDrawing,
+    currentPath,
+    currentCreation,
   } = useCanvasInteraction({
     canvasId,
     stageRef: stageRef as React.RefObject<Konva.Stage>,
     activeTool,
+    canCreateItems: capabilities.canCreateItems,
     zoom,
     position,
     isSelecting,
@@ -450,7 +490,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       setSelectedItemId(null);
     },
     onDuplicate: async () => {
-      if (!selectedItemId) return;
+      if (!capabilities.canCreateItems || !selectedItemId) return;
       const selectedItem = allItems.find((item) => item.id === selectedItemId);
       if (selectedItem) {
         try {
@@ -490,7 +530,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     selectedItemIds,
     selectedItemId,
     allItems, // Use all items for finding targets
-    updateItem,
+    nudgeItem: nudgeGeometry,
   });
 
   useEffect(() => {
@@ -514,21 +554,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     stageSize.width,
     zoom,
   ]);
-  useEffect(() => {
-    const target = stageContainerRef.current;
-    if (!target) return;
-    const updateSize = () => {
-      const bounds = target.getBoundingClientRect();
-      setStageSize({
-        width: Math.max(1, Math.floor(bounds.width)),
-        height: Math.max(1, Math.floor(bounds.height)),
-      });
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, []);
 
   // Gesture (Zoom)
   useGesture(
@@ -681,11 +706,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   }, []);
 
   // Handlers
-  const handleAddNoteFromAI = (text: string) => {
-    const centerX = (-position.x + stageSize.width / 2) / zoom;
-    const centerY = (-position.y + stageSize.height / 2) / zoom;
+  // Returns the create so AIDialog closes only once the note exists.
+  const handleAddNoteFromAI = async (text: string): Promise<void> => {
+    const { x: centerX, y: centerY } = viewportCenterWorld(
+      position,
+      stageSize,
+      zoom,
+    );
 
-    createItem({
+    await createItem({
       canvasId,
       type: ItemType.NOTE,
       positionX: centerX - 150,
@@ -707,12 +736,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   const handleAddSerendipityItems = async (items: any[]) => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
     for (const item of items) {
       await createItem({
         content: item.content,
         type: item.type,
-        positionX: -position.x + stageSize.width / 2 + Math.random() * 100,
-        positionY: -position.y + stageSize.height / 2 + Math.random() * 100,
+        positionX: center.x + Math.random() * 100,
+        positionY: center.y + Math.random() * 100,
         width: 300,
         height: 200,
         canvasId: canvasId,
@@ -723,11 +753,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   const handleWhisperSend = async (text: string) => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
     await createItem({
       content: { text },
       type: ItemType.NOTE,
-      positionX: -position.x + stageSize.width / 2,
-      positionY: -position.y + stageSize.height / 2,
+      positionX: center.x,
+      positionY: center.y,
       width: 300,
       height: 200,
       canvasId: canvasId,
@@ -771,10 +802,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     deltaX: number,
     deltaY: number,
   ) => {
-    commitGeometry(item, {
-      positionX: item.positionX + deltaX,
-      positionY: item.positionY + deltaY,
-    });
+    nudgeGeometry(item, deltaX, deltaY);
   };
 
   const handleDeleteItem = (item: CanvasItem) => {
@@ -951,7 +979,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const handleAlign = (
     type: "left" | "center" | "right" | "top" | "middle" | "bottom",
   ) => {
-    if (selectedItemIds.size < 2) return;
+    if (!capabilities.canMoveItems || selectedItemIds.size < 2) return;
     const selectedItems = allItems.filter((item) =>
       selectedItemIds.has(item.id),
     );
@@ -992,15 +1020,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           break;
       }
       if (newX !== item.positionX || newY !== item.positionY) {
-        updateItem({
-          itemId: item.id,
-          data: { positionX: newX, positionY: newY, version: item.version },
-        });
+        commitGeometry(item, { positionX: newX, positionY: newY });
       }
     });
   };
   const handleDistribute = (type: "horizontal" | "vertical") => {
-    if (selectedItemIds.size < 3) return;
+    if (!capabilities.canMoveItems || selectedItemIds.size < 3) return;
     const selectedItems = allItems.filter((item) =>
       selectedItemIds.has(item.id),
     );
@@ -1018,9 +1043,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       let currentX = first.positionX;
       selectedItems.forEach((item, index) => {
         if (index > 0 && index < selectedItems.length) {
-          updateItem({
-            itemId: item.id,
-            data: { positionX: currentX, version: item.version },
+          commitGeometry(item, {
+            positionX: currentX,
+            positionY: item.positionY,
           });
         }
         currentX += item.width + gap;
@@ -1039,9 +1064,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       let currentY = first.positionY;
       selectedItems.forEach((item, index) => {
         if (index > 0 && index < selectedItems.length) {
-          updateItem({
-            itemId: item.id,
-            data: { positionY: currentY, version: item.version },
+          commitGeometry(item, {
+            positionX: item.positionX,
+            positionY: currentY,
           });
         }
         currentY += item.height + gap;
@@ -1188,8 +1213,19 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onAutopilot={
           canEdit
             ? async () => {
-                const actions = await calculateAutopilotLayout(allItems);
-                if (actions.length > 0) setPendingAutopilotActions(actions);
+                try {
+                  const { items, actions } = await prepareAutopilot(canvasId);
+                  if (actions.length > 0) {
+                    setPendingAutopilotItems(items);
+                    setPendingAutopilotActions(actions);
+                  }
+                } catch (error) {
+                  toast.error(
+                    error instanceof AutopilotTooLargeError
+                      ? error.message
+                      : "Autopilot could not load this canvas. Try again.",
+                  );
+                }
               }
             : undefined
         }
@@ -1359,10 +1395,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                     null)
                   : null
               }
-              getViewportCenter={() => ({
-                x: (-position.x + stageSize.width / 2) / zoom,
-                y: (-position.y + stageSize.height / 2) / zoom,
-              })}
+              getViewportCenter={() =>
+                viewportCenterWorld(position, stageSize, zoom)
+              }
             />
           )}
 
@@ -1374,12 +1409,14 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             x={position.x}
             y={position.y}
             draggable={!isDrawing && isSpacePressed && !isTimeMachineActive}
-            onDragMove={(event) =>
-              setPosition({ x: event.target.x(), y: event.target.y() })
-            }
-            onDragEnd={(event) =>
-              setPosition({ x: event.target.x(), y: event.target.y() })
-            }
+            onDragMove={(event) => {
+              const next = stageDragPosition(event);
+              if (next) setPosition(next);
+            }}
+            onDragEnd={(event) => {
+              const next = stageDragPosition(event);
+              if (next) setPosition(next);
+            }}
             onWheel={(event) => {
               event.evt.preventDefault();
               const stage = event.target.getStage();
@@ -1432,6 +1469,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               onCommitGeometry={handleCommitGeometry}
               searchActive={Boolean(searchQuery.trim())}
               searchMatchIds={searchMatchIds}
+            />
+            <DrawingPreview
+              currentPath={currentPath}
+              currentCreation={currentCreation}
+              zoom={zoom}
             />
           </Stage>
 
@@ -1572,7 +1614,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       )}
 
       <CanvasDialogs
-        capabilities={capabilities}
+        // Every opener of an item dialog reads the preview capabilities;
+        // the base ones keep version restore available while previewing.
+        capabilities={baseCapabilities}
         canvasId={canvasId}
         canvasName={canvasName}
         items={allItems}
@@ -1637,7 +1681,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
           onRestore={
-            canEdit
+            canRestore
               ? async (version) => {
                   setPendingRestoreVersionId(version.id);
                 }
@@ -1688,7 +1732,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             return;
           }
           const itemsToUpdate = pendingAutopilotActions.flatMap((action) => {
-            const item = allItems.find(
+            const item = pendingAutopilotItems.find(
               (candidate) => candidate.id === action.itemId,
             );
             return item
@@ -1702,17 +1746,16 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                 ]
               : [];
           });
-          const response = await fetch("/api/v1/canvas-items", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ canvasId, items: itemsToUpdate }),
-          });
-          if (!response.ok) {
-            toast.error(
-              "The layout could not be applied. Refresh and try again.",
-            );
-            return;
-          }
+          const applied = await runConfirmAction(async () => {
+            const response = await fetch("/api/v1/canvas-items", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ canvasId, items: itemsToUpdate }),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          }, "The layout could not be applied. Refresh and try again.");
+          // A failure keeps the dialog open so the layout can be retried.
+          if (!applied) return;
           setPendingAutopilotActions([]);
           await queryClient.invalidateQueries({
             queryKey: canvasItemKeys.list(canvasId),
@@ -1728,10 +1771,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onClose={() => setPendingRestoreVersionId(null)}
         onConfirm={async () => {
           if (!pendingRestoreVersionId) return;
-          await restoreVersion({
-            canvasId,
-            versionId: pendingRestoreVersionId,
-          });
+          const versionId = pendingRestoreVersionId;
+          const restored = await runConfirmAction(
+            () => restoreVersion({ canvasId, versionId }).then(() => undefined),
+            "The version could not be restored. Try again.",
+          );
+          // A failure keeps the dialog open so the restore can be retried.
+          if (!restored) return;
           setPendingRestoreVersionId(null);
           setTimeMachineActive(false);
           await queryClient.invalidateQueries({

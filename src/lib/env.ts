@@ -3,6 +3,8 @@ import path from "path";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 import { REDIS_KEY_PREFIX_PATTERN } from "./cache/redis-keys";
+import { parseTrustedProxyCidrs } from "./network/client-ip";
+import { resolveSmtpPassword } from "./email/smtp-password";
 
 const envFilePath = process.env.MEMORIA_ENV_FILE || ".env";
 const resolvedEnvPath = path.resolve(process.cwd(), envFilePath);
@@ -35,7 +37,7 @@ const rawEnv = {
   ...process.env,
   AUTH_URL: process.env.AUTH_URL ?? process.env.NEXTAUTH_URL,
   AUTH_SECRET: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
-  SMTP_PASS: process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD,
+  SMTP_PASS: resolveSmtpPassword(process.env),
 };
 
 const KNOWN_PLACEHOLDER_REGEX =
@@ -66,11 +68,36 @@ const envSchema = z
     LOG_LEVEL: optionalString,
     INTERNAL_OPERATIONS_TOKEN: optionalString,
     MEMORIA_E2E_MODE: z.enum(["true"]).optional(),
-    TRUSTED_PROXY_CIDRS: optionalString,
+    TRUSTED_PROXY_CIDRS: emptyToUndefined(
+      z.string().superRefine((value, ctx) => {
+        try {
+          parseTrustedProxyCidrs(value);
+        } catch (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              error instanceof Error
+                ? error.message
+                : "Invalid TRUSTED_PROXY_CIDRS",
+          });
+        }
+      }),
+    ),
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    // Per-group strict auth budgets; each falls back to the one above.
+    AUTH_SIGN_IN_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    AUTH_TWO_FACTOR_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    AUTH_PASSKEY_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    AUTH_REGISTRATION_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    AUTH_PASSWORD_RESET_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    AUTH_EMAIL_VERIFICATION_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    AUTH_ACCOUNT_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     API_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     UPLOAD_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     CANVASES_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    CANVASES_SESSION_IP_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    CSP_REPORT_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
     BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,
@@ -167,6 +194,28 @@ const envSchema = z
             code: z.ZodIssueCode.custom,
             path: [name],
             message: `${name} contains a known placeholder. A distinct, randomly generated secret is required in production.`,
+          });
+        }
+      }
+
+      // Storage, database and mail credentials: the placeholders above
+      // ('minioadmin', 'devpassword') are the bundled stack's defaults.
+      // SMTP_PASS is already resolved from its SMTP_PASSWORD alias.
+      const credentials = [
+        { name: "S3_ACCESS_KEY_ID", val: data.S3_ACCESS_KEY_ID },
+        { name: "S3_SECRET_ACCESS_KEY", val: data.S3_SECRET_ACCESS_KEY },
+        { name: "MINIO_ROOT_USER", val: data.MINIO_ROOT_USER },
+        { name: "MINIO_ROOT_PASSWORD", val: data.MINIO_ROOT_PASSWORD },
+        { name: "DATABASE_PASSWORD", val: data.DATABASE_PASSWORD },
+        { name: "SMTP_PASS", val: data.SMTP_PASS },
+      ] as const;
+
+      for (const { name, val } of credentials) {
+        if (val && KNOWN_PLACEHOLDER_REGEX.test(val)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: `${name} contains a known placeholder. Set a distinct credential in production.`,
           });
         }
       }

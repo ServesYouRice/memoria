@@ -283,11 +283,26 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
       token,
       connectionConfig,
     }) {
-      const context = await authorizeSyncConnection(prisma, {
-        documentName,
-        headers: requestHeaders,
-        token,
-      });
+      let context: SyncConnectionContext | null;
+      try {
+        context = await authorizeSyncConnection(prisma, {
+          documentName,
+          headers: requestHeaders,
+          token,
+        });
+      } catch (error) {
+        // A failed session or canvas lookup (pool timeout, failover) is not a
+        // lost grant: tell the client to retry and keep its device copy,
+        // as onLoadDocument does for a failed load.
+        logger.error(
+          { error, canvasId: documentName },
+          "Could not authorize a sync connection",
+        );
+        throw new SyncCloseError(
+          SYNC_CLOSE_CODES.unavailable,
+          SYNC_CLOSE_REASONS.unavailable,
+        );
+      }
       if (!context) {
         throw new SyncCloseError(
           SYNC_CLOSE_CODES.forbidden,

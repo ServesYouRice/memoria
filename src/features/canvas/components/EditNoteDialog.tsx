@@ -27,7 +27,7 @@ import {
   useCanvasDocument,
   useCanvasDocumentSnapshot,
 } from "@/lib/hooks/use-canvas-document";
-import { type CanvasItem, isNoteContent } from "@/types/canvas";
+import { type CanvasItem, ItemType, isNoteContent } from "@/types/canvas";
 import { TagInput } from "./TagInput";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EMPTY_VERSIONED_NOTE_CONTENT } from "@/components/RichTextEditor";
@@ -134,6 +134,44 @@ function SharedNoteDialog({
   );
 }
 
+/**
+ * TEXT items store plain `text` beside their style fields and are drawn as
+ * plain text. The editor gets that text as literal paragraphs (never parsed
+ * as markup) and a save writes back plain text with the styles kept.
+ */
+function plainTextEditorContent(text: string): VersionedNoteContent {
+  return normalizeNoteContent(
+    {
+      formatVersion: 1,
+      document: {
+        type: "doc",
+        content: text
+          .split("\n")
+          .map((line) =>
+            line
+              ? { type: "paragraph", content: [{ type: "text", text: line }] }
+              : { type: "paragraph" },
+          ),
+      },
+    },
+    { allowEmpty: true },
+  );
+}
+
+const NOTE_FORMAT_KEYS = new Set(["formatVersion", "document", "plainText"]);
+
+function textItemContent(
+  stored: CanvasItem["content"],
+  edited: VersionedNoteContent,
+): Record<string, unknown> {
+  const styles = Object.fromEntries(
+    Object.entries(stored as Record<string, unknown>).filter(
+      ([key]) => !NOTE_FORMAT_KEYS.has(key),
+    ),
+  );
+  return { ...styles, text: normalizeNoteContent(edited).plainText };
+}
+
 const formSchema = z.object({
   content: z.custom<VersionedNoteContent>(),
   tags: z.array(z.string()).default([]),
@@ -148,6 +186,7 @@ type FormData = z.output<typeof formSchema>;
 export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [legacyNormalized, setLegacyNormalized] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const updateItem = useUpdateCanvasItem();
   const documentSession = useCanvasDocument();
   const documentState = useCanvasDocumentSnapshot(documentSession);
@@ -173,23 +212,43 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
     },
   });
 
+  const isTextItem = item?.type === ItemType.TEXT;
+
   useEffect(() => {
-    if (item && isNoteContent(item.content)) {
-      try {
-        const normalized = normalizeNoteContent(item.content);
-        reset({
-          content: normalized,
-          tags: item.tags || [],
-        });
-        setLegacyNormalized(item.content.formatVersion !== 1);
-        setError(null);
-      } catch (normalizationError) {
-        setError(
-          normalizationError instanceof Error
-            ? normalizationError.message
-            : "This note contains unsupported content and cannot be edited.",
+    if (!item) return;
+    try {
+      if (!isNoteContent(item.content)) {
+        throw new Error(
+          "This note contains unsupported content and cannot be edited.",
         );
       }
+      // Collaborative editing can store an empty note; it still loads.
+      const normalized =
+        item.type === ItemType.TEXT
+          ? plainTextEditorContent(item.content.text ?? "")
+          : normalizeNoteContent(item.content, { allowEmpty: true });
+      reset({
+        content: normalized,
+        tags: item.tags || [],
+      });
+      setLegacyNormalized(
+        item.type !== ItemType.TEXT && item.content.formatVersion !== 1,
+      );
+      setLoadFailed(false);
+      setError(null);
+    } catch (normalizationError) {
+      // Never leave an earlier note's (or the default) values submittable.
+      reset({
+        content: EMPTY_VERSIONED_NOTE_CONTENT,
+        tags: item.tags || [],
+      });
+      setLegacyNormalized(false);
+      setLoadFailed(true);
+      setError(
+        normalizationError instanceof Error
+          ? normalizationError.message
+          : "This note contains unsupported content and cannot be edited.",
+      );
     }
   }, [item, reset]);
 
@@ -201,7 +260,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   };
 
   const onSubmit = async (data: FormData) => {
-    if (!item) return;
+    if (!item || loadFailed) return;
 
     try {
       setError(null);
@@ -210,7 +269,9 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
         itemId: item.id,
         data: {
           version: item.version,
-          content: normalizeNoteContent(data.content),
+          content: isTextItem
+            ? textItemContent(item.content, data.content)
+            : normalizeNoteContent(data.content),
           tags: data.tags || [],
         },
       });
@@ -225,7 +286,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
     return null;
   }
 
-  if (sharedFragment && sharedEntry) {
+  if (sharedFragment && sharedEntry && !isTextItem) {
     return (
       <SharedNoteDialog
         open={open}
@@ -313,7 +374,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
           <Button
             type="submit"
             variant="contained"
-            disabled={isSubmitting}
+            disabled={isSubmitting || loadFailed}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
             {isSubmitting ? "Saving..." : "Save Changes"}

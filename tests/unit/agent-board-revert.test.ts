@@ -4,11 +4,18 @@ import { BadRequestError } from "@/lib/errors";
 const mocks = vi.hoisted(() => {
   const tx = {
     agentAction: { create: vi.fn(), update: vi.fn() },
-    changeSet: { create: vi.fn(), update: vi.fn() },
-    changeRecord: { create: vi.fn(), updateMany: vi.fn() },
+    changeSet: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    changeRecord: { create: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     canvas: { findUnique: vi.fn(), delete: vi.fn() },
-    canvasItem: { count: vi.fn() },
+    canvasItem: { count: vi.fn(), findMany: vi.fn() },
     uploadAsset: { count: vi.fn() },
+    // The other rows a board delete would cascade (TASK-131).
+    canvasVersion: { count: vi.fn(async () => 0) },
+    canvasEmbed: { count: vi.fn(async () => 0) },
+    canvasShare: { count: vi.fn(async () => 0) },
+    canvasShareInvitation: { count: vi.fn(async () => 0) },
+    clipBatch: { count: vi.fn(async () => 0) },
+    itemConnection: { count: vi.fn(async () => 0) },
     agentProfile: { findFirst: vi.fn(), update: vi.fn() },
   };
   return { tx, changeSetFindFirst: vi.fn() };
@@ -32,6 +39,15 @@ const actor = { userId: "user-123", agentProfileId: "prof-hermes" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // revertChangeSet claims the change set and re-reads its records in the
+  // transaction (TASK-142).
+  mocks.tx.changeSet.updateMany.mockResolvedValue({ count: 1 });
+  mocks.tx.changeRecord.findMany.mockImplementation(
+    async () =>
+      (await mocks.changeSetFindFirst.mock.results.at(-1)?.value)
+        ?.changeRecords ?? [],
+  );
+  mocks.tx.canvasItem.findMany.mockResolvedValue([]);
   mocks.changeSetFindFirst.mockResolvedValue({
     id: "cs-board",
     scopeType: "canvas",

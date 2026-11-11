@@ -116,17 +116,46 @@ async function migrateCanvasDocument(
 /**
  * Read the persisted document (state plus every appended update). Returns
  * null when the canvas has no document yet.
+ *
+ * The state and the update log are read from one snapshot: given the client,
+ * both reads run in a read-only REPEATABLE READ transaction, so a compaction
+ * another replica commits in between cannot leave the old state paired with
+ * only the updates after it (and a cursor past the dropped ones). Given a
+ * transaction, the caller provides that consistency (e.g. the canvas lock).
  */
 export async function readPersistedCanvasDocument(
   store: Store,
   canvasId: string,
 ): Promise<PersistedCanvasDocument | null> {
-  const record = await store.canvasDocument.findUnique({
+  if (!("$transaction" in store)) return readPersistedSnapshot(store, canvasId);
+  const read = () =>
+    store.$transaction((tx) => readPersistedSnapshot(tx, canvasId), {
+      isolationLevel: "RepeatableRead",
+    });
+  try {
+    return await read();
+  } catch (error) {
+    // A read-only snapshot should not conflict; retry once if it does.
+    if (!isSerializationFailure(error)) throw error;
+    return read();
+  }
+}
+
+function isSerializationFailure(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === "P2034" || code === "40001";
+}
+
+async function readPersistedSnapshot(
+  tx: Prisma.TransactionClient,
+  canvasId: string,
+): Promise<PersistedCanvasDocument | null> {
+  const record = await tx.canvasDocument.findUnique({
     where: { canvasId },
     select: { state: true, compactedThrough: true, eventSequence: true },
   });
   if (!record) return null;
-  const updates = await store.canvasDocumentUpdate.findMany({
+  const updates = await tx.canvasDocumentUpdate.findMany({
     where: { canvasId, id: { gt: record.compactedThrough } },
     orderBy: { id: "asc" },
     select: { id: true, update: true },

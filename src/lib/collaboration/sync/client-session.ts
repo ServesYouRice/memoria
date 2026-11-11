@@ -30,6 +30,7 @@
  */
 
 import * as Y from "yjs";
+import * as syncProtocol from "y-protocols/sync";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { ItemType } from "@/types/canvas";
 import { isLaunchCapabilityEnabled } from "@/lib/product-surfaces";
@@ -97,6 +98,11 @@ export interface CanvasDocumentSnapshot {
   generation: number;
   /** Increments when the server reports a change in access. */
   accessRevision: number;
+  /**
+   * The server closed the connection over a message too large to accept;
+   * the session keeps its unsaved edits and retries with a growing delay.
+   */
+  sendBlocked?: boolean;
   items: ReadonlyMap<string, CanvasDocumentEntry>;
 }
 
@@ -106,6 +112,8 @@ export interface CanvasDocumentSessionOptions {
   url: string;
   /** The server refused a local change; the document was reloaded. */
   onRejectedChange?: () => void;
+  /** The canvas's public share token, when opened from its share link. */
+  shareToken?: string;
   /** Delay before reconnecting after `memoria:unavailable`. */
   retryDelayMs?: number;
   /** Node test clients pass a cookie-carrying WebSocket implementation. */
@@ -146,6 +154,68 @@ const CACHE_ORIGIN = Symbol("memoria:device-copy");
 
 const updateFieldsSchema = updateCanvasItemSchema.omit({ version: true });
 
+/** WebSocket close code for a message over the receiver's size limit. */
+const MESSAGE_TOO_BIG_CLOSE_CODE = 1009;
+const MAX_RETRY_DELAY_MS = 30_000;
+/** Hocuspocus message type of Yjs sync messages, and the update subtype. */
+const SYNC_MESSAGE_TYPE = 0;
+
+/** The provider's offline send queue, which its types keep private. */
+interface QueuedSocket {
+  messageQueue?: unknown[];
+}
+
+/**
+ * Remove this document's Yjs updates from the provider's offline queue and
+ * its batch. The handshake's sync step 2 carries every change they hold.
+ */
+function dropQueuedDocumentUpdates(provider: HocuspocusProvider): void {
+  const socket = provider.configuration.websocketProvider as unknown as
+    QueuedSocket | undefined;
+  const queue = socket?.messageQueue;
+  if (Array.isArray(queue)) {
+    socket!.messageQueue = queue.filter(
+      (message) =>
+        !(
+          message instanceof Uint8Array &&
+          isDocumentUpdate(message, provider.effectiveName)
+        ),
+    );
+  }
+  const batch = provider as unknown as { pendingUpdates?: unknown[] };
+  if (Array.isArray(batch.pendingUpdates)) batch.pendingUpdates = [];
+}
+
+function isDocumentUpdate(message: Uint8Array, documentName: string): boolean {
+  // Header: varString document name, varUint message type, varUint subtype.
+  let offset = 0;
+  const readVarUint = (): number => {
+    let value = 0;
+    for (let shift = 0; shift < 35; shift += 7) {
+      if (offset >= message.length) throw new RangeError("short message");
+      const byte = message[offset++];
+      value += (byte & 0x7f) * 2 ** shift;
+      if (byte < 0x80) return value;
+    }
+    throw new RangeError("varint too long");
+  };
+  try {
+    const nameLength = readVarUint();
+    if (offset + nameLength > message.length) return false;
+    const name = new TextDecoder().decode(
+      message.subarray(offset, offset + nameLength),
+    );
+    offset += nameLength;
+    return (
+      name === documentName &&
+      readVarUint() === SYNC_MESSAGE_TYPE &&
+      readVarUint() === syncProtocol.messageYjsUpdate
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function collaborationSyncUrl(location: {
   protocol: string;
   host: string;
@@ -182,6 +252,8 @@ export class CanvasDocumentSession {
   };
   private readonly listeners = new Set<() => void>();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Consecutive retries since the last sync, for the backoff. */
+  private retryAttempts = 0;
   private destroyed = false;
   private readonly cache: CanvasDocumentCache | null;
   /** Writes to the device copy stopped (one failed, or access was lost). */
@@ -397,8 +469,10 @@ export class CanvasDocumentSession {
       url: this.options.url,
       name: this.canvasId,
       document: this.doc,
-      // Browsers authenticate with the session cookie; the token is unused.
-      token: "",
+      // Browsers authenticate with the session cookie. The token is the
+      // public share token, needed only to open a public canvas the user
+      // neither owns nor was shared.
+      token: this.options.shareToken ?? "",
       // Batch keystrokes: each batch is one stored, acknowledged update.
       flushDelay: 150,
       ...(this.options.WebSocketPolyfill
@@ -408,13 +482,13 @@ export class CanvasDocumentSession {
         // Runs before the provider sends the edits it queued while offline.
         // Edits kept by an earlier page (a reload without a network) are in
         // the device copy, not in that queue, and the server refuses an edit
-        // that builds on changes it lacks. Send the whole copy first: it
-        // holds every change the server may lack, and changes the server
-        // already has are no-ops.
+        // that builds on changes it lacks. The handshake's sync step 2
+        // answers the server's state vector with exactly the changes it
+        // lacks (queued and device-copy edits alike), so drop the queued
+        // edits instead of sending them, or the whole document, ahead of it.
         if (this.provider !== provider || this.snapshot.unsavedChanges === 0)
           return;
-        provider.documentUpdateHandler(Y.encodeStateAsUpdate(this.doc), null);
-        provider.flushPendingUpdates();
+        dropQueuedDocumentUpdates(provider);
       },
       onStatus: ({ status }) => {
         if (this.provider === provider)
@@ -443,6 +517,8 @@ export class CanvasDocumentSession {
       },
       onSynced: ({ state }) => {
         if (this.provider !== provider || !state) return;
+        this.retryAttempts = 0;
+        if (this.snapshot.sendBlocked) this.update({ sendBlocked: false });
         if (!this.snapshot.ready || this.snapshot.restored)
           this.update({ ready: true, restored: false });
       },
@@ -469,6 +545,13 @@ export class CanvasDocumentSession {
           this.later(() => this.retry());
         else if (reason === SYNC_CLOSE_REASONS.reauthenticate)
           this.later(() => this.reauthenticate());
+        else if (event?.code === MESSAGE_TOO_BIG_CLOSE_CODE)
+          // A message over the server's frame limit: resending at once would
+          // fail the same way. Keep the device copy and back off.
+          this.later(() => {
+            this.update({ sendBlocked: true });
+            this.retry();
+          });
       },
     });
     this.provider = provider;
@@ -497,10 +580,18 @@ export class CanvasDocumentSession {
     if (this.retryTimer || this.snapshot.forbidden) return;
     this.disconnect();
     this.update({ connected: false });
+    // Grow the delay while connections keep failing, up to a cap; a sync
+    // resets it.
+    const base = this.options.retryDelayMs ?? 2_000;
+    const delay = Math.min(
+      base * 2 ** this.retryAttempts,
+      Math.max(base, MAX_RETRY_DELAY_MS),
+    );
+    this.retryAttempts += 1;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       this.connect();
-    }, this.options.retryDelayMs ?? 2_000);
+    }, delay);
   }
 
   private reauthenticate(): void {

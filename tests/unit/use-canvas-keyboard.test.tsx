@@ -27,7 +27,7 @@ const item = {
 } as unknown as CanvasItem;
 
 function renderKeyboard() {
-  const updateItem = vi.fn();
+  const nudgeItem = vi.fn();
   const onDelete = vi.fn();
   renderHook(() =>
     useCanvasKeyboard({
@@ -45,10 +45,10 @@ function renderKeyboard() {
       selectedItemIds: new Set<string>(),
       selectedItemId: item.id,
       allItems: [item],
-      updateItem,
+      nudgeItem,
     }),
   );
-  return { updateItem, onDelete };
+  return { nudgeItem, onDelete };
 }
 
 /** Press a key on a focusable row, optionally handling it there. */
@@ -69,20 +69,17 @@ afterEach(() => {
 
 describe("useCanvasKeyboard", () => {
   it("moves the selected item with an arrow key nothing else handled", () => {
-    const { updateItem } = renderKeyboard();
+    const { nudgeItem } = renderKeyboard();
     pressOnRow("ArrowRight", false);
-    expect(updateItem).toHaveBeenCalledTimes(1);
-    expect(updateItem).toHaveBeenCalledWith({
-      itemId: item.id,
-      data: { positionX: 121, positionY: 120, version: 1 },
-    });
+    expect(nudgeItem).toHaveBeenCalledTimes(1);
+    expect(nudgeItem).toHaveBeenCalledWith(item, 1, 0);
   });
 
   it("leaves keys a focused surface already handled", () => {
-    const { updateItem, onDelete } = renderKeyboard();
+    const { nudgeItem, onDelete } = renderKeyboard();
     pressOnRow("ArrowRight", true);
     pressOnRow("Delete", true);
-    expect(updateItem).not.toHaveBeenCalled();
+    expect(nudgeItem).not.toHaveBeenCalled();
     expect(onDelete).not.toHaveBeenCalled();
   });
 });

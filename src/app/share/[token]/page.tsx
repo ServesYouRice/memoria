@@ -128,7 +128,8 @@ export default function SharePage({ params }: SharePageProps) {
     };
   }, [token]);
 
-  // Update stage size on mount and resize
+  // Update stage size once the canvas container mounts (it is not rendered
+  // while loading or on error) and on resize
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
@@ -142,7 +143,7 @@ export default function SharePage({ params }: SharePageProps) {
     updateSize();
     window.addEventListener("resize", updateSize);
     return () => window.removeEventListener("resize", updateSize);
-  }, []);
+  }, [loading, error]);
 
   const handleZoomIn = () => {
     const newZoom = Math.min(zoom + ZOOM_STEP, MAX_ZOOM);

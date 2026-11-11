@@ -14,7 +14,12 @@
 
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
+import {
+  APIError,
+  createAuthMiddleware,
+  getSessionFromCtx,
+  isAPIError,
+} from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import { passkey } from "@better-auth/passkey";
@@ -37,6 +42,18 @@ export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
 export const MAX_PASSWORD_LENGTH = 4096;
 
 const SIGN_IN_EMAIL_PATH = "/sign-in/email";
+/**
+ * Session-backed two-factor endpoints that check the account password. A
+ * wrong password there is a guess like one at sign-in, so it counts toward
+ * the same lockout, and a locked account is refused before the check.
+ */
+const TWO_FACTOR_PASSWORD_PATHS: ReadonlySet<string> = new Set([
+  "/two-factor/enable",
+  "/two-factor/disable",
+  "/two-factor/generate-backup-codes",
+]);
+/** Better Auth's error code for a wrong password on those endpoints. */
+const INVALID_PASSWORD_CODE = "INVALID_PASSWORD";
 
 /**
  * The only Better Auth endpoints reachable over HTTP. Everything else answers
@@ -108,9 +125,28 @@ export interface MemoriaAuthConfig {
 
 function bodyEmail(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
-  const email = (body as { email?: unknown }).email;
+  return normalizeEmail((body as { email?: unknown }).email);
+}
+
+function normalizeEmail(email: unknown): string | null {
   if (typeof email !== "string" || email.trim() === "") return null;
   return email.trim().toLowerCase();
+}
+
+/** The signed-in user's email, normalized like `bodyEmail`. */
+async function sessionEmail(
+  ctx: Parameters<typeof getSessionFromCtx>[0],
+): Promise<string | null> {
+  const session = await getSessionFromCtx(ctx).catch(() => null);
+  return normalizeEmail(session?.user?.email);
+}
+
+function accountLockedError() {
+  return new APIError("TOO_MANY_REQUESTS", {
+    code: AUTH_ERROR_CODES.ACCOUNT_LOCKED,
+    message:
+      "This account is temporarily locked after too many failed sign-in attempts.",
+  });
 }
 
 function clientIdFrom(headers: Headers | undefined): string {
@@ -163,17 +199,24 @@ function credentialPolicy() {
             const locked = await runLockoutStep(() =>
               isAccountLocked(email, clientId),
             );
-            if (locked) {
-              throw new APIError("TOO_MANY_REQUESTS", {
-                code: AUTH_ERROR_CODES.ACCOUNT_LOCKED,
-                message:
-                  "This account is temporarily locked after too many failed sign-in attempts.",
-              });
-            }
+            if (locked) throw accountLockedError();
             const delayMs = await runLockoutStep(() => getLoginDelay(email));
             if (delayMs > 0) {
               await new Promise((resolve) => setTimeout(resolve, delayMs));
             }
+          }),
+        },
+        {
+          matcher: (ctx: { path?: string }) =>
+            TWO_FACTOR_PASSWORD_PATHS.has(ctx.path ?? ""),
+          handler: createAuthMiddleware(async (ctx) => {
+            const email = await sessionEmail(ctx);
+            if (!email) return;
+            const clientId = clientIdFrom(ctx.headers);
+            const locked = await runLockoutStep(() =>
+              isAccountLocked(email, clientId),
+            );
+            if (locked) throw accountLockedError();
           }),
         },
       ],
@@ -196,6 +239,25 @@ function credentialPolicy() {
             // The password was correct: a session was issued, or a second
             // factor is now pending. Either way the guessing streak is over.
             await runLockoutStep(() => clearFailedAttempts(email, clientId));
+          }),
+        },
+        {
+          matcher: (ctx: { path?: string }) =>
+            TWO_FACTOR_PASSWORD_PATHS.has(ctx.path ?? ""),
+          handler: createAuthMiddleware(async (ctx) => {
+            const returned = ctx.context.returned;
+            // Only a wrong password is a guess; other errors are not.
+            if (
+              !isAPIError(returned) ||
+              (returned.body as { code?: unknown } | undefined)?.code !==
+                INVALID_PASSWORD_CODE
+            ) {
+              return;
+            }
+            const email = await sessionEmail(ctx);
+            if (!email) return;
+            const clientId = clientIdFrom(ctx.headers);
+            await runLockoutStep(() => recordFailedAttempt(email, clientId));
           }),
         },
       ],

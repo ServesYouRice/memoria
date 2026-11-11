@@ -270,15 +270,27 @@ async function readOriginal(
   storageKey: string,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
-  const object = await readPrivateUploadObject(storageMode, storageKey);
+  const object = await readPrivateUploadObject(storageMode, storageKey, signal);
   const reader = object.body.getReader();
+  // A pending read does not watch the signal, so cancel the stream when it
+  // fires: the read settles and the storage request stops.
+  const onAbort = () => {
+    reader.cancel(signal?.reason).catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let finished = false;
   try {
     while (true) {
-      if (signal?.aborted) throw new Error("Upload read aborted");
+      signal?.throwIfAborted();
       const { done, value } = await reader.read();
-      if (done) break;
+      // A cancelled read resolves as done; never return partial data.
+      signal?.throwIfAborted();
+      if (done) {
+        finished = true;
+        break;
+      }
       total += value.byteLength;
       if (total > MAX_READ_BYTES) {
         throw new UploadNoteJobError("Upload is larger than allowed", false);
@@ -286,6 +298,8 @@ async function readOriginal(
       chunks.push(value);
     }
   } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (!finished) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
   return Buffer.concat(chunks);
@@ -412,6 +426,32 @@ async function canStillEdit(
   );
 }
 
+/**
+ * The same check inside the note transaction. The share revoke route does
+ * not take the canvas mutation lock, so the share row is read FOR SHARE: a
+ * concurrent revoke waits until this transaction has committed, and a revoke
+ * that committed first leaves no row to find.
+ */
+async function canStillEditLocked(
+  tx: Prisma.TransactionClient,
+  canvasId: string,
+  userId: string,
+): Promise<boolean> {
+  const canvas = await tx.canvas.findUnique({
+    where: { id: canvasId },
+    select: { userId: true },
+  });
+  if (!canvas) return false;
+  if (canvas.userId === userId) return true;
+  const shares = await tx.$queryRaw<{ role: ShareRole }[]>`
+    SELECT "role" FROM "CanvasShare"
+    WHERE "canvasId" = ${canvasId} AND "recipientId" = ${userId}
+    FOR SHARE`;
+  return shares.some((share) => share.role === ShareRole.EDIT);
+}
+
+const NO_LONGER_EDITS = "The requester can no longer edit this canvas";
+
 function noteHeight(textLength: number) {
   return Math.min(640, Math.max(200, 120 + Math.ceil(textLength / 40) * 20));
 }
@@ -428,10 +468,7 @@ export function createUploadNoteHandler(prisma: PrismaClient): OutboxHandler {
 
     // The requester may have lost edit access since asking.
     if (!(await canStillEdit(prisma, asset.canvasId, payload.requestedById))) {
-      throw new UploadNoteJobError(
-        "The requester can no longer edit this canvas",
-        false,
-      );
+      throw new UploadNoteJobError(NO_LONGER_EDITS, false);
     }
 
     let text: string;
@@ -465,6 +502,12 @@ export function createUploadNoteHandler(prisma: PrismaClient): OutboxHandler {
       .$transaction(async (tx) => {
         const asset = found;
         await lockCanvasForMutation(tx, asset.canvasId);
+        // Access may have been revoked during the storage read or AI call.
+        if (
+          !(await canStillEditLocked(tx, asset.canvasId, payload.requestedById))
+        ) {
+          throw new UploadNoteJobError(NO_LONGER_EDITS, false);
+        }
         const current = await tx.uploadAsset.findUnique({
           where: { id: asset.id },
           select: { status: true, noteItemId: true },

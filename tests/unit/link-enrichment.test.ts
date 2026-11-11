@@ -32,6 +32,7 @@ import {
   truncateUtf8,
 } from "@/lib/ai/enrich-link";
 import { resetAiBudgetForTests } from "@/lib/ai/budget";
+import { AiBudgetError, AiBudgetStoreError } from "@/lib/ai/errors";
 import { extractPageText } from "@/lib/services/link-page";
 
 const URL_ = "https://example.com/post";
@@ -227,6 +228,25 @@ describe("suggestLinkDetails", () => {
     expect(mocks.generateText).not.toHaveBeenCalled();
   });
 
+  it("rethrows a busy AI slot so the job retries", async () => {
+    vi.stubEnv("AI_MAX_CONCURRENT_PER_USER", "1");
+    let release!: () => void;
+    mocks.generateText.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          release = () => resolve('{"title":"T","tags":[],"summary":"S"}');
+        }),
+    );
+    const first = suggestLinkDetails({ userId: "u1", url: URL_ });
+    await vi.waitFor(() => expect(mocks.generateText).toHaveBeenCalled());
+    const second = suggestLinkDetails({ userId: "u1", url: URL_ });
+    await expect(second).rejects.toMatchObject({
+      extensions: expect.objectContaining({ code: "AI_CONCURRENCY_BUDGET" }),
+    });
+    release();
+    await first;
+  });
+
   it("returns the parsed suggestion within budget", async () => {
     mocks.generateText.mockResolvedValue(
       '{"title":"T","tags":["a"],"summary":"S"}',
@@ -308,6 +328,10 @@ function fakeDb(options: { autoEnrichLinks?: boolean } = {}) {
     canvasItem: {
       findFirst: vi.fn(async () =>
         state.item.deletedAt ? null : { ...state.item },
+      ),
+      // Similar-link candidates are other live items in these fixtures.
+      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.map((id) => ({ id })),
       ),
       update: vi.fn(async ({ data }: { data: { normalizedUrl: string } }) => {
         Object.assign(state.item, data);
@@ -477,6 +501,36 @@ describe("link enrichment outbox job", () => {
     });
   });
 
+  it("keeps the link PENDING and retries while the AI is busy or the budget store is down", async () => {
+    for (const error of [
+      new AiBudgetError(
+        "AI_CONCURRENCY_BUDGET",
+        "Too many AI requests at once.",
+        1,
+      ),
+      new AiBudgetStoreError(),
+    ]) {
+      const db = fakeDb();
+      const embed = vi.fn();
+      const handler = createLinkEnrichmentHandler(db.client, {
+        embed,
+        fetchPage: vi.fn().mockResolvedValue(page),
+        suggest: vi.fn().mockRejectedValue(error),
+      });
+      await expect(handler(job({ attempts: 1 }))).rejects.toBe(error);
+      expect((error as { retryable?: boolean }).retryable).not.toBe(false);
+      expect(db.state.row.status).toBe("PENDING");
+      expect(embed).not.toHaveBeenCalled();
+
+      // On the last attempt the link is finished as a spent budget.
+      await handler(job({ attempts: 4 }));
+      expect(db.state.row).toMatchObject({
+        status: "DONE",
+        aiSkipReason: "budget",
+      });
+    }
+  });
+
   it("retries a failed page fetch, then enriches from the saved title", async () => {
     const db = fakeDb();
     const fetchPage = vi
@@ -583,5 +637,91 @@ describe("link enrichment outbox job", () => {
     })(job());
     expect(embed).not.toHaveBeenCalled();
     expect(db.raw.itemEmbedding.upsert).not.toHaveBeenCalled();
+  });
+
+  it("scores similar links before taking the canvas lock and drops deleted candidates", async () => {
+    const db = fakeDb();
+    const events: string[] = [];
+    let locked = false;
+    db.raw.$queryRaw.mockImplementation(async () => {
+      locked = true;
+      events.push("lock");
+      return [{ id: "canvas-1" }];
+    });
+    const transaction = db.raw.$transaction.getMockImplementation()!;
+    db.raw.$transaction.mockImplementation(async (callback, ...rest) => {
+      try {
+        return await transaction(callback, ...rest);
+      } finally {
+        locked = false;
+      }
+    });
+    db.raw.itemEmbedding.findMany.mockImplementation(async () => {
+      events.push(locked ? "scan-under-lock" : "scan");
+      return [
+        { itemId: "live", vector: [1, 0] },
+        { itemId: "deleted", vector: [1, 0] },
+      ];
+    });
+    db.raw.canvasItem.findMany.mockImplementation(async ({ where }) =>
+      where.id.in.filter((id) => id !== "deleted").map((id) => ({ id })),
+    );
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage: vi.fn().mockResolvedValue(page),
+      suggest: vi.fn().mockResolvedValue(ai),
+      embed: vi.fn(async () => ({
+        ok: true as const,
+        provider: "openai",
+        model: "text-embedding-3-small",
+        vector: [1, 0],
+      })),
+    })(job());
+
+    expect(events).toEqual(["scan", "lock"]);
+    expect(db.state.row).toMatchObject({
+      status: "DONE",
+      similarItemIds: ["live"],
+    });
+    expect(db.raw.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: expect.any(Number),
+        timeout: expect.any(Number),
+      }),
+    );
+  });
+
+  it("does not apply the old page's results after the URL changed, and re-enqueues", async () => {
+    const db = fakeDb();
+    const NEW_URL = "https://example.org/other";
+    const suggest = vi.fn().mockImplementation(async () => {
+      db.state.item.content = { url: NEW_URL, title: "Tab title" };
+      db.state.item.version = 2;
+      return ai;
+    });
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage: vi.fn().mockResolvedValue(page),
+      suggest,
+      embed: vi.fn(async () => ({
+        ok: true as const,
+        provider: "OPENAI",
+        model: "text-embedding-3-small",
+        vector: [1, 0],
+      })),
+    })(job());
+
+    expect(db.state.item.content).toEqual({ url: NEW_URL, title: "Tab title" });
+    expect(db.state.item.tags).toEqual([]);
+    expect(db.state.item.version).toBe(2);
+    expect(db.raw.itemEmbedding.upsert).not.toHaveBeenCalled();
+    expect(mocks.recordEvent).not.toHaveBeenCalled();
+    expect(db.state.row.status).toBe("PENDING");
+    expect(db.state.outbox).toEqual([
+      expect.objectContaining({
+        type: "link.enrich",
+        payload: { itemId: "item-1" },
+        dedupeKey: "link.enrich:item-1:v2",
+      }),
+    ]);
   });
 });

@@ -13,6 +13,9 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
     throw new UnauthorizedError("Invalid cron secret");
   }
+  // Already-queued jobs still check the flag in the handler.
+  if (process.env.FEATURE_BOOKMARK_UNFURLING === "false")
+    return NextResponse.json({ queued: 0 });
 
   const cutoff = new Date(Date.now() - REFRESH_INTERVAL_MS);
   const bucket = Math.floor(Date.now() / REFRESH_INTERVAL_MS);

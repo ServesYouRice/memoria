@@ -51,7 +51,24 @@ const forgotPasswordSchema = z.object({
 
 const TOKEN_EXPIRY_HOURS = 1; // Token expires in 1 hour
 
+// Both branches answer no sooner than this after the request starts, so the
+// token write for an existing account cannot be told apart by timing.
+const FORGOT_PASSWORD_RESPONSE_FLOOR_MS = 500;
+
+const ACCEPTED_MESSAGE =
+  "If an account exists with this email, you will receive password reset instructions.";
+
+async function acceptedRequest(startedAt: number): Promise<NextResponse> {
+  const remainingMs =
+    startedAt + FORGOT_PASSWORD_RESPONSE_FLOOR_MS - Date.now();
+  if (remainingMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remainingMs));
+  }
+  return NextResponse.json({ message: ACCEPTED_MESSAGE });
+}
+
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     const body = await request.json();
     const { email } = forgotPasswordSchema.parse(body);
@@ -86,34 +103,32 @@ export async function POST(request: NextRequest) {
         request.nextUrl.origin;
       const resetUrl = `${baseUrl}/auth/reset-password?token=${token}`;
 
-      try {
-        await sendPasswordResetEmail(
-          { email: email.toLowerCase(), name: user.name || undefined },
-          {
-            userName: user.name || "User",
-            resetUrl,
-            expiresIn: `${TOKEN_EXPIRY_HOURS} hour${TOKEN_EXPIRY_HOURS > 1 ? "s" : ""}`,
-          },
-        );
-
-        logger.info(
-          { email: email.toLowerCase() },
-          "Password reset email sent",
-        );
-      } catch (emailError) {
-        // Log error but don't fail the request (security: don't reveal if email failed)
-        logger.error(
-          { error: emailError, email: email.toLowerCase() },
-          "Failed to send password reset email",
-        );
-      }
+      // The provider send runs after the response: awaiting an SMTP or HTTPS
+      // round trip only for existing accounts would reveal them by timing.
+      const normalizedEmail = email.toLowerCase();
+      void sendPasswordResetEmail(
+        { email: normalizedEmail, name: user.name || undefined },
+        {
+          userName: user.name || "User",
+          resetUrl,
+          expiresIn: `${TOKEN_EXPIRY_HOURS} hour${TOKEN_EXPIRY_HOURS > 1 ? "s" : ""}`,
+        },
+      ).then(
+        () => {
+          logger.info({ email: normalizedEmail }, "Password reset email sent");
+        },
+        (emailError: unknown) => {
+          // Log only: the response never reveals whether delivery failed.
+          logger.error(
+            { error: emailError, email: normalizedEmail },
+            "Failed to send password reset email",
+          );
+        },
+      );
     }
 
     // Always return success (security best practice)
-    return NextResponse.json({
-      message:
-        "If an account exists with this email, you will receive password reset instructions.",
-    });
+    return acceptedRequest(startedAt);
   } catch (error) {
     return errorResponse(error, request.url);
   }

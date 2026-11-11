@@ -12,7 +12,12 @@ import {
 } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "@/lib/errors";
 import {
   DEFAULT_SUGGESTION_TTL_DAYS,
   AGENT_CAPABILITY_RUNGS,
@@ -27,6 +32,8 @@ import {
 } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { ARCHIVE_OPERATION, revertArchivedItem } from "@/lib/services/archive";
+import { assertCanvasScope } from "@/lib/agents/policy";
+import { requirePollsEnabled } from "@/lib/polls/availability";
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -69,6 +76,8 @@ export function normalizeAgentItemWriteData(
   input: unknown,
 ): AgentItemWriteData {
   const parsed = agentItemSchema.parse(input);
+  // Agent writes honor the same launch gate as the REST item routes.
+  requirePollsEnabled(parsed.type);
 
   return {
     ...parsed,
@@ -276,20 +285,19 @@ async function completeChangeSetTx(
   });
 }
 
-async function createCanvasCheckpointTx(
+/**
+ * Reads everything a canvas checkpoint stores, in one ownership-checked
+ * canvas read. It takes no lock: a caller that needs the snapshot to match
+ * the locked state compares canvasCheckpointFingerprint before and after.
+ */
+async function buildCanvasCheckpointSnapshot(
   tx: Prisma.TransactionClient,
-  input: {
-    actor: ActorContext;
-    canvasId: string;
-    reason: string;
-  },
+  input: { userId: string; canvasId: string },
 ) {
-  await getOwnedCanvasTx(tx, input.actor.userId, input.canvasId);
-
   const canvas = await tx.canvas.findFirst({
     where: {
       id: input.canvasId,
-      userId: input.actor.userId,
+      userId: input.userId,
     },
     select: {
       id: true,
@@ -320,7 +328,7 @@ async function createCanvasCheckpointTx(
 
   const knowledgeEntities = await tx.knowledgeEntity.findMany({
     where: {
-      userId: input.actor.userId,
+      userId: input.userId,
       itemLinks: {
         some: {
           item: {
@@ -337,22 +345,101 @@ async function createCanvasCheckpointTx(
     },
   });
 
-  const snapshot = {
+  return {
     canvas,
     knowledgeEntities,
   };
+}
 
+/**
+ * A cheap summary of what a checkpoint snapshot covers: counts and latest
+ * update times of the canvas, its live items and comments, and their entity
+ * links. Any write the snapshot would see changes at least one of them.
+ */
+async function canvasCheckpointFingerprint(
+  tx: Prisma.TransactionClient,
+  input: { userId: string; canvasId: string },
+) {
+  const liveItem = { canvasId: input.canvasId, deletedAt: null };
+  const [canvas, items, comments, links, entities] = await Promise.all([
+    tx.canvas.findFirst({
+      where: { id: input.canvasId, userId: input.userId },
+      select: { updatedAt: true },
+    }),
+    tx.canvasItem.aggregate({
+      where: liveItem,
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+    tx.comment.aggregate({
+      where: { deletedAt: null, item: liveItem },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+    tx.itemEntityLink.aggregate({
+      where: { item: { canvasId: input.canvasId } },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    }),
+    tx.knowledgeEntity.aggregate({
+      where: {
+        userId: input.userId,
+        itemLinks: { some: { item: { canvasId: input.canvasId } } },
+      },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+  ]);
+  return JSON.stringify([
+    canvas?.updatedAt ?? null,
+    items._count._all,
+    items._max.updatedAt,
+    comments._count._all,
+    comments._max.updatedAt,
+    links._count._all,
+    links._max.createdAt,
+    entities._count._all,
+    entities._max.updatedAt,
+  ]);
+}
+
+async function persistCanvasCheckpoint(
+  tx: Prisma.TransactionClient,
+  input: {
+    actor: ActorContext;
+    canvasId: string;
+    reason: string;
+    snapshot: Awaited<ReturnType<typeof buildCanvasCheckpointSnapshot>>;
+  },
+) {
   return tx.workspaceCheckpoint.create({
     data: {
       userId: input.actor.userId,
       scopeType: "canvas",
       scopeId: input.canvasId,
-      snapshot: toJsonValue(snapshot),
+      // Ties the row to its canvas so deleting the canvas deletes it.
+      canvasId: input.canvasId,
+      snapshot: toJsonValue(input.snapshot),
       reason: input.reason,
       createdByActorType: WorkspaceCheckpointActorType.AGENT,
       createdByActorId: input.actor.agentProfileId,
     },
   });
+}
+
+async function createCanvasCheckpointTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    actor: ActorContext;
+    canvasId: string;
+    reason: string;
+  },
+) {
+  const snapshot = await buildCanvasCheckpointSnapshot(tx, {
+    userId: input.actor.userId,
+    canvasId: input.canvasId,
+  });
+  return persistCanvasCheckpoint(tx, { ...input, snapshot });
 }
 
 export async function createSuggestionRecord(input: {
@@ -423,13 +510,24 @@ export async function createCanvasItemWrite(input: {
     tx: Prisma.TransactionClient,
     item: PrismaCanvasItem,
   ) => Promise<void>;
+  /**
+   * Chooses the item's position under the canvas lock, so concurrent writers
+   * see each other's items (e.g. the next free Inbox slot). The positions in
+   * itemData are then placeholders.
+   */
+  resolvePlacement?: (
+    tx: Prisma.TransactionClient,
+  ) => Promise<{ positionX: number; positionY: number }>;
 }) {
-  const normalizedItem = normalizeAgentItemWriteData(input.itemData);
+  const validatedItem = normalizeAgentItemWriteData(input.itemData);
 
   return prisma.$transaction(async (tx) => {
     await lockCanvasForMutation(tx, input.canvasId);
     await getOwnedCanvasTx(tx, input.actor.userId, input.canvasId);
     await assertCanvasItemCapacity(tx, input.canvasId);
+    const normalizedItem = input.resolvePlacement
+      ? { ...validatedItem, ...(await input.resolvePlacement(tx)) }
+      : validatedItem;
 
     const agentAction = await tx.agentAction.create({
       data: {
@@ -525,6 +623,18 @@ export async function createCanvasItemBatchWrite(input: {
   }
 
   return prisma.$transaction(async (tx) => {
+    const scope = { userId: input.actor.userId, canvasId: input.canvasId };
+    // A bulk write stores a checkpoint of the canvas as it is when locked.
+    // Build it before the lock so the row lock is not held while every item
+    // is loaded, then confirm under the lock that nothing changed meanwhile.
+    const prebuilt =
+      rung >= AGENT_CAPABILITY_RUNGS.BULK && !input.checkpointId
+        ? {
+            fingerprint: await canvasCheckpointFingerprint(tx, scope),
+            snapshot: await buildCanvasCheckpointSnapshot(tx, scope),
+          }
+        : null;
+
     await lockCanvasForMutation(tx, input.canvasId);
     await getOwnedCanvasTx(tx, input.actor.userId, input.canvasId);
     await assertCanvasItemCapacity(tx, input.canvasId, normalizedItems.length);
@@ -548,10 +658,18 @@ export async function createCanvasItemBatchWrite(input: {
           );
         }
       } else {
-        const checkpoint = await createCanvasCheckpointTx(tx, {
+        const unchanged =
+          prebuilt !== null &&
+          (await canvasCheckpointFingerprint(tx, scope)) ===
+            prebuilt.fingerprint;
+        const checkpoint = await persistCanvasCheckpoint(tx, {
           actor: input.actor,
           canvasId: input.canvasId,
           reason: input.checkpointReason || input.summary,
+          snapshot:
+            unchanged && prebuilt
+              ? prebuilt.snapshot
+              : await buildCanvasCheckpointSnapshot(tx, scope),
         });
         checkpointId = checkpoint.id;
       }
@@ -949,77 +1067,108 @@ export async function createKnowledgeRelationWrite(input: {
   });
 }
 
+async function readOwnedSuggestion(userId: string, suggestionId: string) {
+  const suggestion = await prisma.suggestion.findFirst({
+    where: { id: suggestionId, userId },
+  });
+  if (!suggestion) {
+    throw new NotFoundError("Suggestion not found.");
+  }
+  return suggestion;
+}
+
+async function expireOpenSuggestion(userId: string, suggestionId: string) {
+  await prisma.suggestion.updateMany({
+    where: { id: suggestionId, userId, status: SuggestionStatus.OPEN },
+    data: {
+      status: SuggestionStatus.EXPIRED,
+      actedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Approval and rejection are compare-and-set transitions: the write only
+ * applies while the row is still in an allowed source status, so a slow
+ * request cannot move an EXECUTING, EXECUTED or REJECTED suggestion back.
+ */
 export async function approveSuggestion(input: {
   userId: string;
   suggestionId: string;
 }) {
-  const suggestion = await prisma.suggestion.findFirst({
+  const assertApprovable = async (
+    suggestion: Awaited<ReturnType<typeof readOwnedSuggestion>>,
+  ) => {
+    if (suggestion.status !== SuggestionStatus.OPEN) {
+      throw new BadRequestError("Only open suggestions can be approved.");
+    }
+    if (suggestion.expiresAt <= new Date()) {
+      await expireOpenSuggestion(input.userId, suggestion.id);
+      throw new BadRequestError("This suggestion has expired.");
+    }
+  };
+
+  await assertApprovable(
+    await readOwnedSuggestion(input.userId, input.suggestionId),
+  );
+
+  const approved = await prisma.suggestion.updateMany({
     where: {
       id: input.suggestionId,
       userId: input.userId,
+      status: SuggestionStatus.OPEN,
+      expiresAt: { gt: new Date() },
     },
-  });
-
-  if (!suggestion) {
-    throw new NotFoundError("Suggestion not found.");
-  }
-
-  if (suggestion.status !== SuggestionStatus.OPEN) {
-    throw new BadRequestError("Only open suggestions can be approved.");
-  }
-
-  if (suggestion.expiresAt <= new Date()) {
-    await prisma.suggestion.update({
-      where: { id: suggestion.id },
-      data: {
-        status: SuggestionStatus.EXPIRED,
-        actedAt: new Date(),
-      },
-    });
-
-    throw new BadRequestError("This suggestion has expired.");
-  }
-
-  return prisma.suggestion.update({
-    where: { id: suggestion.id },
     data: {
       status: SuggestionStatus.APPROVED,
       actedAt: new Date(),
     },
   });
+
+  const current = await readOwnedSuggestion(input.userId, input.suggestionId);
+  if (approved.count !== 1) {
+    await assertApprovable(current);
+    throw new BadRequestError("Only open suggestions can be approved.");
+  }
+  return current;
 }
 
 export async function rejectSuggestion(input: {
   userId: string;
   suggestionId: string;
 }) {
-  const suggestion = await prisma.suggestion.findFirst({
+  const rejectable: SuggestionStatus[] = [
+    SuggestionStatus.OPEN,
+    SuggestionStatus.APPROVED,
+  ];
+  const notRejectable = () =>
+    new BadRequestError("Only open or approved suggestions can be rejected.");
+
+  const suggestion = await readOwnedSuggestion(
+    input.userId,
+    input.suggestionId,
+  );
+  if (!rejectable.includes(suggestion.status)) {
+    throw notRejectable();
+  }
+
+  const rejected = await prisma.suggestion.updateMany({
     where: {
       id: input.suggestionId,
       userId: input.userId,
+      status: { in: rejectable },
     },
-  });
-
-  if (!suggestion) {
-    throw new NotFoundError("Suggestion not found.");
-  }
-
-  if (
-    suggestion.status !== SuggestionStatus.OPEN &&
-    suggestion.status !== SuggestionStatus.APPROVED
-  ) {
-    throw new BadRequestError(
-      "Only open or approved suggestions can be rejected.",
-    );
-  }
-
-  return prisma.suggestion.update({
-    where: { id: suggestion.id },
     data: {
       status: SuggestionStatus.REJECTED,
       actedAt: new Date(),
     },
   });
+
+  const current = await readOwnedSuggestion(input.userId, input.suggestionId);
+  if (rejected.count !== 1) {
+    throw notRejectable();
+  }
+  return current;
 }
 
 export async function markSuggestionExecuted(input: {
@@ -1034,6 +1183,28 @@ export async function markSuggestionExecuted(input: {
     },
     data: {
       status: SuggestionStatus.EXECUTED,
+      actedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Returns a claimed suggestion to APPROVED after its internal write failed
+ * and rolled back. Conditional on EXECUTING, so it never revives a row that
+ * finished or was rejected meanwhile.
+ */
+export async function releaseSuggestionClaim(input: {
+  userId: string;
+  suggestionId: string;
+}) {
+  return prisma.suggestion.updateMany({
+    where: {
+      id: input.suggestionId,
+      userId: input.userId,
+      status: SuggestionStatus.EXECUTING,
+    },
+    data: {
+      status: SuggestionStatus.APPROVED,
       actedAt: new Date(),
     },
   });
@@ -1065,6 +1236,36 @@ export async function claimSuggestionForExecution(input: {
 
 export { executeExternalWebhook } from "@/lib/agents/external-webhook-service";
 
+const REVERTABLE_ITEM_FIELDS = [
+  "positionX",
+  "positionY",
+  "width",
+  "height",
+  "zIndex",
+  "content",
+  "tags",
+] as const;
+type RevertableItemField = (typeof REVERTABLE_ITEM_FIELDS)[number];
+
+/** Structural equality for JSON-shaped values, ignoring object key order. */
+function sameJson(left: unknown, right: unknown): boolean {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object" && !(value instanceof Date)) {
+      return Object.fromEntries(
+        Object.keys(value as Record<string, unknown>)
+          .sort()
+          .map((key) => [
+            key,
+            canonical((value as Record<string, unknown>)[key]),
+          ]),
+      );
+    }
+    return value;
+  };
+  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
+}
+
 async function applyRevertOperation(
   tx: Prisma.TransactionClient,
   changeRecord: {
@@ -1094,6 +1295,7 @@ async function applyRevertOperation(
       targetId: changeRecord.targetId,
       userId,
       rollbackChangeSetId,
+      after: changeRecord.after,
     });
     return;
   }
@@ -1258,17 +1460,31 @@ async function applyRevertOperation(
       select: { id: true, name: true, userId: true, createdAt: true },
     });
     if (existing) {
-      const [liveItems, liveUploads] = await Promise.all([
-        tx.canvasItem.count({
-          where: { canvasId: existing.id, deletedAt: null },
+      // Deleting the canvas cascades to every row below, so any of them
+      // means the board holds the user's content: items in the trash or
+      // archive, saved (MANUAL) versions, embeds, shares, open invitations,
+      // clip batches, connections and uploads. AUTO versions are retention-
+      // thinned snapshots and do not count. revertChangeSet already holds the
+      // canvas mutation lock, so nothing can be added between these counts
+      // and the delete.
+      const canvasId = existing.id;
+      const counts = await Promise.all([
+        tx.canvasItem.count({ where: { canvasId } }),
+        tx.canvasVersion.count({ where: { canvasId, kind: "MANUAL" } }),
+        tx.canvasEmbed.count({ where: { canvasId } }),
+        tx.canvasShare.count({ where: { canvasId } }),
+        tx.canvasShareInvitation.count({
+          where: { canvasId, respondedAt: null },
         }),
+        tx.clipBatch.count({ where: { canvasId } }),
+        tx.itemConnection.count({ where: { canvasId } }),
         tx.uploadAsset.count({
-          where: { canvasId: existing.id, status: { not: "DELETED" } },
+          where: { canvasId, status: { not: "DELETED" } },
         }),
       ]);
-      if (liveItems > 0 || liveUploads > 0) {
+      if (counts.some((count) => count > 0)) {
         throw new BadRequestError(
-          "This board has items on it now. Undo those first, or delete the board in Memoria.",
+          "This board holds content now (items, including ones in the trash, saved versions, embeds or shares). Undo those first, or delete the board in Memoria.",
         );
       }
       await tx.canvas.delete({ where: { id: existing.id } });
@@ -1339,8 +1555,49 @@ async function applyRevertOperation(
         "The board this item came from is gone, so it cannot go back.",
       );
     }
+    // Only undo a move the user has not overridden: the item must still be
+    // live where the change set left it. Records without an `after` snapshot
+    // (older rows) fall back to "not trashed and not already back home".
+    const leftOn = snapshotCanvasId(changeRecord.after);
+    if (
+      existing.deletedAt ||
+      (leftOn
+        ? existing.canvasId !== leftOn
+        : existing.canvasId === snapshot.canvasId)
+    ) {
+      throw new BadRequestError(
+        "This item has moved since, so the move cannot be undone.",
+      );
+    }
     for (const canvasId of [existing.canvasId, snapshot.canvasId].sort()) {
       await lockCanvasForMutation(tx, canvasId);
+    }
+    // Lines cannot cross boards: lines drawn on the destination board after
+    // the move go with the undo, as the forward move dropped the old ones.
+    // The item's original lines come back through their DELETE records.
+    if (existing.canvasId !== snapshot.canvasId) {
+      const destinationLines = await tx.itemConnection.findMany({
+        where: {
+          canvasId: existing.canvasId,
+          OR: [{ fromId: existing.id }, { toId: existing.id }],
+        },
+      });
+      if (destinationLines.length > 0) {
+        await tx.itemConnection.deleteMany({
+          where: { id: { in: destinationLines.map((line) => line.id) } },
+        });
+        await tx.changeRecord.createMany({
+          data: destinationLines.map((line) => ({
+            changeSetId: rollbackChangeSetId,
+            targetType: "ItemConnection",
+            targetId: line.id,
+            operation: "ROLLBACK_DELETE",
+            before: toJsonValue(line),
+            after: Prisma.JsonNull,
+            reversible: false,
+          })),
+        });
+      }
     }
     const reverted = await tx.canvasItem.update({
       where: { id: changeRecord.targetId },
@@ -1467,16 +1724,51 @@ async function applyRevertOperation(
     }
 
     await lockCanvasForMutation(tx, existing.canvasId);
+    // Restore a field only while it still holds the value the change set
+    // left, so later edits (a note's text after a pile sort moved it) are
+    // kept. Records without an `after` snapshot (older rows) restore every
+    // field as before. A trashed item is left alone either way.
+    const leftBy = changeRecord.after as unknown as Partial<
+      Record<RevertableItemField, unknown>
+    > | null;
+    const data: Prisma.CanvasItemUncheckedUpdateInput = {};
+    if (!existing.deletedAt) {
+      for (const field of REVERTABLE_ITEM_FIELDS) {
+        if (
+          leftBy &&
+          (!(field in leftBy) || !sameJson(existing[field], leftBy[field]))
+        ) {
+          continue;
+        }
+        if (sameJson(existing[field], snapshot[field])) continue;
+        Object.assign(data, {
+          [field]:
+            field === "content"
+              ? toJsonValue(snapshot.content)
+              : snapshot[field],
+        });
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      await tx.changeRecord.create({
+        data: {
+          changeSetId: rollbackChangeSetId,
+          targetType: "CanvasItem",
+          targetId: changeRecord.targetId,
+          operation: "ROLLBACK_UPDATE",
+          before: toJsonValue(existing),
+          after: toJsonValue(existing),
+          reversible: false,
+        },
+      });
+      return;
+    }
+
     const reverted = await tx.canvasItem.update({
       where: { id: changeRecord.targetId },
       data: {
-        positionX: snapshot.positionX,
-        positionY: snapshot.positionY,
-        width: snapshot.width,
-        height: snapshot.height,
-        zIndex: snapshot.zIndex,
-        content: toJsonValue(snapshot.content),
-        tags: snapshot.tags,
+        ...data,
         version: {
           increment: 1,
         },
@@ -1498,8 +1790,9 @@ async function applyRevertOperation(
         targetId: changeRecord.targetId,
         operation: "ROLLBACK_UPDATE",
         before: toJsonValue(existing),
-        after: toJsonValue(snapshot),
-        reversible: true,
+        after: toJsonValue(reverted),
+        // There is no inverse for a rollback; undo it by editing again.
+        reversible: false,
       },
     });
     return;
@@ -1508,6 +1801,221 @@ async function applyRevertOperation(
   throw new BadRequestError(
     `Unsupported revert operation for ${changeRecord.targetType}:${changeRecord.operation}.`,
   );
+}
+
+/**
+ * Authorizes an agent or integration token to revert a change set. A token may
+ * only undo change sets made under its own agent profile, and only on canvases
+ * its allowlist still covers. A canvas-scoped change set is checked by its
+ * scope; any other scope is checked through the current canvas of every
+ * record it touches, and a record whose canvas cannot be resolved is denied.
+ * User-session undo does not go through this check.
+ */
+export async function assertAgentMayRevertChangeSet(input: {
+  userId: string;
+  agentProfile: Parameters<typeof assertCanvasScope>[0] & { id: string };
+  changeSetId: string;
+}) {
+  const changeSet = await prisma.changeSet.findFirst({
+    where: { id: input.changeSetId, userId: input.userId },
+    select: {
+      id: true,
+      agentProfileId: true,
+      scopeType: true,
+      scopeId: true,
+      changeRecords: { select: { targetType: true, targetId: true } },
+    },
+  });
+
+  if (!changeSet) {
+    throw new NotFoundError("Change set not found.");
+  }
+
+  if (changeSet.agentProfileId !== input.agentProfile.id) {
+    throw new ForbiddenError(
+      "The selected agent profile did not make this change set.",
+    );
+  }
+
+  if (changeSet.scopeType === "canvas") {
+    assertCanvasScope(input.agentProfile, changeSet.scopeId);
+    return;
+  }
+
+  const itemIds = [
+    ...new Set(
+      changeSet.changeRecords
+        .filter((record) => record.targetType === "CanvasItem")
+        .map((record) => record.targetId),
+    ),
+  ];
+  const items = itemIds.length
+    ? await prisma.canvasItem.findMany({
+        where: { id: { in: itemIds } },
+        select: { id: true, canvasId: true },
+      })
+    : [];
+  const canvasByItem = new Map(items.map((item) => [item.id, item.canvasId]));
+
+  for (const record of changeSet.changeRecords) {
+    const canvasId =
+      record.targetType === "CanvasItem"
+        ? canvasByItem.get(record.targetId)
+        : record.targetType === "Canvas"
+          ? record.targetId
+          : undefined;
+    if (!canvasId) {
+      throw new ForbiddenError(
+        "The selected agent profile is not allowed to revert this change set.",
+      );
+    }
+    assertCanvasScope(input.agentProfile, canvasId);
+  }
+}
+
+/**
+ * Rejects a revert that would change state on a canvas outside the agent
+ * profile's allowedCanvasIds. A canvas-scoped change set touches its scope
+ * canvas; a user-scoped one (archive, Ask move) touches every canvas its
+ * records name: Canvas targets, the canvases in each before/after snapshot
+ * and the board each recorded item is on now. A record naming no canvas
+ * cannot be scoped and is refused. Authorship is not checked here.
+ */
+export async function assertChangeSetWithinCanvasScope(input: {
+  userId: string;
+  agentProfile: Parameters<typeof assertCanvasScope>[0];
+  changeSetId: string;
+}) {
+  const changeSet = await prisma.changeSet.findFirst({
+    where: { id: input.changeSetId, userId: input.userId },
+    select: {
+      scopeType: true,
+      scopeId: true,
+      changeRecords: {
+        select: { targetType: true, targetId: true, before: true, after: true },
+      },
+    },
+  });
+  if (!changeSet) {
+    throw new NotFoundError("Change set not found.");
+  }
+  if (changeSet.scopeType === "canvas") {
+    assertCanvasScope(input.agentProfile, changeSet.scopeId);
+  }
+
+  const itemIds = [
+    ...new Set(
+      changeSet.changeRecords
+        .filter((record) => record.targetType === "CanvasItem")
+        .map((record) => record.targetId),
+    ),
+  ];
+  const items = itemIds.length
+    ? await prisma.canvasItem.findMany({
+        where: { id: { in: itemIds } },
+        select: { id: true, canvasId: true },
+      })
+    : [];
+  const canvasByItem = new Map(items.map((item) => [item.id, item.canvasId]));
+
+  for (const record of changeSet.changeRecords) {
+    const canvasIds = new Set<string>();
+    if (record.targetType === "Canvas") canvasIds.add(record.targetId);
+    const current =
+      record.targetType === "CanvasItem"
+        ? canvasByItem.get(record.targetId)
+        : undefined;
+    for (const canvasId of [
+      current,
+      snapshotCanvasId(record.before),
+      snapshotCanvasId(record.after),
+    ]) {
+      if (canvasId) canvasIds.add(canvasId);
+    }
+    if (canvasIds.size === 0 && changeSet.scopeType !== "canvas") {
+      throw new ForbiddenError(
+        "The selected agent profile is not allowed to revert this change set.",
+      );
+    }
+    for (const canvasId of canvasIds) {
+      assertCanvasScope(input.agentProfile, canvasId);
+    }
+  }
+}
+
+function snapshotCanvasId(value: Prisma.JsonValue | null) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const canvasId = (value as Record<string, unknown>).canvasId;
+  return typeof canvasId === "string" ? canvasId : null;
+}
+
+/**
+ * Locks every canvas a revert can touch, in ascending id order, before the
+ * first record is applied: archive and Ask move change sets are user-scoped
+ * and span boards, and locking them lazily in record order can deadlock
+ * against archiveItems, which locks in sorted order. The per-record locks in
+ * applyRevertOperation then re-lock canvases already held.
+ */
+async function lockRevertCanvases(
+  tx: Prisma.TransactionClient,
+  input: {
+    scopeType: string;
+    scopeId: string;
+    changeRecords: Array<{
+      targetType: string;
+      targetId: string;
+      operation: string;
+      before: Prisma.JsonValue | null;
+      after: Prisma.JsonValue | null;
+    }>;
+  },
+) {
+  const canvasIds = new Set<string>();
+  if (input.scopeType === "canvas") canvasIds.add(input.scopeId);
+  const itemIds = new Set<string>();
+  for (const record of input.changeRecords) {
+    if (record.targetType === "CanvasItem") {
+      itemIds.add(record.targetId);
+      for (const snapshot of [record.before, record.after]) {
+        const canvasId = snapshotCanvasId(snapshot);
+        if (canvasId) canvasIds.add(canvasId);
+      }
+    } else if (record.targetType === "ItemConnection") {
+      const canvasId =
+        snapshotCanvasId(record.before) ?? snapshotCanvasId(record.after);
+      if (canvasId) canvasIds.add(canvasId);
+    } else if (
+      record.targetType === "Canvas" &&
+      record.operation === "CREATE"
+    ) {
+      canvasIds.add(record.targetId);
+    }
+  }
+
+  const currentCanvasIds = async () =>
+    itemIds.size === 0
+      ? []
+      : (
+          await tx.canvasItem.findMany({
+            where: { id: { in: Array.from(itemIds) } },
+            select: { canvasId: true },
+          })
+        ).map((item) => item.canvasId);
+
+  for (const canvasId of await currentCanvasIds()) canvasIds.add(canvasId);
+  const locked = Array.from(canvasIds).sort();
+  for (const canvasId of locked) {
+    await lockCanvasForMutation(tx, canvasId);
+  }
+
+  // An item moved to another board between the read and the locks: taking
+  // that lock now would break the order, so ask for a retry instead.
+  const lockedSet = new Set(locked);
+  if ((await currentCanvasIds()).some((canvasId) => !lockedSet.has(canvasId))) {
+    throw new ConflictError(
+      "Items in this change moved while it was being undone. Try again.",
+    );
+  }
 }
 
 export async function revertChangeSet(input: {
@@ -1519,11 +2027,7 @@ export async function revertChangeSet(input: {
       id: input.changeSetId,
       userId: input.actor.userId,
     },
-    include: {
-      changeRecords: {
-        orderBy: { createdAt: "desc" },
-      },
-    },
+    select: { id: true, scopeType: true, scopeId: true, revertedAt: true },
   });
 
   if (!originalChangeSet) {
@@ -1535,9 +2039,31 @@ export async function revertChangeSet(input: {
   }
 
   return prisma.$transaction(async (tx) => {
-    if (originalChangeSet.scopeType === "canvas") {
-      await lockCanvasForMutation(tx, originalChangeSet.scopeId);
+    const revertedAt = new Date();
+    // Claim the change set first: a concurrent revert blocks on this row and
+    // then matches nothing, so the inverse is applied at most once. A failed
+    // revert rolls the claim back with the transaction.
+    const claim = await tx.changeSet.updateMany({
+      where: {
+        id: originalChangeSet.id,
+        userId: input.actor.userId,
+        revertedAt: null,
+      },
+      data: { status: ChangeSetStatus.REVERTED, revertedAt },
+    });
+    if (claim.count !== 1) {
+      throw new ForbiddenError("This change set has already been reverted.");
     }
+    const changeRecords = await tx.changeRecord.findMany({
+      where: { changeSetId: originalChangeSet.id },
+      orderBy: { createdAt: "desc" },
+    });
+    await lockRevertCanvases(tx, {
+      scopeType: originalChangeSet.scopeType,
+      scopeId: originalChangeSet.scopeId,
+      changeRecords,
+    });
+
     const rollbackAction = await tx.agentAction.create({
       data: {
         userId: input.actor.userId,
@@ -1567,7 +2093,7 @@ export async function revertChangeSet(input: {
       },
     });
 
-    for (const changeRecord of originalChangeSet.changeRecords) {
+    for (const changeRecord of changeRecords) {
       await applyRevertOperation(
         tx,
         changeRecord,
@@ -1575,8 +2101,6 @@ export async function revertChangeSet(input: {
         rollbackChangeSet.id,
       );
     }
-
-    const revertedAt = new Date();
 
     await tx.changeRecord.updateMany({
       where: {
@@ -1588,6 +2112,7 @@ export async function revertChangeSet(input: {
       },
     });
 
+    // Already set by the claim; kept so the row's final write is explicit.
     await tx.changeSet.update({
       where: { id: originalChangeSet.id },
       data: {
