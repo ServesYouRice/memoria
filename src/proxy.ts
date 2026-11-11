@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { applyCSP, buildCSP, generateNonce } from "./middleware/csp";
 import { applySecurityHeaders } from "./middleware/security-headers";
+import { finalizeEarlyResponse } from "./middleware/finalize-response";
 import {
   apiRateLimit,
   authRateLimit,
@@ -86,8 +87,7 @@ export async function proxy(request: NextRequest) {
         },
         { status: 400 },
       );
-      errorResponse.headers.set("x-request-id", requestId);
-      return errorResponse;
+      return finalizeEarlyResponse(request, errorResponse, requestId);
     }
   }
 
@@ -104,14 +104,15 @@ export async function proxy(request: NextRequest) {
         },
         "Auth rate limit exceeded",
       );
-      return rateLimitResponse;
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
     }
   }
 
   if (pathname.startsWith("/api/agent")) {
     specificRateLimitApplied = true;
     const rateLimitResponse = await agentRateLimit(request);
-    if (rateLimitResponse) return rateLimitResponse;
+    if (rateLimitResponse)
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }
 
   if (
@@ -121,13 +122,15 @@ export async function proxy(request: NextRequest) {
   ) {
     specificRateLimitApplied = true;
     const rateLimitResponse = await sensitiveEndpointRateLimit(request);
-    if (rateLimitResponse) return rateLimitResponse;
+    if (rateLimitResponse)
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }
 
   if (pathname === "/api/v1/image-proxy") {
     specificRateLimitApplied = true;
     const rateLimitResponse = await imageProxyRateLimit(request);
-    if (rateLimitResponse) return rateLimitResponse;
+    if (rateLimitResponse)
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }
 
   // Apply rate limiting for file uploads (stricter)
@@ -142,7 +145,7 @@ export async function proxy(request: NextRequest) {
         },
         "Upload rate limit exceeded",
       );
-      return rateLimitResponse;
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
     }
   }
 
@@ -157,7 +160,8 @@ export async function proxy(request: NextRequest) {
     const rateLimitResponse =
       (await canvasesRateLimit(request)) ??
       (await canvasesUserRateLimit(request));
-    if (rateLimitResponse) return rateLimitResponse;
+    if (rateLimitResponse)
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }
 
   // Apply rate limiting for item operations. The share-target save (IMP-062)
@@ -170,7 +174,8 @@ export async function proxy(request: NextRequest) {
     specificRateLimitApplied = true;
     const rateLimitResponse =
       (await itemsRateLimit(request)) ?? (await itemsUserRateLimit(request));
-    if (rateLimitResponse) return rateLimitResponse;
+    if (rateLimitResponse)
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }
 
   // Asset GETs, the notification poll and search have their own budgets, so
@@ -179,7 +184,8 @@ export async function proxy(request: NextRequest) {
     specificRateLimitApplied = true;
     for (const limiter of readBudgetLimiters[readBudget]) {
       const rateLimitResponse = await limiter(request);
-      if (rateLimitResponse) return rateLimitResponse;
+      if (rateLimitResponse)
+        return finalizeEarlyResponse(request, rateLimitResponse, requestId);
     }
   }
 
@@ -195,7 +201,7 @@ export async function proxy(request: NextRequest) {
         (await apiUserRateLimit(request)))
       : await apiRateLimit(request);
     if (rateLimitResponse) {
-      return rateLimitResponse;
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
     }
   }
 
