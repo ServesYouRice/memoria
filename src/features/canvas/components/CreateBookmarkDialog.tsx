@@ -7,7 +7,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -71,7 +71,19 @@ export function CreateBookmarkDialog({
 }: CreateBookmarkDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [unfurling, setUnfurling] = useState(false);
-  const [metadata, setMetadata] = useState<UnfurledMetadata | null>(null);
+  // Preview metadata together with the URL it was fetched for.
+  const [preview, setPreview] = useState<{
+    url: string;
+    data: UnfurledMetadata;
+  } | null>(null);
+  const metadata = preview?.data ?? null;
+  // The unfurl request in flight; a newer request or a URL edit aborts it,
+  // so only the latest request for the current URL is applied.
+  const requestRef = useRef<{
+    seq: number;
+    controller: AbortController;
+  } | null>(null);
+  const requestSeq = useRef(0);
   // The URL the automatic preview last tried: a failure for it is shown,
   // not retried in a loop. Editing the URL or reopening clears it; the
   // refresh button still retries on request.
@@ -83,6 +95,7 @@ export function CreateBookmarkDialog({
     handleSubmit,
     reset,
     watch,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormInput, unknown, FormData>({
     resolver: zodResolver(formSchema),
@@ -96,13 +109,59 @@ export function CreateBookmarkDialog({
   const urlValue = watch("url");
   const debouncedUrl = useDebounce(urlValue, 1000); // 1 second debounce
 
+  const cancelUnfurl = () => {
+    requestRef.current?.controller.abort();
+    requestRef.current = null;
+    setUnfurling(false);
+  };
+
   const handleClose = () => {
+    cancelUnfurl();
     reset();
     setError(null);
-    setMetadata(null);
+    setPreview(null);
     lastAutoUnfurlUrl.current = null;
     onClose();
   };
+
+  const handleUnfurl = useCallback(
+    async (url: string) => {
+      requestRef.current?.controller.abort();
+      const seq = ++requestSeq.current;
+      const controller = new AbortController();
+      requestRef.current = { seq, controller };
+      const isCurrent = () =>
+        requestRef.current?.seq === seq && getValues("url") === url;
+      try {
+        setError(null);
+        setUnfurling(true);
+
+        const response = await fetch("/api/v1/unfurl", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to fetch URL metadata");
+        }
+
+        const unfurledData = (await response.json()) as UnfurledMetadata;
+        if (isCurrent()) setPreview({ url, data: unfurledData });
+      } catch (err) {
+        if (controller.signal.aborted || !isCurrent()) return;
+        setError(err instanceof Error ? err.message : "Failed to unfurl URL");
+      } finally {
+        if (requestRef.current?.seq === seq) {
+          requestRef.current = null;
+          setUnfurling(false);
+        }
+      }
+    },
+    [getValues],
+  );
 
   // Auto-unfurl when a valid URL is entered
   useEffect(() => {
@@ -130,37 +189,14 @@ export function CreateBookmarkDialog({
         // Invalid URL format, don't auto-unfurl
       }
     }
-  }, [debouncedUrl, open, errors.url, metadata, unfurling]);
-
-  const handleUnfurl = async (url: string) => {
-    try {
-      setError(null);
-      setUnfurling(true);
-
-      const response = await fetch("/api/v1/unfurl", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to fetch URL metadata");
-      }
-
-      const unfurledData = await response.json();
-      setMetadata(unfurledData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to unfurl URL");
-    } finally {
-      setUnfurling(false);
-    }
-  };
+  }, [debouncedUrl, open, errors.url, metadata, unfurling, handleUnfurl]);
 
   const onSubmit = async (data: FormData) => {
     try {
       setError(null);
 
+      // Only metadata fetched for the submitted URL is saved with it.
+      const metadata = preview?.url === data.url ? preview.data : null;
       // Calculate height based on whether we have metadata
       const hasMetadata = metadata && (metadata.title || metadata.description);
       const height = hasMetadata ? 150 : 100;
@@ -224,8 +260,9 @@ export function CreateBookmarkDialog({
                     disabled={isSubmitting}
                     onChange={(e) => {
                       field.onChange(e);
-                      // Clear metadata when URL changes
-                      setMetadata(null);
+                      // Clear metadata and drop any preview still in flight
+                      cancelUnfurl();
+                      setPreview(null);
                       lastAutoUnfurlUrl.current = null;
                     }}
                   />
