@@ -112,6 +112,8 @@ export function useCollaboration(
   > | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(true);
+  /** A socket of the current canvas session has opened at least once. */
+  const sessionOpenedRef = useRef(false);
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
   const cursorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCursorRef = useRef<bigint>(0n);
@@ -333,6 +335,7 @@ export function useCollaboration(
     }
 
     shouldReconnectRef.current = true;
+    sessionOpenedRef.current = false;
     reconnectAttemptsRef.current = 0;
     setConnectionMessage(null);
     const deferredCommittedEvents = deferredCommittedEventsRef.current;
@@ -395,6 +398,7 @@ export function useCollaboration(
 
       ws.onopen = () => {
         opened = true;
+        sessionOpenedRef.current = true;
         logger.info("Connected to collaboration server");
         if (reconnectStableTimeoutRef.current) {
           clearTimeout(reconnectStableTimeoutRef.current);
@@ -443,6 +447,7 @@ export function useCollaboration(
           code: event.code,
           opened,
           intentional: !shouldReconnectRef.current,
+          sessionHasOpened: sessionOpenedRef.current,
         });
         if (disposition === "stop") {
           if (shouldReconnectRef.current) {

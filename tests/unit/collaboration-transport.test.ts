@@ -210,6 +210,39 @@ describe("collaboration capacity and reconnect policy", () => {
         intentional: false,
       }),
     ).toBe("retry");
+    // TASK-186: a reconnect of a session that opened before is transient.
+    expect(
+      collaborationCloseDisposition({
+        code: 1006,
+        opened: false,
+        intentional: false,
+        sessionHasOpened: true,
+      }),
+    ).toBe("retry");
+    expect(
+      collaborationCloseDisposition({
+        code: 1006,
+        opened: false,
+        intentional: false,
+        sessionHasOpened: false,
+      }),
+    ).toBe("stop");
+    expect(
+      collaborationCloseDisposition({
+        code: 1006,
+        opened: false,
+        intentional: true,
+        sessionHasOpened: true,
+      }),
+    ).toBe("stop");
+    expect(
+      collaborationCloseDisposition({
+        code: 1008,
+        opened: true,
+        intentional: false,
+        sessionHasOpened: true,
+      }),
+    ).toBe("stop");
     expect(reconnectDelayMs(1, 0)).toBe(1_000);
     expect(reconnectDelayMs(20, 1)).toBe(19_500);
   });
