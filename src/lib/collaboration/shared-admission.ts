@@ -73,14 +73,19 @@ end
 return 0
 `;
 
-// Extend the lease of members that still exist (XX: never resurrect one a
-// release already removed).
+// Extend the lease of every connection this process still holds, adding it
+// back if it is missing: admitted while Redis failed, or expired during an
+// outage. A released connection is never resurrected: renew is sent only for
+// connections still held, and release removes the connection locally before
+// sending its ZREM on the same client, so Redis runs them in send order. Sets
+// may exceed a limit right after recovery; admissions are refused until the
+// count falls.
 const RENEW_SCRIPT = `
 local time = redis.call("TIME")
 local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
 local lease = tonumber(ARGV[1])
 for i = 1, #KEYS do
-  redis.call("ZADD", KEYS[i], "XX", now + lease, ARGV[1 + i])
+  redis.call("ZADD", KEYS[i], now + lease, ARGV[1 + i])
   redis.call("PEXPIRE", KEYS[i], lease)
 end
 return 0
