@@ -6,7 +6,7 @@
 
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import {
   Dialog,
@@ -55,6 +55,23 @@ const formSchema = z.object({
 type FormInput = z.input<typeof formSchema>;
 type FormData = z.output<typeof formSchema>;
 
+/**
+ * Best-effort delete of an upload the user abandoned, so it stops counting
+ * against the quota. The DELETE route allows only the canvas owner, so an
+ * editor's abandoned upload is refused (403) and stays until upload delete
+ * authorization for uploaders is decided; failures are ignored.
+ */
+function discardUpload(assetId: string) {
+  try {
+    void fetch(`/api/v1/uploads/${encodeURIComponent(assetId)}`, {
+      method: "DELETE",
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // Cleanup never blocks closing the dialog.
+  }
+}
+
 export function CreateImageDialog({
   open,
   onClose,
@@ -70,6 +87,14 @@ export function CreateImageDialog({
   } | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The uploaded asset not yet added to the canvas.
+  const pendingAssetRef = useRef<string | null>(null);
+  const discardPending = () => {
+    const assetId = pendingAssetRef.current;
+    pendingAssetRef.current = null;
+    if (assetId) discardUpload(assetId);
+  };
+  useEffect(() => discardPending, []);
   const createItem = useCreateCanvasItem();
   // IMP-071: offered only when the saved AI provider can read images.
   const offers = useUploadNoteOffers(open);
@@ -88,10 +113,17 @@ export function CreateImageDialog({
     },
   });
 
+  // Each file pick gets an id; work from an earlier pick (or a pick the
+  // dialog was closed during) is ignored.
+  const selectionRef = useRef(0);
+
   const handleClose = () => {
+    selectionRef.current += 1;
+    discardPending();
     reset();
     setError(null);
     setUploadedImage(null);
+    setUploading(false);
     setMakeNote(false);
     onClose();
   };
@@ -101,9 +133,14 @@ export function CreateImageDialog({
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const selection = ++selectionRef.current;
+    const isCurrent = () => selection === selectionRef.current;
 
     try {
       setError(null);
+      // The previous image must not be submitted while its replacement
+      // uploads and loads; Add stays disabled until this pick settles.
+      setUploadedImage(null);
       setUploading(true);
 
       // Create form data
@@ -123,27 +160,37 @@ export function CreateImageDialog({
       }
 
       const data = await response.json();
+      const assetId: string | null =
+        typeof data.assetId === "string"
+          ? data.assetId
+          : uploadAssetIdFromUrl(data.url);
+      if (!isCurrent()) {
+        // A newer pick (or closing) replaced this upload before it finished.
+        if (assetId) discardUpload(assetId);
+        return;
+      }
+      // "Change Image": the previous upload is no longer wanted.
+      discardPending();
+      pendingAssetRef.current = assetId;
 
       // Load image to get dimensions
       const img = new globalThis.Image();
-      img.onload = () => {
+      const settle = (dimensions: { width?: number; height?: number }) => {
+        if (!isCurrent()) return;
         setUploadedImage({
           url: data.url,
           filename: data.filename,
-          width: img.naturalWidth,
-          height: img.naturalHeight,
+          ...dimensions,
         });
+        setUploading(false);
       };
-      img.onerror = () => {
-        setUploadedImage({
-          url: data.url,
-          filename: data.filename,
-        });
-      };
+      img.onload = () =>
+        settle({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => settle({});
       img.src = data.url;
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : "Failed to upload image");
-    } finally {
       setUploading(false);
     }
   };
@@ -185,6 +232,8 @@ export function CreateImageDialog({
         },
         tags: data.tags || [],
       });
+      // The item now references the upload; closing must not delete it.
+      pendingAssetRef.current = null;
 
       const assetId = uploadAssetIdFromUrl(uploadedImage.url);
       if (makeNote && offers.readImage && assetId) {

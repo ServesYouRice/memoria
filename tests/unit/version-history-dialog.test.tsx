@@ -202,6 +202,25 @@ describe("VersionHistoryDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("cannot confirm the restore again while it runs", async () => {
+    let finish!: () => void;
+    hooks.restore.mockImplementation(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    renderDialog(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore This Version" }),
+    );
+    const confirm = await screen.findByRole("button", { name: "Restore" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(hooks.restore).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect((confirm as HTMLButtonElement).disabled).toBe(true),
+    );
+    finish();
+  });
+
   it("offers viewers the preview but no restore or save", () => {
     renderDialog(false);
     expect(screen.getByRole("img", { name: /Read-only preview/ })).toBeTruthy();

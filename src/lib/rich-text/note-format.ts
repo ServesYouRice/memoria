@@ -305,7 +305,8 @@ function legacyInline(
 ) {
   for (const node of nodes) {
     if (node.type === "text") {
-      const text = (node.data || "").replace(/\s+/g, " ");
+      // HTML whitespace only: a decoded &nbsp; (U+00A0) stays as typed.
+      const text = (node.data || "").replace(/[ \t\n\r\f]+/g, " ");
       if (text)
         out.push({
           type: "text",

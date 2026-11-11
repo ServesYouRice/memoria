@@ -23,8 +23,14 @@ import {
   readNoteFragment,
   writeNoteFragment,
 } from "./note-fragment";
+import type { TiptapNode } from "@/lib/rich-text/note-format";
 
 export type ItemMap = Y.Map<unknown>;
+
+const EMPTY_NOTE_DOCUMENT: TiptapNode = {
+  type: "doc",
+  content: [{ type: "paragraph", content: [] }],
+};
 
 /** The row-shaped state of one live item, as `CanvasItem` stores it. */
 export interface CanvasItemState {
@@ -152,8 +158,18 @@ function fillItemMap(map: ItemMap, state: CanvasItemState, fresh: boolean) {
   }
 
   if (map.has("content")) map.delete("content");
-  const document = noteDocumentFromContent(state.content);
+  const normalized = noteDocumentFromContent(state.content);
   let fragment = map.get(NOTE_TEXT_KEY);
+  if (!normalized) {
+    // Shared with the browser, so no server logger here.
+    console.warn(
+      `Stored note ${state.id} could not be normalized; keeping its document text.`,
+    );
+    // An existing note is never overwritten because its row failed to
+    // normalize. A note with no text yet still gets an empty one, as before.
+    if (isNoteTextFragment(fragment)) return;
+  }
+  const document = normalized ?? EMPTY_NOTE_DOCUMENT;
   if (!isNoteTextFragment(fragment)) {
     fragment = new Y.XmlFragment();
     map.set(NOTE_TEXT_KEY, fragment);

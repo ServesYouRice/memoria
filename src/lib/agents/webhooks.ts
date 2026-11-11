@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from "crypto";
 import { BadRequestError } from "@/lib/errors";
 import {
   pinnedHttpRequest,
+  raceAbortSignal,
   validateUrlForSsrfWithDns,
 } from "@/lib/utils/ssrf-protection";
 
@@ -104,10 +105,15 @@ export async function deliverSignedWebhook(
 
   try {
     let currentUrl = input.url;
-    let finalResponse: { status: number; ok: boolean; body: string } | undefined;
+    let finalResponse:
+      { status: number; ok: boolean; body: string } | undefined;
 
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const validation = await validateUrlForSsrfWithDns(currentUrl);
+      // One budget for DNS checks and every hop.
+      const validation = await raceAbortSignal(
+        validateUrlForSsrfWithDns(currentUrl),
+        controller.signal,
+      );
       if (!validation.valid || !validation.pinnedIp || !validation.targetUrl) {
         throw new BadRequestError(
           validation.error || "Webhook destination is invalid.",
@@ -132,6 +138,7 @@ export async function deliverSignedWebhook(
           body,
           timeout: timeoutMs,
           maxSize: MAX_RESPONSE_BYTES,
+          signal: controller.signal,
         },
       );
 
@@ -163,7 +170,7 @@ export async function deliverSignedWebhook(
       responseBody: finalResponse.body,
     };
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (controller.signal.aborted) {
       throw new BadRequestError("Webhook delivery timed out.");
     }
 

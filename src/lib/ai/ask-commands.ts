@@ -112,6 +112,11 @@ async function loadOwnedItems(
   return items;
 }
 
+/** An item moved or was trashed between the unlocked and the locked read. */
+function staleAskMove() {
+  return new ConflictError("Items moved while filing; try again.");
+}
+
 function assertMovable(items: { type: string }[]) {
   if (items.some((item) => !MOVABLE_TYPES.has(item.type))) {
     throw new BadRequestError(
@@ -163,7 +168,11 @@ export async function proposeAskCommand(input: {
     return suggestion;
   }
 
-  assertMovable(items);
+  // Archive takes any item type (archiveItems does not filter); only moves
+  // keep images, frames and arrows on their board.
+  if (command.type === "move_items" || command.type === "create_board") {
+    assertMovable(items);
+  }
 
   let boardName: string | undefined;
   if (command.type === "move_items") {
@@ -345,13 +354,22 @@ export async function executeAskCommandSuggestion(input: {
         await lockCanvasForMutation(tx, canvasId);
         touched.add(canvasId);
       }
-      items = await loadOwnedItems(tx, userId, command.itemIds);
-      const lockedFrom = new Map(
-        unlocked.map((item) => [item.id, item.canvasId]),
-      );
-      if (items.some((item) => lockedFrom.get(item.id) !== item.canvasId)) {
-        throw new ConflictError("Items moved while filing; try again.");
+      // Re-read under the locks: an item moved or trashed since the first
+      // read must not be moved from its stale board. No extra locks are
+      // taken out of order; the caller tries again instead.
+      try {
+        items = await loadOwnedItems(tx, userId, command.itemIds);
+      } catch (error) {
+        if (error instanceof BadRequestError) throw staleAskMove();
+        throw error;
       }
+      // An item that moved between two boards this run holds is safe to
+      // move from where it is now; one that left them is not.
+      const lockedCanvasIds = new Set(canvasIds);
+      if (items.some((item) => !lockedCanvasIds.has(item.canvasId))) {
+        throw staleAskMove();
+      }
+      assertMovable(items);
     }
     if (
       input.expectedSourceCanvasId !== undefined &&
@@ -414,11 +432,12 @@ export async function executeAskCommandSuggestion(input: {
             },
           })
           .catch((error: unknown) => {
+            // P2025: the item left its locked board or was trashed.
             if (
               error instanceof Prisma.PrismaClientKnownRequestError &&
               error.code === "P2025"
             ) {
-              throw new ConflictError("Items moved while filing; try again.");
+              throw staleAskMove();
             }
             throw error;
           });

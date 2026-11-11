@@ -117,6 +117,23 @@ interface RemoteReactionMessage {
 }
 
 /**
+ * Runs a confirm-dialog action and reports a failure as an error toast.
+ * Resolves true when the action succeeded; never rejects.
+ */
+export async function runConfirmAction(
+  action: () => Promise<void>,
+  failureMessage: string,
+): Promise<boolean> {
+  try {
+    await action();
+    return true;
+  } catch {
+    toast.error(failureMessage);
+    return false;
+  }
+}
+
+/**
  * IMP-042: the board opens the canvas's collaborative document and edits it
  * live while it is available; item writes fall back to the HTTP API
  * otherwise (see `lib/collaboration/sync/client-session`).
@@ -689,14 +706,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   }, []);
 
   // Handlers
-  const handleAddNoteFromAI = (text: string) => {
+  // Returns the create so AIDialog closes only once the note exists.
+  const handleAddNoteFromAI = async (text: string): Promise<void> => {
     const { x: centerX, y: centerY } = viewportCenterWorld(
       position,
       stageSize,
       zoom,
     );
 
-    createItem({
+    await createItem({
       canvasId,
       type: ItemType.NOTE,
       positionX: centerX - 150,
@@ -1728,17 +1746,16 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                 ]
               : [];
           });
-          const response = await fetch("/api/v1/canvas-items", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ canvasId, items: itemsToUpdate }),
-          });
-          if (!response.ok) {
-            toast.error(
-              "The layout could not be applied. Refresh and try again.",
-            );
-            return;
-          }
+          const applied = await runConfirmAction(async () => {
+            const response = await fetch("/api/v1/canvas-items", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ canvasId, items: itemsToUpdate }),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          }, "The layout could not be applied. Refresh and try again.");
+          // A failure keeps the dialog open so the layout can be retried.
+          if (!applied) return;
           setPendingAutopilotActions([]);
           await queryClient.invalidateQueries({
             queryKey: canvasItemKeys.list(canvasId),
@@ -1754,10 +1771,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onClose={() => setPendingRestoreVersionId(null)}
         onConfirm={async () => {
           if (!pendingRestoreVersionId) return;
-          await restoreVersion({
-            canvasId,
-            versionId: pendingRestoreVersionId,
-          });
+          const versionId = pendingRestoreVersionId;
+          const restored = await runConfirmAction(
+            () => restoreVersion({ canvasId, versionId }).then(() => undefined),
+            "The version could not be restored. Try again.",
+          );
+          // A failure keeps the dialog open so the restore can be retried.
+          if (!restored) return;
           setPendingRestoreVersionId(null);
           setTimeMachineActive(false);
           await queryClient.invalidateQueries({

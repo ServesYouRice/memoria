@@ -157,6 +157,18 @@ export function parseLinkSuggestion(raw: string): LinkAiSuggestion | null {
   return suggestion;
 }
 
+/**
+ * A busy per-user AI slot or an unreachable budget store clears within
+ * seconds, unlike a spent daily allowance; the caller should retry.
+ */
+export function isTransientAiBudgetError(error: unknown): boolean {
+  return (
+    error instanceof AiBudgetStoreError ||
+    (error instanceof AiBudgetError &&
+      error.extensions?.code === "AI_CONCURRENCY_BUDGET")
+  );
+}
+
 function skipReason(error: unknown): LinkAiSkipReason | null {
   if (error instanceof AiBudgetError || error instanceof AiBudgetStoreError) {
     return "budget";
@@ -206,6 +218,8 @@ export async function suggestLinkDetails(
     }
     return { ok: true, suggestion };
   } catch (error) {
+    // Rethrown so the outbox job retries with backoff.
+    if (isTransientAiBudgetError(error)) throw error;
     const reason = skipReason(error);
     if (!reason) throw error;
     return { ok: false, reason };

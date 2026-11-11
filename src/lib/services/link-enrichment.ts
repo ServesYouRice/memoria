@@ -34,6 +34,7 @@ import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import type { ExtractedMetadata } from "@/lib/utils/metadata-extractor";
 import {
+  isTransientAiBudgetError,
   suggestLinkDetails,
   type LinkAiInput,
   type LinkAiResult,
@@ -362,15 +363,29 @@ export function createLinkEnrichmentHandler(
       }
     }
 
-    const ai = await suggest({
-      userId: enrichment.userId,
-      url,
-      title: metadata?.title || saved.title,
-      description: metadata?.description || saved.description,
-      siteName: metadata?.siteName || saved.siteName,
-      pageText,
-      signal: context?.signal,
-    });
+    let ai: LinkAiResult;
+    try {
+      ai = await suggest({
+        userId: enrichment.userId,
+        url,
+        title: metadata?.title || saved.title,
+        description: metadata?.description || saved.description,
+        siteName: metadata?.siteName || saved.siteName,
+        pageText,
+        signal: context?.signal,
+      });
+    } catch (error) {
+      // A busy AI slot or a down budget store leaves the link PENDING and
+      // fails the job as retryable; on the last attempt the link finishes
+      // as a spent budget rather than staying PENDING.
+      if (!isTransientAiBudgetError(error)) throw error;
+      if (job.attempts < job.maxAttempts) throw error;
+      logger.info(
+        { itemId },
+        "AI stayed busy through every attempt; enriching without AI",
+      );
+      ai = { ok: false, reason: "budget" };
+    }
     context?.signal.throwIfAborted();
 
     // Near-duplicate detection needs an embedding; skip it whenever the AI

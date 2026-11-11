@@ -13,6 +13,19 @@ import {
 } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
 
+/**
+ * A note's text for lists and search. plainText is already plain, so it is
+ * used verbatim; only the HTML `text` fallback is stripped of markup.
+ */
+export function notePlainText(content: {
+  plainText?: unknown;
+  text?: unknown;
+}): string {
+  if (typeof content.plainText === "string" && content.plainText)
+    return content.plainText;
+  return stripHtmlTags(typeof content.text === "string" ? content.text : "");
+}
+
 /** Items whose main job is to preserve visual relationships around matches. */
 export function isStructuralCanvasItem(item: CanvasItem): boolean {
   return [
@@ -29,7 +42,7 @@ export function canvasItemSearchText(item: CanvasItem): string {
   const values: Array<string | undefined> = [...item.tags];
 
   if (isNoteContent(content)) {
-    values.push(stripHtmlTags(content.plainText || content.text || ""));
+    values.push(notePlainText(content));
   } else if (isBookmarkContent(content)) {
     values.push(
       content.title,

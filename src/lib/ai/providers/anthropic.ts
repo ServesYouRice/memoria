@@ -6,6 +6,7 @@ import {
   type AiProviderAdapter,
   type AiProviderConfig,
 } from "./types";
+import type { AiChatTurn } from "../chat-history";
 
 export const ANTHROPIC_API_VERSION = "2023-06-01";
 
@@ -36,6 +37,28 @@ function textFrom(payload: MessagesResponse): string {
     .join("");
 }
 
+/**
+ * The Messages API wants turns that alternate and start with the user:
+ * leading assistant turns are dropped and same-role neighbours merged, and
+ * the new message closes the list.
+ */
+function alternatingMessages(
+  history: AiChatTurn[],
+  prompt: string,
+): AiChatTurn[] {
+  const messages: AiChatTurn[] = [];
+  for (const turn of [...history, { role: "user" as const, content: prompt }]) {
+    if (messages.length === 0 && turn.role !== "user") continue;
+    const last = messages.at(-1);
+    if (last && last.role === turn.role) {
+      last.content = `${last.content}\n\n${turn.content}`;
+    } else {
+      messages.push({ role: turn.role, content: turn.content });
+    }
+  }
+  return messages;
+}
+
 function postMessages(
   config: AiProviderConfig,
   body: Record<string, unknown>,
@@ -53,6 +76,7 @@ function postMessages(
     },
     body,
     signal,
+    config.pinnedIp,
   ) as Promise<MessagesResponse>;
 }
 
@@ -70,7 +94,7 @@ export const anthropicAdapter: AiProviderAdapter = {
       model: config.model,
       max_tokens: request.maxTokens,
       system: request.system,
-      messages: [{ role: "user", content: request.prompt }],
+      messages: alternatingMessages(request.history ?? [], request.prompt),
     };
     if (CLAUDE_EFFORT_MODEL.test(config.model)) {
       body.output_config = { effort: "low" };
@@ -87,6 +111,7 @@ export const anthropicAdapter: AiProviderAdapter = {
       },
       body,
       request.signal,
+      config.pinnedIp,
     )) as MessagesResponse;
 
     if (payload?.stop_reason === "refusal") {

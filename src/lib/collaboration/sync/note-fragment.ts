@@ -281,16 +281,26 @@ export function canonicalNoteDocument(document: TiptapNode): TiptapNode {
 }
 
 /**
- * The note document a stored `CanvasItem.content` represents. Legacy and empty
- * notes fall back to an empty paragraph rather than failing reconciliation.
+ * The note document a stored `CanvasItem.content` represents, or null when it
+ * cannot be normalized. A version-1 row is measured the way `readNoteFragment`
+ * measured it, by its document alone: the stored `plainText` and rendered
+ * `text` are derived from it and may push the whole row past the size limit.
  */
-export function noteDocumentFromContent(content: unknown): TiptapNode {
+export function noteDocumentFromContent(content: unknown): TiptapNode | null {
   try {
+    const value =
+      content && typeof content === "object" && !Array.isArray(content)
+        ? (content as Record<string, unknown>)
+        : null;
+    const input =
+      value?.formatVersion === 1 && value.document !== undefined
+        ? { formatVersion: 1, document: value.document }
+        : content;
     return canonicalNoteDocument(
-      normalizeNoteContent(content, { allowEmpty: true }).document,
+      normalizeNoteContent(input, { allowEmpty: true }).document,
     );
   } catch {
-    return { type: "doc", content: [{ type: "paragraph", content: [] }] };
+    return null;
   }
 }
 

@@ -26,18 +26,22 @@ import {
   Send as SendIcon,
 } from "@mui/icons-material";
 import { PERSONAS, type PersonaKey } from "@/lib/ai/personas";
+import { boundChatHistory } from "@/lib/ai/chat-history";
+import { boundChatContext } from "@/lib/validation/ai";
 
 interface AIDialogProps {
   open: boolean;
   onClose: () => void;
   canvasId: string;
-  onAddNote: (text: string) => void;
+  onAddNote: (text: string) => void | Promise<void>;
   getContext?: () => string;
 }
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** A local error notice, never sent back as a model answer. */
+  failed?: boolean;
 }
 
 export function AIDialog({
@@ -53,6 +57,7 @@ export function AIDialog({
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   // Chat State
   const [persona, setPersona] = useState<PersonaKey>("creative");
@@ -105,13 +110,24 @@ export function AIDialog({
     chatInFlightRef.current = true;
 
     const userMsg = chatInput;
+    // Completed earlier turns, so follow-ups can refer to them; the message
+    // being sent goes separately.
+    const history = boundChatHistory(
+      chatMessages
+        .filter((msg) => !msg.failed)
+        .map(({ role, content }) => ({ role, content })),
+    );
     setChatMessages((prev) => [...prev, { role: "user", content: userMsg }]);
     setChatInput("");
     setChatLoading(true);
 
     try {
       // Retrieve context if available
-      const contextStr = typeof getContext === "function" ? getContext() : "";
+      // The server rejects context over its limit, so a large canvas sends the
+      // leading part of its notes.
+      const contextStr = boundChatContext(
+        typeof getContext === "function" ? getContext() : "",
+      );
 
       const response = await fetch("/api/v1/ai/chat", {
         method: "POST",
@@ -120,9 +136,22 @@ export function AIDialog({
           message: userMsg,
           context: contextStr,
           persona,
+          ...(history.length ? { history } : {}),
         }),
       });
 
+      if (response.status === 400 || response.status === 422) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              "That message was too large or invalid to send. Try a shorter message.",
+            failed: true,
+          },
+        ]);
+        return;
+      }
       if (!response.ok) throw new Error("Chat failed");
       const data = await response.json();
       setChatMessages((prev) => [
@@ -132,7 +161,11 @@ export function AIDialog({
     } catch {
       setChatMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Sorry, I encountered an error." },
+        {
+          role: "assistant",
+          content: "Sorry, I encountered an error.",
+          failed: true,
+        },
       ]);
     } finally {
       chatInFlightRef.current = false;
@@ -140,11 +173,21 @@ export function AIDialog({
     }
   };
 
-  const handleAddNote = () => {
-    if (result) {
-      onAddNote(result);
-      onClose();
+  // Close only once the note exists; on failure keep the result to retry.
+  const handleAddNote = async () => {
+    if (!result || adding) return;
+    setAdding(true);
+    setError(null);
+    let added = false;
+    try {
+      await onAddNote(result);
+      added = true;
+    } catch {
+      setError("Failed to add the note. Please try again.");
+    } finally {
+      setAdding(false);
     }
+    if (added) onClose();
   };
 
   return (
@@ -334,7 +377,8 @@ export function AIDialog({
         {result && tab !== 2 && (
           <Button
             variant="contained"
-            onClick={handleAddNote}
+            onClick={() => void handleAddNote()}
+            disabled={adding}
             startIcon={<NoteAdd />}
           >
             Add as Note

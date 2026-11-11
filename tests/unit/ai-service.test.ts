@@ -8,7 +8,12 @@ const resolutionMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/ai/provider-resolution", () => resolutionMocks);
 
-import { generateTags, generateText, summarizeCanvas } from "@/lib/ai/service";
+import {
+  generateTags,
+  generateText,
+  readImageText,
+  summarizeCanvas,
+} from "@/lib/ai/service";
 import { AiUpstreamError } from "@/lib/ai/providers";
 import { AiProviderError } from "@/lib/ai/errors";
 import { ServiceUnavailableError } from "@/lib/errors";
@@ -26,6 +31,7 @@ function resolved(overrides: Record<string, unknown> = {}) {
     apiKey: "sk-ant",
     baseUrl: "https://api.anthropic.com",
     credentialId: "cred-1",
+    secretFingerprint: "fp-1",
     adapter,
     capabilities: adapter.capabilities,
     ...overrides,
@@ -98,7 +104,21 @@ describe("generateText", () => {
     expect((error as AiProviderError).detail).toMatch(/Settings/);
     expect(resolutionMocks.markAiCredentialRejected).toHaveBeenCalledWith(
       "cred-1",
+      "fp-1",
     );
+  });
+
+  it("does not flag the key on a provider 403", async () => {
+    const provider = resolved();
+    provider.adapter.generateText.mockRejectedValue(
+      new AiUpstreamError("anthropic", 403, "Provider returned HTTP 403"),
+    );
+    resolutionMocks.resolveAiProvider.mockResolvedValue(provider);
+
+    await expect(
+      generateText({ prompt: "Hi", userId: "user-1" }),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(resolutionMocks.markAiCredentialRejected).not.toHaveBeenCalled();
   });
 
   it("maps other upstream failures to a 502 without flagging the key", async () => {
@@ -134,6 +154,60 @@ describe("generateText", () => {
     expect(resolutionMocks.resolveAiProvider).toHaveBeenNthCalledWith(
       2,
       "user-3",
+    );
+  });
+});
+
+describe("providerFailure credential flagging", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function readImageProvider(status: number) {
+    const provider = resolved({
+      capabilities: {
+        chat: true,
+        speechToText: false,
+        readImage: true,
+        embeddings: false,
+      },
+    });
+    (provider.adapter as Record<string, unknown>).readImage = vi
+      .fn()
+      .mockRejectedValue(
+        new AiUpstreamError(
+          "anthropic",
+          status,
+          `Provider returned HTTP ${status}`,
+        ),
+      );
+    resolutionMocks.resolveAiProvider.mockResolvedValue(provider);
+  }
+
+  const read = () =>
+    readImageText({
+      userId: "user-1",
+      image: new Uint8Array([1]),
+      mimeType: "image/png",
+      prompt: "Read",
+      system: "s",
+      maxTokens: 10,
+    });
+
+  it("leaves the key alone on a 403", async () => {
+    readImageProvider(403);
+    await expect(read()).rejects.toBeInstanceOf(AiProviderError);
+    expect(resolutionMocks.markAiCredentialRejected).not.toHaveBeenCalled();
+  });
+
+  it("flags the secret that failed on a 401", async () => {
+    readImageProvider(401);
+    await expect(read()).rejects.toMatchObject({
+      detail: expect.stringMatching(/rejected the saved key/),
+    });
+    expect(resolutionMocks.markAiCredentialRejected).toHaveBeenCalledWith(
+      "cred-1",
+      "fp-1",
     );
   });
 });
