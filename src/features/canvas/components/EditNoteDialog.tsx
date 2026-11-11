@@ -186,6 +186,7 @@ type FormData = z.output<typeof formSchema>;
 export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [legacyNormalized, setLegacyNormalized] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const updateItem = useUpdateCanvasItem();
   const documentSession = useCanvasDocument();
   const documentState = useCanvasDocumentSnapshot(documentSession);
@@ -214,27 +215,40 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   const isTextItem = item?.type === ItemType.TEXT;
 
   useEffect(() => {
-    if (item && isNoteContent(item.content)) {
-      try {
-        const normalized =
-          item.type === ItemType.TEXT
-            ? plainTextEditorContent(item.content.text ?? "")
-            : normalizeNoteContent(item.content);
-        reset({
-          content: normalized,
-          tags: item.tags || [],
-        });
-        setLegacyNormalized(
-          item.type !== ItemType.TEXT && item.content.formatVersion !== 1,
-        );
-        setError(null);
-      } catch (normalizationError) {
-        setError(
-          normalizationError instanceof Error
-            ? normalizationError.message
-            : "This note contains unsupported content and cannot be edited.",
+    if (!item) return;
+    try {
+      if (!isNoteContent(item.content)) {
+        throw new Error(
+          "This note contains unsupported content and cannot be edited.",
         );
       }
+      // Collaborative editing can store an empty note; it still loads.
+      const normalized =
+        item.type === ItemType.TEXT
+          ? plainTextEditorContent(item.content.text ?? "")
+          : normalizeNoteContent(item.content, { allowEmpty: true });
+      reset({
+        content: normalized,
+        tags: item.tags || [],
+      });
+      setLegacyNormalized(
+        item.type !== ItemType.TEXT && item.content.formatVersion !== 1,
+      );
+      setLoadFailed(false);
+      setError(null);
+    } catch (normalizationError) {
+      // Never leave an earlier note's (or the default) values submittable.
+      reset({
+        content: EMPTY_VERSIONED_NOTE_CONTENT,
+        tags: item.tags || [],
+      });
+      setLegacyNormalized(false);
+      setLoadFailed(true);
+      setError(
+        normalizationError instanceof Error
+          ? normalizationError.message
+          : "This note contains unsupported content and cannot be edited.",
+      );
     }
   }, [item, reset]);
 
@@ -246,7 +260,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   };
 
   const onSubmit = async (data: FormData) => {
-    if (!item) return;
+    if (!item || loadFailed) return;
 
     try {
       setError(null);
@@ -360,7 +374,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
           <Button
             type="submit"
             variant="contained"
-            disabled={isSubmitting}
+            disabled={isSubmitting || loadFailed}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
             {isSubmitting ? "Saving..." : "Save Changes"}
