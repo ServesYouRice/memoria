@@ -12,7 +12,6 @@ import {
   UnauthorizedError,
   ValidationError,
 } from "@/lib/errors";
-import { sanitizeComment } from "@/lib/sanitization";
 import { errorResponse } from "@/lib/errors";
 import { ActivityType, logActivity } from "@/lib/activity";
 
@@ -21,11 +20,12 @@ interface RouteContext {
 }
 
 const createCommentSchema = z.object({
+  // Plain text: stored as typed (trimmed) and only ever rendered as text.
   content: z
     .string()
+    .trim()
     .min(1, "Comment cannot be empty")
-    .max(5000, "Comment too long")
-    .transform((val) => sanitizeComment(val)),
+    .max(5000, "Comment too long"),
 });
 
 const commentUserSelect = {

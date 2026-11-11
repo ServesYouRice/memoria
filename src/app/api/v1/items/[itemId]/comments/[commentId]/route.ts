@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { sanitizeComment } from "@/lib/sanitization";
 import { z } from "zod";
 
 import { withApiHandler } from "@/lib/api/route-handler";
@@ -15,11 +14,12 @@ import {
 // const _logger = createLogger('comments-api');
 
 const updateCommentSchema = z.object({
+  // Plain text: stored as typed (trimmed) and only ever rendered as text.
   content: z
     .string()
+    .trim()
     .min(1, "Comment cannot be empty")
-    .max(5000, "Comment too long")
-    .transform((val) => sanitizeComment(val)),
+    .max(5000, "Comment too long"),
 });
 
 const commentUserSelect = {
