@@ -136,10 +136,16 @@ function isBuiltinCredential(row: Pick<CredentialRow, "capabilities">) {
  * implicitly.
  */
 export async function findUserAiCredential(userId: string) {
+  // The tag filter runs in the query: agent-profile credentials share this
+  // table, so a window taken before the tag check could hide the built-in row.
   const rows = await prisma.modelCredential.findMany({
-    where: { userId, status: { in: USABLE_STATUSES } },
+    where: {
+      userId,
+      status: { in: USABLE_STATUSES },
+      capabilities: { array_contains: [BUILTIN_AI_CAPABILITY] },
+    },
     orderBy: { updatedAt: "desc" },
-    take: 25,
+    take: 1,
     select: {
       id: true,
       provider: true,

@@ -71,6 +71,7 @@ describe("AI provider lookup order", () => {
         where: {
           userId: "user-1",
           status: { in: ["ACTIVE", "UNVERIFIED"] },
+          capabilities: { array_contains: [BUILTIN_AI_CAPABILITY] },
         },
       }),
     );
