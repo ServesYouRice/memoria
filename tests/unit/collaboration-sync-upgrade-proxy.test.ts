@@ -100,3 +100,49 @@ describe("sync upgrade proxy", () => {
     expect(status).toBe(502);
   });
 });
+
+describe("sync upgrade proxy transport", () => {
+  it("opens TLS (ClientHello with SNI) to an https: upstream, never plaintext", async () => {
+    const { createServer: createTcpServer } = await import("net");
+    const firstBytes = new Promise<Buffer>((resolve) => {
+      const tcp = createTcpServer((conn) => {
+        conn.once("data", (chunk: Buffer) => {
+          resolve(chunk);
+          conn.destroy();
+        });
+      });
+      tcp.listen(0, "127.0.0.1", async () => {
+        const port = (tcp.address() as AddressInfo).port;
+        closers.push(() => new Promise((done) => tcp.close(() => done())));
+        const frontPort = await startFront(
+          new URL(`https://localhost:${port}`),
+        );
+        const client = new WebSocket(
+          `ws://127.0.0.1:${frontPort}/api/collaboration/sync`,
+          { headers: { cookie: "memoria.session_token=secret" } },
+        );
+        client.on("error", () => undefined);
+        closers.push(async () => client.terminate());
+      });
+    });
+    const chunk = await firstBytes;
+    // 0x16 is the TLS handshake record type; plaintext would start with "GET".
+    expect(chunk.subarray(0, 3).toString("latin1")).not.toBe("GET");
+    expect(chunk[0]).toBe(0x16);
+    expect(chunk.includes(Buffer.from("localhost"))).toBe(true);
+    expect(chunk.includes(Buffer.from("memoria.session_token"))).toBe(false);
+  });
+
+  it("rejects unsupported upstream schemes", async () => {
+    const { assertSupportedSyncUpstream } =
+      await import("@/lib/collaboration/sync/upgrade-proxy");
+    expect(() => assertSupportedSyncUpstream(new URL("ftp://sync:21"))).toThrow(
+      /ftp:/,
+    );
+    for (const scheme of ["http", "https", "ws", "wss"]) {
+      expect(() =>
+        assertSupportedSyncUpstream(new URL(`${scheme}://sync:3001`)),
+      ).not.toThrow();
+    }
+  });
+});

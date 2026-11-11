@@ -7,7 +7,10 @@ import "./src/lib/env";
 import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
-import { proxySyncUpgrade } from "./src/lib/collaboration/sync/upgrade-proxy";
+import {
+  assertSupportedSyncUpstream,
+  proxySyncUpgrade,
+} from "./src/lib/collaboration/sync/upgrade-proxy";
 import { logger } from "./src/lib/logger";
 import { deriveClientIp } from "./src/lib/network/client-ip";
 import { nanoid } from "nanoid";
@@ -22,6 +25,7 @@ const port = parseInt(process.env["PORT"] || "3000", 10);
 const syncServerUrl = new URL(
   process.env.SYNC_SERVER_INTERNAL_URL || "http://127.0.0.1:3001",
 );
+assertSupportedSyncUpstream(syncServerUrl);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
