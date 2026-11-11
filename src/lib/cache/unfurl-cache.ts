@@ -26,6 +26,16 @@ interface UnfurledMetadata {
 const UNFURL_CACHE_TTL = 24 * 60 * 60;
 
 /**
+ * Versioned so entries written under the old lowercased keys (which could
+ * collide across distinct URLs) are never read; they expire under the TTL.
+ */
+const UNFURL_KEY_PREFIX = "unfurl:v2:";
+
+function unfurlCacheKey(url: string): string {
+  return `${UNFURL_KEY_PREFIX}${normalizeUrl(url)}`;
+}
+
+/**
  * Get cached unfurl metadata for a URL
  */
 export async function getCachedUnfurl(
@@ -35,9 +45,7 @@ export async function getCachedUnfurl(
   if (!redis) return null;
 
   try {
-    // Normalize URL for consistent caching
-    const normalizedUrl = normalizeUrl(url);
-    const cached = await redis.get(`unfurl:${normalizedUrl}`);
+    const cached = await redis.get(unfurlCacheKey(url));
 
     if (!cached) return null;
 
@@ -59,9 +67,8 @@ export async function setCachedUnfurl(
   if (!redis) return;
 
   try {
-    const normalizedUrl = normalizeUrl(url);
     await redis.setex(
-      `unfurl:${normalizedUrl}`,
+      unfurlCacheKey(url),
       UNFURL_CACHE_TTL,
       JSON.stringify(metadata),
     );
@@ -78,8 +85,7 @@ export async function invalidateUnfurlCache(url: string): Promise<void> {
   if (!redis) return;
 
   try {
-    const normalizedUrl = normalizeUrl(url);
-    await redis.del(`unfurl:${normalizedUrl}`);
+    await redis.del(unfurlCacheKey(url));
   } catch (error) {
     logger.error({ error }, "Error invalidating unfurl cache");
   }
@@ -87,10 +93,10 @@ export async function invalidateUnfurlCache(url: string): Promise<void> {
 
 /**
  * Normalize URL for consistent cache keys
- * - Removes trailing slashes
- * - Converts to lowercase
+ * - Lowercases only the scheme and host (the URL parser does this); path and
+ *   query are case-sensitive and kept as given
  * - Removes fragment (#)
- * - Sorts query parameters
+ * - Sorts query parameters by key, keeping repeated keys and their order
  */
 function normalizeUrl(url: string): string {
   try {
@@ -99,23 +105,13 @@ function normalizeUrl(url: string): string {
     // Remove fragment
     parsed.hash = "";
 
-    // Sort query parameters
-    const params = Array.from(parsed.searchParams.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0]),
-    );
-    parsed.search = "";
-    params.forEach(([key, value]) => parsed.searchParams.set(key, value));
+    // URLSearchParams.sort is stable and keeps every repeated key.
+    parsed.searchParams.sort();
 
-    // Convert to string and remove trailing slash
-    let normalized = parsed.toString().toLowerCase();
-    if (normalized.endsWith("/")) {
-      normalized = normalized.slice(0, -1);
-    }
-
-    return normalized;
+    return parsed.toString();
   } catch {
-    // If URL parsing fails, return original
-    return url.toLowerCase();
+    // If URL parsing fails, use the original string unchanged
+    return url;
   }
 }
 

@@ -46,6 +46,18 @@ export async function GET(
     });
     const hasMore = events.length > limit;
     const page = events.slice(0, limit);
+    // A version restore replaced the canvas: item events cannot bring a
+    // client across it. Return the events before it, ask for a snapshot and
+    // move the cursor to the restore so the client continues after it.
+    const restore = page.findIndex((event) => event.operation === "restored");
+    if (restore >= 0) {
+      return NextResponse.json({
+        events: page.slice(0, restore).map(toCommittedEventEnvelope),
+        nextCursor: page[restore]!.sequence.toString(),
+        hasMore: true,
+        snapshotRequired: true,
+      });
+    }
     return NextResponse.json({
       events: page.map(toCommittedEventEnvelope),
       nextCursor: page.at(-1)?.sequence.toString() || cursor.toString(),

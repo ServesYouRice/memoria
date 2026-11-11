@@ -24,7 +24,8 @@ export function createCanvasEventHandler(
     const event = await prisma.canvasEvent.findUnique({
       where: { id: eventId },
     });
-    if (!event) return;
+    // Restores fan out through createCanvasRestoreEventHandler.
+    if (!event || event.operation === "restored") return;
     await publish(
       canvasChannel(event.canvasId),
       JSON.stringify({

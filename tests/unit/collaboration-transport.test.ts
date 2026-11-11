@@ -95,14 +95,14 @@ describe("collaboration peer leases and authorization", () => {
     expect(
       resolveCollaborationAccess({
         principalId: "guest:one",
-        guestShareToken: "old-token",
+        shareToken: "old-token",
         canvas,
       }),
     ).toBeNull();
     expect(
       resolveCollaborationAccess({
         principalId: "guest:one",
-        guestShareToken: "current-token",
+        shareToken: "current-token",
         canvas,
       }),
     ).toBe("VIEW");

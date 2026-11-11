@@ -23,7 +23,8 @@ interface UseCanvasKeyboardProps {
   selectedItemIds: Set<string>;
   selectedItemId: string | null;
   allItems: CanvasItem[];
-  updateItem: (params: { itemId: string; data: any }) => void;
+  /** Moves through the serialized geometry queue (useItemGeometry). */
+  nudgeItem: (item: CanvasItem, deltaX: number, deltaY: number) => void;
 }
 
 /**
@@ -47,7 +48,7 @@ export function useCanvasKeyboard({
   selectedItemIds,
   selectedItemId,
   allItems,
-  updateItem,
+  nudgeItem,
 }: UseCanvasKeyboardProps) {
   useEffect(() => {
     if (!enabled) return;
@@ -110,32 +111,10 @@ export function useCanvasKeyboard({
                 ? MOVE_STEP
                 : 0;
 
-          if (selectedItemId) {
-            const item = allItems.find((i) => i.id === selectedItemId);
-            if (item) {
-              updateItem({
-                itemId: selectedItemId,
-                data: {
-                  positionX: item.positionX + dx,
-                  positionY: item.positionY + dy,
-                  version: item.version,
-                },
-              });
-            }
-          } else if (selectedItemIds.size > 0) {
-            selectedItemIds.forEach((id) => {
-              const item = allItems.find((i) => i.id === id);
-              if (item) {
-                updateItem({
-                  itemId: id,
-                  data: {
-                    positionX: item.positionX + dx,
-                    positionY: item.positionY + dy,
-                    version: item.version,
-                  },
-                });
-              }
-            });
+          const ids = selectedItemId ? [selectedItemId] : [...selectedItemIds];
+          for (const id of ids) {
+            const item = allItems.find((i) => i.id === id);
+            if (item) nudgeItem(item, dx, dy);
           }
           return;
         }
@@ -206,6 +185,6 @@ export function useCanvasKeyboard({
     selectedItemId,
     selectedItemIds,
     allItems,
-    updateItem,
+    nudgeItem,
   ]);
 }

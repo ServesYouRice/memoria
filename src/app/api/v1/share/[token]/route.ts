@@ -79,7 +79,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       WHERE "canvasId" = ${canvas.id} AND "deletedAt" IS NULL
         AND "type" <> ${ItemType.POLL}::"ItemType" ${spatial}
     `;
-    const items = await prisma.$queryRaw<CanvasItem[]>`
+    // One extra row says whether another page follows, in offset and cursor
+    // mode alike; boundedItemsResponse cannot derive it for a cursor page.
+    const rows = await prisma.$queryRaw<CanvasItem[]>`
       SELECT "id", "canvasId", "type", "positionX", "positionY", "width",
         "height", "zIndex", "content", "tags", "version", "createdById",
         "updatedById", "deletedById", "createdAt", "updatedAt", "deletedAt",
@@ -89,8 +91,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         AND "type" <> ${ItemType.POLL}::"ItemType" ${spatial}
         ${cursorFilter}
       ORDER BY "zIndex" ASC, "id" ASC
-      LIMIT ${query.limit} ${paginationFragment}
+      LIMIT ${query.limit + 1} ${paginationFragment}
     `;
+    const hasMore = rows.length > query.limit;
+    const items = hasMore ? rows.slice(0, query.limit) : rows;
     const total = Number(countRows[0]?.count ?? 0n);
     // Anonymous viewers have no session for the image proxy, so remote image
     // URLs are handed out pre-signed (IMP-057).
@@ -106,7 +110,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       total,
       offset: cursorTarget ? undefined : query.offset,
       limit: query.limit,
-      hasMore: cursorTarget ? undefined : query.offset + items.length < total,
+      hasMore,
     });
   } catch (error) {
     return errorResponse(error, request.url);

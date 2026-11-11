@@ -221,4 +221,91 @@ describe("useCollaboration transport behavior", () => {
     expect(onCommittedEvents.mock.calls[0]![0]).toHaveLength(50);
     unmount();
   });
+
+  it("continues after a restore instead of replaying it again (TASK-172)", async () => {
+    const onCommittedEvents = vi.fn();
+    const onSnapshotRequired = vi.fn();
+    const fetchMock = vi.fn().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            events: [],
+            nextCursor: "11",
+            hasMore: true,
+            snapshotRequired: true,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = renderHook(() =>
+      useCollaboration({ ...options, onCommittedEvents, onSnapshotRequired }),
+    );
+    const socket = MockWebSocket.instances[0]!;
+    const event = (cursor: number) => ({
+      type: "committed-event",
+      event: {
+        schemaVersion: 1,
+        cursor: String(cursor),
+        operation: "updated",
+        entity: { type: "canvas-item", id: `item-${cursor}`, version: 2 },
+      },
+    });
+
+    // Live events up to 9, then the restore (sequence 11) is announced.
+    act(() => {
+      for (let cursor = 1; cursor <= 9; cursor += 1)
+        socket.receive(event(cursor));
+    });
+    act(() => {
+      socket.receive({
+        type: "message",
+        payload: {
+          type: "canvas-restore-required",
+          restoreRevision: 2,
+          cursor: "11",
+        },
+      });
+    });
+    expect(onSnapshotRequired).toHaveBeenCalledTimes(1);
+    // The next item event follows the restore: no gap, no replay.
+    act(() => socket.receive(event(12)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onCommittedEvents.mock.calls.flat(2).map((e) => e.cursor)).toContain(
+      "12",
+    );
+
+    // A gap whose replay hits a restore at 20: one replay, then the cursor
+    // is past it and the deferred event 21 follows without another replay.
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            events: [],
+            nextCursor: "20",
+            hasMore: true,
+            snapshotRequired: true,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    act(() => socket.receive(event(21)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onSnapshotRequired).toHaveBeenCalledTimes(2);
+    act(() => socket.receive(event(22)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onCommittedEvents.mock.calls.flat(2).map((e) => e.cursor)).toEqual(
+      expect.arrayContaining(["21", "22"]),
+    );
+    unmount();
+  });
 });

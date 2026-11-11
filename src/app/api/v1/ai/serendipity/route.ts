@@ -20,12 +20,7 @@ export const POST = withAuthValidation(
       session.user.id,
       { prompt: safeKeywords.join("\n") || "serendipity", maxOutputTokens: 1 },
       () =>
-        findSerendipitousItems(
-          session.user.id,
-          canvasId,
-          safeKeywords,
-          session.user.email || undefined,
-        ),
+        findSerendipitousItems(session.user.id, canvasId, safeKeywords),
     );
 
     return NextResponse.json({

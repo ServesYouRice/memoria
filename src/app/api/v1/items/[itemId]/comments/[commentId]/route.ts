@@ -40,11 +40,16 @@ async function getCommentWithAccess(
   const comment = await prisma.comment.findUnique({
     where: { id: commentId },
     include: {
+      // Only what the access check reads: no item content, canvas row or
+      // share emails, and no BigInt columns that JSON cannot serialize.
       item: {
-        include: {
+        select: {
+          deletedAt: true,
           canvas: {
-            include: {
-              shares: true,
+            select: {
+              userId: true,
+              isPublic: true,
+              shares: { select: { recipientId: true } },
             },
           },
         },
@@ -58,6 +63,9 @@ async function getCommentWithAccess(
   if (!comment || comment.deletedAt || comment.itemId !== itemId) {
     throw notFoundError("Comment", commentId);
   }
+  if (comment.item.deletedAt) {
+    throw notFoundError("Item", itemId);
+  }
 
   const isOwner = comment.item.canvas.userId === userId;
   const isAuthor = comment.userId === userId;
@@ -70,6 +78,25 @@ async function getCommentWithAccess(
   }
 
   return { comment, isOwner, isAuthor };
+}
+
+type CommentWithAccess = Awaited<
+  ReturnType<typeof getCommentWithAccess>
+>["comment"];
+
+// The same per-comment shape the list endpoint returns: the comment's own
+// columns plus the author's public fields.
+function toCommentDto(comment: CommentWithAccess) {
+  return {
+    id: comment.id,
+    itemId: comment.itemId,
+    userId: comment.userId,
+    content: comment.content,
+    createdAt: comment.createdAt,
+    updatedAt: comment.updatedAt,
+    deletedAt: comment.deletedAt,
+    user: comment.user,
+  };
 }
 
 export const GET = withApiHandler(
@@ -87,7 +114,7 @@ export const GET = withApiHandler(
       session.user.id,
     );
 
-    return NextResponse.json(comment);
+    return NextResponse.json(toCommentDto(comment));
   },
 );
 

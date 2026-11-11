@@ -58,6 +58,13 @@ export function SortIntoPilesDialog({
   const [sorting, setSorting] = useState(false);
   const [applying, setApplying] = useState(false);
   const requested = useRef(false);
+  // The suggestion already approved; a retry after a failed execute must not
+  // approve again (it is no longer OPEN) but run the execute step only.
+  const approvedSuggestionIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    approvedSuggestionIdRef.current = null;
+  }, [proposal]);
 
   const runSort = useCallback(
     (nextInstruction?: string) => {
@@ -116,7 +123,10 @@ export function SortIntoPilesDialog({
     setApplying(true);
     setError(null);
     try {
-      await approve.mutateAsync(proposal.suggestionId);
+      if (approvedSuggestionIdRef.current !== proposal.suggestionId) {
+        await approve.mutateAsync(proposal.suggestionId);
+        approvedSuggestionIdRef.current = proposal.suggestionId;
+      }
       const result = (await execute.mutateAsync(proposal.suggestionId)) as {
         executed?: { changeSetId?: string; movedItemCount?: number };
       };

@@ -3,6 +3,7 @@
 import {
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -133,9 +134,26 @@ export function useNotificationPreferences() {
   });
 }
 
+const updatePreferenceKey = [
+  ...notificationKeys.preferences(),
+  "update",
+] as const;
+
+function replacePreference(
+  current: NotificationPreferencesResponse | undefined,
+  next: NotificationPreference,
+): NotificationPreferencesResponse {
+  return {
+    preferences: (current?.preferences ?? []).map((preference) =>
+      preference.type === next.type ? next : preference,
+    ),
+  };
+}
+
 export function useUpdateNotificationPreference() {
   const queryClient = useQueryClient();
-  return useMutation({
+  const mutation = useMutation({
+    mutationKey: updatePreferenceKey,
     mutationFn: async (preference: NotificationPreference) =>
       readJson<NotificationPreference>(
         await apiFetch("/api/v1/notifications/preferences", {
@@ -145,15 +163,43 @@ export function useUpdateNotificationPreference() {
         }),
         "Failed to save notification preference",
       ),
+    // The cached row is updated before the request, so the next change to any
+    // type is built from the latest choice rather than the last saved one.
+    onMutate: async (preference) => {
+      await queryClient.cancelQueries({
+        queryKey: notificationKeys.preferences(),
+      });
+      const previous = queryClient
+        .getQueryData<NotificationPreferencesResponse>(
+          notificationKeys.preferences(),
+        )
+        ?.preferences.find((row) => row.type === preference.type);
+      queryClient.setQueryData<NotificationPreferencesResponse>(
+        notificationKeys.preferences(),
+        (current) => replacePreference(current, preference),
+      );
+      return { previous };
+    },
+    onError: (_error, _preference, context) => {
+      if (!context?.previous) return;
+      const previous = context.previous;
+      queryClient.setQueryData<NotificationPreferencesResponse>(
+        notificationKeys.preferences(),
+        (current) => replacePreference(current, previous),
+      );
+    },
     onSuccess: (saved) => {
       queryClient.setQueryData<NotificationPreferencesResponse>(
         notificationKeys.preferences(),
-        (current) => ({
-          preferences: (current?.preferences ?? []).map((preference) =>
-            preference.type === saved.type ? saved : preference,
-          ),
-        }),
+        (current) => replacePreference(current, saved),
       );
     },
   });
+  // Every type with a save in flight, not only the latest call's type.
+  const pendingTypes = useMutationState({
+    filters: { mutationKey: updatePreferenceKey, status: "pending" },
+    select: (pending) =>
+      (pending.state.variables as NotificationPreference | undefined)?.type,
+  }).filter((type): type is NotificationType => type !== undefined);
+  return { ...mutation, pendingTypes };
 }
