@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -78,6 +78,20 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     return canvasesData?.pages.flatMap((page) => page.canvases) ?? [];
   }, [canvasesData]);
 
+  // The workspace filter is a search param, so changing it keeps this
+  // component mounted. A selection made in another view must not carry over
+  // into a bulk delete of canvases that are no longer on screen.
+  useEffect(() => {
+    setSelectedCanvasIds(new Set());
+    setDeleteConfirmOpen(false);
+  }, [workspaceId]);
+
+  // Only selected canvases that are in the visible list can be deleted.
+  const visibleSelectedIds = useMemo(() => {
+    const visible = new Set(canvases.map((canvas) => canvas.id));
+    return Array.from(selectedCanvasIds).filter((id) => visible.has(id));
+  }, [canvases, selectedCanvasIds]);
+
   const handleCreateCanvas = async () => {
     if (createInFlightRef.current) return;
     createInFlightRef.current = true;
@@ -133,7 +147,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   };
 
   const handleBulkDelete = async () => {
-    const ids = Array.from(selectedCanvasIds);
+    const ids = visibleSelectedIds;
     if (ids.length === 0) return;
     setIsDeleting(true);
 
@@ -445,8 +459,8 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
         <DialogTitle sx={{ fontWeight: 600 }}>Delete canvases?</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete {selectedCanvasIds.size} canvas
-            {selectedCanvasIds.size === 1 ? "" : "es"}? This action cannot be
+            Are you sure you want to delete {visibleSelectedIds.length} canvas
+            {visibleSelectedIds.length === 1 ? "" : "es"}? This action cannot be
             undone.
           </Typography>
         </DialogContent>
@@ -456,7 +470,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             onClick={handleBulkDelete}
             variant="contained"
             color="error"
-            disabled={isDeleting}
+            disabled={isDeleting || visibleSelectedIds.length === 0}
           >
             {isDeleting ? "Deleting…" : "Delete"}
           </Button>
