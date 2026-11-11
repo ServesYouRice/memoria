@@ -117,6 +117,14 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
           );
         } else if (signInError.status === 429) {
           setError("Too many sign-in attempts. Please wait and try again.");
+        } else if (
+          signInError.code === "LOGIN_SAFETY_UNAVAILABLE" ||
+          signInError.status === 503
+        ) {
+          // The lockout store is down; the server refuses every sign-in.
+          setError(
+            "Sign-in is temporarily unavailable. Please try again in a few minutes.",
+          );
         } else {
           setError("Invalid email or password");
         }
