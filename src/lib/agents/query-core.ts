@@ -1,4 +1,8 @@
-import { Prisma } from "@/generated/prisma/client";
+import {
+  ChangeSetStatus,
+  Prisma,
+  type SuggestionStatus,
+} from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { assertCanvasScope } from "@/lib/agents/policy";
 import {
@@ -426,6 +430,10 @@ async function findCanvasSuggestionIds(
   where: { userId: string; agentProfileId?: string },
   canvasId: string,
   take: number,
+  filter: {
+    statuses?: SuggestionStatus[];
+    before?: { createdAt: Date; id: string } | null;
+  } = {},
 ) {
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT s."id" FROM "Suggestion" s
@@ -435,13 +443,25 @@ async function findCanvasSuggestionIds(
           ? Prisma.sql`AND s."agentProfileId" = ${where.agentProfileId}`
           : Prisma.empty
       }
+      ${
+        filter.statuses?.length
+          ? Prisma.sql`AND s."status"::text IN (${Prisma.join(filter.statuses)})`
+          : Prisma.empty
+      }
+      ${
+        filter.before
+          ? Prisma.sql`AND (s."createdAt" < ${filter.before.createdAt}
+              OR (s."createdAt" = ${filter.before.createdAt}
+                AND s."id" < ${filter.before.id}))`
+          : Prisma.empty
+      }
       AND (
         s."payload"->>'canvasId' = ${canvasId}
         OR s."payload"->>'itemId' IN (
           SELECT i."id" FROM "CanvasItem" i WHERE i."canvasId" = ${canvasId}
         )
       )
-    ORDER BY s."createdAt" DESC
+    ORDER BY s."createdAt" DESC, s."id" DESC
     LIMIT ${take}
   `;
   return rows.map((row) => row.id);
@@ -453,6 +473,14 @@ export async function listScopedActionTimeline(
     limit: number;
     /** Restrict change sets and suggestions to one canvas, in the query. */
     canvasId?: string;
+    /** Keep only suggestions in these statuses, in the query. */
+    suggestionStatuses?: SuggestionStatus[];
+    /** Keep only change sets that can still be reverted, in the query. */
+    revertableOnly?: boolean;
+    /** Id of the last suggestion of the previous page. */
+    suggestionCursor?: string;
+    /** Id of the last change set of the previous page. */
+    changeSetCursor?: string;
   },
 ) {
   const where = actor.agentProfile
@@ -468,15 +496,49 @@ export async function listScopedActionTimeline(
   const allowedCanvasIds = actor.agentProfile
     ? new Set(actor.agentProfile.allowedCanvasIds)
     : null;
-  const { canvasId } = input;
+  const { canvasId, suggestionCursor, changeSetCursor } = input;
   if (canvasId) assertCanvasScope(actor.agentProfile, canvasId);
-  // One extra row tells a canvas-filtered caller whether more exist.
-  const take = canvasId ? input.limit + 1 : input.limit;
+  const suggestionStatuses = input.suggestionStatuses?.length
+    ? input.suggestionStatuses
+    : undefined;
+  // A plain request keeps its old shape; any filter or cursor adds paging.
+  const paged = Boolean(
+    canvasId ||
+    suggestionStatuses ||
+    input.revertableOnly ||
+    suggestionCursor ||
+    changeSetCursor,
+  );
+  // One extra row tells a paging caller whether more exist.
+  const take = paged ? input.limit + 1 : input.limit;
   const changeSetScope = canvasId
     ? { scopeType: "canvas", scopeId: canvasId }
     : allowedCanvasIds
       ? { scopeType: "canvas", scopeId: { in: [...allowedCanvasIds] } }
       : {};
+
+  // A cursor names the last row of the previous page; rows after it in
+  // (time desc, id desc) order follow. An unknown cursor is a bad request.
+  const [suggestionBefore, changeSetBefore] = await Promise.all([
+    suggestionCursor
+      ? prisma.suggestion.findFirst({
+          where: { ...where, id: suggestionCursor },
+          select: { id: true, createdAt: true },
+        })
+      : null,
+    changeSetCursor
+      ? prisma.changeSet.findFirst({
+          where: { ...where, id: changeSetCursor },
+          select: { id: true, startedAt: true },
+        })
+      : null,
+  ]);
+  if (
+    (suggestionCursor && !suggestionBefore) ||
+    (changeSetCursor && !changeSetBefore)
+  ) {
+    throw new BadRequestError("Unknown timeline cursor.");
+  }
 
   const [actions, changeSetRows, suggestionRows] = await Promise.all([
     prisma.agentAction.findMany({
@@ -485,8 +547,27 @@ export async function listScopedActionTimeline(
       take: input.limit,
     }),
     prisma.changeSet.findMany({
-      where: { ...where, ...changeSetScope },
-      orderBy: { startedAt: "desc" },
+      where: {
+        ...where,
+        ...changeSetScope,
+        // revertChangeSet refuses a change set that was already reverted; one
+        // that never completed has nothing sound to undo.
+        ...(input.revertableOnly
+          ? { status: ChangeSetStatus.COMPLETED, revertedAt: null }
+          : {}),
+        ...(changeSetBefore
+          ? {
+              OR: [
+                { startedAt: { lt: changeSetBefore.startedAt } },
+                {
+                  startedAt: changeSetBefore.startedAt,
+                  id: { lt: changeSetBefore.id },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
       take,
       // Metadata only: the before/after snapshots hold whole serialized items
       // (one per item in a bulk write) and the timeline never shows them.
@@ -508,20 +589,39 @@ export async function listScopedActionTimeline(
       },
     }),
     canvasId
-      ? findCanvasSuggestionIds(where, canvasId, take).then((ids) =>
+      ? findCanvasSuggestionIds(where, canvasId, take, {
+          statuses: suggestionStatuses,
+          before: suggestionBefore,
+        }).then((ids) =>
           prisma.suggestion.findMany({
             where: { id: { in: ids } },
-            orderBy: { createdAt: "desc" },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           }),
         )
       : prisma.suggestion.findMany({
-          where,
-          orderBy: { createdAt: "desc" },
+          where: {
+            ...where,
+            ...(suggestionStatuses
+              ? { status: { in: suggestionStatuses } }
+              : {}),
+            ...(suggestionBefore
+              ? {
+                  OR: [
+                    { createdAt: { lt: suggestionBefore.createdAt } },
+                    {
+                      createdAt: suggestionBefore.createdAt,
+                      id: { lt: suggestionBefore.id },
+                    },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take,
         }),
   ]);
-  const hasMore =
-    changeSetRows.length > input.limit || suggestionRows.length > input.limit;
+  const changeSetsHasMore = changeSetRows.length > input.limit;
+  const suggestionsHasMore = suggestionRows.length > input.limit;
   const changeSets = changeSetRows.slice(0, input.limit);
   const scopedSuggestions = suggestionRows.slice(0, input.limit);
   const suggestions = allowedCanvasIds
@@ -540,7 +640,20 @@ export async function listScopedActionTimeline(
     })),
     suggestions,
   };
-  return canvasId ? { ...timeline, hasMore } : timeline;
+  if (!paged) return timeline;
+  return {
+    ...timeline,
+    hasMore: changeSetsHasMore || suggestionsHasMore,
+    suggestionsHasMore,
+    changeSetsHasMore,
+    // The cursor is the last row read, even when the scope filter dropped it.
+    nextSuggestionCursor: suggestionsHasMore
+      ? (scopedSuggestions.at(-1)?.id ?? null)
+      : null,
+    nextChangeSetCursor: changeSetsHasMore
+      ? (changeSets.at(-1)?.id ?? null)
+      : null,
+  };
 }
 
 export async function listOwnedIntegrationAccounts(userId: string) {

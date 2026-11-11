@@ -5,7 +5,8 @@ import { withApiHandler } from "@/lib/api/route-handler";
 import { prisma } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 import {
-  getOrganizerProfileForCanvas,
+  getOrganizerProfile,
+  grantOrganizerCanvas,
   listLooseItems,
   proposeCanvasPiles,
   suggestPilesForOwner,
@@ -60,8 +61,10 @@ export const POST = withApiHandler(
             .slice(0, SORT_INSTRUCTION_MAX_LENGTH) ?? null)
         : body.instruction || null;
     // Check the organizer before any AI call so a disabled one costs nothing.
-    const organizer = await getOrganizerProfileForCanvas(userId, canvasId);
-    assertAgentCapability(organizer, AGENT_CAPABILITY_RUNGS.PROPOSE);
+    // The canvas joins its scope only after that check passes.
+    const builtIn = await getOrganizerProfile(userId);
+    assertAgentCapability(builtIn, AGENT_CAPABILITY_RUNGS.PROPOSE);
+    const organizer = await grantOrganizerCanvas(builtIn, canvasId);
     const sorted = await suggestPilesForOwner({
       userId,
       items: await listLooseItems(canvasId),

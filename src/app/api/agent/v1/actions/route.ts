@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import {
   IntegrationProviderType,
   SuggestionKind,
+  SuggestionStatus,
 } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -64,6 +65,22 @@ import { createLogger } from "@/lib/logger";
 const log = createLogger("agent-actions");
 
 const timelineCanvasIdSchema = z.string().cuid().optional();
+
+// Optional timeline filters; a request without them is unchanged.
+const timelineFilterSchema = z.object({
+  // Comma-separated, e.g. suggestionStatus=OPEN,APPROVED.
+  suggestionStatuses: z
+    .string()
+    .transform((value) => value.split(",").filter(Boolean))
+    .pipe(z.array(z.nativeEnum(SuggestionStatus)).max(6))
+    .optional(),
+  revertableOnly: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
+  suggestionCursor: z.string().cuid().optional(),
+  changeSetCursor: z.string().cuid().optional(),
+});
 
 const createCheckpointSchema = z.object({
   canvasId: z.string().cuid(),
@@ -297,11 +314,21 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     assertCanvasScope(context.agentProfile, canvasId);
     await verifyCanvasOwnership(context.userId, canvasId);
   }
+  const filters = timelineFilterSchema.parse({
+    suggestionStatuses:
+      request.nextUrl.searchParams.get("suggestionStatus") ?? undefined,
+    revertableOnly: request.nextUrl.searchParams.get("revertable") ?? undefined,
+    suggestionCursor:
+      request.nextUrl.searchParams.get("suggestionCursor") ?? undefined,
+    changeSetCursor:
+      request.nextUrl.searchParams.get("changeSetCursor") ?? undefined,
+  });
 
   return NextResponse.json(
     await listScopedActionTimeline(context, {
       limit,
       canvasId,
+      ...filters,
     }),
   );
 });

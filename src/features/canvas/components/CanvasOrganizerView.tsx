@@ -438,6 +438,18 @@ function renderEntityCard(
   );
 }
 
+/** Rows asked of the server, and rows of each list the view renders. */
+const TIMELINE_LIMIT = 100;
+const LIST_PREVIEW = 8;
+/** Statuses the suggestion filter offers, besides "ALL". */
+const SUGGESTION_STATUS_FILTERS = [
+  "OPEN",
+  "APPROVED",
+  "EXECUTED",
+  "REJECTED",
+  "EXPIRED",
+];
+
 export function CanvasOrganizerView({
   canvasId,
   items,
@@ -461,10 +473,19 @@ export function CanvasOrganizerView({
     CanvasViewType.ORGANIZER,
   );
   const knowledgeQuery = useAgentKnowledge(canvasId);
-  const timelineQuery = useAgentTimeline(100);
-
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
   const [suggestionStatusFilter, setSuggestionStatusFilter] = useState("OPEN");
+  // The server filters by this canvas and the chosen status, so newer records
+  // on other canvases or in other statuses cannot push older ones out of the
+  // page. A saved filter that is not a known status is not sent.
+  const timelineQuery = useAgentTimeline(TIMELINE_LIMIT, {
+    canvasId,
+    suggestionStatuses: SUGGESTION_STATUS_FILTERS.includes(
+      suggestionStatusFilter,
+    )
+      ? [suggestionStatusFilter]
+      : undefined,
+  });
   const hydratedViewRef = useRef(false);
   // State, not just the ref: the save effect must first run in the render
   // that already holds the hydrated filters, never in the mount commit.
@@ -866,14 +887,7 @@ export function CanvasOrganizerView({
                     setSuggestionStatusFilter(event.target.value)
                   }
                 >
-                  {[
-                    "OPEN",
-                    "APPROVED",
-                    "EXECUTED",
-                    "REJECTED",
-                    "EXPIRED",
-                    "ALL",
-                  ].map((status) => (
+                  {[...SUGGESTION_STATUS_FILTERS, "ALL"].map((status) => (
                     <MenuItem key={status} value={status}>
                       {status === "ALL" ? "All statuses" : status.toLowerCase()}
                     </MenuItem>
@@ -892,7 +906,7 @@ export function CanvasOrganizerView({
                 disablePadding
                 sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}
               >
-                {suggestions.slice(0, 8).map((suggestion) => (
+                {suggestions.slice(0, LIST_PREVIEW).map((suggestion) => (
                   <Paper
                     key={suggestion.id}
                     variant="outlined"
@@ -948,6 +962,13 @@ export function CanvasOrganizerView({
                 ))}
               </List>
             )}
+            {(suggestions.length > LIST_PREVIEW ||
+              timelineQuery.data?.suggestionsHasMore) && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                Only the newest suggestions are shown. Older ones exist for this
+                canvas.
+              </Alert>
+            )}
           </Paper>
 
           <Paper
@@ -986,7 +1007,7 @@ export function CanvasOrganizerView({
               </Alert>
             ) : (
               <Stack spacing={1.5}>
-                {changeSets.slice(0, 8).map((changeSet) => (
+                {changeSets.slice(0, LIST_PREVIEW).map((changeSet) => (
                   <Paper
                     key={changeSet.id}
                     variant="outlined"
@@ -1040,6 +1061,13 @@ export function CanvasOrganizerView({
                   </Paper>
                 ))}
               </Stack>
+            )}
+            {(changeSets.length > LIST_PREVIEW ||
+              timelineQuery.data?.changeSetsHasMore) && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                Only the newest change sets are shown. Older ones exist for this
+                canvas.
+              </Alert>
             )}
           </Paper>
         </Stack>

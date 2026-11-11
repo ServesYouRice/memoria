@@ -1,7 +1,12 @@
 "use client";
 
 import { apiFetch } from "@/lib/api/fetch-client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { ProviderSlot } from "@/lib/agents/providers";
 import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
 
@@ -174,6 +179,21 @@ export interface AgentTimelineResponse {
   actions: AgentActionRecord[];
   changeSets: ChangeSetRecord[];
   suggestions: SuggestionRecord[];
+  /** Paging hints, present only on a filtered or cursor request. */
+  hasMore?: boolean;
+  suggestionsHasMore?: boolean;
+  changeSetsHasMore?: boolean;
+  nextSuggestionCursor?: string | null;
+  nextChangeSetCursor?: string | null;
+}
+
+/** Server-side timeline filters; all optional. */
+export interface AgentTimelineOptions {
+  canvasId?: string;
+  suggestionStatuses?: string[];
+  revertableOnly?: boolean;
+  suggestionCursor?: string;
+  changeSetCursor?: string;
 }
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -226,8 +246,20 @@ const api = {
     );
   },
 
-  async listTimeline(limit: number) {
-    const response = await apiFetch(`/api/agent/v1/actions?limit=${limit}`);
+  async listTimeline(limit: number, options: AgentTimelineOptions = {}) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (options.canvasId) params.set("canvasId", options.canvasId);
+    if (options.suggestionStatuses?.length) {
+      params.set("suggestionStatus", options.suggestionStatuses.join(","));
+    }
+    if (options.revertableOnly) params.set("revertable", "true");
+    if (options.suggestionCursor) {
+      params.set("suggestionCursor", options.suggestionCursor);
+    }
+    if (options.changeSetCursor) {
+      params.set("changeSetCursor", options.changeSetCursor);
+    }
+    const response = await apiFetch(`/api/agent/v1/actions?${params}`);
     return parseJson<AgentTimelineResponse>(
       response,
       "Failed to load agent timeline.",
@@ -341,8 +373,16 @@ export const agentControlKeys = {
   profiles: () => [...agentControlKeys.all, "profiles"] as const,
   providers: () => [...agentControlKeys.all, "providers"] as const,
   integrations: () => [...agentControlKeys.all, "integrations"] as const,
-  timeline: (limit: number) =>
-    [...agentControlKeys.all, "timeline", limit] as const,
+  timeline: (limit: number, options?: AgentTimelineOptions) =>
+    options
+      ? ([...agentControlKeys.all, "timeline", limit, options] as const)
+      : ([...agentControlKeys.all, "timeline", limit] as const),
+  timelinePages: (
+    list: "suggestions" | "changeSets",
+    limit: number,
+    options: AgentTimelineOptions,
+  ) =>
+    [...agentControlKeys.all, "timeline-pages", list, limit, options] as const,
   knowledge: (canvasId: string) =>
     [...agentControlKeys.all, "knowledge", canvasId] as const,
 };
@@ -368,10 +408,38 @@ export function useAgentIntegrations() {
   });
 }
 
-export function useAgentTimeline(limit = 50) {
+export function useAgentTimeline(limit = 50, options?: AgentTimelineOptions) {
   return useQuery({
-    queryKey: agentControlKeys.timeline(limit),
-    queryFn: () => api.listTimeline(limit),
+    queryKey: agentControlKeys.timeline(limit, options),
+    queryFn: () => api.listTimeline(limit, options),
+  });
+}
+
+/**
+ * One timeline list (suggestions or change sets) read page by page with the
+ * server's cursor, so older matching records stay reachable.
+ */
+export function useAgentTimelinePages(
+  list: "suggestions" | "changeSets",
+  limit: number,
+  options: AgentTimelineOptions = {},
+) {
+  return useInfiniteQuery({
+    queryKey: agentControlKeys.timelinePages(list, limit, options),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      api.listTimeline(limit, {
+        ...options,
+        ...(pageParam
+          ? list === "suggestions"
+            ? { suggestionCursor: pageParam }
+            : { changeSetCursor: pageParam }
+          : {}),
+      }),
+    getNextPageParam: (lastPage) =>
+      (list === "suggestions"
+        ? lastPage.nextSuggestionCursor
+        : lastPage.nextChangeSetCursor) ?? undefined,
   });
 }
 
