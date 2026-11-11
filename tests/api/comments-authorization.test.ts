@@ -212,7 +212,7 @@ describe("Comment Authorization by Visibility and Role (IMP-065)", () => {
       expect(prismaMocks.commentFindMany).toHaveBeenCalled();
     });
 
-    it("denies signed-in outsider on private canvas with 401 without querying comments", async () => {
+    it("denies signed-in outsider on private canvas with 403 without querying comments", async () => {
       authMocks.auth.mockResolvedValue({ user: { id: outsiderUserId } });
       prismaMocks.canvasItemFindUnique.mockResolvedValue(
         makeCanvasItemFixture({ isPublic: false }),
@@ -223,7 +223,7 @@ describe("Comment Authorization by Visibility and Role (IMP-065)", () => {
       );
       const res = await commentsGet(req, { params });
 
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(403);
       expect(prismaMocks.commentFindMany).not.toHaveBeenCalled();
       expect(prismaMocks.commentCount).not.toHaveBeenCalled();
     });
@@ -266,7 +266,7 @@ describe("Comment Authorization by Visibility and Role (IMP-065)", () => {
       expect(activityMocks.logActivity).not.toHaveBeenCalled();
     });
 
-    it("rejects VIEW share recipient with 401 without creating comment or logging activity", async () => {
+    it("rejects VIEW share recipient with 403 without creating comment or logging activity", async () => {
       authMocks.auth.mockResolvedValue({ user: { id: viewShareUserId } });
       prismaMocks.canvasItemFindUnique.mockResolvedValue(
         makeCanvasItemFixture(),
@@ -281,12 +281,12 @@ describe("Comment Authorization by Visibility and Role (IMP-065)", () => {
       );
       const res = await commentsPost(req, { params });
 
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(403);
       expect(prismaMocks.commentCreate).not.toHaveBeenCalled();
       expect(activityMocks.logActivity).not.toHaveBeenCalled();
     });
 
-    it("rejects unrelated signed-in outsider with 401 without creating comment or logging activity", async () => {
+    it("rejects unrelated signed-in outsider with 403 without creating comment or logging activity", async () => {
       authMocks.auth.mockResolvedValue({ user: { id: outsiderUserId } });
       prismaMocks.canvasItemFindUnique.mockResolvedValue(
         makeCanvasItemFixture(),
@@ -301,7 +301,7 @@ describe("Comment Authorization by Visibility and Role (IMP-065)", () => {
       );
       const res = await commentsPost(req, { params });
 
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(403);
       expect(prismaMocks.commentCreate).not.toHaveBeenCalled();
       expect(activityMocks.logActivity).not.toHaveBeenCalled();
     });

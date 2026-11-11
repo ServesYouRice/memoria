@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import {
+  ForbiddenError,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
@@ -92,30 +93,22 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       throw new NotFoundError("Canvas item not found");
     }
 
-    // Check if user has access to the canvas
+    // Owners and COMMENT/EDIT recipients may comment. A signed-in user without
+    // that right gets 403, not 401: the session is valid, and a 401 makes the
+    // client treat it as expired and send the user to the login page.
     const isOwner = item.canvas.userId === session.user.id;
-    const hasShare = item.canvas.shares.some(
-      (share) =>
-        share.recipientId === session.user.id &&
-        ["COMMENT", "EDIT"].includes(share.role),
+    const userShare = item.canvas.shares.find(
+      (share) => share.recipientId === session.user.id,
     );
-
-    if (!isOwner && !hasShare) {
-      throw new UnauthorizedError(
-        "You do not have permission to comment on this item",
+    if (
+      !isOwner &&
+      !(userShare && ["COMMENT", "EDIT"].includes(userShare.role))
+    ) {
+      throw new ForbiddenError(
+        userShare?.role === "VIEW"
+          ? "You only have view permission on this canvas"
+          : "You do not have permission to comment on this item",
       );
-    }
-
-    // For shared users, check they have COMMENT or EDIT role
-    if (!isOwner && hasShare) {
-      const userShare = item.canvas.shares.find(
-        (share) => share.recipientId === session.user.id,
-      );
-      if (userShare && userShare.role === "VIEW") {
-        throw new UnauthorizedError(
-          "You only have view permission on this canvas",
-        );
-      }
     }
 
     // Create the comment
@@ -191,9 +184,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     const isPublic = item.canvas.isPublic;
 
     if (!isOwner && !hasShare && !isPublic) {
-      throw new UnauthorizedError(
-        "You do not have permission to view this item",
-      );
+      if (!session?.user?.id)
+        throw new UnauthorizedError("You must be logged in to view this item");
+      throw new ForbiddenError("You do not have permission to view this item");
     }
 
     // Fetch comments with pagination
