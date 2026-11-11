@@ -83,26 +83,76 @@ export async function activateUploadAsset(
   return prisma.uploadAsset.findUniqueOrThrow({ where: { id: assetId } });
 }
 
+/** PENDING -> FAILED with its quota released; anything else is left alone. */
+async function failPendingReservation(
+  tx: Tx,
+  assetId: string,
+  safeError: string,
+) {
+  const [locked] = await tx.$queryRaw<
+    Array<{ id: string }>
+  >`SELECT "id" FROM "UploadAsset" WHERE "id" = ${assetId} FOR UPDATE`;
+  if (!locked) return;
+  const asset = await tx.uploadAsset.findUnique({ where: { id: assetId } });
+  if (!asset || asset.status !== UploadAssetStatus.PENDING) return;
+  await tx.uploadAsset.update({
+    where: { id: assetId },
+    data: {
+      status: UploadAssetStatus.FAILED,
+      lastError: safeError.slice(0, 500),
+    },
+  });
+  await tx.uploadQuota.update({
+    where: { userId: asset.userId },
+    data: {
+      assetCount: { decrement: 1 },
+      totalBytes: { decrement: BigInt(asset.size) },
+    },
+  });
+}
+
 export async function failUploadReservation(
   prisma: PrismaClient,
   assetId: string,
   safeError: string,
 ) {
+  await prisma.$transaction((tx) =>
+    failPendingReservation(tx, assetId, safeError),
+  );
+}
+
+/**
+ * The object was written but activation failed: fail the reservation (if
+ * its row is still PENDING) and durably queue deletion of the written
+ * object. Storage fields come from the caller because the row may already
+ * be gone (canvas cascade) or DELETING, in which case its quota was
+ * released elsewhere. The job has its own dedupe key: a regular
+ * `upload.delete:<id>` job may already have run before this object existed,
+ * and reusing its key would queue nothing.
+ */
+export async function compensateWrittenUpload(
+  prisma: PrismaClient,
+  input: {
+    assetId: string;
+    userId: string;
+    storageMode: string;
+    storageKey: string;
+    size: number;
+    reason: string;
+  },
+) {
   await prisma.$transaction(async (tx) => {
-    const asset = await tx.uploadAsset.findUnique({ where: { id: assetId } });
-    if (!asset || asset.status !== UploadAssetStatus.PENDING) return;
-    await tx.uploadAsset.update({
-      where: { id: assetId },
-      data: {
-        status: UploadAssetStatus.FAILED,
-        lastError: safeError.slice(0, 500),
-      },
-    });
-    await tx.uploadQuota.update({
-      where: { userId: asset.userId },
-      data: {
-        assetCount: { decrement: 1 },
-        totalBytes: { decrement: BigInt(asset.size) },
+    await failPendingReservation(tx, input.assetId, input.reason);
+    await enqueueOutboxJob(tx, {
+      type: "upload.delete",
+      dedupeKey: `upload.delete.compensate:${input.assetId}`,
+      payload: {
+        assetId: input.assetId,
+        userId: input.userId,
+        storageMode: input.storageMode,
+        storageKey: input.storageKey,
+        size: input.size,
+        quotaCharged: false,
       },
     });
   });
