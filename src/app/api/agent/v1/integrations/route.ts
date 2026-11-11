@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import {
   IntegrationAuthMode,
@@ -73,12 +74,17 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   }
 
   const token = await generateIntegrationToken();
-  const replayCursor =
+  // A WEBHOOK account signs outbound deliveries with its own random secret.
+  // Receivers must hold that secret to verify signatures, so it must not be
+  // the bearer token, which would hand them a working API credential and keep
+  // a reversible copy of a token that is otherwise stored only as a hash.
+  const webhookSigningSecret =
     data.providerType === IntegrationProviderType.WEBHOOK
-      ? {
-          outboundSigningSecret: encryptSecret(token.plaintextToken),
-        }
-      : undefined;
+      ? randomBytes(32).toString("base64url")
+      : null;
+  const replayCursor = webhookSigningSecret
+    ? { outboundSigningSecret: encryptSecret(webhookSigningSecret) }
+    : undefined;
 
   const integrationAccount = await prisma.integrationAccount
     .create({
@@ -122,6 +128,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     {
       integrationAccount,
       plaintextToken: token.plaintextToken,
+      ...(webhookSigningSecret ? { webhookSigningSecret } : {}),
     },
     { status: 201 },
   );
