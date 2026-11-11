@@ -13,6 +13,8 @@ import { deriveClientIp } from "./src/lib/network/client-ip";
 import { nanoid } from "nanoid";
 import { runWithRequestContext } from "./src/lib/api/request-context";
 import { recordHttpStatus } from "./src/lib/operations/runtime-metrics";
+import { createGracefulShutdown } from "./src/lib/operations/graceful-shutdown";
+import { disconnectDatabase } from "./src/lib/db";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || (dev ? "localhost" : "0.0.0.0");
@@ -70,25 +72,16 @@ app
       proxySyncUpgrade(syncServerUrl, req, socket, head);
     });
 
-    let shuttingDown = false;
-    const shutdown = async (signal: NodeJS.Signals) => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      logger.info({ signal }, "Graceful shutdown started");
-
-      const deadline = setTimeout(() => {
-        logger.error("Graceful shutdown deadline exceeded");
-        process.exit(1);
-      }, 20_000);
-      deadline.unref();
-
-      await new Promise<void>((resolvePromise) =>
-        server.close(() => resolvePromise()),
-      );
-      clearTimeout(deadline);
-      logger.info("Graceful shutdown complete");
-      process.exit(0);
-    };
+    const shutdown = createGracefulShutdown({
+      closeServer: () =>
+        new Promise<void>((resolvePromise) =>
+          server.close(() => resolvePromise()),
+        ),
+      disconnect: disconnectDatabase,
+      exit: (code) => process.exit(code),
+      deadlineMs: 20_000,
+      logger,
+    });
 
     process.once("SIGTERM", () => void shutdown("SIGTERM"));
     process.once("SIGINT", () => void shutdown("SIGINT"));
