@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildBatchBody,
   chunk,
+  closableTabIds,
   isApiKey,
   isPreselected,
   normalizeServerUrl,
@@ -47,6 +48,69 @@ describe("browser extension helpers", () => {
     );
     expect(() => normalizeServerUrl("")).toThrow();
     expect(() => normalizeServerUrl("ftp://memoria.example.com")).toThrow();
+  });
+
+  it("refuses plain-HTTP Memoria addresses except loopback", () => {
+    expect(() => normalizeServerUrl("http://memoria.example.com")).toThrow(
+      "must start with https://",
+    );
+    expect(() => normalizeServerUrl("http://192.168.1.5")).toThrow(
+      "must start with https://",
+    );
+    expect(() => originPattern("http://memoria.example.com")).toThrow();
+    expect(normalizeServerUrl("https://memoria.example.com")).toBe(
+      "https://memoria.example.com",
+    );
+    expect(normalizeServerUrl("http://localhost:3000")).toBe(
+      "http://localhost:3000",
+    );
+    expect(normalizeServerUrl("http://app.localhost:3000")).toBe(
+      "http://app.localhost:3000",
+    );
+    expect(normalizeServerUrl("http://127.0.0.1:3000")).toBe(
+      "http://127.0.0.1:3000",
+    );
+    expect(normalizeServerUrl("http://127.5.6.7")).toBe("http://127.5.6.7");
+    expect(normalizeServerUrl("http://[::1]:3000")).toBe("http://[::1]:3000");
+    expect(() => normalizeServerUrl("http://127.0.0.1.example.com")).toThrow();
+    expect(() => normalizeServerUrl("http://localhost.example.com")).toThrow();
+  });
+
+  it("never sends the API key to a remote plain-HTTP address", async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      sendBatch({
+        serverUrl: "http://memoria.example.com",
+        apiKey: "mk_abcdefghijklmnopqrstuvwxyz",
+        tabs: [{ url: "https://example.com", title: "Example" }],
+        note: "",
+        idempotencyKey: "00000000-0000-4000-8000-000000000000",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("must start with https://");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("closes only tabs that still show the submitted page", () => {
+    const submitted = [
+      { id: 1, url: "https://a.example/" },
+      { id: 2, url: "https://b.example/" },
+      { id: 3, url: "https://c.example/" },
+      { id: 4, url: "https://d.example/" },
+    ];
+    const current = new Map<
+      number,
+      { url: string; pendingUrl?: string } | null
+    >([
+      [1, { url: "https://a.example/" }],
+      [2, { url: "https://elsewhere.example/" }],
+      [3, { url: "https://c.example/", pendingUrl: "https://next.example/" }],
+      [4, null],
+    ]);
+    expect(closableTabIds(submitted, current)).toEqual({
+      closable: [1],
+      changed: [2, 3, 4],
+    });
   });
 
   it("recognizes Memoria API keys", () => {
@@ -150,5 +214,118 @@ describe("browser extension helpers", () => {
         fetchImpl: offline,
       }),
     ).rejects.toThrow(/Could not reach Memoria/);
+  });
+});
+
+describe("browser extension over-long tab URLs", () => {
+  const urlOfLength = (length: number) => {
+    const base = "https://example.com/";
+    return base + "a".repeat(length - base.length);
+  };
+
+  it("does not preselect or allow a tab whose URL exceeds the server limit", async () => {
+    const lib =
+      (await import("../../integrations/browser-extension/lib.js")) as Record<
+        string,
+        unknown
+      >;
+    const isSavableUrl = lib.isSavableUrl as (url: string) => boolean;
+    expect(typeof isSavableUrl).toBe("function");
+    expect(isPreselected({ url: urlOfLength(2048), pinned: false })).toBe(true);
+    expect(isPreselected({ url: urlOfLength(2049), pinned: false })).toBe(
+      false,
+    );
+    expect(isSavableUrl(urlOfLength(2048))).toBe(true);
+    expect(isSavableUrl(urlOfLength(2049))).toBe(false);
+    expect(isSavableUrl("chrome://settings")).toBe(false);
+  });
+
+  it("keeps the client limit equal to the server's MAX_URL_LENGTH", async () => {
+    const lib =
+      (await import("../../integrations/browser-extension/lib.js")) as Record<
+        string,
+        unknown
+      >;
+    const { MAX_URL_LENGTH } = await import("@/lib/constants");
+    expect(lib.MAX_URL_LENGTH).toBe(MAX_URL_LENGTH);
+  });
+
+  it("names the tab the server rejected", async () => {
+    const rejected = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            title: "Validation Error",
+            status: 400,
+            errors: [
+              {
+                field: "links.1.url",
+                message: "String must contain at most 2048 character(s)",
+              },
+            ],
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/problem+json" },
+          },
+        ),
+    );
+    await expect(
+      sendBatch({
+        serverUrl: "https://memoria.example.com",
+        apiKey: "mk_abcdefghijklmnopqrstuvwxyz",
+        tabs: [
+          { id: 1, url: "https://example.com/one", title: "One" },
+          { id: 2, url: "https://example.com/two", title: "The long one" },
+        ],
+        note: "",
+        idempotencyKey: "key-1",
+        fetchImpl: rejected,
+      }),
+    ).rejects.toThrow(/The long one/);
+  });
+});
+
+describe("browser extension duplicate confirmation", () => {
+  const duplicate = (index: number, url: string, existingUrls: unknown[]) => ({
+    index,
+    url,
+    savedItemId: null,
+    existing: existingUrls.map((existingUrl) => ({
+      itemId: "i",
+      canvasId: "c",
+      path: "/canvas/c?item=i",
+      ...(existingUrl === undefined ? {} : { url: existingUrl }),
+    })),
+  });
+
+  it("does not confirm a duplicate whose saved copy has another fragment", async () => {
+    const lib =
+      (await import("../../integrations/browser-extension/lib.js")) as Record<
+        string,
+        unknown
+      >;
+    const unconfirmed = lib.unconfirmedDuplicateTabIds as (
+      tabs: unknown[],
+      body: unknown,
+    ) => number[];
+    expect(typeof unconfirmed).toBe("function");
+    const tabs = [
+      { id: 1, url: "https://app.example/#/document/B" },
+      { id: 2, url: "https://same.example/page#top" },
+      { id: 3, url: "https://unknown.example/#/x" },
+      { id: 4, url: "https://unknown.example/plain" },
+      { id: 5, url: "https://new.example/" },
+    ];
+    const body = {
+      itemIds: ["item-5"],
+      duplicates: [
+        duplicate(0, tabs[0]!.url, ["https://app.example/#/document/A"]),
+        duplicate(1, tabs[1]!.url, ["https://same.example/page#top"]),
+        duplicate(2, tabs[2]!.url, [undefined]),
+        duplicate(3, tabs[3]!.url, [undefined]),
+      ],
+    };
+    expect(unconfirmed(tabs, body)).toEqual([1, 3]);
   });
 });

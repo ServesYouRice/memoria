@@ -274,6 +274,62 @@ export async function getScopedItemDetail(actor: ScopedActor, itemId: string) {
   };
 }
 
+const KNOWLEDGE_ENDPOINT_SELECT = {
+  id: true,
+  entityType: true,
+  title: true,
+  status: true,
+} as const;
+
+/**
+ * Relation and item-link includes for a knowledge listing. For an agent, a
+ * related entity is shown only when one of its item links is on a canvas in
+ * agentProfile.allowedCanvasIds, and item links are limited to those canvases:
+ * items can move between boards after a relation was created.
+ */
+function knowledgeListInclude(
+  actor: ScopedActor,
+  itemLinksWhere?: Prisma.ItemEntityLinkWhereInput,
+) {
+  const allowedCanvasIds = actor.agentProfile?.allowedCanvasIds;
+  const inScopeEntity: Prisma.KnowledgeEntityWhereInput | undefined =
+    allowedCanvasIds
+      ? {
+          itemLinks: {
+            some: { item: { canvasId: { in: allowedCanvasIds } } },
+          },
+        }
+      : undefined;
+  const linkWhere: Prisma.ItemEntityLinkWhereInput = {
+    ...itemLinksWhere,
+    ...(allowedCanvasIds
+      ? { item: { canvasId: { in: allowedCanvasIds } } }
+      : {}),
+  };
+  const relationInclude = {
+    sourceEntity: { select: KNOWLEDGE_ENDPOINT_SELECT },
+    targetEntity: { select: KNOWLEDGE_ENDPOINT_SELECT },
+  };
+  const relationOrder: Prisma.KnowledgeRelationOrderByWithRelationInput[] = [
+    { relationType: "asc" },
+    { createdAt: "asc" },
+  ];
+
+  return {
+    itemLinks: Object.keys(linkWhere).length > 0 ? { where: linkWhere } : true,
+    outgoingRelations: {
+      ...(inScopeEntity ? { where: { targetEntity: inScopeEntity } } : {}),
+      include: relationInclude,
+      orderBy: relationOrder,
+    },
+    incomingRelations: {
+      ...(inScopeEntity ? { where: { sourceEntity: inScopeEntity } } : {}),
+      include: relationInclude,
+      orderBy: relationOrder,
+    },
+  } satisfies Prisma.KnowledgeEntityInclude;
+}
+
 export async function listScopedKnowledgeEntities(
   actor: ScopedActor,
   input: {
@@ -295,51 +351,7 @@ export async function listScopedKnowledgeEntities(
           },
         },
       },
-      include: {
-        itemLinks: true,
-        outgoingRelations: {
-          include: {
-            sourceEntity: {
-              select: {
-                id: true,
-                entityType: true,
-                title: true,
-                status: true,
-              },
-            },
-            targetEntity: {
-              select: {
-                id: true,
-                entityType: true,
-                title: true,
-                status: true,
-              },
-            },
-          },
-          orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
-        },
-        incomingRelations: {
-          include: {
-            sourceEntity: {
-              select: {
-                id: true,
-                entityType: true,
-                title: true,
-                status: true,
-              },
-            },
-            targetEntity: {
-              select: {
-                id: true,
-                entityType: true,
-                title: true,
-                status: true,
-              },
-            },
-          },
-          orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
-        },
-      },
+      include: knowledgeListInclude(actor),
       orderBy: { updatedAt: "desc" },
     });
 
@@ -360,55 +372,7 @@ export async function listScopedKnowledgeEntities(
         },
       },
     },
-    include: {
-      itemLinks: {
-        where: {
-          itemId: item.id,
-        },
-      },
-      outgoingRelations: {
-        include: {
-          sourceEntity: {
-            select: {
-              id: true,
-              entityType: true,
-              title: true,
-              status: true,
-            },
-          },
-          targetEntity: {
-            select: {
-              id: true,
-              entityType: true,
-              title: true,
-              status: true,
-            },
-          },
-        },
-        orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
-      },
-      incomingRelations: {
-        include: {
-          sourceEntity: {
-            select: {
-              id: true,
-              entityType: true,
-              title: true,
-              status: true,
-            },
-          },
-          targetEntity: {
-            select: {
-              id: true,
-              entityType: true,
-              title: true,
-              status: true,
-            },
-          },
-        },
-        orderBy: [{ relationType: "asc" }, { createdAt: "asc" }],
-      },
-    },
+    include: knowledgeListInclude(actor, { itemId: item.id }),
   });
 
   return { entities };

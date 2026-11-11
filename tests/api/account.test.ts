@@ -45,9 +45,6 @@ vi.mock("@/lib/db", () => ({
     account: {
       findUnique: prismaMocks.findUnique,
     },
-    uploadAsset: {
-      findMany: prismaMocks.uploadAssetFindMany,
-    },
     accountExport: {
       findMany: prismaMocks.accountExportFindMany,
     },
@@ -99,6 +96,10 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
     prismaMocks.accountExportFindMany.mockResolvedValue([]);
     prismaMocks.$transaction.mockImplementation(async (callback: any) => {
       const tx = {
+        // Uploads are read inside the transaction, after the user's canvases.
+        uploadAsset: {
+          findMany: prismaMocks.uploadAssetFindMany,
+        },
         canvas: {
           findMany: prismaMocks.txCanvasFindMany,
           deleteMany: prismaMocks.txCanvasDeleteMany,
@@ -233,16 +234,11 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
         { id: "asset-2" },
       ]);
 
-      // User owns canvas-1
-      prismaMocks.txCanvasFindMany.mockResolvedValue([{ id: "canvas-1" }]);
-
-      // User authored note-foreign on Bob's canvas (canvas-2 owned by user-bob)
-      prismaMocks.txCanvasItemFindMany.mockResolvedValue([
-        {
-          id: "note-foreign",
-          canvas: { userId: "user-bob" },
-        },
-      ]);
+      // User owns canvas-1; the user authored an item on Bob's canvas, so
+      // Bob is the one foreign owner.
+      prismaMocks.txCanvasFindMany
+        .mockResolvedValueOnce([{ id: "canvas-1" }])
+        .mockResolvedValueOnce([{ userId: "user-bob" }]);
 
       const response = await DELETE(
         createJsonRequest("DELETE", {
@@ -258,11 +254,18 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
       // Upload deletion lifecycle enqueued
       expect(lifecycleMocks.enqueueUploadDeletion).toHaveBeenCalledTimes(2);
 
-      // Assert foreign item authorship reassignment to the canvas owner
-      expect(prismaMocks.txCanvasItemUpdate).toHaveBeenCalledWith({
-        where: { id: "note-foreign" },
+      // Assert foreign item authorship reassignment to the canvas owner, one
+      // statement per owner.
+      expect(prismaMocks.txCanvasItemUpdateMany).toHaveBeenCalledWith({
+        where: { createdById: userId, canvas: { userId: "user-bob" } },
         data: { createdById: "user-bob" },
       });
+      expect(prismaMocks.txCanvasItemUpdate).not.toHaveBeenCalled();
+      // The deletion runs with its own transaction timeout, not the default.
+      expect(prismaMocks.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        expect.objectContaining({ timeout: expect.any(Number) }),
+      );
 
       // Assert user's canvas items deleted
       expect(prismaMocks.txCanvasItemDeleteMany).toHaveBeenCalledWith({

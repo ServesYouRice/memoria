@@ -11,7 +11,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { createCredentialAccount } from "@/lib/auth/credentials";
-import { validatePasswordStrength } from "@/lib/validation/password";
+import {
+  PASSWORD_MAX_LENGTH,
+  validatePasswordStrength,
+} from "@/lib/validation/password";
 import {
   problemToResponse,
   createValidationProblem,
@@ -67,7 +70,13 @@ async function acceptedRegistration(
 
 const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
-  password: z.string().min(10, "Password must be at least 10 characters"),
+  password: z
+    .string()
+    .min(10, "Password must be at least 10 characters")
+    .max(
+      PASSWORD_MAX_LENGTH,
+      `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+    ),
   name: z.string().min(1, "Name is required").max(100),
   inviteToken: z.string().min(16).max(256).optional(),
 });

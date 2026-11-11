@@ -1,7 +1,8 @@
 import { z } from "zod";
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import {
   deletePrivateUploadObject,
   writePrivateUploadObject,
@@ -11,6 +12,23 @@ const candidateSchema = z.object({ candidateId: z.string().cuid() }).strict();
 const deleteSchema = z
   .object({ storageKey: z.string().min(1).max(1024) })
   .strict();
+
+/**
+ * Queue deletion of a stored thumbnail object. The job carries only the
+ * storage key, so it still runs after the canvas row is gone; call it in the
+ * transaction that drops the reference (thumbnail reset, canvas or account
+ * deletion).
+ */
+export function enqueueThumbnailDeletion(
+  tx: Prisma.TransactionClient,
+  storageKey: string,
+) {
+  return enqueueOutboxJob(tx, {
+    type: "thumbnail.delete",
+    payload: { storageKey },
+    dedupeKey: `thumbnail.delete:${storageKey}`,
+  });
+}
 
 export function createThumbnailStoreHandler(
   prisma: PrismaClient,
@@ -46,6 +64,9 @@ export function createThumbnailStoreHandler(
       context?.signal,
     );
     const install = await prisma.$transaction(async (tx) => {
+      // Mutations take this lock before writing events, so no event can land
+      // between the revision check below and the write.
+      await lockCanvasForMutation(tx, candidate.canvasId);
       const currentRows = await tx.$queryRaw<Array<{ revision: bigint }>>`
         SELECT COALESCE(MAX("sequence"), 0) AS revision FROM "CanvasEvent" WHERE "canvasId" = ${candidate.canvasId}
       `;
@@ -59,14 +80,19 @@ export function createThumbnailStoreHandler(
         where: { id: candidate.canvasId },
         select: { thumbnailKey: true },
       });
-      await tx.canvas.update({
-        where: { id: candidate.canvasId },
+      // Never replace a newer installed thumbnail.
+      const updated = await tx.canvas.updateMany({
+        where: {
+          id: candidate.canvasId,
+          thumbnailRevision: { lt: candidate.revision },
+        },
         data: {
           thumbnailKey: storageKey,
           thumbnailRevision: candidate.revision,
         },
       });
       await tx.canvasThumbnailCandidate.delete({ where: { id: candidate.id } });
+      if (updated.count === 0) return { installed: false, oldKey: null };
       return {
         installed: true,
         oldKey:
@@ -81,11 +107,7 @@ export function createThumbnailStoreHandler(
     }
     if (install.oldKey) {
       await prisma.$transaction((tx) =>
-        enqueueOutboxJob(tx, {
-          type: "thumbnail.delete",
-          payload: { storageKey: install.oldKey! },
-          dedupeKey: `thumbnail.delete:${install.oldKey}`,
-        }),
+        enqueueThumbnailDeletion(tx, install.oldKey!),
       );
     }
   };

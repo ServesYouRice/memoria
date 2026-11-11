@@ -23,6 +23,26 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+/** The server's problem+json reason (detail, then title), else `fallback`. */
+async function problemMessage(
+  response: Response,
+  fallback: string,
+): Promise<string> {
+  try {
+    const problem = (await response.json()) as {
+      detail?: unknown;
+      title?: unknown;
+    };
+    if (typeof problem.detail === "string" && problem.detail)
+      return problem.detail;
+    if (typeof problem.title === "string" && problem.title)
+      return problem.title;
+  } catch {
+    // Not a JSON body (a proxy error page, for example).
+  }
+  return fallback;
+}
+
 export default function ForgotPasswordPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +68,9 @@ export default function ForgotPasswordPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to send reset email");
+        throw new Error(
+          await problemMessage(response, "Failed to send reset email"),
+        );
       }
 
       setSuccess(true);

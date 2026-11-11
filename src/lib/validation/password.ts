@@ -1,6 +1,12 @@
 // zxcvbn is now lazy-loaded
 
 export const PASSWORD_MIN_LENGTH = 10;
+/**
+ * Upper bound for any password a route accepts. zxcvbn's matchers enumerate
+ * substrings, so its cost grows faster than linearly with length; its authors
+ * advise truncating input to about 100 characters.
+ */
+export const PASSWORD_MAX_LENGTH = 128;
 export const PASSWORD_MIN_SCORE = 3; // zxcvbn score 0-4, we require >= 3
 
 export interface PasswordStrengthResult {
@@ -37,6 +43,17 @@ export async function validatePasswordStrength(
       score: 0,
       feedback: {
         warning: `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`,
+        suggestions: [],
+      },
+      isValid: false,
+    };
+  }
+
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    return {
+      score: 0,
+      feedback: {
+        warning: `Password must be at most ${PASSWORD_MAX_LENGTH} characters long`,
         suggestions: [],
       },
       isValid: false,

@@ -11,6 +11,7 @@ import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { releaseCanvasUploads } from "@/lib/uploads/lifecycle";
+import { enqueueThumbnailDeletion } from "@/lib/thumbnails/outbox-handler";
 
 const updateCanvasSchema = z
   .object({
@@ -146,12 +147,16 @@ export const PATCH = withApiHandler(
     // Invalidate cache
     await invalidateCanvasCache(canvasId);
 
-    await logActivity({
-      userId,
-      type: ActivityType.CANVAS_UPDATED,
-      canvasId,
-      canvasName: updatedCanvas.name,
-    });
+    // Saving the viewport (after every pan or zoom) is not an edit anyone
+    // needs in the activity feed; renames and workspace moves are.
+    if (Object.values(canvasFields).some((value) => value !== undefined)) {
+      await logActivity({
+        userId,
+        type: ActivityType.CANVAS_UPDATED,
+        canvasId,
+        canvasName: updatedCanvas.name,
+      });
+    }
 
     return NextResponse.json({
       ...updatedCanvas,
@@ -170,10 +175,16 @@ export const DELETE = withApiHandler(
 
     // Delete canvas (cascade will delete items, shares, etc.)
     const deletedCanvas = await prisma.$transaction(async (tx) => {
-      // The asset rows cascade away with the canvas, so their quota is
-      // released here rather than by the queued object deletions.
+      // The asset rows cascade away with the canvas, so each charged
+      // asset's quota is released here, once, and every object not yet
+      // DELETED gets a delete job.
       await releaseCanvasUploads(tx, canvasId);
-      return tx.canvas.delete({ where: { id: canvasId } });
+      const deleted = await tx.canvas.delete({ where: { id: canvasId } });
+      // Nothing references the stored thumbnail once the row is gone.
+      if (deleted.thumbnailKey) {
+        await enqueueThumbnailDeletion(tx, deleted.thumbnailKey);
+      }
+      return deleted;
     });
 
     // Invalidate cache

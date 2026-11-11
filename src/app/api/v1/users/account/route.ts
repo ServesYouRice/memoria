@@ -16,8 +16,23 @@ import { errorResponse, BadRequestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { enqueueThumbnailDeletion } from "@/lib/thumbnails/outbox-handler";
+import { UploadAssetStatus } from "@/generated/prisma/client";
 
 const logger = createLogger("users/account");
+
+/**
+ * Account deletion is one interactive transaction, so it gets its own limits
+ * instead of Prisma's 5 s default. Measured on a local PostgreSQL 16 shared
+ * with other load: 200 canvases of 200 items took about 4.3 s, and the full
+ * LAUNCH_LIMITS fixture (500 uploads, 200 canvases of 2,000 items, 1,000
+ * foreign items) about 18 s. The timeout leaves roughly 3x headroom over
+ * that; maxWait bounds the wait for a pooled connection.
+ */
+const ACCOUNT_DELETION_TRANSACTION = {
+  timeout: 60_000,
+  maxWait: 10_000,
+} as const;
 
 const deleteAccountSchema = z.object({
   password: z.string().min(1, "Password is required for account deletion"),
@@ -77,10 +92,6 @@ export async function DELETE(request: NextRequest) {
       throw new BadRequestError("Password is incorrect");
     }
 
-    const uploadAssets = await prisma.uploadAsset.findMany({
-      where: { userId },
-      select: { id: true },
-    });
     const accountExports = await prisma.accountExport.findMany({
       where: { userId, storageKey: { not: null } },
       select: { id: true, storageMode: true, storageKey: true },
@@ -88,9 +99,6 @@ export async function DELETE(request: NextRequest) {
 
     // Use transaction for atomic deletion
     await prisma.$transaction(async (tx) => {
-      for (const asset of uploadAssets) {
-        await enqueueUploadDeletion(tx, asset.id);
-      }
       for (const accountExport of accountExports) {
         await enqueueOutboxJob(tx, {
           type: "account-export.delete",
@@ -104,21 +112,87 @@ export async function DELETE(request: NextRequest) {
       // Get all user's canvases
       const userCanvases = await tx.canvas.findMany({
         where: { userId },
-        select: { id: true },
+        select: { id: true, thumbnailKey: true },
       });
       const canvasIds = userCanvases.map((c) => c.id);
+      // The canvases go below; their stored thumbnails would be orphaned.
+      for (const canvas of userCanvases) {
+        if (canvas.thumbnailKey) {
+          await enqueueThumbnailDeletion(tx, canvas.thumbnailKey);
+        }
+      }
+
+      // Every upload that goes with the account: the user's own, and those
+      // collaborators added to the user's canvases (the canvas delete below
+      // would cascade their rows away without a cleanup job or a quota
+      // release). Queued before any canvas is deleted.
+      const uploadAssets = await tx.uploadAsset.findMany({
+        where: {
+          status: { not: UploadAssetStatus.DELETED },
+          OR: [{ userId }, { canvasId: { in: canvasIds } }],
+        },
+        select: {
+          id: true,
+          userId: true,
+          size: true,
+          status: true,
+          canvas: { select: { userId: true } },
+        },
+      });
+      // The user's uploads that back items kept on another owner's canvas
+      // move to that owner with the items; all others are deleted.
+      const isForeignActive = (asset: (typeof uploadAssets)[number]) =>
+        asset.userId === userId &&
+        asset.status === UploadAssetStatus.ACTIVE &&
+        !!asset.canvas &&
+        asset.canvas.userId !== userId;
+      const transferredAssets = uploadAssets.filter(isForeignActive);
+      const deletedAssets = uploadAssets.filter(
+        (asset) => !isForeignActive(asset),
+      );
+      for (const asset of transferredAssets) {
+        const newOwnerId = asset.canvas.userId;
+        // Conditional, so an asset that stopped being ACTIVE concurrently is
+        // deleted with the account instead of transferred.
+        const moved = await tx.uploadAsset.updateMany({
+          where: { id: asset.id, userId, status: UploadAssetStatus.ACTIVE },
+          data: { userId: newOwnerId },
+        });
+        if (moved.count !== 1) {
+          await enqueueUploadDeletion(tx, asset.id, { cascade: true });
+          continue;
+        }
+        // The canvas owner now carries the bytes. The limit is not enforced:
+        // the upload already exists and the owner's items display it.
+        await tx.$executeRaw`
+          INSERT INTO "UploadQuota" ("userId", "assetCount", "totalBytes", "updatedAt")
+          VALUES (${newOwnerId}, 1, ${BigInt(asset.size)}, NOW())
+          ON CONFLICT ("userId") DO UPDATE SET
+            "assetCount" = "UploadQuota"."assetCount" + 1,
+            "totalBytes" = "UploadQuota"."totalBytes" + EXCLUDED."totalBytes",
+            "updatedAt" = NOW()
+        `;
+      }
+      for (const asset of deletedAssets) {
+        await enqueueUploadDeletion(tx, asset.id, { cascade: true });
+      }
 
       // Preserve content contributed to another owner's canvas by
       // transferring immutable authorship to that canvas owner. Optional
       // update/delete attribution can safely be cleared.
-      const foreignItems = await tx.canvasItem.findMany({
-        where: { createdById: userId, canvas: { userId: { not: userId } } },
-        select: { id: true, canvas: { select: { userId: true } } },
+      // One statement per distinct foreign owner, not one per item.
+      const foreignOwners = await tx.canvas.findMany({
+        where: {
+          userId: { not: userId },
+          items: { some: { createdById: userId } },
+        },
+        select: { userId: true },
+        distinct: ["userId"],
       });
-      for (const item of foreignItems) {
-        await tx.canvasItem.update({
-          where: { id: item.id },
-          data: { createdById: item.canvas.userId },
+      for (const { userId: ownerId } of foreignOwners) {
+        await tx.canvasItem.updateMany({
+          where: { createdById: userId, canvas: { userId: ownerId } },
+          data: { createdById: ownerId },
         });
       }
       await tx.canvasItem.updateMany({
@@ -187,7 +261,7 @@ export async function DELETE(request: NextRequest) {
       await tx.user.delete({
         where: { id: userId },
       });
-    });
+    }, ACCOUNT_DELETION_TRANSACTION);
 
     logger.info({ userId, email }, "User account deleted");
 
