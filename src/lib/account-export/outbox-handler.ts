@@ -536,6 +536,9 @@ export function createAccountExportBuildHandler(
       (exportRecord.status === AccountExportStatus.RUNNING &&
         (!exportRecord.startedAt || exportRecord.startedAt < staleBefore));
     if (!canTakeOwnership) return;
+    // This attempt's ownership token: a late failure may only change the row
+    // while it is still RUNNING under this same startedAt.
+    const attemptStartedAt = new Date();
     const started = await prisma.accountExport.updateMany({
       where: {
         id: exportId,
@@ -551,7 +554,7 @@ export function createAccountExportBuildHandler(
       },
       data: {
         status: AccountExportStatus.RUNNING,
-        startedAt: new Date(),
+        startedAt: attemptStartedAt,
         lastError: null,
       },
     });
@@ -684,8 +687,16 @@ export function createAccountExportBuildHandler(
       }
       const terminal =
         error instanceof ExportLimitError || job.attempts >= job.maxAttempts;
+      // A cancellation, a newer attempt or its completion wins over this
+      // attempt's late failure (startedAt is TIMESTAMP(3), so the Date
+      // round-trips exactly).
       await prisma.accountExport.updateMany({
-        where: { id: exportId },
+        where: {
+          id: exportId,
+          status: AccountExportStatus.RUNNING,
+          startedAt: attemptStartedAt,
+          cancelRequestedAt: null,
+        },
         data: {
           status: terminal
             ? AccountExportStatus.FAILED
