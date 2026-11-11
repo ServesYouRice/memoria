@@ -155,38 +155,61 @@ export const GET = withAuth(async (request, session) => {
     ? Prisma.sql`ORDER BY rank DESC, i."updatedAt" DESC`
     : Prisma.sql`ORDER BY i."updatedAt" DESC`;
 
-  // Count query
-  const countResult = await prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(*)::int as count
-      FROM "CanvasItem" i
-      JOIN "Canvas" c ON i."canvasId" = c."id"
-      WHERE 
-        ${accessFilter}
-        AND i."deletedAt" IS NULL
-        ${canvasFilter}
-        ${tagsFilter}
-        ${searchFilter}
+  // Count and both facets come from one statement that evaluates the
+  // access and match predicate once (the leading-wildcard ILIKE paths have no
+  // index, so each evaluation scans every candidate row). The page query
+  // below is the only other evaluation.
+  const [summary] = await prisma.$queryRaw<
+    [
+      {
+        count: number;
+        types: Array<{ value: string; count: number }>;
+        tags: Array<{ value: string; count: number }>;
+      },
+    ]
+  >`
+      WITH matched AS MATERIALIZED (
+        SELECT i."type", i."tags"
+        FROM "CanvasItem" i
+        JOIN "Canvas" c ON i."canvasId" = c."id"
+        WHERE
+          ${accessFilter}
+          AND i."deletedAt" IS NULL
+          ${canvasFilter}
+          ${tagsFilter}
+          ${searchFilter}
+      )
+      SELECT
+        (SELECT COUNT(*)::int FROM matched) AS count,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object('value', t.value, 'count', t.count)
+            ORDER BY t.count DESC, t.value
+          )
+          FROM (
+            SELECT m."type"::text AS value, COUNT(*)::int AS count
+            FROM matched m
+            GROUP BY m."type"
+          ) t
+        ), '[]'::json) AS types,
+        COALESCE((
+          SELECT json_agg(
+            json_build_object('value', t.value, 'count', t.count)
+            ORDER BY t.count DESC, t.value
+          )
+          FROM (
+            SELECT tag AS value, COUNT(*)::int AS count
+            FROM matched m, LATERAL unnest(m."tags") AS tag
+            GROUP BY tag
+            ORDER BY count DESC, value
+            LIMIT 100
+          ) t
+        ), '[]'::json) AS tags
     `;
 
-  const total = Number(countResult[0]?.count || 0);
-
-  const [typeFacetRows, tagFacetRows] = await Promise.all([
-    prisma.$queryRaw<Array<{ value: string; count: number }>>`
-      SELECT i."type"::text AS value, COUNT(*)::int AS count
-      FROM "CanvasItem" i JOIN "Canvas" c ON i."canvasId" = c."id"
-      WHERE ${accessFilter} AND i."deletedAt" IS NULL
-        ${canvasFilter} ${tagsFilter} ${searchFilter}
-      GROUP BY i."type" ORDER BY count DESC, value
-    `,
-    prisma.$queryRaw<Array<{ value: string; count: number }>>`
-      SELECT tag AS value, COUNT(*)::int AS count
-      FROM "CanvasItem" i JOIN "Canvas" c ON i."canvasId" = c."id",
-        LATERAL unnest(i."tags") AS tag
-      WHERE ${accessFilter} AND i."deletedAt" IS NULL
-        ${canvasFilter} ${tagsFilter} ${searchFilter}
-      GROUP BY tag ORDER BY count DESC, value LIMIT 100
-    `,
-  ]);
+  const total = Number(summary?.count || 0);
+  const typeFacetRows = summary?.types ?? [];
+  const tagFacetRows = summary?.tags ?? [];
 
   // Main query with relevance ranking
   // ts_rank orders results by relevance to the query
