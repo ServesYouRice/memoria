@@ -99,7 +99,7 @@ app
     process.once("SIGTERM", () => void shutdown("SIGTERM"));
     process.once("SIGINT", () => void shutdown("SIGINT"));
 
-    server.listen(port, () => {
+    server.listen(port, hostname, () => {
       logger.info({ hostname, port }, "Server ready");
     });
   })
