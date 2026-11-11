@@ -11,6 +11,11 @@
  * survives. An update to an item whose row was deleted meanwhile is dropped
  * (deletion wins) and reconciliation removes it from the document.
  *
+ * Item ids are global. A change to a row that now belongs to another canvas
+ * (a cross-board move rewrote its `canvasId`) is skipped: nothing is written
+ * and no event recorded for it, the rest of the batch still applies, and the
+ * caller removes the item from this canvas's document.
+ *
  * @module lib/collaboration/sync/projection
  */
 
@@ -46,34 +51,46 @@ export interface ProjectionResult {
   created: number;
   updated: number;
   deleted: number;
+  /** Changed items whose row belongs to another canvas; nothing was written. */
+  skippedForeignIds: string[];
 }
 
 export async function projectDocumentChanges(
   tx: Tx,
   input: { canvasId: string; actorId: string; changes: DocumentItemChange[] },
 ): Promise<ProjectionResult> {
-  const { canvasId, actorId, changes } = input;
-  const result: ProjectionResult = { created: 0, updated: 0, deleted: 0 };
-  if (changes.length === 0) return result;
+  const { canvasId, actorId } = input;
+  const result: ProjectionResult = {
+    created: 0,
+    updated: 0,
+    deleted: 0,
+    skippedForeignIds: [],
+  };
+  if (input.changes.length === 0) return result;
 
-  const ids = changes.map((change) =>
-    change.kind === "create" ? change.state.id : change.id,
-  );
+  const changeId = (change: DocumentItemChange) =>
+    change.kind === "create" ? change.state.id : change.id;
   const rows = await tx.canvasItem.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: input.changes.map(changeId) } },
     select: { id: true, canvasId: true, deletedAt: true, type: true },
   });
-  const rowsById = new Map(rows.map((row) => [row.id, row] as const));
   const events: EventInput[] = [];
   const now = new Date();
 
-  // Item ids are global: a document may never claim another canvas's item.
-  for (const row of rows) {
-    if (row.canvasId !== canvasId)
-      throw new InvalidDocumentUpdateError(
-        "Item id belongs to another canvas.",
-      );
-  }
+  // Item ids are global: a document may never write another canvas's item.
+  const foreignIds = new Set(
+    rows.filter((row) => row.canvasId !== canvasId).map((row) => row.id),
+  );
+  result.skippedForeignIds = Array.from(foreignIds);
+  const rowsById = new Map(
+    rows
+      .filter((row) => !foreignIds.has(row.id))
+      .map((row) => [row.id, row] as const),
+  );
+  const changes = input.changes.filter(
+    (change) => !foreignIds.has(changeId(change)),
+  );
+  if (changes.length === 0) return result;
 
   // New rows and restored ones count against the canvas item limit.
   const additions = changes.filter((change) => {

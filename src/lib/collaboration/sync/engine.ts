@@ -35,7 +35,11 @@ import * as Y from "yjs";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
-import { createCanvasYDoc, documentItems } from "./document-items";
+import {
+  applyItemState,
+  createCanvasYDoc,
+  documentItems,
+} from "./document-items";
 import { projectDocumentChanges } from "./projection";
 import type { Prisma } from "@/generated/prisma/client";
 import {
@@ -248,6 +252,7 @@ export class CanvasSyncEngine {
 
       let stored: {
         update: Uint8Array;
+        removal: Uint8Array | null;
         id: bigint;
         changed: boolean;
       } | null = null;
@@ -263,14 +268,35 @@ export class CanvasSyncEngine {
             update: accepted.update,
             actorId,
           });
-          await projectDocumentChanges(tx, {
+          const projected = await projectDocumentChanges(tx, {
             canvasId,
             actorId,
             changes: accepted.changes,
           });
+          let removal: Uint8Array | null = null;
+          let cursor = id;
+          if (projected.skippedForeignIds.length > 0) {
+            // Items moved to another canvas leave this document (TASK-147).
+            removal = this.removeItems(
+              state.replica,
+              projected.skippedForeignIds,
+            );
+            if (removal) {
+              cursor = await appendCanvasDocumentUpdate(tx, {
+                canvasId,
+                update: removal,
+                actorId: null,
+              });
+            }
+            this.logger.info(
+              { canvasId, itemIds: projected.skippedForeignIds },
+              "Dropped document changes to items owned by another canvas",
+            );
+          }
           stored = {
             update: accepted.update,
-            id,
+            removal,
+            id: cursor,
             changed: accepted.changes.length > 0,
           };
         }, WRITE_TRANSACTION);
@@ -282,9 +308,11 @@ export class CanvasSyncEngine {
         });
       }
       if (!stored) return;
-      const { update: accepted, id, changed } = stored;
+      const { update: accepted, removal, id, changed } = stored;
 
       Y.applyUpdate(live, accepted, origin);
+      // Sent to every client, the sender included.
+      if (removal) Y.applyUpdate(live, removal, SERVER_ORIGIN);
       state.updateCursor = id;
       state.pendingUpdates += 1;
       this.onCommitted(canvasId);
@@ -367,6 +395,16 @@ export class CanvasSyncEngine {
       documentItems(state.replica),
     );
     return { update: applied.update, changes };
+  }
+
+  /** Remove `ids` from `doc`; returns the update, or null if none changed. */
+  private removeItems(doc: Y.Doc, ids: string[]): Uint8Array | null {
+    return applyAndCapture(doc, () =>
+      doc.transact(() => {
+        const items = documentItems(doc);
+        for (const id of ids) applyItemState(items, id, null);
+      }, SERVER_ORIGIN),
+    ).update;
   }
 
   /**
