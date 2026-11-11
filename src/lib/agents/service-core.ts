@@ -28,6 +28,7 @@ import {
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { ARCHIVE_OPERATION, revertArchivedItem } from "@/lib/services/archive";
 import { assertCanvasScope } from "@/lib/agents/policy";
+import { requirePollsEnabled } from "@/lib/polls/availability";
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -70,6 +71,8 @@ export function normalizeAgentItemWriteData(
   input: unknown,
 ): AgentItemWriteData {
   const parsed = agentItemSchema.parse(input);
+  // Agent writes honor the same launch gate as the REST item routes.
+  requirePollsEnabled(parsed.type);
 
   return {
     ...parsed,
