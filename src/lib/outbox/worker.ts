@@ -180,12 +180,39 @@ export async function runOutboxWorker(options: {
     }
   };
 
+  type ClaimedJob = Awaited<ReturnType<typeof claimOutboxJobs>>[number];
+  const inFlight = new Set<Promise<void>>();
+  const start = (job: ClaimedJob) => {
+    // A failed state write (complete/fail) must never end the worker: the
+    // job keeps its lease until it expires, and normal reclaim retries it.
+    const run: Promise<void> = processJob(job)
+      .catch((error: unknown) => {
+        incrementOperationalCounter("outbox_poll_failures_total");
+        logger.error(
+          { jobId: job.id, type: job.type, owner, error },
+          "Outbox job state could not be recorded",
+        );
+      })
+      .finally(() => {
+        inFlight.delete(run);
+      });
+    inFlight.add(run);
+  };
+
+  // Claim into free slots as soon as any job finishes, instead of waiting
+  // for a whole batch, so one slow job never leaves the other slots idle.
   while (!options.signal.aborted) {
-    let jobs: Awaited<ReturnType<typeof claimOutboxJobs>>;
+    const free = concurrency - inFlight.size;
+    if (free <= 0) {
+      await Promise.race(inFlight);
+      continue;
+    }
+
+    let jobs: ClaimedJob[];
     try {
       jobs = await claimOutboxJobs(options.prisma, {
         owner,
-        limit: claimLimit,
+        limit: Math.min(claimLimit, free),
         leaseMs,
         types: Object.keys(options.handlers),
       });
@@ -196,9 +223,16 @@ export async function runOutboxWorker(options: {
       continue;
     }
 
-    await Promise.all(jobs.map(processJob));
-    if (jobs.length === 0) {
-      await waitForNextPoll(options.signal, pollMs);
+    for (const job of jobs) start(job);
+    if (jobs.length < free) {
+      // The queue is drained for now: poll again later, or sooner when a
+      // running job frees its slot.
+      await Promise.race([
+        waitForNextPoll(options.signal, pollMs),
+        ...inFlight,
+      ]);
     }
   }
+
+  await Promise.allSettled([...inFlight]);
 }

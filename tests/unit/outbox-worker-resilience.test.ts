@@ -50,6 +50,8 @@ const prisma = {} as PrismaClient;
 beforeEach(() => {
   vi.clearAllMocks();
   repository.claimOutboxJobs.mockReset();
+  // The real claim always returns an array; an empty queue is the default.
+  repository.claimOutboxJobs.mockResolvedValue([]);
   repository.completeOutboxJob.mockReset();
   repository.failOutboxJob.mockReset();
   repository.renewOutboxLease.mockReset();
