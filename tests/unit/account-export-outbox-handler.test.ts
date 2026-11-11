@@ -303,6 +303,41 @@ describe("account export outbox handler", () => {
       else process.env.ACCOUNT_EXPORT_MAX_ARCHIVE_BYTES = previous;
     }
   }, 10_000);
+
+  it("does not leave the pipeline rejection unhandled when the job aborts mid-read", async () => {
+    const { client } = fakePrisma();
+    let releaseUser!: (value: unknown) => void;
+    (
+      client.user.findUnique as unknown as ReturnType<typeof vi.fn>
+    ).mockImplementation(
+      () => new Promise((resolve) => (releaseUser = resolve)),
+    );
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    const controller = new AbortController();
+    try {
+      const run = createAccountExportBuildHandler(client)(job(), {
+        signal: controller.signal,
+      } as never);
+      const settled = run.then(
+        () => "resolved",
+        (error: unknown) => error,
+      );
+      await vi.waitFor(() => expect(releaseUser).toBeTypeOf("function"));
+      controller.abort(new Error("job deadline"));
+      for (let i = 0; i < 5; i += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(unhandled).not.toHaveBeenCalled();
+
+      releaseUser({ id: userId, email: "owner@example.com" });
+      const outcome = await settled;
+      expect(outcome).toBeInstanceOf(Error);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
 });
 
 describe("writeChunk", () => {
