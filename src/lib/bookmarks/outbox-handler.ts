@@ -31,6 +31,26 @@ interface BookmarkContent {
   [key: string]: unknown;
 }
 
+/**
+ * Mark a refresh attempt without touching content, version or events. Failed
+ * and URL-less attempts are stamped too, so a permanently failing bookmark
+ * moves to the back of the cron's oldest-first batch instead of taking it
+ * every run. A concurrent edit (version moved on) leaves the row for a later
+ * run.
+ */
+function stampRefreshAttempt(
+  prisma: PrismaClient,
+  item: { id: string; canvasId: string; version: number },
+) {
+  return prisma.$transaction(async (tx) => {
+    await lockCanvasForMutation(tx, item.canvasId);
+    await tx.$executeRaw`
+      UPDATE "CanvasItem" SET "bookmarkRefreshedAt" = NOW()
+      WHERE "id" = ${item.id} AND "version" = ${item.version} AND "deletedAt" IS NULL
+    `;
+  });
+}
+
 export function createBookmarkRefreshHandler(
   prisma: PrismaClient,
 ): OutboxHandler {
@@ -44,13 +64,25 @@ export function createBookmarkRefreshHandler(
     });
     if (!item) return;
     const content = item.content as BookmarkContent;
-    if (!content.url) return;
-    const fetched = await safeFetch(content.url, {
-      timeout: 5000,
-      signal: context?.signal,
-    });
-    if (!fetched.ok || !fetched.data)
+    if (!content.url) {
+      await stampRefreshAttempt(prisma, item);
+      return;
+    }
+    let fetched: Awaited<ReturnType<typeof safeFetch>>;
+    try {
+      fetched = await safeFetch(content.url, {
+        timeout: 5000,
+        signal: context?.signal,
+      });
+    } catch (error) {
+      await stampRefreshAttempt(prisma, item);
+      throw error;
+    }
+    if (!fetched.ok || !fetched.data) {
+      // Still thrown so the outbox retries and counts the failure.
+      await stampRefreshAttempt(prisma, item);
       throw new Error("Bookmark metadata fetch failed");
+    }
     const metadata = validateMetadata(
       extractMetadata(fetched.data, content.url),
     );
@@ -64,14 +96,7 @@ export function createBookmarkRefreshHandler(
       next.title !== content.title ||
       next.description !== content.description ||
       next.image !== content.image;
-    const stampRefreshed = () =>
-      prisma.$transaction(async (tx) => {
-        await lockCanvasForMutation(tx, item.canvasId);
-        await tx.$executeRaw`
-          UPDATE "CanvasItem" SET "bookmarkRefreshedAt" = NOW()
-          WHERE "id" = ${item.id} AND "version" = ${item.version} AND "deletedAt" IS NULL
-        `;
-      });
+    const stampRefreshed = () => stampRefreshAttempt(prisma, item);
     if (!changed) {
       await stampRefreshed();
       return;
