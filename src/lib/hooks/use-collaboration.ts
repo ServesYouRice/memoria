@@ -6,7 +6,10 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { createLogger } from "@/lib/logger";
-import type { CommittedCanvasItemEvent } from "@/lib/hooks/use-canvas-items";
+import type {
+  CanvasEventSeed,
+  CommittedCanvasItemEvent as CanvasItemEvent,
+} from "@/lib/hooks/use-canvas-items";
 import {
   CURSOR_TICK_MS,
   collaborationCloseDisposition,
@@ -28,6 +31,27 @@ export interface CursorPosition {
   position: { x: number; y: number };
 }
 
+/** A committed item event as the server sends it. */
+type CommittedCanvasItemEvent = CanvasItemEvent & {
+  /** The event's contiguous per-canvas number, when the server sent one. */
+  canvasCursor?: string;
+};
+
+/**
+ * Whether item events of this canvas were missed between the last one applied
+ * and `event`. Per-canvas numbers are contiguous, so the next one is exactly
+ * `lastCanvasCursor + 1`; the global `cursor` cannot tell, because other
+ * canvases and rolled-back transactions leave holes in it. Without a number
+ * on either side nothing can be concluded and the event is accepted.
+ */
+export function isCommittedEventGap(
+  lastCanvasCursor: bigint | null,
+  event: { canvasCursor?: string | null },
+): boolean {
+  if (lastCanvasCursor === null || event.canvasCursor == null) return false;
+  return BigInt(event.canvasCursor) > lastCanvasCursor + 1n;
+}
+
 export interface UseCollaborationOptions {
   canvasId: string;
   userId: string;
@@ -39,6 +63,12 @@ export interface UseCollaborationOptions {
     events: CommittedCanvasItemEvent[],
   ) => void | Promise<void>;
   onSnapshotRequired?: () => void;
+  /**
+   * The event revision read before the item load the board renders from,
+   * asked for once when a canvas session starts. Its first replay then starts
+   * after that revision instead of from the beginning.
+   */
+  getInitialEventSeed?: () => CanvasEventSeed | null;
 }
 
 export type CollaborationOutgoingMessage =
@@ -84,6 +114,7 @@ export function useCollaboration(
     onMessage,
     onCommittedEvents,
     onSnapshotRequired,
+    getInitialEventSeed,
   } = options;
 
   const [users, setUsers] = useState<CollaborationUser[]>([]);
@@ -117,6 +148,8 @@ export function useCollaboration(
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
   const cursorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCursorRef = useRef<bigint>(0n);
+  /** Per-canvas number of the last item event applied; null until known. */
+  const lastCanvasCursorRef = useRef<bigint | null>(null);
   const replayInFlightRef = useRef(false);
   // Bumped whenever replay state is reset (canvas change, socket close,
   // unmount): a replay that started under an older value is discarded.
@@ -144,6 +177,7 @@ export function useCollaboration(
   >(null);
   const onCommittedEventsRef = useRef(onCommittedEvents);
   const onSnapshotRequiredRef = useRef(onSnapshotRequired);
+  const getInitialEventSeedRef = useRef(getInitialEventSeed);
 
   const MAX_RECONNECT_ATTEMPTS = 8;
   // A failing replay is retried after 1 s, 2 s and 4 s, then given up.
@@ -157,7 +191,8 @@ export function useCollaboration(
     onMessageRef.current = onMessage;
     onCommittedEventsRef.current = onCommittedEvents;
     onSnapshotRequiredRef.current = onSnapshotRequired;
-  }, [onCommittedEvents, onMessage, onSnapshotRequired]);
+    getInitialEventSeedRef.current = getInitialEventSeed;
+  }, [getInitialEventSeed, onCommittedEvents, onMessage, onSnapshotRequired]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -270,12 +305,19 @@ export function useCollaboration(
         deferredCommittedEventsRef.current.set(event.cursor, event);
         return;
       }
-      if (detectGap && lastCursor > 0n && cursor > lastCursor + 1n) {
+      if (
+        detectGap &&
+        isCommittedEventGap(lastCanvasCursorRef.current, event)
+      ) {
         deferredCommittedEventsRef.current.set(event.cursor, event);
         void replayCommittedEventsRef.current?.(lastCursor);
         return;
       }
       lastCursorRef.current = cursor;
+      // Events arrive in commit order per canvas, so this only moves forward.
+      // An event without a number leaves the position unknown.
+      lastCanvasCursorRef.current =
+        event.canvasCursor == null ? null : BigInt(event.canvasCursor);
       queueCommittedEvent(event);
     },
     [queueCommittedEvent],
@@ -342,6 +384,8 @@ export function useCollaboration(
             // events no longer kept): adopt it, so deferred events at or below
             // it are dropped and the same gap is not replayed again.
             advanceCursor(payload.nextCursor);
+            // Which per-canvas number the snapshot reaches is not known.
+            lastCanvasCursorRef.current = null;
             onSnapshotRequiredRef.current?.();
             return;
           }
@@ -410,7 +454,12 @@ export function useCollaboration(
 
   useEffect(() => {
     committedBatchGenerationRef.current += 1;
-    lastCursorRef.current = 0n;
+    // A canvas session starts after the revision its item load read, so the
+    // first replay does not resend history the items already reflect. Later
+    // reconnects continue from the last applied cursor.
+    const seed = getInitialEventSeedRef.current?.() ?? null;
+    lastCursorRef.current = seed ? BigInt(seed.cursor) : 0n;
+    lastCanvasCursorRef.current = seed ? BigInt(seed.canvasSequence) : null;
     resetReplay();
     pendingCommittedEventsRef.current = [];
     committedFlushInFlightRef.current = false;
@@ -690,6 +739,9 @@ function isCommittedCanvasItemEvent(
     event.schemaVersion === 1 &&
     typeof event.cursor === "string" &&
     /^\d+$/.test(event.cursor) &&
+    (event.canvasCursor === undefined ||
+      (typeof event.canvasCursor === "string" &&
+        /^\d+$/.test(event.canvasCursor))) &&
     ["created", "updated", "deleted"].includes(String(event.operation)) &&
     entityRecord.type === "canvas-item" &&
     typeof entityRecord.id === "string" &&

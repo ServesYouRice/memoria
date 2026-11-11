@@ -153,6 +153,8 @@ model Canvas {
   thumbnailKey String?
   thumbnailRevision BigInt @default(0)
   restoreRevision Int @default(0)
+  /// Last per-canvas item event number handed out (`CanvasEvent.canvasSequence`).
+  eventSequence   BigInt @default(0)
   thumbnailCandidates CanvasThumbnailCandidate[]
   /// Agent checkpoints of this canvas; they are deleted with it.
   workspaceCheckpoints WorkspaceCheckpoint[]
@@ -1130,6 +1132,9 @@ model CanvasDocumentUpdate {
 model CanvasEvent {
   id              String   @id @default(cuid())
   sequence        BigInt   @default(autoincrement()) @unique
+  /// Contiguous per-canvas number of an item event, allocated from
+  /// `Canvas.eventSequence`. Null for 'restored' events.
+  canvasSequence  BigInt?
   canvasId        String
   actorId         String
   entityId        String
@@ -1140,6 +1145,7 @@ model CanvasEvent {
   createdAt       DateTime @default(now())
 
   @@index([canvasId, sequence])
+  @@unique([canvasId, canvasSequence])
   @@index([createdAt])
 }
 

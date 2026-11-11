@@ -122,10 +122,10 @@ describe("batch layout PATCH on PostgreSQL", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ updated: 500 });
-    // Canvas lock, one UPDATE, one event INSERT, one outbox INSERT, COMMIT:
-    // the same five for 5 and for 500 items.
+    // Canvas lock, one UPDATE, one event counter UPDATE, one event INSERT,
+    // one outbox INSERT, COMMIT: the same six for 5 and for 500 items.
     expect(statements.length).toBe(smallRun.statements.length);
-    expect(statements).toHaveLength(5);
+    expect(statements).toHaveLength(6);
     expect(
       statements.filter((s) => s.includes('UPDATE "CanvasItem"')),
     ).toHaveLength(1);

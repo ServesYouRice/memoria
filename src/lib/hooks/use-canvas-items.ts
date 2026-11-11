@@ -75,12 +75,71 @@ export interface ViewportParams {
 /**
  * API client functions
  */
+/**
+ * The canvas's committed-event revision, read before an item load. Read
+ * before the items, it is never later than the data that load returned, so
+ * replaying the events after it skips nothing.
+ */
+export interface CanvasEventSeed {
+  /** Global `CanvasEvent.sequence` cursor for the events route. */
+  cursor: string;
+  /** Per-canvas item event number at the same moment. */
+  canvasSequence: string;
+}
+
+async function readCanvasEventSeed(
+  canvasId: string,
+): Promise<CanvasEventSeed | null> {
+  try {
+    const response = await apiFetch(
+      `/api/v1/canvas-items/summary?${new URLSearchParams({
+        canvasId,
+        revisionOnly: "1",
+      })}`,
+    );
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      revision?: unknown;
+      canvasRevision?: unknown;
+    };
+    const isCursor = (value: unknown): value is string =>
+      typeof value === "string" && /^\d+$/.test(value);
+    if (!isCursor(body.revision) || !isCursor(body.canvasRevision)) return null;
+    return { cursor: body.revision, canvasSequence: body.canvasRevision };
+  } catch {
+    // Without a seed the first replay starts from the beginning.
+    return null;
+  }
+}
+
+/**
+ * Where a new collaboration session of `canvasId` starts replaying: the
+ * earliest seed among the canvas's cached item lists, so no list on screen is
+ * older than it. Null when no cached list carries one.
+ */
+export function getCanvasEventSeed(
+  queryClient: QueryClient,
+  canvasId: string,
+): CanvasEventSeed | null {
+  let earliest: CanvasEventSeed | null = null;
+  for (const [, data] of queryClient.getQueriesData<{
+    eventSeed?: CanvasEventSeed | null;
+  }>({ queryKey: canvasItemKeys.list(canvasId) })) {
+    const seed = data?.eventSeed;
+    if (seed && (!earliest || BigInt(seed.cursor) < BigInt(earliest.cursor)))
+      earliest = seed;
+  }
+  return earliest;
+}
+
 const api = {
   async listItems(
     canvasId: string,
     type?: ItemType,
     viewport?: ViewportParams,
   ) {
+    // Read before the items, never after: see `CanvasEventSeed`.
+    const eventSeed = await readCanvasEventSeed(canvasId);
     const buildParams = (
       offset?: number,
       limit?: number,
@@ -171,6 +230,7 @@ const api = {
       nextCursor: hasMore ? nextCursor : null,
       hasMore,
       truncatedByBytes: firstPage.truncatedByBytes,
+      eventSeed,
     };
   },
 

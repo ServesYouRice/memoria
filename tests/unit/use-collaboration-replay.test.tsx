@@ -71,6 +71,9 @@ function committed(cursor: number, id = `item-${cursor}`) {
     event: {
       schemaVersion: 1,
       cursor: String(cursor),
+      // These canvases are the only writers, so the per-canvas number that
+      // gap detection reads equals the global cursor.
+      canvasCursor: String(cursor),
       operation: "updated",
       entity: { type: "canvas-item", id, version: 2 },
     },

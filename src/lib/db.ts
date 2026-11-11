@@ -111,6 +111,9 @@ export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     adapter,
+    // An internal counter (see allocateCanvasEventSequences): read and
+    // written with raw SQL only, and a BigInt no canvas response serializes.
+    omit: { canvas: { eventSequence: true } },
     log:
       process.env.NODE_ENV === "development"
         ? [

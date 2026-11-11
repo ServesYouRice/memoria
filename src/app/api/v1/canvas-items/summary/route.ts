@@ -5,14 +5,37 @@ import { requireAuth, requireCanvasAccess } from "@/lib/api/auth";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { prisma } from "@/lib/db";
 
-const querySchema = z.object({ canvasId: z.string().cuid() });
+const querySchema = z.object({
+  canvasId: z.string().cuid(),
+  // Only the committed-event revision: a cheap read a client takes before
+  // loading items, to seed its event replay.
+  revisionOnly: z.enum(["1", "true"]).optional(),
+});
 
 export const GET = withApiHandler(async (request: Request) => {
   const { userId, email } = await requireAuth();
-  const { canvasId } = querySchema.parse(
+  const { canvasId, revisionOnly } = querySchema.parse(
     Object.fromEntries(new URL(request.url).searchParams),
   );
   await requireCanvasAccess(canvasId, userId, email, "VIEW");
+  if (revisionOnly) {
+    // One statement, so both numbers come from one snapshot. Event inserts
+    // for a canvas are serialized by its counter row, so no event at or
+    // below these values can commit after this read.
+    const rows = await prisma.$queryRaw<
+      Array<{ revision: bigint; canvasRevision: bigint }>
+    >`
+      SELECT
+        COALESCE((SELECT MAX("sequence") FROM "CanvasEvent"
+          WHERE "canvasId" = ${canvasId}), 0) AS revision,
+        "eventSequence" AS "canvasRevision"
+      FROM "Canvas" WHERE "id" = ${canvasId}
+    `;
+    return NextResponse.json({
+      revision: (rows[0]?.revision ?? 0n).toString(),
+      canvasRevision: (rows[0]?.canvasRevision ?? 0n).toString(),
+    });
+  }
   const [summary, types, tags, revisionRows] = await Promise.all([
     prisma.$queryRaw<
       Array<{
