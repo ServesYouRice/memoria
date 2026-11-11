@@ -37,6 +37,9 @@ async function insertCheckpoints(input: {
   count: number;
   ageDays: (index: number) => number;
 }) {
+  // One clock reading for the whole batch: a millisecond tick between rows
+  // would otherwise reorder them.
+  const now = Date.now();
   await prisma.workspaceCheckpoint.createMany({
     data: Array.from({ length: input.count }, (_, index) => ({
       userId: input.userId,
@@ -46,7 +49,7 @@ async function insertCheckpoints(input: {
       reason: `checkpoint ${index}`,
       createdByActorType: "AGENT" as const,
       createdByActorId: input.agentProfileId,
-      createdAt: new Date(Date.now() - input.ageDays(index) * DAY - index),
+      createdAt: new Date(now - input.ageDays(index) * DAY - index),
     })),
   });
 }
