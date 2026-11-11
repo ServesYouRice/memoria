@@ -593,6 +593,31 @@ async function assistantActor(userId: string, agentProfileId: string | null) {
   return { profile: resolved, actor };
 }
 
+/** The row left OPEN (dismissed, or taken by another accept) mid-accept. */
+class SuggestionNoLongerOpenError extends BadRequestError {
+  constructor() {
+    super("This suggestion is no longer open.");
+  }
+}
+
+/** True when the suggested move can never run: item or board gone or moved. */
+async function isStale(
+  userId: string,
+  row: { itemId: string; sourceCanvasId: string; targetCanvasId: string },
+) {
+  const [item, target] = await Promise.all([
+    defaultPrisma.canvasItem.findFirst({
+      where: { id: row.itemId, deletedAt: null },
+      select: { canvasId: true },
+    }),
+    defaultPrisma.canvas.findFirst({
+      where: { id: row.targetCanvasId, userId, isTemplate: false },
+      select: { id: true },
+    }),
+  ]);
+  return !item || item.canvasId !== row.sourceCanvasId || !target;
+}
+
 /** Closes a suggestion that can no longer run (item moved, board gone). */
 async function closeStale(itemId: string, suggestionId: string | null) {
   await defaultPrisma.homeBoardSuggestion.updateMany({
@@ -743,6 +768,13 @@ export async function acceptHomeBoardSuggestion(input: {
     suggestion.agentProfileId,
   );
 
+  // Checked before running: an archive command would not be a board move.
+  const payload = suggestion.payload as { command?: { type?: unknown } } | null;
+  if (payload?.command?.type !== "move_items") {
+    await closeStale(row.itemId, suggestion.id);
+    throw new BadRequestError("This suggestion is not a board move.");
+  }
+
   let result: Awaited<ReturnType<typeof executeAskCommandSuggestion>>;
   try {
     result = await executeAskCommandSuggestion({
@@ -753,29 +785,52 @@ export async function acceptHomeBoardSuggestion(input: {
       // The check above ran before any lock; the executor repeats it under
       // the board locks so a manual move in between is never overwritten.
       expectedSourceCanvasId: row.sourceCanvasId,
+      // The row and the suggestion change in the move's own transaction: a
+      // crash cannot leave a move without its change set on the row, and a
+      // dismiss that got there first rolls the move back.
+      onCommit: async (tx, { changeSetId }) => {
+        const taken = await tx.homeBoardSuggestion.updateMany({
+          where: { itemId: row.itemId, status: HomeBoardSuggestionStatus.OPEN },
+          data: {
+            status: input.automatic
+              ? HomeBoardSuggestionStatus.AUTO_FILED
+              : HomeBoardSuggestionStatus.ACCEPTED,
+            changeSetId,
+            actedAt: new Date(),
+          },
+        });
+        if (taken.count !== 1) throw new SuggestionNoLongerOpenError();
+        await tx.suggestion.updateMany({
+          where: {
+            id: suggestion.id,
+            userId: input.userId,
+            status: SuggestionStatus.EXECUTING,
+          },
+          data: { status: SuggestionStatus.EXECUTED, actedAt: new Date() },
+        });
+      },
     });
   } catch (error) {
-    await closeStale(row.itemId, suggestion.id);
+    // The move rolled back. Close the suggestion only when it can never run:
+    // the row was dismissed meanwhile, the item is gone or was moved by the
+    // user, or the board is gone. Anything else leaves the row OPEN and the
+    // suggestion approved, so a later attempt can run it.
+    if (
+      error instanceof SuggestionNoLongerOpenError ||
+      (await isStale(input.userId, row))
+    ) {
+      await closeStale(row.itemId, suggestion.id);
+    } else {
+      await releaseSuggestionClaim({
+        userId: input.userId,
+        suggestionId: suggestion.id,
+      });
+    }
     throw error;
   }
   if (!("boardId" in result)) {
-    await closeStale(row.itemId, suggestion.id);
     throw new BadRequestError("This suggestion is not a board move.");
   }
-  await markSuggestionExecuted({
-    userId: input.userId,
-    suggestionId: suggestion.id,
-  });
-  await defaultPrisma.homeBoardSuggestion.updateMany({
-    where: { itemId: row.itemId, status: HomeBoardSuggestionStatus.OPEN },
-    data: {
-      status: input.automatic
-        ? HomeBoardSuggestionStatus.AUTO_FILED
-        : HomeBoardSuggestionStatus.ACCEPTED,
-      changeSetId: result.changeSetId,
-      actedAt: new Date(),
-    },
-  });
   return {
     itemId: row.itemId,
     boardId: result.boardId,
@@ -817,10 +872,14 @@ export async function dismissHomeBoardSuggestion(input: {
   if (row.status !== HomeBoardSuggestionStatus.OPEN) {
     throw new BadRequestError("This suggestion is no longer open.");
   }
-  await defaultPrisma.homeBoardSuggestion.updateMany({
+  // Conditional on OPEN: an accept that committed first wins the row.
+  const dismissed = await defaultPrisma.homeBoardSuggestion.updateMany({
     where: { itemId: row.itemId, status: HomeBoardSuggestionStatus.OPEN },
     data: { status: HomeBoardSuggestionStatus.DISMISSED, actedAt: new Date() },
   });
+  if (dismissed.count !== 1) {
+    throw new BadRequestError("This suggestion is no longer open.");
+  }
   if (row.suggestionId) {
     const suggestion = await defaultPrisma.suggestion.findFirst({
       where: { id: row.suggestionId, userId: input.userId },

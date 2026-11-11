@@ -221,11 +221,20 @@ beforeEach(() => {
   });
   mocks.db.canvasItem.findFirst.mockResolvedValue({ canvasId: "c-inbox" });
   mocks.db.agentProfile.findFirst.mockResolvedValue(profile);
-  mocks.executeAskCommandSuggestion.mockResolvedValue({
-    changeSetId: "cs-move",
-    boardId: "c-rome",
-    boardName: "Rome trip",
-  });
+  // Like the real executor, the mock runs the caller's bookkeeping in "its
+  // transaction" (the mocked client) before it returns.
+  mocks.executeAskCommandSuggestion.mockImplementation(
+    async (input: {
+      onCommit?: (tx: unknown, result: { changeSetId: string }) => unknown;
+    }) => {
+      await input.onCommit?.(mocks.db, { changeSetId: "cs-move" });
+      return {
+        changeSetId: "cs-move",
+        boardId: "c-rome",
+        boardName: "Rome trip",
+      };
+    },
+  );
 });
 
 describe("board.propose job", () => {
@@ -392,7 +401,11 @@ describe("accept, dismiss, undo", () => {
       suggestionId: "sug-1",
     });
     expect(mocks.claimSuggestionForExecution).toHaveBeenCalled();
-    expect(mocks.markSuggestionExecuted).toHaveBeenCalled();
+    // TASK-010: the suggestion is marked executed in the move's transaction.
+    expect(mocks.db.suggestion.updateMany).toHaveBeenCalledWith({
+      where: { id: "sug-1", userId: "user-1", status: "EXECUTING" },
+      data: expect.objectContaining({ status: "EXECUTED" }),
+    });
     expect(result).toMatchObject({
       changeSetId: "cs-move",
       boardName: "Rome trip",

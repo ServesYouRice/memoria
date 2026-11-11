@@ -272,6 +272,15 @@ export async function executeAskCommandSuggestion(input: {
    * locked; a home-board filing never moves an item the user moved since.
    */
   expectedSourceCanvasId?: string;
+  /**
+   * Runs inside the move transaction once its change set is complete, so the
+   * caller's bookkeeping commits with the move; a throw rolls the move back.
+   * Archive commands run elsewhere and never call it.
+   */
+  onCommit?: (
+    tx: Prisma.TransactionClient,
+    result: { changeSetId: string },
+  ) => Promise<void>;
 }) {
   const { command } = askCommandSuggestionPayloadSchema.parse(input.payload);
   assertAgentCapability(input.agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
@@ -478,6 +487,7 @@ export async function executeAskCommandSuggestion(input: {
       where: { id: agentAction.id },
       data: { status: AgentActionStatus.COMPLETED },
     });
+    await input.onCommit?.(tx, { changeSetId: changeSet.id });
 
     return {
       agentActionId: agentAction.id,
