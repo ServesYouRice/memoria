@@ -51,6 +51,7 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-107](tasks/IMP-107.md) | Standing notes for AI agents, per workspace | |
 | [IMP-108](tasks/IMP-108.md) | Tables on the canvas | |
 | [IMP-109](tasks/IMP-109.md) | One item on several canvases | |
+| [IMP-112](tasks/IMP-112.md) | Publish the AGPL-3.0 licence and a "never paywalled" promise | |
 
 ## WAITING
 
@@ -68,9 +69,9 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-090](tasks/IMP-090.md) | Canvas cards are real links; buttons are finger-sized | IMP-083 |
 | [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | IMP-094 |
 | [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | IMP-081 |
-| [IMP-112](tasks/IMP-112.md) | Publish a licence and a "never paywalled" promise | DEC-017 |
 | [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | IMP-094 |
-| [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | IMP-094, DEC-018 |
+| [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | IMP-094 |
+| [IMP-115](tasks/IMP-115.md) | A hosted paid plan people can sign up and pay for | DEC-019 |
 
 ## USER DECISIONS
 
@@ -84,5 +85,6 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | DEC-004 | Fill the infra PR's secrets and `CHANGE_ME` values (hosts, R2, SMTP, SOPS), confirm registration modes, then release a staging image | Staging first; registration `closed` on staging, `invite` on production | | IMP-056 |
 | DEC-005 | Run `pnpm gate integration`, `pnpm gate e2e`, `pnpm gate container` and `pnpm smoke` on Node 26 on the dev machine (agent sessions are blocked by Prisma's AI guard on `migrate reset` and by the sandbox proxy's TLS in the image build) | Run on the dev machine | Done, no errors reported (owner, 2026-11-07) | IMP-058, IMP-056 |
 | DEC-016 | Which single word does the app use for a user's space: "canvas" or "board"? | "canvas" (already used on the dashboard and in most screens) | "canvas" (owner, 2026-11-11) | IMP-088 |
-| DEC-017 | Which licence does Memoria publish under, and which features are promised to stay free? | AGPL-3.0 (used by comparable self-hosted tools); always free: self-hosting, passkeys and two-step codes, export, AI on your own key | | IMP-112 |
-| DEC-018 | May Memoria fetch video transcripts automatically? YouTube has no open official way to read captions of other people's videos; unofficial tools work but can break and sit in a grey area of its terms | No automatic fetching: ship time-stamped notes and pasted transcripts only | | IMP-114 |
+| DEC-017 | Which licence does Memoria publish under, and which features are promised to stay free? | AGPL-3.0 (used by comparable self-hosted tools); always free: self-hosting, passkeys and two-step codes, export, AI on your own key | AGPL-3.0; always free: self-hosting, passkeys and two-step codes, export, AI on your own key (owner, 2026-11-11) | IMP-112 |
+| DEC-018 | May Memoria fetch video transcripts automatically? YouTube has no open official way to read captions of other people's videos; unofficial tools work but can break and sit in a grey area of its terms | No automatic fetching: ship time-stamped notes and pasted transcripts only | Yes, as an opt-in switch: off by default, switched on per deployment (owner, 2026-11-11) | IMP-114 |
+| DEC-019 | Hosted paid plan: what does the paid plan add, what does it cost, and who takes the payments? | One paid plan next to a free one; it sells hosting, more storage and included AI, never the features promised free in DEC-017; a payment company that also handles sales tax | | IMP-115 |
