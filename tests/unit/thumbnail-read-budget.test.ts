@@ -74,8 +74,8 @@ describe("thumbnail read budget", () => {
     ["/api/v1/canvases", "GET"],
   ])("keeps %s %s on the canvases limiters", async (path, method) => {
     await call(path, method);
+    // Anonymous callers go through the canvases per-IP limiter (TASK-242).
     expect(spies.canvasesIp).toHaveBeenCalledTimes(1);
-    expect(spies.canvasesUser).toHaveBeenCalledTimes(1);
     expect(spies.assetIp).not.toHaveBeenCalled();
   });
 });

@@ -146,4 +146,32 @@ describe("rate limit environment overrides", () => {
     expect(ceilings.get("auth-registration")?.maxRequests).toBe(9);
     expect(ceilings.get("auth-two-factor")?.maxRequests).toBe(9);
   });
+
+  it("defaults the session per-IP canvas and item ceilings to 2x the per-user budget", async () => {
+    delete process.env.CANVASES_SESSION_IP_RATE_LIMIT_MAX_REQUESTS;
+    delete process.env.ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS;
+
+    const ceilings = await loadCeilings();
+
+    expect(ceilings.get("canvases-session-ip")).toMatchObject({
+      maxRequests: 200,
+      windowSeconds: 60,
+    });
+    expect(ceilings.get("items-session-ip")).toMatchObject({
+      maxRequests: 800,
+      windowSeconds: 60,
+    });
+    expect(ceilings.get("canvases")?.maxRequests).toBe(50);
+    expect(ceilings.get("items")?.maxRequests).toBe(200);
+  });
+
+  it("lets the session per-IP ceilings be overridden", async () => {
+    process.env.CANVASES_SESSION_IP_RATE_LIMIT_MAX_REQUESTS = "300";
+    process.env.ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS = "1200";
+
+    const ceilings = await loadCeilings();
+
+    expect(ceilings.get("canvases-session-ip")?.maxRequests).toBe(300);
+    expect(ceilings.get("items-session-ip")?.maxRequests).toBe(1200);
+  });
 });

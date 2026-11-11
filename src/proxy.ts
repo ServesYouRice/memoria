@@ -8,7 +8,9 @@ import {
   authGroupRateLimits,
   uploadRateLimit,
   canvasesRateLimit,
+  canvasesSessionIpRateLimit,
   itemsRateLimit,
+  itemsSessionIpRateLimit,
   agentRateLimit,
   sensitiveEndpointRateLimit,
   cspReportRateLimit,
@@ -162,9 +164,10 @@ export async function proxy(request: NextRequest) {
     readBudget !== "assets"
   ) {
     specificRateLimitApplied = true;
-    const rateLimitResponse =
-      (await canvasesRateLimit(request)) ??
-      (await canvasesUserRateLimit(request));
+    const rateLimitResponse = hasSessionCookie(request)
+      ? ((await canvasesSessionIpRateLimit(request)) ??
+        (await canvasesUserRateLimit(request)))
+      : await canvasesRateLimit(request);
     if (rateLimitResponse)
       return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }
@@ -177,8 +180,10 @@ export async function proxy(request: NextRequest) {
     isShareTargetSaveRequest(pathname, request.method)
   ) {
     specificRateLimitApplied = true;
-    const rateLimitResponse =
-      (await itemsRateLimit(request)) ?? (await itemsUserRateLimit(request));
+    const rateLimitResponse = hasSessionCookie(request)
+      ? ((await itemsSessionIpRateLimit(request)) ??
+        (await itemsUserRateLimit(request)))
+      : await itemsRateLimit(request);
     if (rateLimitResponse)
       return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }

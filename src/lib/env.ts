@@ -79,6 +79,8 @@ const envSchema = z
     API_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     UPLOAD_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     CANVASES_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    CANVASES_SESSION_IP_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     CSP_REPORT_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),

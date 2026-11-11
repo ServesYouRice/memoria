@@ -307,6 +307,30 @@ export const itemsUserRateLimit = userRateLimit({
   keyPrefix: "items-user",
 });
 
+/**
+ * Per-IP ceilings for session-bearing canvas and item requests. They default
+ * to twice the per-user budgets so one user can spend their whole budget and
+ * a shared NAT has room for more; anonymous callers keep the smaller
+ * `canvasesRateLimit` / `itemsRateLimit`. A forged or rotated cookie is still
+ * bounded here.
+ */
+export const canvasesSessionIpRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests(
+    "CANVASES_SESSION_IP_RATE_LIMIT_MAX_REQUESTS",
+    2 * CANVASES_USER_RATE_LIMIT_MAX_REQUESTS,
+  ),
+  windowMs: MINUTE_MS,
+  keyPrefix: "canvases-session-ip",
+});
+export const itemsSessionIpRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests(
+    "ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS",
+    2 * ITEMS_USER_RATE_LIMIT_MAX_REQUESTS,
+  ),
+  windowMs: MINUTE_MS,
+  keyPrefix: "items-session-ip",
+});
+
 export type ReadBudget = "assets" | "notifications" | "search";
 
 /**
