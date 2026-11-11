@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { nanoid } from "nanoid";
-import { applyCSP, generateNonce } from "./middleware/csp";
+import { applyCSP, buildCSP, generateNonce } from "./middleware/csp";
 import { applySecurityHeaders } from "./middleware/security-headers";
 import {
   apiRateLimit,
@@ -195,10 +195,16 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Only a live, verified embed page may be framed, and only by its origins.
+  const embedOrigins = await resolveEmbedFramingOrigins(pathname);
+
   const nonce = generateNonce();
+  const csp = buildCSP(nonce, embedOrigins ?? undefined);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("x-request-id", requestId);
+  // Next.js reads the nonce for its framework scripts from the request CSP.
+  requestHeaders.set("Content-Security-Policy", csp);
 
   // Continue with request
   const response = NextResponse.next({
@@ -213,14 +219,11 @@ export async function proxy(request: NextRequest) {
   // Apply CORS headers (Issue #15)
   applyCors(request, response);
 
-  // Only a live, verified embed page may be framed, and only by its origins.
-  const embedOrigins = await resolveEmbedFramingOrigins(pathname);
-
   // Apply security headers
   applySecurityHeaders(response, { allowFraming: embedOrigins !== null });
 
   // Apply CSP
-  applyCSP(response, nonce, embedOrigins ?? undefined);
+  applyCSP(response, nonce, embedOrigins ?? undefined, csp);
   if (embedOrigins) {
     // Revocation and expiry must take effect on the next request.
     response.headers.set("Cache-Control", "no-store, max-age=0");
