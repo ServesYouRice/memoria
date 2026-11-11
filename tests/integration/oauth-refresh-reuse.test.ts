@@ -53,9 +53,9 @@ async function oauthGrant(userId?: string) {
       allowDirectWrites: false,
     }),
   ).searchParams.get("code")!;
-  const exchange = () =>
+  const exchange = (clientId = registration.client_id) =>
     exchangeAuthorizationCode({
-      clientId: registration.client_id,
+      clientId,
       code,
       redirectUri: REDIRECT,
       codeVerifier: verifier,
@@ -113,5 +113,37 @@ describe("refresh-token reuse (RFC 9700 4.14.2)", () => {
       }
     }
     expect(live.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("authorization-code reuse (RFC 6749 4.1.2)", () => {
+  it("revokes the tokens issued from the code, refreshed ones included", async () => {
+    const { clientId, tokens, exchange } = await oauthGrant();
+    const rotated = await refreshAccessToken({
+      clientId,
+      refreshToken: tokens.refresh_token,
+    });
+
+    await expect(exchange()).rejects.toMatchObject({ error: "invalid_grant" });
+
+    expect(await resolveAccessToken(tokens.access_token)).toBeNull();
+    expect(await resolveAccessToken(rotated.access_token)).toBeNull();
+    await expect(
+      refreshAccessToken({ clientId, refreshToken: rotated.refresh_token }),
+    ).rejects.toMatchObject({ error: "invalid_grant" });
+  });
+
+  it("does not revoke when another client presents the used code", async () => {
+    const { tokens, exchange } = await oauthGrant();
+    const other = await registerClient({
+      client_name: "Other",
+      redirect_uris: [REDIRECT],
+    });
+
+    await expect(exchange(other.client_id)).rejects.toMatchObject({
+      error: "invalid_grant",
+    });
+
+    expect(await resolveAccessToken(tokens.access_token)).not.toBeNull();
   });
 });

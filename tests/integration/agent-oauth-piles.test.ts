@@ -134,10 +134,13 @@ describe("connected app: sign in, save, sort into piles, approve, undo", () => {
       redirectUri: "https://claude.ai/api/mcp/auth_callback",
       codeVerifier: verifier,
     });
+    // The burned first code stays dead even with the right verifier.
+    // (Replaying secondCode would revoke `tokens`; see
+    // oauth-refresh-reuse.test.ts.)
     await expect(
       exchangeAuthorizationCode({
         clientId: registration.client_id,
-        code: secondCode,
+        code,
         redirectUri: "https://claude.ai/api/mcp/auth_callback",
         codeVerifier: verifier,
       }),

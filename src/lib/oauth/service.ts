@@ -447,7 +447,20 @@ export async function exchangeAuthorizationCode(input: {
     include: { agentProfile: { select: { status: true } } },
   });
 
-  if (!record || record.consumedAt || record.expiresAt <= now) {
+  if (!record) {
+    throw new OAuthError("invalid_grant", "The code is invalid or used.");
+  }
+
+  // A used code presented again by its own client means the code leaked:
+  // revoke everything issued from it (RFC 6749 4.1.2). The revocation runs
+  // outside any transaction, so it commits although the request fails.
+  if (record.consumedAt) {
+    if (record.clientId === input.clientId) {
+      await revokeTokenFamily(record, "oauth.authorization_code_reuse");
+    }
+    throw new OAuthError("invalid_grant", "The code is invalid or used.");
+  }
+  if (record.expiresAt <= now) {
     throw new OAuthError("invalid_grant", "The code is invalid or used.");
   }
 
@@ -458,6 +471,9 @@ export async function exchangeAuthorizationCode(input: {
     data: { consumedAt: now },
   });
   if (claimed.count !== 1) {
+    if (record.clientId === input.clientId) {
+      await revokeTokenFamily(record, "oauth.authorization_code_reuse");
+    }
     throw new OAuthError("invalid_grant", "The code is invalid or used.");
   }
 
@@ -481,11 +497,16 @@ export async function exchangeAuthorizationCode(input: {
  * creates a fresh profile with a single authorization code, and refreshes
  * carry it forward. That profile is the grant's token family.
  */
-async function revokeTokenFamily(record: {
-  agentProfileId: string;
-  clientId: string;
-  userId: string;
-}) {
+async function revokeTokenFamily(
+  record: {
+    agentProfileId: string;
+    clientId: string;
+    userId: string;
+  },
+  event:
+    | "oauth.refresh_token_reuse"
+    | "oauth.authorization_code_reuse" = "oauth.refresh_token_reuse",
+) {
   const result = await prisma.oAuthToken.updateMany({
     where: {
       agentProfileId: record.agentProfileId,
@@ -497,13 +518,13 @@ async function revokeTokenFamily(record: {
   });
   logger.warn(
     {
-      event: "oauth.refresh_token_reuse",
+      event,
       clientId: record.clientId,
       userId: record.userId,
       agentProfileId: record.agentProfileId,
       revokedTokens: result.count,
     },
-    "Refresh token reuse detected; revoked the token family",
+    "OAuth grant reuse detected; revoked the token family",
   );
 }
 
