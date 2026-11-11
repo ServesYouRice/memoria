@@ -640,4 +640,38 @@ describe("link enrichment outbox job", () => {
       }),
     );
   });
+
+  it("does not apply the old page's results after the URL changed, and re-enqueues", async () => {
+    const db = fakeDb();
+    const NEW_URL = "https://example.org/other";
+    const suggest = vi.fn().mockImplementation(async () => {
+      db.state.item.content = { url: NEW_URL, title: "Tab title" };
+      db.state.item.version = 2;
+      return ai;
+    });
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage: vi.fn().mockResolvedValue(page),
+      suggest,
+      embed: vi.fn(async () => ({
+        ok: true as const,
+        provider: "OPENAI",
+        model: "text-embedding-3-small",
+        vector: [1, 0],
+      })),
+    })(job());
+
+    expect(db.state.item.content).toEqual({ url: NEW_URL, title: "Tab title" });
+    expect(db.state.item.tags).toEqual([]);
+    expect(db.state.item.version).toBe(2);
+    expect(db.raw.itemEmbedding.upsert).not.toHaveBeenCalled();
+    expect(mocks.recordEvent).not.toHaveBeenCalled();
+    expect(db.state.row.status).toBe("PENDING");
+    expect(db.state.outbox).toEqual([
+      expect.objectContaining({
+        type: "link.enrich",
+        payload: { itemId: "item-1" },
+        dedupeKey: "link.enrich:item-1:v2",
+      }),
+    ]);
+  });
 });

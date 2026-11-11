@@ -440,6 +440,25 @@ export function createLinkEnrichmentHandler(
       if (!fresh || fresh.status !== ItemEnrichmentStatus.PENDING || !current) {
         return null;
       }
+      // The page, AI suggestion and embedding describe the URL this job read.
+      // If the user replaced the link meanwhile, write none of it; leave the
+      // row PENDING and enqueue a fresh job keyed to this version so the new
+      // URL is enriched.
+      if ((current.content as BookmarkContentLike | null)?.url !== url) {
+        await enqueueOutboxJobs(tx, [
+          {
+            type: LINK_ENRICH_JOB,
+            payload: { itemId },
+            dedupeKey: `${linkEnrichmentDedupeKey(itemId)}:v${current.version}`,
+            maxAttempts: LINK_ENRICH_MAX_ATTEMPTS,
+          },
+        ]);
+        logger.info(
+          { itemId },
+          "Bookmark URL changed during enrichment; re-enqueued for the new URL",
+        );
+        return null;
+      }
 
       const plan = planLinkEnrichment({
         content: current.content as BookmarkContentLike,
