@@ -401,6 +401,9 @@ export function CanvasOrganizerView({
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
   const [suggestionStatusFilter, setSuggestionStatusFilter] = useState("OPEN");
   const hydratedViewRef = useRef(false);
+  // State, not just the ref: the save effect must first run in the render
+  // that already holds the hydrated filters, never in the mount commit.
+  const [hydrated, setHydrated] = useState(false);
   const lastSavedFiltersRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -434,10 +437,11 @@ export function CanvasOrganizerView({
     }
 
     hydratedViewRef.current = true;
+    setHydrated(true);
   }, [viewQuery.data]);
 
   useEffect(() => {
-    if (!hydratedViewRef.current) {
+    if (!hydrated) {
       return;
     }
 
@@ -459,7 +463,7 @@ export function CanvasOrganizerView({
         mode: "read-only",
       },
     });
-  }, [entityTypeFilter, saveCanvasView, suggestionStatusFilter]);
+  }, [entityTypeFilter, hydrated, saveCanvasView, suggestionStatusFilter]);
 
   const entities = (knowledgeQuery.data?.entities || []).filter((entity) =>
     entityTypeFilter === "all" ? true : entity.entityType === entityTypeFilter,
