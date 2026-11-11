@@ -44,7 +44,12 @@ import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
-import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
+import {
+  AutopilotTooLargeError,
+  prepareAutopilot,
+  type AutopilotAction,
+  type AutopilotItem,
+} from "@/lib/ai/autopilot-service";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 import { UploadNoteOffer } from "./UploadNoteOffer";
 import { HomeBoardSuggestions, isInboxBoardName } from "./HomeBoardSuggestions";
@@ -269,7 +274,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const [fitAfterSortFrom, setFitAfterSortFrom] = useState<string | null>(null);
   const [whisperOpen, setWhisperOpen] = useState(false);
   const [pendingAutopilotActions, setPendingAutopilotActions] = useState<
-    Awaited<ReturnType<typeof calculateAutopilotLayout>>
+    AutopilotAction[]
+  >([]);
+  // The whole-canvas items the pending layout was computed over; the apply
+  // reads versions from this set, not the viewport-loaded board items.
+  const [pendingAutopilotItems, setPendingAutopilotItems] = useState<
+    AutopilotItem[]
   >([]);
   const [pendingRestoreVersionId, setPendingRestoreVersionId] = useState<
     string | null
@@ -1182,8 +1192,19 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onAutopilot={
           canEdit
             ? async () => {
-                const actions = await calculateAutopilotLayout(allItems);
-                if (actions.length > 0) setPendingAutopilotActions(actions);
+                try {
+                  const { items, actions } = await prepareAutopilot(canvasId);
+                  if (actions.length > 0) {
+                    setPendingAutopilotItems(items);
+                    setPendingAutopilotActions(actions);
+                  }
+                } catch (error) {
+                  toast.error(
+                    error instanceof AutopilotTooLargeError
+                      ? error.message
+                      : "Autopilot could not load this canvas. Try again.",
+                  );
+                }
               }
             : undefined
         }
@@ -1682,7 +1703,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             return;
           }
           const itemsToUpdate = pendingAutopilotActions.flatMap((action) => {
-            const item = allItems.find(
+            const item = pendingAutopilotItems.find(
               (candidate) => candidate.id === action.itemId,
             );
             return item
