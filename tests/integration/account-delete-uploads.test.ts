@@ -146,4 +146,54 @@ describe("account deletion and uploads on other owners' canvases", () => {
     expect(read.status).toBe(200);
     expect((await read.arrayBuffer()).byteLength).toBe(10);
   });
+
+  it("queues deletion of collaborators' uploads on the deleted user's canvases", async () => {
+    const tag = randomBytes(6).toString("hex");
+    const leaving = await prisma.user.create({
+      data: { email: `leaving-owner-${tag}@example.com` },
+    });
+    const collaborator = await prisma.user.create({
+      data: { email: `collab-${tag}@example.com` },
+    });
+    await prisma.uploadQuota.createMany({
+      data: [
+        { userId: leaving.id, assetCount: 1, totalBytes: 4n },
+        { userId: collaborator.id, assetCount: 2, totalBytes: 30n },
+      ],
+    });
+    const board = await prisma.canvas.create({
+      data: { name: "Leaving's shared board", userId: leaving.id },
+    });
+    await prisma.canvasShare.create({
+      data: {
+        canvasId: board.id,
+        email: collaborator.email,
+        recipientId: collaborator.id,
+        role: "EDIT",
+      },
+    });
+    const collabAsset = await storedAsset(collaborator.id, board.id, 10);
+    const ownAsset = await storedAsset(leaving.id, board.id, 4);
+
+    authState.userId = leaving.id;
+    authState.email = leaving.email;
+    const response = await deleteAccount(
+      new NextRequest("http://localhost/api/v1/users/account", {
+        method: "DELETE",
+        body: JSON.stringify({ password: "pw", confirmation: "DELETE" }),
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    for (const id of [collabAsset.id, ownAsset.id]) {
+      const job = await prisma.outboxJob.findUnique({
+        where: { dedupeKey: `upload.delete:${id}` },
+      });
+      expect(job?.payload).toMatchObject({ assetId: id, quotaReleased: true });
+    }
+    const quota = await prisma.uploadQuota.findUniqueOrThrow({
+      where: { userId: collaborator.id },
+    });
+    expect([quota.assetCount, quota.totalBytes]).toEqual([1, 20n]);
+  });
 });

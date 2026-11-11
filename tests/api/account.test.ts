@@ -45,9 +45,6 @@ vi.mock("@/lib/db", () => ({
     account: {
       findUnique: prismaMocks.findUnique,
     },
-    uploadAsset: {
-      findMany: prismaMocks.uploadAssetFindMany,
-    },
     accountExport: {
       findMany: prismaMocks.accountExportFindMany,
     },
@@ -99,6 +96,10 @@ describe("Account routes /api/v1/users/account (IMP-057)", () => {
     prismaMocks.accountExportFindMany.mockResolvedValue([]);
     prismaMocks.$transaction.mockImplementation(async (callback: any) => {
       const tx = {
+        // Uploads are read inside the transaction, after the user's canvases.
+        uploadAsset: {
+          findMany: prismaMocks.uploadAssetFindMany,
+        },
         canvas: {
           findMany: prismaMocks.txCanvasFindMany,
           deleteMany: prismaMocks.txCanvasDeleteMany,

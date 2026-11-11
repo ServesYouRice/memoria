@@ -78,25 +78,6 @@ export async function DELETE(request: NextRequest) {
       throw new BadRequestError("Password is incorrect");
     }
 
-    const uploadAssets = await prisma.uploadAsset.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        size: true,
-        status: true,
-        canvas: { select: { userId: true } },
-      },
-    });
-    // Uploads that back items kept on another owner's canvas move to that
-    // owner with the items (below); only the rest are deleted.
-    const isForeignActive = (asset: (typeof uploadAssets)[number]) =>
-      asset.status === UploadAssetStatus.ACTIVE &&
-      !!asset.canvas &&
-      asset.canvas.userId !== userId;
-    const transferredAssets = uploadAssets.filter(isForeignActive);
-    const deletedAssets = uploadAssets.filter(
-      (asset) => !isForeignActive(asset),
-    );
     const accountExports = await prisma.accountExport.findMany({
       where: { userId, storageKey: { not: null } },
       select: { id: true, storageMode: true, storageKey: true },
@@ -104,10 +85,55 @@ export async function DELETE(request: NextRequest) {
 
     // Use transaction for atomic deletion
     await prisma.$transaction(async (tx) => {
+      for (const accountExport of accountExports) {
+        await enqueueOutboxJob(tx, {
+          type: "account-export.delete",
+          dedupeKey: `account-export.account-delete:${accountExport.id}`,
+          payload: {
+            storageMode: accountExport.storageMode,
+            storageKey: accountExport.storageKey!,
+          },
+        });
+      }
+      // Get all user's canvases
+      const userCanvases = await tx.canvas.findMany({
+        where: { userId },
+        select: { id: true },
+      });
+      const canvasIds = userCanvases.map((c) => c.id);
+
+      // Every upload that goes with the account: the user's own, and those
+      // collaborators added to the user's canvases (the canvas delete below
+      // would cascade their rows away without a cleanup job or a quota
+      // release). Queued before any canvas is deleted.
+      const uploadAssets = await tx.uploadAsset.findMany({
+        where: {
+          status: { not: UploadAssetStatus.DELETED },
+          OR: [{ userId }, { canvasId: { in: canvasIds } }],
+        },
+        select: {
+          id: true,
+          userId: true,
+          size: true,
+          status: true,
+          canvas: { select: { userId: true } },
+        },
+      });
+      // The user's uploads that back items kept on another owner's canvas
+      // move to that owner with the items; all others are deleted.
+      const isForeignActive = (asset: (typeof uploadAssets)[number]) =>
+        asset.userId === userId &&
+        asset.status === UploadAssetStatus.ACTIVE &&
+        !!asset.canvas &&
+        asset.canvas.userId !== userId;
+      const transferredAssets = uploadAssets.filter(isForeignActive);
+      const deletedAssets = uploadAssets.filter(
+        (asset) => !isForeignActive(asset),
+      );
       for (const asset of transferredAssets) {
         const newOwnerId = asset.canvas.userId;
-        // Conditional, so an asset that stopped being ACTIVE since the read
-        // above is deleted with the account instead of transferred.
+        // Conditional, so an asset that stopped being ACTIVE concurrently is
+        // deleted with the account instead of transferred.
         const moved = await tx.uploadAsset.updateMany({
           where: { id: asset.id, userId, status: UploadAssetStatus.ACTIVE },
           data: { userId: newOwnerId },
@@ -130,22 +156,6 @@ export async function DELETE(request: NextRequest) {
       for (const asset of deletedAssets) {
         await enqueueUploadDeletion(tx, asset.id);
       }
-      for (const accountExport of accountExports) {
-        await enqueueOutboxJob(tx, {
-          type: "account-export.delete",
-          dedupeKey: `account-export.account-delete:${accountExport.id}`,
-          payload: {
-            storageMode: accountExport.storageMode,
-            storageKey: accountExport.storageKey!,
-          },
-        });
-      }
-      // Get all user's canvases
-      const userCanvases = await tx.canvas.findMany({
-        where: { userId },
-        select: { id: true },
-      });
-      const canvasIds = userCanvases.map((c) => c.id);
 
       // Preserve content contributed to another owner's canvas by
       // transferring immutable authorship to that canvas owner. Optional
