@@ -11,19 +11,6 @@ import net from "net";
 import http from "http";
 import https from "https";
 
-// Private IP ranges to block
-const PRIVATE_IP_PATTERNS = [
-  /^10\./, // 10.0.0.0/8
-  /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
-  /^192\.168\./, // 192.168.0.0/16
-  /^127\./, // 127.0.0.0/8 (localhost)
-  /^169\.254\./, // 169.254.0.0/16 (link-local)
-  /^0\./, // 0.0.0.0/8
-  /^224\./, // 224.0.0.0/4 (multicast)
-  /^240\./, // 240.0.0.0/4 (reserved)
-  /^255\.255\.255\.255$/, // broadcast
-];
-
 // Blocked hostnames
 const BLOCKED_HOSTNAMES = ["localhost", "0.0.0.0"];
 
@@ -43,31 +30,9 @@ function isPrivateOrLocalHost(hostname: string): boolean {
     return isPrivateIp(hostname);
   }
 
-  // Check for private IP patterns
-  for (const pattern of PRIVATE_IP_PATTERNS) {
-    if (pattern.test(hostname)) {
-      return true;
-    }
-  }
-
-  // Check for IPv6 localhost
-  if (hostname === "::1" || hostname === "::ffff:127.0.0.1") {
-    return true;
-  }
-
-  // Check for IPv6 link-local (fe80::/10)
-  if (hostname.toLowerCase().startsWith("fe80:")) {
-    return true;
-  }
-
-  // Check for IPv6 unique local addresses (fc00::/7)
-  if (
-    hostname.toLowerCase().startsWith("fc") ||
-    hostname.toLowerCase().startsWith("fd")
-  ) {
-    return true;
-  }
-
+  // A DNS name is judged by what it resolves to (validateUrlForSsrfWithDns
+  // pins and checks every record). Matching IP-like text or IPv6 prefixes on
+  // names only rejected real sites such as fda.gov or 10.com.
   return false;
 }
 
