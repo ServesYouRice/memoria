@@ -10,7 +10,7 @@ import { NotFoundError } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { ActivityType, logActivity } from "@/lib/activity";
-import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
+import { releaseCanvasUploads } from "@/lib/uploads/lifecycle";
 
 const updateCanvasSchema = z
   .object({
@@ -170,11 +170,9 @@ export const DELETE = withApiHandler(
 
     // Delete canvas (cascade will delete items, shares, etc.)
     const deletedCanvas = await prisma.$transaction(async (tx) => {
-      const assets = await tx.uploadAsset.findMany({
-        where: { canvasId, status: { not: "DELETED" } },
-        select: { id: true },
-      });
-      for (const asset of assets) await enqueueUploadDeletion(tx, asset.id);
+      // The asset rows cascade away with the canvas, so their quota is
+      // released here rather than by the queued object deletions.
+      await releaseCanvasUploads(tx, canvasId);
       return tx.canvas.delete({ where: { id: canvasId } });
     });
 

@@ -5,6 +5,7 @@ import {
 } from "@/generated/prisma/client";
 import { ApiError, ConflictError, NotFoundError } from "@/lib/errors";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { createLogger } from "@/lib/logger";
 
 type Tx = Prisma.TransactionClient;
 
@@ -167,3 +168,92 @@ export async function enqueueUploadDeletion(
   });
   return resulting;
 }
+
+const canvasUploadLog = createLogger("uploads");
+
+/**
+ * Release a canvas's uploads in the transaction that hard-deletes it.
+ *
+ * UploadAsset.canvasId cascades, so the rows are gone by the time any
+ * upload.delete job runs and the job's DELETING-guarded accounting matches
+ * nothing. Quota for the charged assets (PENDING, RECONCILING, ACTIVE,
+ * DELETING) is therefore released here, per uploader (collaborators upload
+ * to canvases they do not own), and every object not yet DELETED gets an
+ * uncharged delete job. A DELETING asset's existing job wins the dedupe; it
+ * finds no row after the cascade and only deletes the object.
+ *
+ * A PENDING upload still in flight then fails activation (its row is gone,
+ * UploadNotPendingError); that path must delete the object it wrote
+ * (TASK-221).
+ */
+export async function releaseCanvasUploads(tx: Tx, canvasId: string) {
+  // Locks in id order. A delete job racing this either committed first (its
+  // row reads DELETED and is skipped) or waits and then matches 0 rows.
+  const assets = await tx.$queryRaw<
+    Array<{
+      id: string;
+      userId: string;
+      status: UploadAssetStatus;
+      size: number;
+      storageMode: string;
+      storageKey: string;
+    }>
+  >`SELECT "id", "userId", "status", "size", "storageMode", "storageKey" FROM "UploadAsset" WHERE "canvasId" = ${canvasId} ORDER BY "id" FOR UPDATE`;
+
+  const charged = new Map<string, { count: number; bytes: bigint }>();
+  for (const asset of assets) {
+    if (!CHARGED_STATUSES.has(asset.status)) continue;
+    const total = charged.get(asset.userId) ?? { count: 0, bytes: 0n };
+    total.count += 1;
+    total.bytes += BigInt(asset.size);
+    charged.set(asset.userId, total);
+  }
+
+  for (const [userId, { count, bytes }] of [...charged].sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  )) {
+    const [before] = await tx.$queryRaw<
+      Array<{ assetCount: number; totalBytes: bigint }>
+    >`SELECT "assetCount", "totalBytes" FROM "UploadQuota" WHERE "userId" = ${userId} FOR UPDATE`;
+    if (
+      before &&
+      (before.assetCount < count || BigInt(before.totalBytes) < bytes)
+    ) {
+      canvasUploadLog.warn(
+        {
+          userId,
+          canvasId,
+          assetCount: before.assetCount,
+          totalBytes: String(before.totalBytes),
+          releasing: { count, bytes: String(bytes) },
+        },
+        "Upload quota below the deleted canvas's assets; clamping to zero",
+      );
+    }
+    // Clamped so existing drift never blocks canvas deletion.
+    await tx.$executeRaw`UPDATE "UploadQuota" SET "assetCount" = GREATEST("assetCount" - ${count}, 0), "totalBytes" = GREATEST("totalBytes" - ${bytes}, 0), "updatedAt" = NOW() WHERE "userId" = ${userId}`;
+  }
+
+  for (const asset of assets) {
+    if (asset.status === UploadAssetStatus.DELETED) continue;
+    await enqueueOutboxJob(tx, {
+      type: "upload.delete",
+      dedupeKey: `upload.delete:${asset.id}`,
+      payload: {
+        assetId: asset.id,
+        userId: asset.userId,
+        storageMode: asset.storageMode,
+        storageKey: asset.storageKey,
+        size: asset.size,
+        quotaCharged: false,
+      },
+    });
+  }
+}
+
+const CHARGED_STATUSES: ReadonlySet<UploadAssetStatus> = new Set([
+  UploadAssetStatus.PENDING,
+  UploadAssetStatus.RECONCILING,
+  UploadAssetStatus.ACTIVE,
+  UploadAssetStatus.DELETING,
+]);
