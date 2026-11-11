@@ -373,6 +373,14 @@ describe("board.propose job", () => {
 });
 
 describe("accept, dismiss, undo", () => {
+  it("has the executor recheck the source board under its locks", async () => {
+    await acceptHomeBoardSuggestion({ userId: "user-1", itemId: "item-1" });
+
+    expect(mocks.executeAskCommandSuggestion).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedSourceCanvasId: "c-inbox" }),
+    );
+  });
+
   it("accepting runs the approved move and records its change set", async () => {
     const result = await acceptHomeBoardSuggestion({
       userId: "user-1",

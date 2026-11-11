@@ -750,6 +750,9 @@ export async function acceptHomeBoardSuggestion(input: {
       agentProfile: profile,
       payload: suggestion.payload,
       summary: suggestion.summary,
+      // The check above ran before any lock; the executor repeats it under
+      // the board locks so a manual move in between is never overwritten.
+      expectedSourceCanvasId: row.sourceCanvasId,
     });
   } catch (error) {
     await closeStale(row.itemId, suggestion.id);

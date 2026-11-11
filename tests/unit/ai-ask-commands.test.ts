@@ -84,6 +84,7 @@ import {
   proposeAskCommand,
 } from "@/lib/ai/ask-commands";
 import { revertChangeSet } from "@/lib/agents/service-core";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 
 const profile = {
   id: "prof-ask",
@@ -280,6 +281,7 @@ describe("executing an approved Ask command", () => {
     });
     mocks.tx.canvasItem.findMany
       .mockResolvedValueOnce([canvasItem("i1"), canvasItem("i2", "canvas-b")])
+      .mockResolvedValueOnce([canvasItem("i1"), canvasItem("i2", "canvas-b")])
       .mockResolvedValueOnce([]);
 
     const result = await executeAskCommandSuggestion({
@@ -307,7 +309,7 @@ describe("executing an approved Ask command", () => {
     });
     expect(mocks.tx.canvasItem.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "i1" },
+        where: { id: "i1", canvasId: "canvas-a", deletedAt: null },
         data: expect.objectContaining({ canvasId: "board-new" }),
       }),
     );
@@ -324,6 +326,7 @@ describe("executing an approved Ask command", () => {
   it("drops the moved item's lines on the old board in the same change set", async () => {
     mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
     mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1")])
       .mockResolvedValueOnce([canvasItem("i1")])
       .mockResolvedValueOnce([]);
     const lines = [
@@ -395,6 +398,59 @@ describe("executing an approved Ask command", () => {
         operation: "deleted",
       }),
     );
+  });
+
+  it("re-reads the items once the boards are locked and stops if one moved", async () => {
+    mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
+    mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1")])
+      .mockResolvedValueOnce([canvasItem("i1", "canvas-c")]);
+
+    await expect(
+      executeAskCommandSuggestion({
+        actor: { userId: "user-1", agentProfileId: "prof-ask" },
+        agentProfile: profile as never,
+        payload: {
+          kind: ASK_COMMAND_SUGGESTION_KIND,
+          command: { type: "move_items", itemIds: ["i1"], boardId: "board-b" },
+        },
+        summary: "Move 1 item",
+      }),
+    ).rejects.toMatchObject({ detail: "Items moved while filing; try again." });
+
+    const [lockA, lockB] = vi.mocked(lockCanvasForMutation).mock.calls;
+    expect([lockA?.[1], lockB?.[1]]).toEqual(["board-b", "canvas-a"]);
+    const lastLock = Math.max(
+      ...vi.mocked(lockCanvasForMutation).mock.invocationCallOrder,
+    );
+    expect(
+      mocks.tx.canvasItem.findMany.mock.invocationCallOrder[1],
+    ).toBeGreaterThan(lastLock);
+    expect(mocks.tx.canvasItem.update).not.toHaveBeenCalled();
+    expect(mocks.tx.changeRecord.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses an expected source board an item is no longer on", async () => {
+    mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
+    mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1", "canvas-c")])
+      .mockResolvedValueOnce([canvasItem("i1", "canvas-c")]);
+
+    await expect(
+      executeAskCommandSuggestion({
+        actor: { userId: "user-1", agentProfileId: "prof-ask" },
+        agentProfile: profile as never,
+        payload: {
+          kind: ASK_COMMAND_SUGGESTION_KIND,
+          command: { type: "move_items", itemIds: ["i1"], boardId: "board-b" },
+        },
+        summary: "Move 1 item",
+        expectedSourceCanvasId: "canvas-a",
+      }),
+    ).rejects.toMatchObject({
+      detail: "This item has already moved, so the suggestion was dropped.",
+    });
+    expect(mocks.tx.canvasItem.update).not.toHaveBeenCalled();
   });
 
   it("archives into the trash-backed archive instead of an Archive board", async () => {

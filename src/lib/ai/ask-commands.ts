@@ -9,7 +9,7 @@ import {
 import { createHash } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BadRequestError, NotFoundError } from "@/lib/errors";
+import { BadRequestError, ConflictError, NotFoundError } from "@/lib/errors";
 import { AGENT_CAPABILITY_RUNGS } from "@/lib/agents/constants";
 import { assertAgentCapability } from "@/lib/agents/policy";
 import { proposeCanvasPiles } from "@/lib/agents/piles";
@@ -258,6 +258,11 @@ export async function executeAskCommandSuggestion(input: {
   agentProfile: Parameters<typeof assertAgentCapability>[0];
   payload: unknown;
   summary: string;
+  /**
+   * When set, every item must still be on this board once the boards are
+   * locked; a home-board filing never moves an item the user moved since.
+   */
+  expectedSourceCanvasId?: string;
 }) {
   const { command } = askCommandSuggestionPayloadSchema.parse(input.payload);
   assertAgentCapability(input.agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
@@ -322,21 +327,43 @@ export async function executeAskCommandSuggestion(input: {
 
     if (!target) throw new NotFoundError("Board not found.");
 
-    const items = command.itemIds.length
+    // This first read only picks the boards to lock; everything the move
+    // writes comes from the second read, made while those locks are held.
+    const unlocked = command.itemIds.length
       ? await loadOwnedItems(tx, userId, command.itemIds)
       : [];
-    assertMovable(items);
-    const moving = items.filter((item) => item.canvasId !== target!.id);
+    assertMovable(unlocked);
+    const lockSet = unlocked.filter((item) => item.canvasId !== target!.id);
+    let items = unlocked;
 
-    if (moving.length > 0) {
+    if (lockSet.length > 0) {
       // One lock order for every board involved, so concurrent moves cannot deadlock.
       const canvasIds = Array.from(
-        new Set([target.id, ...moving.map((item) => item.canvasId)]),
+        new Set([target.id, ...lockSet.map((item) => item.canvasId)]),
       ).sort();
       for (const canvasId of canvasIds) {
         await lockCanvasForMutation(tx, canvasId);
         touched.add(canvasId);
       }
+      items = await loadOwnedItems(tx, userId, command.itemIds);
+      const lockedFrom = new Map(
+        unlocked.map((item) => [item.id, item.canvasId]),
+      );
+      if (items.some((item) => lockedFrom.get(item.id) !== item.canvasId)) {
+        throw new ConflictError("Items moved while filing; try again.");
+      }
+    }
+    if (
+      input.expectedSourceCanvasId !== undefined &&
+      items.some((item) => item.canvasId !== input.expectedSourceCanvasId)
+    ) {
+      throw new BadRequestError(
+        "This item has already moved, so the suggestion was dropped.",
+      );
+    }
+    const moving = items.filter((item) => item.canvasId !== target!.id);
+
+    if (moving.length > 0) {
       await assertCanvasItemCapacity(tx, target.id, moving.length);
 
       const existing = await tx.canvasItem.findMany({
@@ -374,16 +401,27 @@ export async function executeAskCommandSuggestion(input: {
             })),
           });
         }
-        const updated = await tx.canvasItem.update({
-          where: { id: item.id },
-          data: {
-            canvasId: target.id,
-            positionX: position.x,
-            positionY: position.y,
-            version: { increment: 1 },
-            updatedById: userId,
-          },
-        });
+        // Only while the item is still where the locked read found it.
+        const updated = await tx.canvasItem
+          .update({
+            where: { id: item.id, canvasId: item.canvasId, deletedAt: null },
+            data: {
+              canvasId: target.id,
+              positionX: position.x,
+              positionY: position.y,
+              version: { increment: 1 },
+              updatedById: userId,
+            },
+          })
+          .catch((error: unknown) => {
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === "P2025"
+            ) {
+              throw new ConflictError("Items moved while filing; try again.");
+            }
+            throw error;
+          });
         await recordCanvasItemEvent(tx, {
           canvasId: item.canvasId,
           actorId: userId,
