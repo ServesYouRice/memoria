@@ -307,8 +307,12 @@ describe("passkeys (IMP-041)", () => {
     const signIn = await passkeySignIn(auth, browser, authenticator, {
       userVerified: false,
     });
-    expect(signIn.status).toBe(401);
-    expect(signIn.body.code).toBe("PASSKEY_USER_VERIFICATION_REQUIRED");
+    // Since @better-auth/passkey 1.7.17 the plugin itself requires user
+    // verification when authenticatorSelection.userVerification is
+    // "required", so it rejects the assertion before Memoria's
+    // afterVerification hook (kept as a second line) runs.
+    expect(signIn.status).toBe(400);
+    expect(signIn.body.code).toBe("AUTHENTICATION_FAILED");
     expect(await sessionUserId(auth, browser)).toBeNull();
   });
 
