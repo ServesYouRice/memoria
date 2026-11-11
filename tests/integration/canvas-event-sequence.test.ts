@@ -116,6 +116,7 @@ describe("per-canvas event numbers", () => {
       ).toEqual(Array.from({ length: count }, (_, index) => String(index + 1)));
       const stored = await prisma.canvas.findUniqueOrThrow({
         where: { id: canvas.id },
+        select: { eventSequence: true },
       });
       expect(Number(stored.eventSequence)).toBe(count);
     }
