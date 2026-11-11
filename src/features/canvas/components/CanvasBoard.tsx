@@ -71,6 +71,7 @@ import type { ContextMenuPosition } from "@/features/canvas/components/CanvasCon
 import { DrawingToolbar } from "@/features/canvas/components/DrawingToolbar";
 import { CanvasHeader } from "@/features/canvas/components/CanvasHeader";
 import { GridOverlay } from "@/features/canvas/components/GridOverlay";
+import { DrawingPreview } from "@/features/canvas/components/DrawingPreview";
 import { CursorChat } from "@/features/canvas/components/CursorChat";
 import { ReactionSelector } from "@/features/canvas/components/ReactionSelector";
 import { RemoteCursorChat } from "@/features/canvas/components/RemoteCursorChat";
@@ -323,6 +324,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     handleStageMouseUp,
     handleStageClick,
     isDrawing,
+    currentPath,
+    currentCreation,
   } = useCanvasInteraction({
     canvasId,
     stageRef: stageRef as React.RefObject<Konva.Stage>,
@@ -1433,6 +1436,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               onCommitGeometry={handleCommitGeometry}
               searchActive={Boolean(searchQuery.trim())}
               searchMatchIds={searchMatchIds}
+            />
+            <DrawingPreview
+              currentPath={currentPath}
+              currentCreation={currentCreation}
+              zoom={zoom}
             />
           </Stage>
 
