@@ -282,7 +282,8 @@ export interface AskResult {
   commandRejected: AskCommandRejection | "failed" | null;
   commandError?: string;
   retrievedCount: number;
-  usage: AiUsageSnapshot;
+  /** Null when the usage store could not be read after the call. */
+  usage: AiUsageSnapshot | null;
 }
 
 export function itemHref(item: { canvasId: string; id: string }) {

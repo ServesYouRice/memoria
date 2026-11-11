@@ -424,7 +424,7 @@ export async function runBudgetedAi<T>(
   userId: string,
   input: { prompt: string; maxOutputTokens: number },
   operation: () => Promise<T>,
-): Promise<{ value: T; usage: AiUsageSnapshot }> {
+): Promise<{ value: T; usage: AiUsageSnapshot | null }> {
   const reservation = await reserve(
     userId,
     input.prompt,
@@ -436,7 +436,20 @@ export async function runBudgetedAi<T>(
   } finally {
     await release(reservation);
   }
-  return { value, usage: await getAiUsage(userId) };
+  // The output is already generated and charged; a failed usage read is a
+  // reporting gap, not a reason to discard it.
+  let usage: AiUsageSnapshot | null;
+  try {
+    usage = await getAiUsage(userId);
+  } catch (error) {
+    logger.error(
+      { errorName: (error as Error)?.name },
+      "AI usage read after a budgeted call failed",
+    );
+    incrementOperationalCounter("redis_safety_failures_total");
+    usage = null;
+  }
+  return { value, usage };
 }
 
 export function resetAiBudgetForTests(): void {
