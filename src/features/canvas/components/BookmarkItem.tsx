@@ -83,8 +83,10 @@ function BookmarkItemComponent({
     }
   }, [content.favicon]);
 
-  // Handle drag
+  // Handle drag. Only drags of the Group itself move the bookmark; a resize
+  // handle's drag events must not reach these handlers.
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    if (e.target !== e.currentTarget) return;
     const node = e.target;
     const newPos = {
       x: node.x(),
@@ -94,6 +96,7 @@ function BookmarkItemComponent({
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
+    if (e.target !== e.currentTarget) return;
     const node = e.target;
     onCommitGeometry({ positionX: node.x(), positionY: node.y() });
   };
@@ -152,6 +155,20 @@ function BookmarkItemComponent({
     setLocalSize({ width: newWidth, height: newHeight });
     setLocalPosition({ x: newX, y: newY });
   };
+
+  // Resize handles are draggable children of the draggable Group: stop their
+  // drag events from bubbling to the Group (and the Stage), so one resize
+  // gesture is one geometry write.
+  const resizeHandleEvents = (corner: "se" | "sw" | "ne" | "nw") => ({
+    onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => {
+      e.cancelBubble = true;
+      handleResize(corner, e as unknown as Konva.KonvaEventObject<MouseEvent>);
+    },
+    onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+      e.cancelBubble = true;
+      handleResizeEnd();
+    },
+  });
 
   const handleResizeEnd = () => {
     onCommitGeometry({
@@ -297,8 +314,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("se", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("se")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nwse-resize";
@@ -316,8 +332,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("sw", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("sw")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nesw-resize";
@@ -335,8 +350,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("ne", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("ne")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nesw-resize";
@@ -354,8 +368,7 @@ function BookmarkItemComponent({
             radius={RESIZE_HANDLE_SIZE}
             fill="#2196F3"
             draggable
-            onDragMove={(e) => handleResize("nw", e)}
-            onDragEnd={handleResizeEnd}
+            {...resizeHandleEvents("nw")}
             onMouseEnter={(e) => {
               const stage = e.target.getStage();
               if (stage) stage.container().style.cursor = "nwse-resize";
