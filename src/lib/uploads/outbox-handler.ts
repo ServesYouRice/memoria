@@ -13,12 +13,22 @@ export function createUploadDeleteHandler(prisma: PrismaClient): OutboxHandler {
       storageMode: string;
       storageKey: string;
       size: number;
+      /** Absent on jobs queued before it existed: those were charged. */
+      quotaCharged?: boolean;
     };
     await deletePrivateUploadObject(
       payload.storageMode,
       payload.storageKey,
       context?.signal,
     );
+    if (payload.quotaCharged === false) {
+      // A FAILED upload's quota was released when it failed.
+      await prisma.uploadAsset.updateMany({
+        where: { id: payload.assetId, status: UploadAssetStatus.FAILED },
+        data: { status: UploadAssetStatus.DELETED },
+      });
+      return;
+    }
     await prisma.$transaction(async (tx) => {
       const marked = await tx.uploadAsset.updateMany({
         where: {
