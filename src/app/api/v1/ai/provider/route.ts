@@ -140,6 +140,13 @@ export const PUT = withAuthValidation(
           "Enter the API key for the newly selected provider.",
         );
       }
+      // The key is write-only; moving it to another host without re-entering
+      // it would let one PUT send the saved secret anywhere.
+      if (storedBaseUrl !== existing.baseUrl) {
+        throw new BadRequestError(
+          "Enter the API key again to change the base URL.",
+        );
+      }
       await prisma.modelCredential.update({
         where: { id: existing.id },
         data: { defaultModel: model, baseUrl: storedBaseUrl },

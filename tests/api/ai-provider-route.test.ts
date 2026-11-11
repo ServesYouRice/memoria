@@ -189,6 +189,39 @@ describe("/api/v1/ai/provider", () => {
     expect(switched.status).toBe(400);
   });
 
+  it("refuses to move a saved key to a new base URL without the key", async () => {
+    vi.stubEnv("AI_ALLOW_PRIVATE_BASE_URLS", "true");
+    prismaMocks.modelCredential.findMany.mockResolvedValue([
+      { ...savedRow, provider: "OPENAI_COMPAT", baseUrl: "https://llm.example.com/v1" },
+    ]);
+
+    const moved = await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI_COMPAT",
+        model: "llama3",
+        baseUrl: "https://attacker.example.net/v1",
+      }),
+      {} as never,
+    );
+    expect(moved.status).toBe(400);
+    expect((await moved.json()).detail).toMatch(/API key again/);
+    expect(prismaMocks.modelCredential.update).not.toHaveBeenCalled();
+
+    const sameUrl = await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI_COMPAT",
+        model: "llama3.1",
+        baseUrl: "https://llm.example.com/v1",
+      }),
+      {} as never,
+    );
+    expect(sameUrl.status).toBe(200);
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledWith({
+      where: { id: "cred-1" },
+      data: { defaultModel: "llama3.1", baseUrl: "https://llm.example.com/v1" },
+    });
+  });
+
   it("requires a key when nothing is saved yet", async () => {
     const res = await PUT(
       createRequest("PUT", { provider: "OPENAI", model: "gpt-5.4" }),
