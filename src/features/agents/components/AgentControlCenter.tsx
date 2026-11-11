@@ -63,6 +63,39 @@ function getChangeSetColor(status: ChangeSetRecord["status"]) {
   }
 }
 
+/**
+ * A section whose query failed. Shown instead of its empty-state text, which
+ * would otherwise claim there is nothing to review. The message is generic:
+ * server error bodies are not rendered here.
+ */
+function SectionError({
+  message,
+  retryLabel,
+  onRetry,
+}: {
+  message: string;
+  retryLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <Alert
+      severity="error"
+      action={
+        <Button
+          color="inherit"
+          size="small"
+          aria-label={retryLabel}
+          onClick={onRetry}
+        >
+          Retry
+        </Button>
+      }
+    >
+      {message}
+    </Alert>
+  );
+}
+
 export function AgentControlCenter() {
   const profilesQuery = useAgentProfiles();
   const providersQuery = useAgentProviders();
@@ -84,6 +117,14 @@ export function AgentControlCenter() {
     providersQuery.isLoading ||
     integrationsQuery.isLoading ||
     timelineQuery.isLoading;
+
+  // A query that failed before ever returning data has nothing to show.
+  const profilesFailed = profilesQuery.isError && !profilesQuery.data;
+  const providersFailed = providersQuery.isError && !providersQuery.data;
+  const integrationsFailed =
+    integrationsQuery.isError && !integrationsQuery.data;
+  const timelineFailed = timelineQuery.isError && !timelineQuery.data;
+  const retryTimeline = () => void timelineQuery.refetch();
 
   const agentProfiles = profilesQuery.data?.agentProfiles || [];
   const providerSlots = providersQuery.data?.providerSlots || [];
@@ -169,19 +210,25 @@ export function AgentControlCenter() {
             flexWrap: "wrap",
           }}
         >
-          <Chip
-            label={`${agentProfiles.length} agents`}
-            color="primary"
-            variant="outlined"
-          />
-          <Chip
-            label={`${credentials.length}/${providerSlots.length} providers configured`}
-            variant="outlined"
-          />
-          <Chip
-            label={`${integrationAccounts.length} integrations`}
-            variant="outlined"
-          />
+          {profilesQuery.data && (
+            <Chip
+              label={`${agentProfiles.length} agents`}
+              color="primary"
+              variant="outlined"
+            />
+          )}
+          {providersQuery.data && (
+            <Chip
+              label={`${credentials.length}/${providerSlots.length} providers configured`}
+              variant="outlined"
+            />
+          )}
+          {integrationsQuery.data && (
+            <Chip
+              label={`${integrationAccounts.length} integrations`}
+              variant="outlined"
+            />
+          )}
         </Stack>
       </Stack>
 
@@ -223,7 +270,13 @@ export function AgentControlCenter() {
             </Typography>
           </Stack>
           <Stack spacing={1.25}>
-            {agentProfiles.length === 0 ? (
+            {profilesFailed ? (
+              <SectionError
+                message="Agent profiles could not be loaded."
+                retryLabel="Retry loading agent profiles"
+                onRetry={() => void profilesQuery.refetch()}
+              />
+            ) : agentProfiles.length === 0 ? (
               <Alert severity="info">No agent profiles configured yet.</Alert>
             ) : (
               agentProfiles.map((profile) => (
@@ -318,6 +371,13 @@ export function AgentControlCenter() {
             </Typography>
           </Stack>
           <Stack spacing={1.25}>
+            {providersFailed && (
+              <SectionError
+                message="Provider credentials could not be loaded."
+                retryLabel="Retry loading provider credentials"
+                onRetry={() => void providersQuery.refetch()}
+              />
+            )}
             {providerSlots.map((slot) => {
               const configured = credentials.filter(
                 (credential) => credential.provider === slot.provider,
@@ -391,7 +451,13 @@ export function AgentControlCenter() {
             </Typography>
           </Stack>
           <Stack spacing={1.25}>
-            {integrationAccounts.length === 0 ? (
+            {integrationsFailed ? (
+              <SectionError
+                message="Integrations could not be loaded."
+                retryLabel="Retry loading integrations"
+                onRetry={() => void integrationsQuery.refetch()}
+              />
+            ) : integrationAccounts.length === 0 ? (
               <Alert severity="info">
                 No integration accounts configured yet.
               </Alert>
@@ -489,7 +555,13 @@ export function AgentControlCenter() {
           </Typography>
 
           <Stack spacing={1.5}>
-            {suggestions.length === 0 ? (
+            {timelineFailed ? (
+              <SectionError
+                message="Agent activity could not be loaded."
+                retryLabel="Retry loading suggestions"
+                onRetry={retryTimeline}
+              />
+            ) : suggestions.length === 0 ? (
               <Alert severity="info">
                 No suggestions are waiting for review.
               </Alert>
@@ -655,7 +727,13 @@ export function AgentControlCenter() {
             partial state by hand.
           </Typography>
           <Stack spacing={1.5}>
-            {changeSets.length === 0 ? (
+            {timelineFailed ? (
+              <SectionError
+                message="Agent activity could not be loaded."
+                retryLabel="Retry loading change sets"
+                onRetry={retryTimeline}
+              />
+            ) : changeSets.length === 0 ? (
               <Alert severity="info">
                 No change sets have been recorded yet.
               </Alert>
