@@ -296,3 +296,44 @@ describe("image proxy route (IMP-057)", () => {
     expect(second.headers.get("etag")).toBe(etag);
   });
 });
+
+describe("image proxy total deadline (VAL-277)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.redisEnabled.value = false;
+    mocks.auth.mockResolvedValue({ user: { id: "user-1" } });
+    mocks.lookup.mockResolvedValue([{ address: PUBLIC_IP, family: 4 }]);
+  });
+
+  it("returns 504 when the whole fetch passes its deadline", async () => {
+    // An upstream that never finishes; destroying it reports the error.
+    mocks.request.mockImplementation(() => {
+      const req = new EventEmitter() as EventEmitter & Record<string, unknown>;
+      req["end"] = vi.fn();
+      req["write"] = vi.fn();
+      req["destroy"] = vi.fn((error?: Error) => {
+        process.nextTick(() => {
+          if (error) req.emit("error", error);
+          req.emit("close");
+        });
+      });
+      return req;
+    });
+    const deadlines: number[] = [];
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((ms: number) => {
+        deadlines.push(ms);
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 20);
+        return controller.signal;
+      });
+    try {
+      const response = await GET(proxyRequest("https://example.com/slow.png"));
+      expect(response.status).toBe(504);
+      expect(deadlines).toEqual([10_000]);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+});

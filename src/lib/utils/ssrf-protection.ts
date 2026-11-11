@@ -365,6 +365,38 @@ export interface SafeFetchOptions {
   signal?: AbortSignal;
   /** Extra request headers, e.g. an `Accept` suited to the expected body. */
   headers?: Record<string, string>;
+  /**
+   * Wall-clock limit for the whole fetch: DNS checks and every redirect hop.
+   * `timeout` only fires when the socket is idle, so a server that drips
+   * bytes would otherwise hold the request open. Defaults to
+   * `timeout * (maxRedirects + 1)`.
+   */
+  deadlineMs?: number;
+}
+
+/**
+ * Settle with `promise`, or reject with "Request aborted" as soon as `signal`
+ * aborts. For work that cannot itself be cancelled, such as dns.lookup.
+ */
+export function raceAbortSignal<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) return Promise.reject(new Error("Request aborted"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error("Request aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 /**
@@ -387,17 +419,31 @@ export async function safeFetchBuffer(
     maxSize = 1024 * 1024,
     signal,
     headers,
+    deadlineMs = timeout * (maxRedirects + 1),
   } = options; // 1MB default max size
+
+  const deadline = AbortSignal.timeout(deadlineMs);
+  const combined = signal ? AbortSignal.any([signal, deadline]) : deadline;
+  const aborted = () =>
+    signal?.aborted
+      ? { ok: false, status: 499, error: "Request aborted" }
+      : { ok: false, status: 408, error: "Request timeout" };
 
   let currentUrl = urlString;
   let redirectCount = 0;
 
   while (redirectCount <= maxRedirects) {
     // Validate current URL and resolve pinned IP
-    if (signal?.aborted) {
-      return { ok: false, status: 499, error: "Request aborted" };
+    if (combined.aborted) return aborted();
+    let validation: Awaited<ReturnType<typeof validateUrlForSsrfWithDns>>;
+    try {
+      validation = await raceAbortSignal(
+        validateUrlForSsrfWithDns(currentUrl),
+        combined,
+      );
+    } catch {
+      return aborted();
     }
-    const validation = await validateUrlForSsrfWithDns(currentUrl);
     if (!validation.valid || !validation.pinnedIp || !validation.targetUrl) {
       return { ok: false, status: 400, error: validation.error };
     }
@@ -409,7 +455,7 @@ export async function safeFetchBuffer(
         {
           timeout,
           maxSize,
-          signal,
+          signal: combined,
           headers,
         },
       );
@@ -448,6 +494,7 @@ export async function safeFetchBuffer(
         headers: response.headers,
       };
     } catch (error) {
+      if (combined.aborted) return aborted();
       if (error instanceof Error) {
         if (error.message.includes("timeout")) {
           return { ok: false, status: 408, error: "Request timeout" };
