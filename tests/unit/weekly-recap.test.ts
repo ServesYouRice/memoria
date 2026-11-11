@@ -35,6 +35,9 @@ vi.mock("@/lib/collaboration/committed-events", () => ({
   recordCanvasItemEventsBatch: vi.fn(),
 }));
 vi.mock("@/lib/cache/canvas-cache", () => ({ invalidateCanvasCache: vi.fn() }));
+vi.mock("@/lib/policy/capacity", () => ({
+  assertCanvasItemCapacity: vi.fn(),
+}));
 vi.mock("@/lib/agents/piles", () => ({ suggestPilesForOwner: vi.fn() }));
 
 import {

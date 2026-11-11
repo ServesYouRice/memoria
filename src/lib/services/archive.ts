@@ -12,6 +12,7 @@ import type { ActorContext } from "@/lib/agents/service-core";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 
 /**
  * IMP-070 — the one archive. Archiving sends items to the trash with
@@ -248,6 +249,11 @@ export async function revertArchivedItem(
     });
     return;
   }
+  // Archived items do not count toward the per-canvas limit. Each restore is
+  // checked against the live count, which includes the items this undo has
+  // already restored, so an undo that would overfill the canvas throws and
+  // revertChangeSet's transaction rolls every restore back.
+  await assertCanvasItemCapacity(tx, existing.canvasId, 1);
   const restored = await tx.canvasItem.update({
     where: { id: existing.id },
     data: {

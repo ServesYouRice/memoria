@@ -6,6 +6,7 @@ import { parsePagination } from "@/lib/api/pagination";
 import { ConflictError, errorResponse } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 
 const restoreSchema = z
@@ -62,6 +63,9 @@ export async function PATCH(request: NextRequest) {
     const item = await requireItemOwnership(data.itemId, userId);
     const result = await prisma.$transaction(async (tx) => {
       await lockCanvasForMutation(tx, item.canvasId);
+      // Trashed items do not count toward the per-canvas limit, so bringing
+      // one back needs the same capacity check as creating it.
+      await assertCanvasItemCapacity(tx, item.canvasId, 1);
       const restored = await tx.canvasItem.updateMany({
         where: {
           id: data.itemId,

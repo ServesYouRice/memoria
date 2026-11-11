@@ -74,6 +74,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/policy/capacity", () => ({
   assertWorkspaceCapacity: capacityMocks.assertWorkspaceCapacity,
+  assertCanvasItemCapacity: vi.fn(),
 }));
 
 vi.mock("@/lib/cache/canvas-cache", () => ({
