@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import {
   Alert,
@@ -34,6 +34,14 @@ async function problemDetail(response: Response, fallback: string) {
   }
 }
 
+function hostnameOf(url: string) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 export function ShareTargetContent({
   link,
   shareId,
@@ -50,11 +58,15 @@ export function ShareTargetContent({
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const started = useRef(false);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  // Runs only from the Save button: this page opens from a plain GET that
+  // any site can link to, so arriving here must not save anything by itself.
+  const save = () => {
     if (!link || !shareId || started.current) return;
     started.current = true;
-    // The share id is the idempotency key, so a repeat (strict mode, reload)
+    setSaving(true);
+    // The share id is the idempotency key, so a repeat (after a reload)
     // replays the first save.
     apiFetch(SAVE_ENDPOINT, {
       method: "POST",
@@ -76,7 +88,7 @@ export function ShareTargetContent({
             : "The link could not be saved.",
         );
       });
-  }, [link, shareId]);
+  };
 
   const saveNote = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -125,9 +137,52 @@ export function ShareTargetContent({
 
   if (!saved) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-        <CircularProgress aria-label="Saving to Inbox" />
-      </Box>
+      <>
+        <PageHeader title="Save this link?" />
+        <Paper
+          variant="outlined"
+          sx={{ p: { xs: 2.5, sm: 4 }, borderRadius: 3 }}
+        >
+          <Stack spacing={2.5}>
+            <Typography color="text.secondary" variant="body2">
+              This link was shared to Memoria from another app or site. Nothing
+              is saved until you choose to.
+            </Typography>
+            <Box>
+              <Typography variant="h6" sx={{ wordBreak: "break-all" }}>
+                {hostnameOf(link.url)}
+              </Typography>
+              {link.title ? (
+                <Typography sx={{ fontWeight: 600 }}>{link.title}</Typography>
+              ) : null}
+              <Typography
+                color="text.secondary"
+                variant="body2"
+                sx={{ wordBreak: "break-all" }}
+              >
+                {link.url}
+              </Typography>
+            </Box>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+              <Button
+                variant="contained"
+                onClick={save}
+                disabled={saving || !shareId}
+                startIcon={
+                  saving ? (
+                    <CircularProgress size={16} color="inherit" aria-hidden />
+                  ) : undefined
+                }
+              >
+                Save to Inbox
+              </Button>
+              <Button component={Link} href="/dashboard" variant="outlined">
+                Cancel
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+      </>
     );
   }
 
