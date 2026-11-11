@@ -73,6 +73,93 @@ const MAX_CONNECTIONS_PER_PRINCIPAL = 10;
 const MAX_CONNECTIONS_PER_CLIENT = 30;
 const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_MESSAGE_PAYLOAD_BYTES = 8 * 1024;
+
+function bytesFromEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/**
+ * Slow-consumer limits on a socket's queued outbound bytes
+ * (`ws.bufferedAmount`). Above the soft limit, ephemeral fanout (cursors,
+ * presence, cursor chat, reactions) is skipped for that socket: the next
+ * update supersedes it. Above the hard limit the socket is terminated, since
+ * a message that must arrive can no longer be delivered in time. Defaults:
+ * 1 MiB soft (a few hundred cursor frames) and 8 MiB hard; override with
+ * COLLABORATION_SEND_SOFT_LIMIT_BYTES / COLLABORATION_SEND_HARD_LIMIT_BYTES.
+ */
+export const SLOW_CONSUMER_LIMITS = Object.freeze({
+  softBytes: bytesFromEnv("COLLABORATION_SEND_SOFT_LIMIT_BYTES", 1024 * 1024),
+  hardBytes: bytesFromEnv(
+    "COLLABORATION_SEND_HARD_LIMIT_BYTES",
+    8 * 1024 * 1024,
+  ),
+});
+
+type SlowConsumerLimits = { softBytes: number; hardBytes: number };
+type SendTarget = {
+  ws: Pick<WebSocket, "readyState" | "bufferedAmount" | "send" | "terminate">;
+};
+
+/**
+ * Every broadcast send goes through here. Droppable messages are skipped for
+ * a backed-up socket; a socket over the hard limit is terminated rather than
+ * left to queue without bound, so a message that must arrive is never
+ * silently dropped.
+ */
+export function sendToClient(
+  client: SendTarget,
+  message: string,
+  options: { droppable: boolean },
+  limits: SlowConsumerLimits = SLOW_CONSUMER_LIMITS,
+): "sent" | "skipped" | "closed" | "not-open" {
+  const { ws } = client;
+  if (ws.readyState !== WebSocket.OPEN) return "not-open";
+  if (ws.bufferedAmount > limits.hardBytes) {
+    ws.terminate();
+    return "closed";
+  }
+  if (options.droppable && ws.bufferedAmount > limits.softBytes)
+    return "skipped";
+  ws.send(message);
+  return "sent";
+}
+
+/**
+ * One client's heartbeat: a socket over the hard limit is terminated even if
+ * it answers pings (pongs can be sent without reading anything); otherwise
+ * the usual ping/pong liveness check.
+ */
+export function heartbeatClient(
+  client: {
+    ws: Pick<WebSocket, "bufferedAmount" | "ping" | "terminate">;
+    isAlive: boolean;
+  },
+  limits: SlowConsumerLimits = SLOW_CONSUMER_LIMITS,
+): "terminated-slow" | "terminated-zombie" | "pinged" {
+  if (client.ws.bufferedAmount > limits.hardBytes) {
+    client.ws.terminate();
+    return "terminated-slow";
+  }
+  if (!client.isAlive) {
+    client.ws.terminate();
+    return "terminated-zombie";
+  }
+  client.isAlive = false;
+  client.ws.ping();
+  return "pinged";
+}
+
+const SOCIAL_MESSAGE_KINDS = new Set(["cursor_chat", "reaction"]);
+
+/** Cursor chat and reactions are ephemeral; anything else must arrive. */
+function isDroppablePayload(payload: unknown): boolean {
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    SOCIAL_MESSAGE_KINDS.has(String((payload as { kind?: unknown }).kind))
+  );
+}
 const dirtyCursorCanvases = new Set<string>();
 
 interface CursorPosition {
@@ -619,16 +706,17 @@ export function createCollaborationServer(server: any): WebSocketServer {
     const now = Date.now();
     connections.forEach((clients, canvasId) => {
       clients.forEach((client) => {
-        if (!client.isAlive) {
+        const outcome = heartbeatClient(client);
+        if (outcome === "terminated-zombie")
           logger.info(
             { userId: client.user.userId, canvasId },
             "Terminating zombie connection",
           );
-          client.ws.terminate();
-          return;
-        }
-        client.isAlive = false;
-        client.ws.ping();
+        else if (outcome === "terminated-slow")
+          logger.info(
+            { userId: client.user.userId, canvasId },
+            "Terminating slow connection",
+          );
       });
 
       publishPresence(canvasId);
@@ -1060,11 +1148,10 @@ function broadcastMessagePayload(
     type: "message",
     payload,
   });
+  const droppable = isDroppablePayload(payload);
 
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
+    sendToClient(client, message, { droppable });
   });
 }
 
@@ -1072,8 +1159,10 @@ function broadcastRemoteMessage(canvasId: string, payload: unknown): void {
   const clients = connections.get(canvasId);
   if (!clients) return;
   const message = JSON.stringify({ type: "message", payload });
+  // Remote social payloads are ephemeral; a restore notice must arrive.
+  const droppable = isDroppablePayload(payload);
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
+    sendToClient(client, message, { droppable });
   });
 }
 function broadcastCommittedEvent(canvasId: string, event: unknown): void {
@@ -1081,7 +1170,7 @@ function broadcastCommittedEvent(canvasId: string, event: unknown): void {
   if (!clients) return;
   const message = JSON.stringify({ type: "committed-event", event });
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
+    sendToClient(client, message, { droppable: false });
   });
 }
 function broadcastPresence(canvasId: string): void {
@@ -1098,9 +1187,7 @@ function broadcastPresence(canvasId: string): void {
   });
 
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
+    sendToClient(client, message, { droppable: true });
   });
 }
 
@@ -1124,9 +1211,7 @@ function broadcastCursors(canvasId: string): void {
   });
 
   clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(message);
-    }
+    sendToClient(client, message, { droppable: true });
   });
 }
 
