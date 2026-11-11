@@ -186,6 +186,28 @@ const envSchema = z
           });
         }
       }
+
+      // Storage, database and mail credentials: the placeholders above
+      // ('minioadmin', 'devpassword') are the bundled stack's defaults.
+      // SMTP_PASS is already resolved from its SMTP_PASSWORD alias.
+      const credentials = [
+        { name: "S3_ACCESS_KEY_ID", val: data.S3_ACCESS_KEY_ID },
+        { name: "S3_SECRET_ACCESS_KEY", val: data.S3_SECRET_ACCESS_KEY },
+        { name: "MINIO_ROOT_USER", val: data.MINIO_ROOT_USER },
+        { name: "MINIO_ROOT_PASSWORD", val: data.MINIO_ROOT_PASSWORD },
+        { name: "DATABASE_PASSWORD", val: data.DATABASE_PASSWORD },
+        { name: "SMTP_PASS", val: data.SMTP_PASS },
+      ] as const;
+
+      for (const { name, val } of credentials) {
+        if (val && KNOWN_PLACEHOLDER_REGEX.test(val)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: `${name} contains a known placeholder. Set a distinct credential in production.`,
+          });
+        }
+      }
     }
 
     if (validateProductionRuntime && !data.REDIS_URL) {
