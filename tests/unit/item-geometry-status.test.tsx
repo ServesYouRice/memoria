@@ -95,3 +95,31 @@ describe("aggregateGeometryStatus", () => {
     });
   });
 });
+
+describe("useItemGeometry version refresh", () => {
+  it("sends the item's refreshed version after a conflict", async () => {
+    const { ApiError } = await import("@/lib/api/fetch-client");
+    mutateAsync
+      .mockRejectedValueOnce(new ApiError(409, "conflict"))
+      .mockResolvedValueOnce({ version: 8 });
+    const { result } = renderHook(() =>
+      useItemGeometry({ capabilities: resolveCanvasCapabilities("EDIT") }),
+    );
+    act(() => {
+      result.current.commitGeometry(item("a"), { positionX: 1, positionY: 1 });
+    });
+    await waitFor(() => expect(result.current.status).toBe("conflict"));
+
+    act(() => {
+      result.current.commitGeometry(
+        { ...item("a"), version: 7 },
+        { positionX: 5, positionY: 5 },
+      );
+    });
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+    expect(mutateAsync).toHaveBeenLastCalledWith({
+      itemId: "a",
+      data: { positionX: 5, positionY: 5, version: 7 },
+    });
+  });
+});

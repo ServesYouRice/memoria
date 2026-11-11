@@ -49,6 +49,12 @@ export function useAutosave({
     );
   }
 
+  // A newer version from the cache (another writer, a refetch after a
+  // conflict) reaches the queue; it only ever raises its version.
+  useEffect(() => {
+    queueRef.current?.observeVersion(version);
+  }, [version]);
+
   const flush = useCallback(async () => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);

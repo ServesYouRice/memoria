@@ -135,10 +135,13 @@ export function useItemGeometry({
             mutationRef.current.mutateAsync({ itemId: item.id, data: delta }),
           (nextStatus, nextError) => {
             const statuses = statusesRef.current;
-            if (nextStatus === "saved") {
-              statuses.delete(item.id);
+            if (nextStatus === "saved" || nextStatus === "conflict") {
+              // A conflicted delta is dropped, so later nudges start from
+              // the item's own position again.
               latestPositionRef.current.delete(item.id);
-            } else
+            }
+            if (nextStatus === "saved") statuses.delete(item.id);
+            else
               statuses.set(item.id, {
                 status: nextStatus,
                 error: nextError || null,
@@ -150,6 +153,8 @@ export function useItemGeometry({
         queuesRef.current.set(item.id, queue);
       }
 
+      // The item may carry a newer version than the queue has seen.
+      queue.observeVersion(item.version);
       latestPositionRef.current.set(item.id, {
         positionX: geometry.positionX,
         positionY: geometry.positionY,

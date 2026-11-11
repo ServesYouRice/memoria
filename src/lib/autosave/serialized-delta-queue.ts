@@ -15,6 +15,14 @@ export class SerializedDeltaQueue<T extends object> {
     private readonly onStatus: (status: AutosaveStatus, error?: Error) => void,
   ) {}
 
+  /**
+   * Adopt a newer item version seen by the caller (another queue, a
+   * collaborator, a refetch after a conflict). The version only rises.
+   */
+  observeVersion(version: number): void {
+    if (version > this.version) this.version = version;
+  }
+
   enqueue(delta: Partial<T>): void {
     this.pending = { ...this.pending, ...delta };
   }
@@ -40,15 +48,20 @@ export class SerializedDeltaQueue<T extends object> {
       this.onStatus("saving");
       try {
         const result = await this.save({ ...delta, version: this.version });
-        this.version = result.version;
+        // A newer version observed during the flight is kept.
+        this.version = Math.max(this.version, result.version);
       } catch (unknownError) {
-        this.pending = { ...delta, ...this.pending };
         const error =
           unknownError instanceof Error
             ? unknownError
             : new Error("Autosave failed");
+        const conflict = isVersionConflict(error);
+        // A conflicted delta is dropped: replaying it on a newer version would
+        // overwrite the write the version check protected (ADR-0009). Only
+        // changes made after it remain. Other failures keep it for a retry.
+        if (!conflict) this.pending = { ...delta, ...this.pending };
         this.onStatus(
-          isVersionConflict(error)
+          conflict
             ? "conflict"
             : error instanceof TypeError
               ? "offline/retrying"
