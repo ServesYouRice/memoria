@@ -309,6 +309,10 @@ function fakeDb(options: { autoEnrichLinks?: boolean } = {}) {
       findFirst: vi.fn(async () =>
         state.item.deletedAt ? null : { ...state.item },
       ),
+      // Similar-link candidates are other live items in these fixtures.
+      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.map((id) => ({ id })),
+      ),
       update: vi.fn(async ({ data }: { data: { normalizedUrl: string } }) => {
         Object.assign(state.item, data);
         return state.item;
@@ -583,5 +587,57 @@ describe("link enrichment outbox job", () => {
     })(job());
     expect(embed).not.toHaveBeenCalled();
     expect(db.raw.itemEmbedding.upsert).not.toHaveBeenCalled();
+  });
+
+  it("scores similar links before taking the canvas lock and drops deleted candidates", async () => {
+    const db = fakeDb();
+    const events: string[] = [];
+    let locked = false;
+    db.raw.$queryRaw.mockImplementation(async () => {
+      locked = true;
+      events.push("lock");
+      return [{ id: "canvas-1" }];
+    });
+    const transaction = db.raw.$transaction.getMockImplementation()!;
+    db.raw.$transaction.mockImplementation(async (callback, ...rest) => {
+      try {
+        return await transaction(callback, ...rest);
+      } finally {
+        locked = false;
+      }
+    });
+    db.raw.itemEmbedding.findMany.mockImplementation(async () => {
+      events.push(locked ? "scan-under-lock" : "scan");
+      return [
+        { itemId: "live", vector: [1, 0] },
+        { itemId: "deleted", vector: [1, 0] },
+      ];
+    });
+    db.raw.canvasItem.findMany.mockImplementation(async ({ where }) =>
+      where.id.in.filter((id) => id !== "deleted").map((id) => ({ id })),
+    );
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage: vi.fn().mockResolvedValue(page),
+      suggest: vi.fn().mockResolvedValue(ai),
+      embed: vi.fn(async () => ({
+        ok: true as const,
+        provider: "openai",
+        model: "text-embedding-3-small",
+        vector: [1, 0],
+      })),
+    })(job());
+
+    expect(events).toEqual(["scan", "lock"]);
+    expect(db.state.row).toMatchObject({
+      status: "DONE",
+      similarItemIds: ["live"],
+    });
+    expect(db.raw.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: expect.any(Number),
+        timeout: expect.any(Number),
+      }),
+    );
   });
 });
