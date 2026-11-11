@@ -153,9 +153,24 @@ export async function exportToPDF(
   });
 
   const imgProps = pdf.getImageProperties(dataUrl);
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  // Fit both dimensions so a tall (portrait) snapshot is not cut off below
+  // the page; a wide one still fills the page width.
+  const scale = Math.min(
+    pageWidth / imgProps.width,
+    pageHeight / imgProps.height,
+  );
+  const drawWidth = imgProps.width * scale;
+  const drawHeight = imgProps.height * scale;
 
-  pdf.addImage(dataUrl, "PNG", 0, 0, pdfWidth, pdfHeight);
+  pdf.addImage(
+    dataUrl,
+    "PNG",
+    (pageWidth - drawWidth) / 2,
+    (pageHeight - drawHeight) / 2,
+    drawWidth,
+    drawHeight,
+  );
   pdf.save(`${name}.pdf`);
 }
