@@ -11,7 +11,9 @@ function normalizeIp(value: string): string | null {
   return isIP(address) ? address : null;
 }
 
-function createTrustedProxyList(cidrs: string): BlockList {
+// Parses a comma-separated list of IPv4/IPv6 CIDRs or bare addresses. Throws
+// naming the first invalid entry; env.ts uses it to validate at startup.
+export function parseTrustedProxyCidrs(cidrs: string): BlockList {
   const list = new BlockList();
   for (const rawCidr of cidrs.split(",")) {
     const cidr = rawCidr.trim();
@@ -30,6 +32,15 @@ function createTrustedProxyList(cidrs: string): BlockList {
   return list;
 }
 
+let cachedProxyList: { source: string; list: BlockList } | undefined;
+
+function trustedProxyList(cidrs: string): BlockList {
+  if (cachedProxyList?.source !== cidrs) {
+    cachedProxyList = { source: cidrs, list: parseTrustedProxyCidrs(cidrs) };
+  }
+  return cachedProxyList.list;
+}
+
 export function deriveClientIp(
   socketAddress: string | undefined,
   forwardedFor: string | string[] | undefined,
@@ -39,7 +50,7 @@ export function deriveClientIp(
   if (!peer) return "unknown";
   if (!trustedProxyCidrs?.trim()) return peer;
 
-  const trusted = createTrustedProxyList(trustedProxyCidrs);
+  const trusted = trustedProxyList(trustedProxyCidrs);
   const isTrusted = (address: string) =>
     trusted.check(address, isIP(address) === 4 ? "ipv4" : "ipv6");
   if (!isTrusted(peer)) return peer;

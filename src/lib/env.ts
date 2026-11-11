@@ -3,6 +3,7 @@ import path from "path";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 import { REDIS_KEY_PREFIX_PATTERN } from "./cache/redis-keys";
+import { parseTrustedProxyCidrs } from "./network/client-ip";
 
 const envFilePath = process.env.MEMORIA_ENV_FILE || ".env";
 const resolvedEnvPath = path.resolve(process.cwd(), envFilePath);
@@ -66,7 +67,21 @@ const envSchema = z
     LOG_LEVEL: optionalString,
     INTERNAL_OPERATIONS_TOKEN: optionalString,
     MEMORIA_E2E_MODE: z.enum(["true"]).optional(),
-    TRUSTED_PROXY_CIDRS: optionalString,
+    TRUSTED_PROXY_CIDRS: emptyToUndefined(
+      z.string().superRefine((value, ctx) => {
+        try {
+          parseTrustedProxyCidrs(value);
+        } catch (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              error instanceof Error
+                ? error.message
+                : "Invalid TRUSTED_PROXY_CIDRS",
+          });
+        }
+      }),
+    ),
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     API_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     UPLOAD_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
