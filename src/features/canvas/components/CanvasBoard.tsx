@@ -44,6 +44,7 @@ import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
+import { useObservedStageSize } from "@/features/canvas/components/use-observed-stage-size";
 import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
 import { resolveBoardCapabilities } from "@/features/canvas/hooks/time-machine-capabilities";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
@@ -131,14 +132,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // Refs
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const stageContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const focusedItemRef = useRef<string | null>(null);
   const lastThumbnailRevisionRef = useRef<string | null>(null);
   const theme = useTheme();
   const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+  const { ref: stageContainerRef, size: stageSize } = useObservedStageSize();
 
   // Data Hook (Single source of truth for display)
   const {
@@ -522,21 +522,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     stageSize.width,
     zoom,
   ]);
-  useEffect(() => {
-    const target = stageContainerRef.current;
-    if (!target) return;
-    const updateSize = () => {
-      const bounds = target.getBoundingClientRect();
-      setStageSize({
-        width: Math.max(1, Math.floor(bounds.width)),
-        height: Math.max(1, Math.floor(bounds.height)),
-      });
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, []);
 
   // Gesture (Zoom)
   useGesture(
