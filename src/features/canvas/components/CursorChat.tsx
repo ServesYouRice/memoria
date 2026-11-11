@@ -73,7 +73,7 @@ export const CursorChat: React.FC<CursorChatProps> = ({
           {session?.user?.name?.split(" ")[0] || "Me"}:
         </Typography>
         <InputBase
-          ref={inputRef}
+          inputRef={inputRef}
           sx={{ ml: 1, flex: 1, color: "white", fontSize: "14px" }}
           placeholder="Say something..."
           value={message}
