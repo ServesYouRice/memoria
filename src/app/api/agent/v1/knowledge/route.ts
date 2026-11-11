@@ -110,6 +110,9 @@ export const POST = withApiHandler(async (request: NextRequest) => {
           `Propose knowledge relation: ${sourceEntity.title} -[${data.relationType}]-> ${targetEntity.title}`,
         payload: {
           kind: KNOWLEDGE_RELATION_SUGGESTION_KIND,
+          // Display-only: the organizer files the proposal under this board.
+          // Execution recomputes the shared canvas from the entities.
+          canvasId: sharedCanvasId,
           sourceEntityId: data.sourceEntityId,
           targetEntityId: data.targetEntityId,
           relationType: data.relationType,
