@@ -93,6 +93,12 @@ export async function POST(request: NextRequest) {
       }
       // Deleting server-side sessions revokes every signed-in device.
       await tx.session.deleteMany({ where: { userId: user.id } });
+      // A reset is the recovery step after a compromise, so API keys made by
+      // whoever held the account go too. Already-revoked keys keep their time.
+      await tx.apiKey.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
     });
 
     return NextResponse.json({
