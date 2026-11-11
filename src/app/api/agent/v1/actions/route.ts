@@ -402,6 +402,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       resolved.suggestion ||
       (await getOwnedSuggestion(context.userId, data.suggestionId));
 
+    // A token resolves to its own profile: it may only execute suggestions
+    // that profile proposed, and must not claim (and strand) anyone else's.
+    if (suggestion.agentProfileId !== agentProfile.id) {
+      throw new ForbiddenError(
+        "This suggestion belongs to another agent profile.",
+      );
+    }
+
     if (suggestion.status !== "APPROVED") {
       throw new BadRequestError("Only approved suggestions can be executed.");
     }
