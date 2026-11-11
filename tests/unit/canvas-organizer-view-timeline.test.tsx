@@ -80,4 +80,24 @@ describe("CanvasOrganizerView timeline request", () => {
     expect(screen.getByText(/Only the newest suggestions/)).toBeTruthy();
     expect(screen.getByText(/Only the newest change sets/)).toBeTruthy();
   });
+
+  it("requests only the chosen suggestion status (TASK-130)", () => {
+    render(<CanvasOrganizerView canvasId="c1" items={[]} />);
+    expect(lastOptions()).toEqual({
+      canvasId: "c1",
+      suggestionStatuses: ["OPEN"],
+    });
+  });
+
+  it("sends no status for the ALL filter (TASK-130)", () => {
+    state.savedFilters = { suggestionStatusFilter: "ALL" };
+    render(<CanvasOrganizerView canvasId="c1" items={[]} />);
+    expect(lastOptions()).toEqual({
+      canvasId: "c1",
+      suggestionStatuses: undefined,
+    });
+    expect(
+      screen.getByText("Older open suggestion for this canvas"),
+    ).toBeTruthy();
+  });
 });

@@ -441,6 +441,14 @@ function renderEntityCard(
 /** Rows asked of the server, and rows of each list the view renders. */
 const TIMELINE_LIMIT = 100;
 const LIST_PREVIEW = 8;
+/** Statuses the suggestion filter offers, besides "ALL". */
+const SUGGESTION_STATUS_FILTERS = [
+  "OPEN",
+  "APPROVED",
+  "EXECUTED",
+  "REJECTED",
+  "EXPIRED",
+];
 
 export function CanvasOrganizerView({
   canvasId,
@@ -465,12 +473,19 @@ export function CanvasOrganizerView({
     CanvasViewType.ORGANIZER,
   );
   const knowledgeQuery = useAgentKnowledge(canvasId);
-  // The server filters by this canvas, so newer records on other canvases
-  // cannot push this canvas's older ones out of the page.
-  const timelineQuery = useAgentTimeline(TIMELINE_LIMIT, { canvasId });
-
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
   const [suggestionStatusFilter, setSuggestionStatusFilter] = useState("OPEN");
+  // The server filters by this canvas and the chosen status, so newer records
+  // on other canvases or in other statuses cannot push older ones out of the
+  // page. A saved filter that is not a known status is not sent.
+  const timelineQuery = useAgentTimeline(TIMELINE_LIMIT, {
+    canvasId,
+    suggestionStatuses: SUGGESTION_STATUS_FILTERS.includes(
+      suggestionStatusFilter,
+    )
+      ? [suggestionStatusFilter]
+      : undefined,
+  });
   const hydratedViewRef = useRef(false);
   // State, not just the ref: the save effect must first run in the render
   // that already holds the hydrated filters, never in the mount commit.
@@ -872,14 +887,7 @@ export function CanvasOrganizerView({
                     setSuggestionStatusFilter(event.target.value)
                   }
                 >
-                  {[
-                    "OPEN",
-                    "APPROVED",
-                    "EXECUTED",
-                    "REJECTED",
-                    "EXPIRED",
-                    "ALL",
-                  ].map((status) => (
+                  {[...SUGGESTION_STATUS_FILTERS, "ALL"].map((status) => (
                     <MenuItem key={status} value={status}>
                       {status === "ALL" ? "All statuses" : status.toLowerCase()}
                     </MenuItem>
