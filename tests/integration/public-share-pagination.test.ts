@@ -67,4 +67,38 @@ describe("GET /api/v1/share/[token] cursor pagination", () => {
     );
     expect(ids.size).toBe(130);
   });
+
+  it("loads all 101 items through a cursor continuation (TASK-064)", async () => {
+    const suffix = randomBytes(6).toString("hex");
+    const user = await prisma.user.create({
+      data: { email: `share-101-${suffix}@example.com` },
+    });
+    const token = `share-101-${suffix}`;
+    const canvas = await prisma.canvas.create({
+      data: { name: "101", userId: user.id, isPublic: true, shareToken: token },
+    });
+    await prisma.canvasItem.createMany({
+      data: Array.from({ length: 101 }, (_, index) => ({
+        canvasId: canvas.id,
+        createdById: user.id,
+        type: "NOTE" as const,
+        positionX: 0,
+        positionY: 0,
+        width: 10,
+        height: 10,
+        zIndex: index,
+        content: { text: `n${index}` },
+        tags: [],
+      })),
+    });
+    // The share page's loop: follow nextCursor while hasMore.
+    let page = await read(token, "");
+    const seen = page.items.map((i) => i.id);
+    while (page.hasMore) {
+      expect(page.nextCursor).not.toBeNull();
+      page = await read(token, `cursor=${page.nextCursor}`);
+      seen.push(...page.items.map((i) => i.id));
+    }
+    expect(new Set(seen).size).toBe(101);
+  });
 });
