@@ -34,6 +34,7 @@ import {
   executePilesSuggestion,
   pilesSuggestionPayloadSchema,
 } from "@/lib/agents/piles";
+import { recordHomeBoardExecution } from "@/lib/agents/home-board";
 import {
   ASK_COMMAND_SUGGESTION_KIND,
   askCommandSuggestionPayloadSchema,
@@ -640,6 +641,13 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         userId: context.userId,
         suggestionId: suggestion.id,
       });
+      if ("changeSetId" in result && result.changeSetId) {
+        await recordHomeBoardExecution({
+          userId: context.userId,
+          suggestionId: suggestion.id,
+          changeSetId: result.changeSetId,
+        });
+      }
 
       return NextResponse.json(
         {

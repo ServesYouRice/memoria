@@ -692,6 +692,30 @@ export async function acceptHomeBoardSuggestion(input: {
   };
 }
 
+/**
+ * Finalizes the home-board row of an Ask suggestion executed through the
+ * generic execute path, as an accept does, so the Inbox lists it as filed and
+ * its Undo works. Matches no row for other Ask suggestions.
+ */
+export async function recordHomeBoardExecution(input: {
+  userId: string;
+  suggestionId: string;
+  changeSetId: string;
+}) {
+  await defaultPrisma.homeBoardSuggestion.updateMany({
+    where: {
+      userId: input.userId,
+      suggestionId: input.suggestionId,
+      status: HomeBoardSuggestionStatus.OPEN,
+    },
+    data: {
+      status: HomeBoardSuggestionStatus.ACCEPTED,
+      changeSetId: input.changeSetId,
+      actedAt: new Date(),
+    },
+  });
+}
+
 /** Keeps the item where it is; the same item is never proposed again. */
 export async function dismissHomeBoardSuggestion(input: {
   userId: string;
