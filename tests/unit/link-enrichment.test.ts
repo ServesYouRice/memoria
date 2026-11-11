@@ -32,6 +32,7 @@ import {
   truncateUtf8,
 } from "@/lib/ai/enrich-link";
 import { resetAiBudgetForTests } from "@/lib/ai/budget";
+import { AiBudgetError, AiBudgetStoreError } from "@/lib/ai/errors";
 import { extractPageText } from "@/lib/services/link-page";
 
 const URL_ = "https://example.com/post";
@@ -225,6 +226,25 @@ describe("suggestLinkDetails", () => {
       suggestLinkDetails({ userId: "u1", url: URL_ }),
     ).resolves.toEqual({ ok: false, reason: "budget" });
     expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("rethrows a busy AI slot so the job retries", async () => {
+    vi.stubEnv("AI_MAX_CONCURRENT_PER_USER", "1");
+    let release!: () => void;
+    mocks.generateText.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          release = () => resolve('{"title":"T","tags":[],"summary":"S"}');
+        }),
+    );
+    const first = suggestLinkDetails({ userId: "u1", url: URL_ });
+    await vi.waitFor(() => expect(mocks.generateText).toHaveBeenCalled());
+    const second = suggestLinkDetails({ userId: "u1", url: URL_ });
+    await expect(second).rejects.toMatchObject({
+      extensions: expect.objectContaining({ code: "AI_CONCURRENCY_BUDGET" }),
+    });
+    release();
+    await first;
   });
 
   it("returns the parsed suggestion within budget", async () => {
@@ -475,6 +495,36 @@ describe("link enrichment outbox job", () => {
       status: "DONE",
       aiSkipReason: "budget",
     });
+  });
+
+  it("keeps the link PENDING and retries while the AI is busy or the budget store is down", async () => {
+    for (const error of [
+      new AiBudgetError(
+        "AI_CONCURRENCY_BUDGET",
+        "Too many AI requests at once.",
+        1,
+      ),
+      new AiBudgetStoreError(),
+    ]) {
+      const db = fakeDb();
+      const embed = vi.fn();
+      const handler = createLinkEnrichmentHandler(db.client, {
+        embed,
+        fetchPage: vi.fn().mockResolvedValue(page),
+        suggest: vi.fn().mockRejectedValue(error),
+      });
+      await expect(handler(job({ attempts: 1 }))).rejects.toBe(error);
+      expect((error as { retryable?: boolean }).retryable).not.toBe(false);
+      expect(db.state.row.status).toBe("PENDING");
+      expect(embed).not.toHaveBeenCalled();
+
+      // On the last attempt the link is finished as a spent budget.
+      await handler(job({ attempts: 4 }));
+      expect(db.state.row).toMatchObject({
+        status: "DONE",
+        aiSkipReason: "budget",
+      });
+    }
   });
 
   it("retries a failed page fetch, then enriches from the saved title", async () => {
