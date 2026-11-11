@@ -62,8 +62,15 @@ export async function generateText(options: GenerateOptions): Promise<string> {
       },
       "AI provider request failed",
     );
-    if (upstream?.authFailed && resolved.credentialId) {
-      await markAiCredentialRejected(resolved.credentialId);
+    if (
+      upstream?.authFailed &&
+      resolved.credentialId &&
+      resolved.secretFingerprint
+    ) {
+      await markAiCredentialRejected(
+        resolved.credentialId,
+        resolved.secretFingerprint,
+      );
       throw new AiProviderError(
         "The AI provider rejected the saved key. Update it in Settings.",
       );
@@ -100,8 +107,15 @@ async function providerFailure(
     },
     "AI provider request failed",
   );
-  if (upstream?.authFailed && resolved.credentialId) {
-    await markAiCredentialRejected(resolved.credentialId);
+  if (
+    upstream?.authFailed &&
+    resolved.credentialId &&
+    resolved.secretFingerprint
+  ) {
+    await markAiCredentialRejected(
+      resolved.credentialId,
+      resolved.secretFingerprint,
+    );
     throw new AiProviderError(
       "The AI provider rejected the saved key. Update it in Settings.",
     );

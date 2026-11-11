@@ -96,8 +96,12 @@ export class AiUpstreamError extends Error {
     this.name = "AiUpstreamError";
   }
 
+  /**
+   * Only 401 means the key itself was rejected. Providers send 403 for
+   * permission, region and moderation refusals that a new key would not fix.
+   */
   get authFailed(): boolean {
-    return this.status === 401 || this.status === 403;
+    return this.status === 401;
   }
 }
 

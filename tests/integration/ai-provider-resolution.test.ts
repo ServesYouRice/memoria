@@ -7,7 +7,27 @@ import {
   BUILTIN_AI_CAPABILITY,
   findAiProvider,
   getAiAvailability,
+  markAiCredentialRejected,
 } from "@/lib/ai/provider-resolution";
+import { generateText } from "@/lib/ai/service";
+
+async function seedBuiltin(secret: string) {
+  const user = await prisma.user.create({
+    data: { email: `ai-${randomBytes(6).toString("hex")}@example.com` },
+  });
+  return prisma.modelCredential.create({
+    data: {
+      userId: user.id,
+      provider: "OPENAI",
+      label: "Built-in AI",
+      defaultModel: "gpt-4o-mini",
+      encryptedSecret: encryptSecret(secret),
+      secretFingerprint: `fp-${secret}`,
+      capabilities: [BUILTIN_AI_CAPABILITY],
+      status: "ACTIVE",
+    },
+  });
+}
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -81,5 +101,49 @@ describe("built-in AI credential lookup", () => {
       reason: "saved-credential-unusable",
     });
     vi.unstubAllEnvs();
+  });
+
+  it("keeps the saved key on a provider 403 and flags it on a 401", async () => {
+    const credential = await seedBuiltin(`sk-${randomBytes(4).toString("hex")}`);
+    const respond = vi.fn(async () => new Response("{}", { status: 403 }));
+    vi.stubGlobal("fetch", respond);
+    try {
+      await expect(
+        generateText({ prompt: "Hi", userId: credential.userId }),
+      ).rejects.toMatchObject({ status: 502 });
+      await expect(
+        prisma.modelCredential.findUniqueOrThrow({ where: { id: credential.id } }),
+      ).resolves.toMatchObject({ status: "ACTIVE" });
+
+      respond.mockImplementation(async () => new Response("{}", { status: 401 }));
+      await expect(
+        generateText({ prompt: "Hi", userId: credential.userId }),
+      ).rejects.toMatchObject({ status: 502 });
+      await expect(
+        prisma.modelCredential.findUniqueOrThrow({ where: { id: credential.id } }),
+      ).resolves.toMatchObject({ status: "ERROR" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not flag a replacement key when a late rejection names the old one", async () => {
+    const credential = await seedBuiltin(`sk-${randomBytes(4).toString("hex")}`);
+    const resolved = await findAiProvider(credential.userId);
+    expect(resolved?.credentialId).toBe(credential.id);
+
+    await prisma.modelCredential.update({
+      where: { id: credential.id },
+      data: {
+        encryptedSecret: encryptSecret("sk-replacement"),
+        secretFingerprint: `fp-replacement-${credential.id}`,
+        status: "UNVERIFIED",
+      },
+    });
+    await markAiCredentialRejected(resolved!.credentialId!, resolved!.secretFingerprint!);
+
+    await expect(
+      prisma.modelCredential.findUniqueOrThrow({ where: { id: credential.id } }),
+    ).resolves.toMatchObject({ status: "UNVERIFIED" });
   });
 });

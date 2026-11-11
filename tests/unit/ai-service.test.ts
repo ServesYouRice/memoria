@@ -26,6 +26,7 @@ function resolved(overrides: Record<string, unknown> = {}) {
     apiKey: "sk-ant",
     baseUrl: "https://api.anthropic.com",
     credentialId: "cred-1",
+    secretFingerprint: "fp-1",
     adapter,
     capabilities: adapter.capabilities,
     ...overrides,
@@ -98,7 +99,21 @@ describe("generateText", () => {
     expect((error as AiProviderError).detail).toMatch(/Settings/);
     expect(resolutionMocks.markAiCredentialRejected).toHaveBeenCalledWith(
       "cred-1",
+      "fp-1",
     );
+  });
+
+  it("does not flag the key on a provider 403", async () => {
+    const provider = resolved();
+    provider.adapter.generateText.mockRejectedValue(
+      new AiUpstreamError("anthropic", 403, "Provider returned HTTP 403"),
+    );
+    resolutionMocks.resolveAiProvider.mockResolvedValue(provider);
+
+    await expect(
+      generateText({ prompt: "Hi", userId: "user-1" }),
+    ).rejects.toMatchObject({ status: 502 });
+    expect(resolutionMocks.markAiCredentialRejected).not.toHaveBeenCalled();
   });
 
   it("maps other upstream failures to a 502 without flagging the key", async () => {

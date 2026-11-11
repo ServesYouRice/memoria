@@ -46,6 +46,8 @@ export interface ResolvedAiProvider extends AiProviderConfig {
   source: AiProviderSource;
   /** The saved credential, when `source` is "user". */
   credentialId: string | null;
+  /** Fingerprint of the saved secret this resolution decrypted. */
+  secretFingerprint: string | null;
   adapter: AiProviderAdapter;
   capabilities: AiCapabilities;
 }
@@ -111,6 +113,7 @@ function resolvedFrom(
   apiKey: string,
   baseUrl: string,
   credentialId: string | null,
+  secretFingerprint: string | null = null,
 ): ResolvedAiProvider {
   const adapter = getAiAdapter(provider);
   return {
@@ -120,6 +123,7 @@ function resolvedFrom(
     apiKey,
     baseUrl,
     credentialId,
+    secretFingerprint,
     adapter,
     capabilities: getAiCapabilities(provider),
   };
@@ -131,6 +135,7 @@ interface CredentialRow {
   baseUrl: string | null;
   defaultModel: string;
   encryptedSecret: string;
+  secretFingerprint: string;
   capabilities: unknown;
 }
 
@@ -147,6 +152,7 @@ const CREDENTIAL_SELECT = {
   baseUrl: true,
   defaultModel: true,
   encryptedSecret: true,
+  secretFingerprint: true,
   capabilities: true,
 } as const;
 
@@ -206,6 +212,7 @@ function fromCredential(row: CredentialRow): ResolvedAiProvider | null {
     apiKey,
     baseUrl,
     row.id,
+    row.secretFingerprint,
   );
 }
 
@@ -310,13 +317,18 @@ export async function getAiAvailability(
   };
 }
 
-/** Marks a saved credential whose key the provider rejected. */
+/**
+ * Marks a saved credential whose key the provider rejected. Only the secret
+ * that failed is flagged: if Settings replaced the key while the request was
+ * in flight, the row's fingerprint no longer matches and nothing changes.
+ */
 export async function markAiCredentialRejected(
   credentialId: string,
+  secretFingerprint: string,
 ): Promise<void> {
   await prisma.modelCredential
-    .update({
-      where: { id: credentialId },
+    .updateMany({
+      where: { id: credentialId, secretFingerprint },
       data: { status: CredentialStatus.ERROR },
     })
     .catch((error) => {
