@@ -144,6 +144,7 @@ describe("Canvas Items API (IMP-062)", () => {
           canvasId: validCanvasId,
           id: { in: [validItemId, secondItemId] },
           deletedAt: null,
+          type: { not: ItemType.POLL },
         },
       });
       await expect(res.json()).resolves.toEqual({

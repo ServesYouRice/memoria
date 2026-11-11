@@ -13,6 +13,7 @@ import {
 } from "@/lib/validation/canvas-item";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
+import { requirePollsEnabled } from "@/lib/polls/availability";
 
 const updateSchema = z
   .object({
@@ -58,6 +59,8 @@ export const POST = withApiHandler(async (request: NextRequest) => {
   const { userId, email } = await requireAuth();
   return runIdempotent(request, userId, async () => {
     const command = commandSchema.parse(await request.json());
+    // The same disabled-poll policy as single-item creation.
+    for (const entry of command.creates) requirePollsEnabled(entry.type);
     await requireCanvasAccess(command.canvasId, userId, email, "EDIT");
     const allIds = [...command.updates, ...command.deletes].map(
       (entry) => entry.id,
