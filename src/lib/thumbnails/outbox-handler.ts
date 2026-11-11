@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import {
   deletePrivateUploadObject,
   writePrivateUploadObject,
@@ -63,6 +64,9 @@ export function createThumbnailStoreHandler(
       context?.signal,
     );
     const install = await prisma.$transaction(async (tx) => {
+      // Mutations take this lock before writing events, so no event can land
+      // between the revision check below and the write.
+      await lockCanvasForMutation(tx, candidate.canvasId);
       const currentRows = await tx.$queryRaw<Array<{ revision: bigint }>>`
         SELECT COALESCE(MAX("sequence"), 0) AS revision FROM "CanvasEvent" WHERE "canvasId" = ${candidate.canvasId}
       `;
@@ -76,14 +80,19 @@ export function createThumbnailStoreHandler(
         where: { id: candidate.canvasId },
         select: { thumbnailKey: true },
       });
-      await tx.canvas.update({
-        where: { id: candidate.canvasId },
+      // Never replace a newer installed thumbnail.
+      const updated = await tx.canvas.updateMany({
+        where: {
+          id: candidate.canvasId,
+          thumbnailRevision: { lt: candidate.revision },
+        },
         data: {
           thumbnailKey: storageKey,
           thumbnailRevision: candidate.revision,
         },
       });
       await tx.canvasThumbnailCandidate.delete({ where: { id: candidate.id } });
+      if (updated.count === 0) return { installed: false, oldKey: null };
       return {
         installed: true,
         oldKey:

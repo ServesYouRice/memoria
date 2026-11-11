@@ -23,7 +23,7 @@ function fakePrisma(currentRevision: bigint, oldKey: string | null = null) {
     createdAt: new Date(),
   };
   const candidateDelete = vi.fn();
-  const canvasUpdate = vi.fn();
+  const canvasUpdate = vi.fn().mockResolvedValue({ count: 1 });
   const client = {
     canvasThumbnailCandidate: {
       findUnique: vi.fn().mockResolvedValue(candidate),
@@ -31,7 +31,7 @@ function fakePrisma(currentRevision: bigint, oldKey: string | null = null) {
     },
     canvas: {
       findUnique: vi.fn().mockResolvedValue({ thumbnailKey: oldKey }),
-      update: canvasUpdate,
+      updateMany: canvasUpdate,
     },
     $queryRaw: vi.fn().mockResolvedValue([{ revision: currentRevision }]),
     $transaction: vi.fn(async (callback: (tx: unknown) => unknown) =>
