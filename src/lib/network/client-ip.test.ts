@@ -81,10 +81,60 @@ describe("deriveClientIp", () => {
     expect(deriveClientIp("::1", "198.51.100.7", cidrs)).toBe("198.51.100.7");
   });
 
-  it("returns the peer for an untrusted peer or a malformed chain", () => {
+  it("returns the peer for an untrusted peer or a malformed boundary hop", () => {
     expect(deriveClientIp("8.8.8.8", "203.0.113.5", cidrs)).toBe("8.8.8.8");
-    expect(deriveClientIp("10.0.0.2", "garbage, 203.0.113.5", cidrs)).toBe(
+    expect(deriveClientIp("8.8.8.8", "x, 10.1.1.1", cidrs)).toBe("8.8.8.8");
+    // The right-most untrusted entry itself is not an IP (Q-003 fallback).
+    expect(deriveClientIp("10.0.0.2", "203.0.113.5, garbage", cidrs)).toBe(
       "10.0.0.2",
+    );
+    expect(deriveClientIp("10.0.0.2", "unknown, 10.1.1.1", cidrs)).toBe(
+      "10.0.0.2",
+    );
+    expect(deriveClientIp("10.0.0.2", "", cidrs)).toBe("10.0.0.2");
+  });
+
+  it("ignores client-supplied junk left of the trust boundary", () => {
+    expect(deriveClientIp("10.0.0.2", "x, 203.0.113.5", cidrs)).toBe(
+      "203.0.113.5",
+    );
+    expect(
+      deriveClientIp("10.0.0.2", "garbage, unknown, 203.0.113.5", cidrs),
+    ).toBe("203.0.113.5");
+    expect(
+      deriveClientIp("10.0.0.2", ["x", "203.0.113.5, 10.1.1.1"], cidrs),
+    ).toBe("203.0.113.5");
+  });
+
+  it("accepts addresses with ports", () => {
+    expect(deriveClientIp("10.0.0.2", "203.0.113.5:5678", cidrs)).toBe(
+      "203.0.113.5",
+    );
+    expect(
+      deriveClientIp("10.0.0.2", "198.51.100.7, 10.1.1.1:443", cidrs),
+    ).toBe("198.51.100.7");
+    expect(deriveClientIp("10.0.0.2", "[2001:db8::1]:8443", cidrs)).toBe(
+      "2001:db8::1",
+    );
+  });
+
+  it("walks multi-hop trusted chains to the first untrusted hop", () => {
+    expect(
+      deriveClientIp(
+        "10.0.0.2",
+        "198.51.100.1, 203.0.113.5, 192.168.1.10, 10.2.2.2",
+        cidrs,
+      ),
+    ).toBe("203.0.113.5");
+    // Every hop trusted: the left-most one is the best we know.
+    expect(deriveClientIp("10.0.0.2", "10.3.3.3, 10.2.2.2", cidrs)).toBe(
+      "10.3.3.3",
+    );
+  });
+
+  it("does not accept a port in trusted proxy CIDRs", () => {
+    expect(() => clientIp.parseTrustedProxyCidrs("10.0.0.1:80")).toThrow(
+      "10.0.0.1:80",
     );
   });
 });
