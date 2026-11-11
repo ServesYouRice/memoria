@@ -21,7 +21,7 @@ vi.mock("jspdf", () => ({
 
 import { exportToPDF } from "@/lib/export/export-utils";
 
-const stage = { toDataURL: () => "data:image/png;base64,AAAA" };
+const capture = "data:image/png;base64,AAAA";
 
 function drawn() {
   const [, , x, y, w, h] = state.addImage.mock.calls[0];
@@ -36,7 +36,7 @@ describe("exportToPDF page fit", () => {
 
   it("fits a tall snapshot inside the page height, keeping the aspect ratio", async () => {
     state.image = { width: 600, height: 1200 };
-    await exportToPDF("board", stage);
+    await exportToPDF("board", capture);
     const { x, y, w, h } = drawn();
     expect(h).toBeLessThanOrEqual(210 + 1e-9);
     expect(w).toBeLessThanOrEqual(297 + 1e-9);
@@ -48,7 +48,7 @@ describe("exportToPDF page fit", () => {
 
   it("still fills the page width with a wide snapshot", async () => {
     state.image = { width: 2000, height: 500 };
-    await exportToPDF("board", stage);
+    await exportToPDF("board", capture);
     const { x, w, h } = drawn();
     expect(w).toBeCloseTo(297);
     expect(h).toBeCloseTo(297 / 4);
