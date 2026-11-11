@@ -44,6 +44,7 @@ import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
 import { TimeMachineControl } from "@/features/canvas/components/TimeMachineControl";
 import { CanvasDialogs } from "@/features/canvas/components/CanvasDialogs";
+import { resolveBoardCapabilities } from "@/features/canvas/hooks/time-machine-capabilities";
 import { calculateAutopilotLayout } from "@/lib/ai/autopilot-service";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 import { UploadNoteOffer } from "./UploadNoteOffer";
@@ -171,9 +172,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   } = useCanvasData({ canvasId, viewportSize: stageSize });
   // IMP-008: one capability contract, derived once and passed down. Every
   // surface reads these flags instead of re-deriving a role comparison.
-  const capabilities = React.useMemo(
+  const baseCapabilities = React.useMemo(
     () => resolveCanvasCapabilities(accessLevel as CanvasAccessLevel),
     [accessLevel],
+  );
+  // A time-machine preview renders snapshot items under live ids: every
+  // item write is off there, while restore stays with live-canvas editors.
+  const { capabilities, canRestore } = React.useMemo(
+    () => resolveBoardCapabilities(baseCapabilities, isTimeMachineActive),
+    [baseCapabilities, isTimeMachineActive],
   );
   const canEdit = capabilities.canEditItems;
   const isOwner = capabilities.canManageCanvas;
@@ -450,7 +457,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       setSelectedItemId(null);
     },
     onDuplicate: async () => {
-      if (!selectedItemId) return;
+      if (!capabilities.canCreateItems || !selectedItemId) return;
       const selectedItem = allItems.find((item) => item.id === selectedItemId);
       if (selectedItem) {
         try {
@@ -951,7 +958,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const handleAlign = (
     type: "left" | "center" | "right" | "top" | "middle" | "bottom",
   ) => {
-    if (selectedItemIds.size < 2) return;
+    if (!capabilities.canMoveItems || selectedItemIds.size < 2) return;
     const selectedItems = allItems.filter((item) =>
       selectedItemIds.has(item.id),
     );
@@ -1000,7 +1007,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     });
   };
   const handleDistribute = (type: "horizontal" | "vertical") => {
-    if (selectedItemIds.size < 3) return;
+    if (!capabilities.canMoveItems || selectedItemIds.size < 3) return;
     const selectedItems = allItems.filter((item) =>
       selectedItemIds.has(item.id),
     );
@@ -1572,7 +1579,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       )}
 
       <CanvasDialogs
-        capabilities={capabilities}
+        // Every opener of an item dialog reads the preview capabilities;
+        // the base ones keep version restore available while previewing.
+        capabilities={baseCapabilities}
         canvasId={canvasId}
         canvasName={canvasName}
         items={allItems}
@@ -1637,7 +1646,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           onChange={setTimeMachineIndex}
           onExit={() => setTimeMachineActive(false)}
           onRestore={
-            canEdit
+            canRestore
               ? async (version) => {
                   setPendingRestoreVersionId(version.id);
                 }
