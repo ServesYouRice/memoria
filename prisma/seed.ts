@@ -7,12 +7,184 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/lib/auth/password";
 import { createCredentialAccount } from "../src/lib/auth/credentials";
+import { assertSeedAllowed } from "./seed-guard";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 });
 
+type FixtureItem = {
+  type: "NOTE" | "BOOKMARK";
+  positionX: number;
+  positionY: number;
+  width: number;
+  height: number;
+  zIndex: number;
+  content: Record<string, string>;
+};
+
+type FixtureUser = {
+  email: string;
+  name: string;
+  canvases: Array<{
+    name: string;
+    zoomLevel: number;
+    panX: number;
+    panY: number;
+    items: FixtureItem[];
+  }>;
+};
+
+const fixtureUsers: FixtureUser[] = [
+  {
+    email: "alice@example.com",
+    name: "Alice Johnson",
+    canvases: [
+      {
+        name: "Project Planning",
+        zoomLevel: 1.0,
+        panX: 0,
+        panY: 0,
+        items: [
+          {
+            type: "NOTE",
+            positionX: 100,
+            positionY: 100,
+            width: 300,
+            height: 200,
+            zIndex: 1,
+            content: {
+              text: "Welcome to Memoria! This is a sample note item.",
+            },
+          },
+          {
+            type: "NOTE",
+            positionX: 450,
+            positionY: 100,
+            width: 300,
+            height: 200,
+            zIndex: 2,
+            content: {
+              text: "Phase 1: Research\n- Gather requirements\n- Analyze competitors\n- Create user personas",
+            },
+          },
+          {
+            type: "BOOKMARK",
+            positionX: 100,
+            positionY: 350,
+            width: 300,
+            height: 150,
+            zIndex: 3,
+            content: {
+              url: "https://nextjs.org/docs",
+              title: "Next.js Documentation",
+              description: "Official Next.js documentation and guides",
+            },
+          },
+        ],
+      },
+      {
+        name: "Research Notes",
+        zoomLevel: 1.2,
+        panX: 100,
+        panY: 50,
+        items: [
+          {
+            type: "NOTE",
+            positionX: 200,
+            positionY: 200,
+            width: 400,
+            height: 250,
+            zIndex: 1,
+            content: {
+              text: "Research Findings:\n\n1. Users prefer visual organization\n2. Drag-and-drop is essential\n3. Real-time collaboration is highly requested",
+            },
+          },
+          {
+            type: "BOOKMARK",
+            positionX: 650,
+            positionY: 200,
+            width: 300,
+            height: 150,
+            zIndex: 2,
+            content: {
+              url: "https://mui.com",
+              title: "Material-UI",
+              description: "React components for faster web development",
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    email: "bob@example.com",
+    name: "Bob Smith",
+    canvases: [
+      {
+        name: "Ideas Board",
+        zoomLevel: 1.0,
+        panX: 0,
+        panY: 0,
+        items: [
+          {
+            type: "NOTE",
+            positionX: 150,
+            positionY: 150,
+            width: 350,
+            height: 200,
+            zIndex: 1,
+            content: {
+              text: "Brainstorming Session:\n- Feature ideas\n- UI improvements\n- Performance optimizations",
+            },
+          },
+        ],
+      },
+    ],
+  },
+];
+
+async function seedFixtureUser(fixture: FixtureUser, passwordHash: string) {
+  // Re-runs without the development cleanup (NODE_ENV unset, for example)
+  // keep the fixtures already there instead of failing on User.email.
+  const existing = await prisma.user.findUnique({
+    where: { email: fixture.email },
+    select: { id: true },
+  });
+  if (existing) {
+    console.log(`Fixtures for ${fixture.email} are already seeded; skipping.`);
+    return;
+  }
+
+  const user = await prisma.user.create({
+    data: { email: fixture.email, name: fixture.name },
+  });
+  await createCredentialAccount(prisma, user.id, passwordHash);
+
+  for (const { items, ...canvasData } of fixture.canvases) {
+    const canvas = await prisma.canvas.create({
+      data: { ...canvasData, userId: user.id },
+    });
+    for (const item of items) {
+      await prisma.canvasItem.create({
+        data: {
+          ...item,
+          canvasId: canvas.id,
+          createdById: user.id,
+          version: 1,
+        },
+      });
+    }
+  }
+  console.log(
+    `Created ${user.email} with ${fixture.canvases.length} canvas(es)`,
+  );
+}
+
 async function main() {
+  // Before any hashing, connection or write.
+  assertSeedAllowed(process.env);
+
   console.log("Starting database seed...");
 
   // Clean up existing data in development
@@ -30,173 +202,12 @@ async function main() {
 
   const testPassword = await hashPassword("TestPassword123!");
 
-  const alice = await prisma.user.create({
-    data: {
-      email: "alice@example.com",
-      name: "Alice Johnson",
-    },
-  });
-  await createCredentialAccount(prisma, alice.id, testPassword);
-
-  const bob = await prisma.user.create({
-    data: {
-      email: "bob@example.com",
-      name: "Bob Smith",
-    },
-  });
-  await createCredentialAccount(prisma, bob.id, testPassword);
-
-  console.log(`Created users: ${alice.email}, ${bob.email}`);
-
-  // Create canvases for Alice
-  console.log("Creating canvases...");
-
-  const aliceCanvas1 = await prisma.canvas.create({
-    data: {
-      name: "Project Planning",
-      userId: alice.id,
-      zoomLevel: 1.0,
-      panX: 0,
-      panY: 0,
-    },
-  });
-
-  const aliceCanvas2 = await prisma.canvas.create({
-    data: {
-      name: "Research Notes",
-      userId: alice.id,
-      zoomLevel: 1.2,
-      panX: 100,
-      panY: 50,
-    },
-  });
-
-  // Create a canvas for Bob
-  const bobCanvas = await prisma.canvas.create({
-    data: {
-      name: "Ideas Board",
-      userId: bob.id,
-      zoomLevel: 1.0,
-      panX: 0,
-      panY: 0,
-    },
-  });
-
-  console.log(`Created ${3} canvases`);
-
-  // Create canvas items for Alice's first canvas
-  console.log("Creating canvas items...");
-
-  await prisma.canvasItem.create({
-    data: {
-      canvasId: aliceCanvas1.id,
-      type: "NOTE",
-      positionX: 100,
-      positionY: 100,
-      width: 300,
-      height: 200,
-      zIndex: 1,
-      content: {
-        text: "Welcome to Memoria! This is a sample note item.",
-      },
-      createdById: alice.id,
-      version: 1,
-    },
-  });
-
-  await prisma.canvasItem.create({
-    data: {
-      canvasId: aliceCanvas1.id,
-      type: "NOTE",
-      positionX: 450,
-      positionY: 100,
-      width: 300,
-      height: 200,
-      zIndex: 2,
-      content: {
-        text: "Phase 1: Research\n- Gather requirements\n- Analyze competitors\n- Create user personas",
-      },
-      createdById: alice.id,
-      version: 1,
-    },
-  });
-
-  await prisma.canvasItem.create({
-    data: {
-      canvasId: aliceCanvas1.id,
-      type: "BOOKMARK",
-      positionX: 100,
-      positionY: 350,
-      width: 300,
-      height: 150,
-      zIndex: 3,
-      content: {
-        url: "https://nextjs.org/docs",
-        title: "Next.js Documentation",
-        description: "Official Next.js documentation and guides",
-      },
-      createdById: alice.id,
-      version: 1,
-    },
-  });
-
-  // Create items for Alice's second canvas
-  await prisma.canvasItem.create({
-    data: {
-      canvasId: aliceCanvas2.id,
-      type: "NOTE",
-      positionX: 200,
-      positionY: 200,
-      width: 400,
-      height: 250,
-      zIndex: 1,
-      content: {
-        text: "Research Findings:\n\n1. Users prefer visual organization\n2. Drag-and-drop is essential\n3. Real-time collaboration is highly requested",
-      },
-      createdById: alice.id,
-      version: 1,
-    },
-  });
-
-  await prisma.canvasItem.create({
-    data: {
-      canvasId: aliceCanvas2.id,
-      type: "BOOKMARK",
-      positionX: 650,
-      positionY: 200,
-      width: 300,
-      height: 150,
-      zIndex: 2,
-      content: {
-        url: "https://mui.com",
-        title: "Material-UI",
-        description: "React components for faster web development",
-      },
-      createdById: alice.id,
-      version: 1,
-    },
-  });
-
-  // Create items for Bob's canvas
-  await prisma.canvasItem.create({
-    data: {
-      canvasId: bobCanvas.id,
-      type: "NOTE",
-      positionX: 150,
-      positionY: 150,
-      width: 350,
-      height: 200,
-      zIndex: 1,
-      content: {
-        text: "Brainstorming Session:\n- Feature ideas\n- UI improvements\n- Performance optimizations",
-      },
-      createdById: bob.id,
-      version: 1,
-    },
-  });
+  for (const fixture of fixtureUsers) {
+    await seedFixtureUser(fixture, testPassword);
+  }
 
   const itemCount = await prisma.canvasItem.count();
-  console.log(`Created ${itemCount} canvas items`);
+  console.log(`Canvas items in database: ${itemCount}`);
 
   console.log("\n✅ Database seed completed successfully!");
   console.log("\nTest Credentials:");
