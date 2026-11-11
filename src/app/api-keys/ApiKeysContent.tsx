@@ -65,6 +65,8 @@ export function ApiKeysContent() {
   const [newKeyName, setNewKeyName] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  // The server's "sign in again" message, kept in the dialog until it closes.
+  const [signInAgain, setSignInAgain] = useState<string | null>(null);
 
   const keys = data?.keys ?? [];
 
@@ -80,12 +82,24 @@ export function ApiKeysContent() {
       setExpiresAt("");
       setCreateOpen(false);
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.code === "recent_sign_in_required"
+      ) {
+        setSignInAgain(error.message || "Sign in again to create an API key.");
+        return;
+      }
       toast.error(
         error instanceof ApiError && error.status < 500 && error.message
           ? error.message
           : "Failed to create API key",
       );
     }
+  };
+
+  const closeCreate = () => {
+    setCreateOpen(false);
+    setSignInAgain(null);
   };
 
   const handleRevoke = (keyId: string) => {
@@ -243,12 +257,7 @@ export function ApiKeysContent() {
       )}
 
       {/* Create dialog */}
-      <Dialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
+      <Dialog open={createOpen} onClose={closeCreate} fullWidth maxWidth="sm">
         <DialogTitle sx={{ fontWeight: 600 }}>Create API key</DialogTitle>
         <DialogContent
           sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}
@@ -275,9 +284,25 @@ export function ApiKeysContent() {
           <Alert severity="info">
             The full key is shown only once. Store it safely.
           </Alert>
+          {signInAgain && (
+            <Alert
+              severity="warning"
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  href="/auth/login?callbackUrl=%2Fapi-keys"
+                >
+                  Sign in again
+                </Button>
+              }
+            >
+              {signInAgain}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={closeCreate}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
