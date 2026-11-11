@@ -32,6 +32,25 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-087](tasks/IMP-087.md) | Same page width and top bar on every page | |
 | [IMP-089](tasks/IMP-089.md) | Empty pages offer a next step | |
 | [IMP-088](tasks/IMP-088.md) | The app says "canvas" everywhere, never "board" | |
+| [IMP-091](tasks/IMP-091.md) | Import bookmarks from a browser, Pocket or Raindrop | |
+| [IMP-092](tasks/IMP-092.md) | Saving from an iPhone is easy to set up | |
+| [IMP-093](tasks/IMP-093.md) | Browser button saves the page you are on | |
+| [IMP-094](tasks/IMP-094.md) | Keep the text of saved pages | |
+| [IMP-095](tasks/IMP-095.md) | Arrows work as real links between items | |
+| [IMP-096](tasks/IMP-096.md) | Open canvas files in and out (`.canvas`, `.excalidraw`) | |
+| [IMP-097](tasks/IMP-097.md) | "Remind me" and "Something old" | |
+| [IMP-098](tasks/IMP-098.md) | Templates and "Duplicate canvas" (build the server side, then switch on) | |
+| [IMP-099](tasks/IMP-099.md) | Sign in with an existing login system | |
+| [IMP-100](tasks/IMP-100.md) | Lighter install and set-up checks | |
+| [IMP-101](tasks/IMP-101.md) | Ask about one canvas or one tag | |
+| [IMP-102](tasks/IMP-102.md) | Setting up your own AI key is easy | |
+| [IMP-103](tasks/IMP-103.md) | The canvas stays smooth when it is full (2,000 items) | |
+| [IMP-104](tasks/IMP-104.md) | Polls with votes counted on the server | |
+| [IMP-105](tasks/IMP-105.md) | A timer everyone on the canvas sees | |
+| [IMP-106](tasks/IMP-106.md) | Your own tagging rules | |
+| [IMP-107](tasks/IMP-107.md) | Standing notes for AI agents, per workspace | |
+| [IMP-108](tasks/IMP-108.md) | Tables on the canvas | |
+| [IMP-109](tasks/IMP-109.md) | One item on several canvases | |
 
 ## WAITING
 
@@ -47,6 +66,9 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-085](tasks/IMP-085.md) | Canvas notes and background look finished | IMP-077, IMP-079 |
 | [IMP-086](tasks/IMP-086.md) | Settings: a side menu instead of one long page | IMP-075, IMP-079 |
 | [IMP-090](tasks/IMP-090.md) | Canvas cards are real links; buttons are finger-sized | IMP-083 |
+| [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | IMP-094 |
+| [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | IMP-081 |
+| [IMP-112](tasks/IMP-112.md) | Publish a licence and a "never paywalled" promise | DEC-017 |
 
 ## USER DECISIONS
 
@@ -60,3 +82,4 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | DEC-004 | Fill the infra PR's secrets and `CHANGE_ME` values (hosts, R2, SMTP, SOPS), confirm registration modes, then release a staging image | Staging first; registration `closed` on staging, `invite` on production | | IMP-056 |
 | DEC-005 | Run `pnpm gate integration`, `pnpm gate e2e`, `pnpm gate container` and `pnpm smoke` on Node 26 on the dev machine (agent sessions are blocked by Prisma's AI guard on `migrate reset` and by the sandbox proxy's TLS in the image build) | Run on the dev machine | Done, no errors reported (owner, 2026-11-07) | IMP-058, IMP-056 |
 | DEC-016 | Which single word does the app use for a user's space: "canvas" or "board"? | "canvas" (already used on the dashboard and in most screens) | "canvas" (owner, 2026-11-11) | IMP-088 |
+| DEC-017 | Which licence does Memoria publish under, and which features are promised to stay free? | AGPL-3.0 (used by comparable self-hosted tools); always free: self-hosting, passkeys and two-step codes, export, AI on your own key | | IMP-112 |
