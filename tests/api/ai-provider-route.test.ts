@@ -65,7 +65,10 @@ describe("/api/v1/ai/provider", () => {
     prismaMocks.modelCredential.findFirst.mockResolvedValue(null);
     prismaMocks.transaction.mockImplementation(
       async (run: (tx: unknown) => Promise<unknown>) =>
-        run({ modelCredential: prismaMocks.modelCredential }),
+        run({
+          modelCredential: prismaMocks.modelCredential,
+          agentProfile: { count: prismaMocks.agentProfileCount },
+        }),
     );
   });
 
@@ -164,6 +167,63 @@ describe("/api/v1/ai/provider", () => {
         }),
       }),
     );
+  });
+
+  it("saves a new key in its own row when an agent profile uses the current one", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([savedRow]);
+    prismaMocks.modelCredential.create.mockResolvedValue({ id: "cred-new" });
+    prismaMocks.agentProfileCount.mockImplementation(
+      async ({ where }: { where: { defaultModelCredentialId: string } }) =>
+        where.defaultModelCredentialId === "cred-1" ? 1 : 0,
+    );
+
+    const res = await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI",
+        model: "gpt-5.4-mini",
+        apiKey: "sk-new-builtin",
+      }),
+      {} as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMocks.modelCredential.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        provider: "OPENAI",
+        secretFingerprint: fingerprintSecret("sk-new-builtin"),
+        capabilities: [BUILTIN_AI_CAPABILITY],
+      }),
+    });
+    // The profile's row only loses the built-in tag.
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledTimes(1);
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledWith({
+      where: { id: "cred-1" },
+      data: { capabilities: [] },
+    });
+  });
+
+  it("rewrites the current row with a new key when no agent profile uses it", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([savedRow]);
+    prismaMocks.agentProfileCount.mockResolvedValue(0);
+
+    await PUT(
+      createRequest("PUT", {
+        provider: "OPENAI",
+        model: "gpt-5.4-mini",
+        apiKey: "sk-new-builtin",
+      }),
+      {} as never,
+    );
+
+    expect(prismaMocks.modelCredential.create).not.toHaveBeenCalled();
+    expect(prismaMocks.modelCredential.update).toHaveBeenCalledWith({
+      where: { id: "cred-1" },
+      data: expect.objectContaining({
+        provider: "OPENAI",
+        secretFingerprint: fingerprintSecret("sk-new-builtin"),
+        capabilities: [BUILTIN_AI_CAPABILITY],
+      }),
+    });
   });
 
   it("updates the model without a new key only for the same provider", async () => {

@@ -162,7 +162,17 @@ export const PUT = withAuthValidation(
         where: { userId, secretFingerprint },
         select: { id: true, capabilities: true },
       });
-      const target = duplicate ?? existing;
+      // A row an agent profile uses keeps its key: a new key for built-in AI
+      // gets its own row, and the shared row only loses the built-in tag.
+      // Reusing a profile's row for the same key, and the no-key path, still
+      // write to a shared row; changing that needs a product decision.
+      const existingShared =
+        !duplicate && existing
+          ? (await tx.agentProfile.count({
+              where: { userId, defaultModelCredentialId: existing.id },
+            })) > 0
+          : false;
+      const target = duplicate ?? (existingShared ? null : existing);
       const shared = {
         provider,
         baseUrl: storedBaseUrl,
