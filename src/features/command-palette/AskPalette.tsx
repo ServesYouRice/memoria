@@ -107,6 +107,9 @@ export function AskPalette({
   const reject = useRejectSuggestion();
   const revert = useRevertChangeSet();
   const controller = useRef<AbortController | null>(null);
+  // The suggestion already approved on the server; a retry after a failed
+  // execution must not approve it again (only OPEN suggestions approve).
+  const [approvedId, setApprovedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -115,6 +118,7 @@ export function AskPalette({
       setResult(null);
       setError(null);
       setSettled(null);
+      setApprovedId(null);
     }
   }, [open]);
 
@@ -126,6 +130,7 @@ export function AskPalette({
     setError(null);
     setResult(null);
     setSettled(null);
+    setApprovedId(null);
     try {
       setResult(await postAsk(trimmed));
     } catch (askError) {
@@ -143,7 +148,10 @@ export function AskPalette({
     setApplying(true);
     setError(null);
     try {
-      await approve.mutateAsync(suggestion.id);
+      if (approvedId !== suggestion.id) {
+        await approve.mutateAsync(suggestion.id);
+        setApprovedId(suggestion.id);
+      }
       const executed = (await execute.mutateAsync(suggestion.id)) as {
         executed?: { changeSetId?: string };
       };
@@ -304,7 +312,11 @@ export function AskPalette({
                       onClick={() => void approveSuggestion()}
                       disabled={applying}
                     >
-                      {applying ? "Applying…" : "Approve"}
+                      {applying
+                        ? "Applying…"
+                        : approvedId === result.suggestion.id
+                          ? "Retry"
+                          : "Approve"}
                     </Button>
                     <Button
                       onClick={() => void dismissSuggestion()}
