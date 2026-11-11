@@ -419,6 +419,22 @@ async function executeApprovedSuggestion(
   throw new BadRequestError("Unsupported suggestion payload.");
 }
 
+/**
+ * Tools that return board, item, knowledge or action content. They need the
+ * READ rung, like the REST read routes, before any query runs; the scoped
+ * query helpers check canvas membership, not enabled rungs.
+ */
+const READ_TOOL_NAMES = new Set([
+  "items.search",
+  "items.get",
+  "items.list",
+  "canvases.list",
+  "canvases.get",
+  "boards.list",
+  "knowledge.list",
+  "actions.list",
+]);
+
 export async function executeMcpTool(
   context: AgentRequestContext,
   requestedToolName: string,
@@ -426,6 +442,9 @@ export async function executeMcpTool(
 ) {
   const args = getObjectArgument(rawArgs);
   const toolName = toInternalToolName(requestedToolName);
+  if (READ_TOOL_NAMES.has(toolName)) {
+    assertAgentCapability(context.agentProfile, AGENT_CAPABILITY_RUNGS.READ);
+  }
 
   switch (toolName) {
     case "inbox.save": {
