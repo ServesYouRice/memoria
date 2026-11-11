@@ -3,6 +3,7 @@
 import {
   alreadySavedLinks,
   chunk,
+  closableTabIds,
   existingLinkUrl,
   isApiKey,
   isPreselected,
@@ -23,6 +24,9 @@ const selected = new Set();
 // after a failed or lost response (even from a reopened popup) replays the
 // same batches instead of saving the tabs twice.
 let pending = {};
+// True from the first line of save() until it finishes, so a second save can
+// not start while one is in flight.
+let saving = false;
 
 function show(section) {
   $("setup").hidden = section !== "setup";
@@ -134,8 +138,10 @@ function renderSelection() {
   $("selection-count").textContent = `${count} of ${tabs.length} tabs selected`;
   $("toggle-all").checked = count > 0 && count === savable.length;
   $("toggle-all").indeterminate = count > 0 && count < savable.length;
-  $("toggle-all").disabled = savable.length === 0;
-  $("save").disabled = count === 0;
+  $("toggle-all").disabled = saving || savable.length === 0;
+  $("save").disabled = saving || count === 0;
+  $("note").disabled = saving;
+  $("open-settings").disabled = saving;
   $("save").textContent =
     count === 1 ? "Save and close 1 tab" : `Save and close ${count} tabs`;
 }
@@ -152,7 +158,7 @@ function renderTabs() {
     checkbox.type = "checkbox";
     checkbox.dataset.tabId = String(tab.id);
     checkbox.checked = selected.has(tab.id);
-    checkbox.disabled = !savable;
+    checkbox.disabled = !savable || saving;
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) selected.add(tab.id);
       else selected.delete(tab.id);
@@ -211,23 +217,61 @@ async function closeTabs(ids) {
   if (remaining.length === 0) {
     await ext.tabs.create({ active: true });
   }
-  await ext.tabs.remove(ids);
+  if (ids.length > 0) await ext.tabs.remove(ids);
   tabs = remaining;
   for (const id of ids) selected.delete(id);
 }
 
+// Fresh records of the given tabs, null for a tab that is gone.
+async function currentTabs(ids) {
+  const entries = await Promise.all(
+    ids.map(async (id) => [id, await ext.tabs.get(id).catch(() => null)]),
+  );
+  return new Map(entries);
+}
+
 async function save() {
-  const chosen = selectedTabs();
-  if (chosen.length === 0 || !settings) return;
+  if (saving) return;
+  saving = true;
+  renderSelection();
+  try {
+    await saveSelected();
+  } finally {
+    saving = false;
+    renderTabs();
+  }
+}
+
+async function saveSelected() {
+  if (selected.size === 0 || !settings) return;
+  // Submit what each tab shows now, not what it showed when the popup opened.
+  const fresh = await currentTabs([...selected]);
+  for (const [id, now] of fresh) {
+    if (!now) selected.delete(id);
+  }
+  tabs = tabs
+    .filter((tab) => !fresh.has(tab.id) || fresh.get(tab.id))
+    .map((tab) => {
+      const now = fresh.get(tab.id);
+      return now ? { ...tab, url: now.url, title: now.title } : tab;
+    });
+  const chosen = selectedTabs().filter((tab) => isWebUrl(tab.url));
+  if (chosen.length === 0) return;
   const note = $("note").value;
   const groups = await batchesFor(chosen, note);
 
-  $("save").disabled = true;
   setMessage("save-error", "");
   setMessage("save-status", "Saving…");
   renderDuplicates([]);
   let saved = 0;
+  let changed = 0;
   const duplicates = [];
+  const changedText = () =>
+    changed === 0
+      ? ""
+      : changed === 1
+        ? " 1 tab changed page and was left open."
+        : ` ${changed} tabs changed page and were left open.`;
   try {
     for (const group of groups) {
       const result = await sendBatch({
@@ -238,13 +282,22 @@ async function save() {
         idempotencyKey: group.idempotencyKey,
       });
       await forgetBatch(group.signature);
-      // Only tabs the server confirmed (saved, or already saved) are closed.
-      await closeTabs(group.tabs.map((tab) => tab.id));
+      // Only tabs the server confirmed (saved, or already saved), and that
+      // still show the confirmed page, are closed.
+      const decision = closableTabIds(
+        group.tabs,
+        await currentTabs(group.tabs.map((tab) => tab.id)),
+      );
+      await closeTabs(decision.closable);
+      for (const id of decision.changed) selected.delete(id);
+      changed += decision.changed.length;
       const skipped = alreadySavedLinks(result);
       duplicates.push(...skipped);
       saved += group.tabs.length - skipped.length;
     }
     $("note").value = "";
+    // Re-read the window so tabs that changed page show what they show now.
+    tabs = await ext.tabs.query({ currentWindow: true });
     renderTabs();
     renderDuplicates(duplicates);
     const savedText =
@@ -253,14 +306,18 @@ async function save() {
         : `Saved ${saved} tabs to your Memoria Inbox.`;
     setMessage(
       "save-status",
-      duplicates.length === 0
+      (duplicates.length === 0
         ? savedText
-        : `${savedText} ${duplicates.length === 1 ? "1 tab was" : `${duplicates.length} tabs were`} already saved.`,
+        : `${savedText} ${duplicates.length === 1 ? "1 tab was" : `${duplicates.length} tabs were`} already saved.`) +
+        changedText(),
     );
   } catch (error) {
     renderTabs();
     renderDuplicates(duplicates);
-    setMessage("save-status", saved ? `Saved and closed ${saved} tabs.` : "");
+    setMessage(
+      "save-status",
+      (saved ? `Saved ${saved} tabs.` : "") + changedText(),
+    );
     setMessage(
       "save-error",
       `${error.message} The remaining tabs are still open.`,

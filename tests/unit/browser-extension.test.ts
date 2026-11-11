@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildBatchBody,
   chunk,
+  closableTabIds,
   isApiKey,
   isPreselected,
   normalizeServerUrl,
@@ -88,6 +89,28 @@ describe("browser extension helpers", () => {
       }),
     ).rejects.toThrow("must start with https://");
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("closes only tabs that still show the submitted page", () => {
+    const submitted = [
+      { id: 1, url: "https://a.example/" },
+      { id: 2, url: "https://b.example/" },
+      { id: 3, url: "https://c.example/" },
+      { id: 4, url: "https://d.example/" },
+    ];
+    const current = new Map<
+      number,
+      { url: string; pendingUrl?: string } | null
+    >([
+      [1, { url: "https://a.example/" }],
+      [2, { url: "https://elsewhere.example/" }],
+      [3, { url: "https://c.example/", pendingUrl: "https://next.example/" }],
+      [4, null],
+    ]);
+    expect(closableTabIds(submitted, current)).toEqual({
+      closable: [1],
+      changed: [2, 3, 4],
+    });
   });
 
   it("recognizes Memoria API keys", () => {

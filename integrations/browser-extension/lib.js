@@ -182,6 +182,32 @@ export function existingLinkUrl(serverUrl, existing) {
   return `${normalizeServerUrl(serverUrl)}${path}`;
 }
 
+/**
+ * Which submitted tabs may close after the server confirmed them: those that
+ * still exist and still show the submitted URL (and, when the browser reports
+ * a navigation in progress, whose pendingUrl is that URL too). `current` maps
+ * a tab id to its fresh record, or to null when the tab is gone.
+ */
+export function closableTabIds(submitted, current) {
+  const closable = [];
+  const changed = [];
+  for (const tab of submitted) {
+    const now = current.get(tab.id);
+    if (
+      now &&
+      now.url === tab.url &&
+      (now.pendingUrl === undefined ||
+        now.pendingUrl === "" ||
+        now.pendingUrl === tab.url)
+    ) {
+      closable.push(tab.id);
+    } else {
+      changed.push(tab.id);
+    }
+  }
+  return { closable, changed };
+}
+
 /** Stable fingerprint of what would be sent, to reuse keys on retry. */
 export function selectionSignature(tabs, note) {
   return JSON.stringify([
