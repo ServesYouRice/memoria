@@ -526,7 +526,10 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
       prismaMocks.suggestionFindFirst.mockResolvedValue({
         id: suggestionId,
         agentProfileId: proposeOnlyProfile.id,
-        kind: "WRITE",
+        kind:
+          payload.kind === "external-webhook"
+            ? "EXTERNAL_ACTION"
+            : "INTERNAL_ORGANIZATION",
         status: overrides?.status ?? "APPROVED",
         summary: "Suggested change",
         payload,
@@ -655,6 +658,42 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
           serviceCoreMocks.claimSuggestionForExecution,
         ).not.toHaveBeenCalled();
         expect(serviceCoreMocks.createCanvasItemWrite).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ["EXTERNAL_ACTION", payloads["canvas-item-batch-create"]],
+      [
+        "INTERNAL_ORGANIZATION",
+        {
+          kind: "external-webhook",
+          integrationAccountId: "cint0000000000000000000001",
+          request: { method: "POST", body: {} },
+        },
+      ],
+    ])(
+      "refuses a %s suggestion whose payload kind disagrees, before claiming",
+      async (kind, payload) => {
+        arrange(payload);
+        prismaMocks.suggestionFindFirst.mockResolvedValue({
+          id: suggestionId,
+          agentProfileId: proposeOnlyProfile.id,
+          kind,
+          status: "APPROVED",
+          summary: "Mismatched",
+          payload,
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+
+        const res = await execute();
+
+        expect(res.status).toBe(400);
+        expect(
+          serviceCoreMocks.claimSuggestionForExecution,
+        ).not.toHaveBeenCalled();
+        expect(
+          serviceCoreMocks.createCanvasItemBatchWrite,
+        ).not.toHaveBeenCalled();
       },
     );
 

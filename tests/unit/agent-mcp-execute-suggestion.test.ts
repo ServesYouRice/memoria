@@ -99,6 +99,10 @@ function arrange(payload: Record<string, unknown>, status = "APPROVED") {
   mocks.suggestionFindFirst.mockResolvedValue({
     id: suggestionId,
     agentProfileId: "prof-propose",
+    kind:
+      payload.kind === "external-webhook"
+        ? "EXTERNAL_ACTION"
+        : "INTERNAL_ORGANIZATION",
     status,
     summary: "Suggested change",
     payload,

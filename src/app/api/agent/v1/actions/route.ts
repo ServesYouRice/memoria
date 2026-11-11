@@ -50,19 +50,11 @@ import {
   knowledgeRelationSuggestionPayloadSchema,
 } from "@/lib/agents/knowledge-schemas";
 import { ForbiddenError, NotFoundError, BadRequestError } from "@/lib/errors";
-
-const headerValueSchema = z.string().min(1).max(2000);
-const externalActionPayloadSchema = z.object({
-  kind: z.literal("external-webhook"),
-  integrationAccountId: z.string().cuid(),
-  request: z.object({
-    method: z.enum(["POST", "PUT", "PATCH"]).default("POST"),
-    path: z.string().min(1).max(2048).optional(),
-    headers: z.record(z.string(), headerValueSchema).default({}),
-    body: z.unknown(),
-  }),
-  compensatingAction: z.record(z.string(), z.unknown()).optional(),
-});
+import {
+  assertSuggestionKindMatchesPayload,
+  externalActionPayloadSchema,
+  externalActionSummarySchema,
+} from "@/lib/agents/external-action-schema";
 
 const timelineCanvasIdSchema = z.string().cuid().optional();
 
@@ -288,7 +280,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     const data = z
       .object({
         action: z.literal("propose-external"),
-        summary: z.string().min(1).max(255),
+        summary: externalActionSummarySchema,
         payload: externalActionPayloadSchema,
       })
       .parse(body);
@@ -417,6 +409,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     if (suggestion.expiresAt <= new Date()) {
       throw new BadRequestError("The selected suggestion has expired.");
     }
+
+    const suggestionPayload = suggestion.payload as Record<string, unknown>;
+    assertSuggestionKindMatchesPayload(
+      suggestion.kind,
+      typeof suggestionPayload?.kind === "string"
+        ? suggestionPayload.kind
+        : null,
+    );
 
     await claimSuggestionForExecution({
       userId: context.userId,

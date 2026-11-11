@@ -95,6 +95,11 @@ import {
   knowledgeRelationSuggestionPayloadSchema,
 } from "@/lib/agents/knowledge-schemas";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import {
+  assertSuggestionKindMatchesPayload,
+  externalActionPayloadSchema,
+  externalActionSummarySchema,
+} from "@/lib/agents/external-action-schema";
 
 function createTextResult(payload: unknown): McpToolCallResult {
   return {
@@ -220,6 +225,7 @@ async function executeApprovedSuggestion(
     },
     select: {
       id: true,
+      kind: true,
       status: true,
       summary: true,
       payload: true,
@@ -239,6 +245,12 @@ async function executeApprovedSuggestion(
   if (suggestion.expiresAt <= new Date()) {
     throw new BadRequestError("The selected suggestion has expired.");
   }
+
+  const storedPayload = suggestion.payload as Record<string, unknown> | null;
+  assertSuggestionKindMatchesPayload(
+    suggestion.kind,
+    typeof storedPayload?.kind === "string" ? storedPayload.kind : null,
+  );
 
   await claimSuggestionForExecution({
     userId: context.userId,
@@ -987,15 +999,10 @@ export async function executeMcpTool(
       );
     }
     case "actions.propose_external": {
-      const payload =
-        args.payload && typeof args.payload === "object"
-          ? (args.payload as Record<string, unknown>)
-          : null;
-      if (!payload) {
-        throw new BadRequestError("payload is required.");
-      }
-
-      const integrationAccountId = String(payload.integrationAccountId || "");
+      // The same contract as REST propose-external, checked before lookups.
+      const payload = externalActionPayloadSchema.parse(args.payload);
+      const summary = externalActionSummarySchema.parse(args.summary);
+      const { integrationAccountId } = payload;
       const { actor, agentProfile } = await resolveWriteActor(context, {
         agentProfileId:
           typeof args.agentProfileId === "string"
@@ -1034,7 +1041,7 @@ export async function executeMcpTool(
         await createSuggestionRecord({
           actor,
           kind: SuggestionKind.EXTERNAL_ACTION,
-          summary: String(args.summary || ""),
+          summary,
           payload,
           rung: AGENT_CAPABILITY_RUNGS.PROPOSE_EXTERNAL,
         }),
