@@ -1,7 +1,10 @@
 import type { OutboxJob, PrismaClient } from "@/generated/prisma/client";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import type { OutboxHandler, OutboxHandlerContext } from "@/lib/outbox/types";
-import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import {
+  LAUNCH_LIMITS,
+  workspaceCheckpointRetention,
+} from "@/lib/policy/launch-limits";
 
 /** Rows one retention DELETE may remove; each runs as its own statement. */
 export const RETENTION_BATCH_SIZE = 500;
@@ -130,6 +133,67 @@ export function createMaintenanceRetentionHandler(
       `,
       { deadlineAt, signal: context?.signal },
     );
-    if (keysRemain || candidatesRemain) await enqueueContinuation(prisma, job);
+    const checkpointsRemain = await pruneWorkspaceCheckpoints(prisma, {
+      deadlineAt,
+      signal: context?.signal,
+    });
+    if (keysRemain || candidatesRemain || checkpointsRemain) {
+      await enqueueContinuation(prisma, job);
+    }
   };
+}
+
+/**
+ * Prunes WorkspaceCheckpoint rows past the retention policy (see
+ * workspaceCheckpointRetention): older than the age limit, or beyond the
+ * newest maxPerScope of their (scopeType, scopeId). A checkpoint an open,
+ * approved or executing bulk suggestion names is kept: running it requires
+ * the checkpoint. Deleting only rows that violate the policy makes a rerun
+ * a no-op. Returns whether work may remain.
+ */
+export async function pruneWorkspaceCheckpoints(
+  prisma: PrismaClient,
+  options: { deadlineAt: number; signal?: AbortSignal },
+) {
+  const { days, maxPerScope } = workspaceCheckpointRetention();
+  const cutoff = new Date(Date.now() - days * 86_400_000);
+  const aged = await runBatchedRetention(
+    () => prisma.$executeRaw`
+      DELETE FROM "WorkspaceCheckpoint" WHERE "id" IN (
+        SELECT checkpoint."id" FROM "WorkspaceCheckpoint" checkpoint
+        WHERE checkpoint."createdAt" < ${cutoff}
+          AND NOT EXISTS (
+            SELECT 1 FROM "Suggestion" suggestion
+            WHERE suggestion."status" IN ('OPEN', 'APPROVED', 'EXECUTING')
+              AND suggestion."payload"->>'checkpointId' = checkpoint."id"
+          )
+        ORDER BY checkpoint."createdAt" ASC
+        LIMIT ${RETENTION_BATCH_SIZE}
+      )
+    `,
+    options,
+  );
+  const surplus = await runBatchedRetention(
+    () => prisma.$executeRaw`
+      WITH ranked AS (
+        SELECT "id", ROW_NUMBER() OVER (
+          PARTITION BY "scopeType", "scopeId" ORDER BY "createdAt" DESC, "id" DESC
+        ) AS rank
+        FROM "WorkspaceCheckpoint"
+      ), doomed AS (
+        SELECT ranked."id" FROM ranked
+        WHERE ranked.rank > ${maxPerScope}
+          AND NOT EXISTS (
+            SELECT 1 FROM "Suggestion" suggestion
+            WHERE suggestion."status" IN ('OPEN', 'APPROVED', 'EXECUTING')
+              AND suggestion."payload"->>'checkpointId' = ranked."id"
+          )
+        LIMIT ${RETENTION_BATCH_SIZE}
+      )
+      DELETE FROM "WorkspaceCheckpoint" checkpoint USING doomed
+      WHERE checkpoint."id" = doomed."id"
+    `,
+    options,
+  );
+  return aged || surplus;
 }

@@ -417,6 +417,8 @@ async function persistCanvasCheckpoint(
       userId: input.actor.userId,
       scopeType: "canvas",
       scopeId: input.canvasId,
+      // Ties the row to its canvas so deleting the canvas deletes it.
+      canvasId: input.canvasId,
       snapshot: toJsonValue(input.snapshot),
       reason: input.reason,
       createdByActorType: WorkspaceCheckpointActorType.AGENT,

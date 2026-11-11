@@ -154,6 +154,8 @@ model Canvas {
   thumbnailRevision BigInt @default(0)
   restoreRevision Int @default(0)
   thumbnailCandidates CanvasThumbnailCandidate[]
+  /// Agent checkpoints of this canvas; they are deleted with it.
+  workspaceCheckpoints WorkspaceCheckpoint[]
 
   // Sharing settings
   isPublic    Boolean     @default(false)
@@ -991,6 +993,9 @@ model WorkspaceCheckpoint {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   scopeType  String
   scopeId    String
+  /// The checkpointed canvas for scopeType "canvas", so the rows go with it.
+  canvasId   String?
+  canvas     Canvas?  @relation(fields: [canvasId], references: [id], onDelete: Cascade)
   snapshot   Json
   reason     String
   createdByActorType WorkspaceCheckpointActorType
@@ -998,6 +1003,9 @@ model WorkspaceCheckpoint {
   createdAt  DateTime @default(now())
 
   @@index([userId, scopeType, scopeId, createdAt])
+  @@index([scopeType, scopeId, createdAt])
+  @@index([createdAt])
+  @@index([canvasId])
 }
 
 model CanvasView {
