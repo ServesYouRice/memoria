@@ -30,6 +30,31 @@ import {
 } from "@/lib/hooks/use-api-keys";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { ApiError } from "@/lib/api/fetch-client";
+
+/**
+ * The end of a date input's day (YYYY-MM-DD) in the viewer's local time zone.
+ * `new Date("YYYY-MM-DD")` reads the value as UTC midnight, which expires the
+ * key at the start of the chosen day (or the day before, west of UTC).
+ */
+export function localEndOfDayIso(dateString: string): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(
+    year as number,
+    (month as number) - 1,
+    day as number,
+    23,
+    59,
+    59,
+    999,
+  ).toISOString();
+}
+
+/** A local calendar date formatted for a date input's value or min. */
+export function localDateInputValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 
 export function ApiKeysContent() {
   const { data, isLoading, error } = useApiKeys();
@@ -45,7 +70,7 @@ export function ApiKeysContent() {
 
   const handleCreate = async () => {
     try {
-      const expiresAtIso = expiresAt ? new Date(expiresAt).toISOString() : null;
+      const expiresAtIso = expiresAt ? localEndOfDayIso(expiresAt) : null;
       const result = await createApiKey.mutateAsync({
         name: newKeyName.trim(),
         expiresAt: expiresAtIso,
@@ -54,8 +79,12 @@ export function ApiKeysContent() {
       setNewKeyName("");
       setExpiresAt("");
       setCreateOpen(false);
-    } catch {
-      toast.error("Failed to create API key");
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.status < 500 && error.message
+          ? error.message
+          : "Failed to create API key",
+      );
     }
   };
 
@@ -237,7 +266,10 @@ export function ApiKeysContent() {
             type="date"
             value={expiresAt}
             onChange={(e) => setExpiresAt(e.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
+            slotProps={{
+              inputLabel: { shrink: true },
+              htmlInput: { min: localDateInputValue(new Date()) },
+            }}
             fullWidth
           />
           <Alert severity="info">
