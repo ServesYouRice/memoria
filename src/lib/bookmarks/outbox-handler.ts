@@ -13,9 +13,14 @@ import {
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import {
+  MAX_BOOKMARK_HISTORY_ENTRIES,
+  parseCanvasItemContent,
+} from "@/lib/validation/canvas-item";
+import { createLogger } from "@/lib/logger";
 
+const log = createLogger("bookmark-refresh");
 const payloadSchema = z.object({ itemId: z.string().cuid() }).strict();
-const MAX_HISTORY_ENTRIES = 20;
 
 interface BookmarkContent {
   url?: string;
@@ -59,14 +64,16 @@ export function createBookmarkRefreshHandler(
       next.title !== content.title ||
       next.description !== content.description ||
       next.image !== content.image;
-    if (!changed) {
-      await prisma.$transaction(async (tx) => {
+    const stampRefreshed = () =>
+      prisma.$transaction(async (tx) => {
         await lockCanvasForMutation(tx, item.canvasId);
         await tx.$executeRaw`
           UPDATE "CanvasItem" SET "bookmarkRefreshedAt" = NOW()
           WHERE "id" = ${item.id} AND "version" = ${item.version} AND "deletedAt" IS NULL
         `;
       });
+    if (!changed) {
+      await stampRefreshed();
       return;
     }
     const history = [
@@ -80,15 +87,30 @@ export function createBookmarkRefreshHandler(
         image: content.image,
       },
     });
+    // Remote page metadata goes through the canonical bookmark schema like
+    // every other content writer: unsafe image schemes are dropped and
+    // oversized values are refused.
+    let parsedContent: ReturnType<typeof parseCanvasItemContent>;
+    try {
+      parsedContent = parseCanvasItemContent(ItemType.BOOKMARK, {
+        ...next,
+        history: history.slice(-MAX_BOOKMARK_HISTORY_ENTRIES),
+      });
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
+      log.warn(
+        { itemId: item.id, issues: error.issues.length },
+        "Refreshed bookmark metadata failed validation; content not written",
+      );
+      await stampRefreshed();
+      return;
+    }
     await prisma.$transaction(async (tx) => {
       await lockCanvasForMutation(tx, item.canvasId);
       const update = await tx.canvasItem.updateMany({
         where: { id: item.id, version: item.version, deletedAt: null },
         data: {
-          content: {
-            ...next,
-            history: history.slice(-MAX_HISTORY_ENTRIES),
-          } as Prisma.InputJsonValue,
+          content: parsedContent as Prisma.InputJsonValue,
           bookmarkRefreshedAt: new Date(),
           version: { increment: 1 },
         },

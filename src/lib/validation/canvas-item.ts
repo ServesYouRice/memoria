@@ -68,6 +68,35 @@ const storedNoteContentSchema = noteContentSchemaWith({ allowEmpty: true });
  * Phase 2 will add unfurling fields
  * Sanitizes URL to prevent javascript: and data: URIs
  */
+/** A remote preview image: http(s) only, anything else is dropped. */
+const bookmarkImageSchema = z
+  .string()
+  .max(MAX_URL_LENGTH)
+  .refine((value) => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  })
+  .optional()
+  .catch(undefined);
+
+/** One earlier title/description/image, kept by the bookmark refresh job. */
+const bookmarkHistoryEntrySchema = z.object({
+  date: z.string().max(64),
+  previous: z
+    .object({
+      title: z.string().max(500).optional(),
+      description: z.string().max(2000).optional(),
+      image: bookmarkImageSchema,
+    })
+    .default({}),
+});
+
+export const MAX_BOOKMARK_HISTORY_ENTRIES = 20;
+
 export const bookmarkContentSchema = z.object({
   url: urlSchema.transform((val) => {
     const sanitized = sanitizeUrl(val);
@@ -90,6 +119,13 @@ export const bookmarkContentSchema = z.object({
   unfurledAt: z.string().optional(),
   /** Two-line "what is this", written by link enrichment (IMP-064). */
   summary: z.string().max(600).optional(),
+  /** og:image / twitter:image found by the bookmark refresh job. */
+  image: bookmarkImageSchema,
+  /** Earlier metadata the bookmark refresh job replaced, newest last. */
+  history: z
+    .array(bookmarkHistoryEntrySchema)
+    .max(MAX_BOOKMARK_HISTORY_ENTRIES)
+    .optional(),
 });
 
 /**
