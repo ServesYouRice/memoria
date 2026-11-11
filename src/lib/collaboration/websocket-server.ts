@@ -253,16 +253,30 @@ function publishMessage(message: CollaborationBusMessage): void {
     .catch((error) => logger.error({ error }, "Redis publish error"));
 }
 
+/**
+ * What presence and chat recipients see of a collaborator: id, a display name
+ * (never the email) and color. Every recipient, guests included, gets the
+ * same payload, so no email is serialized.
+ */
+function publicDisplayName(user: Pick<CollaborationUser, "name">): string {
+  return user.name?.trim() || "Collaborator";
+}
+
+function toPublicUser(user: CollaborationUser): CollaborationUser {
+  return {
+    userId: user.userId,
+    // Kept as an empty string so older replicas and clients still parse it.
+    email: "",
+    name: publicDisplayName(user),
+    color: user.color,
+    accessLevel: user.accessLevel,
+  };
+}
+
 function getLocalUsers(clients: Set<ClientConnection>): CollaborationUser[] {
   const users = new Map<string, CollaborationUser>();
   for (const client of clients) {
-    users.set(client.user.userId, {
-      userId: client.user.userId,
-      email: client.user.email,
-      name: client.user.name,
-      color: client.user.color,
-      accessLevel: client.user.accessLevel,
-    });
+    users.set(client.user.userId, toPublicUser(client.user));
   }
   return Array.from(users.values());
 }
@@ -321,7 +335,8 @@ function getRemoteUsers(
     remoteUsers.forEach((user) => {
       if (!seen.has(user.userId)) {
         seen.add(user.userId);
-        users.push(user);
+        // A replica on older code may still publish emails.
+        users.push(toPublicUser(user));
       }
     });
   });
@@ -988,7 +1003,7 @@ async function handleMessage(
       const payload = {
         ...message.payload,
         userId: connection.user.userId,
-        userName: connection.user.name || connection.user.email || "Guest",
+        userName: publicDisplayName(connection.user),
         userColor: connection.user.color,
         timestamp,
       };
