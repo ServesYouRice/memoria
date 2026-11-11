@@ -200,6 +200,10 @@ export function CanvasItemListView({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>, item: CanvasItem) => {
+      // Keys pressed on the row's own Edit/Delete buttons bubble here.
+      // Treating them as row commands would preventDefault and cancel the
+      // button's native keyboard activation.
+      if (event.target !== event.currentTarget) return;
       const heading = describeItemHeading(item);
 
       if (event.key === "Enter" || event.key === " ") {
