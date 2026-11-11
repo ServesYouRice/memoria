@@ -1,10 +1,21 @@
 import { z } from "zod";
 import { MAX_URL_LENGTH } from "@/lib/constants";
 
+const httpUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .max(MAX_URL_LENGTH)
+  .refine((value) => /^https?:$/i.test(new URL(value).protocol), {
+    message: "Only http:// and https:// links can be saved.",
+  });
+
+// The limits of the stored bookmark (bookmarkContentSchema): over-long input
+// is refused, as in clipBatchSchema, rather than cut.
 export const clipSchema = z.object({
-  url: z.string().url(),
-  title: z.string().optional(),
-  selection: z.string().optional(),
+  url: httpUrlSchema,
+  title: z.string().trim().max(500).optional(),
+  selection: z.string().max(2000).optional(),
   canvasId: z.string().cuid().optional(),
   /** Save even when the link is already in the user's boards (IMP-065). */
   allowDuplicate: z.boolean().optional(),
@@ -22,15 +33,6 @@ export const webhookSchema = z.object({
 export const CLIP_BATCH_MAX_LINKS = 100;
 /** Longest "How should these be sorted?" note a batch may carry. */
 export const CLIP_BATCH_NOTE_MAX_LENGTH = 2000;
-
-const httpUrlSchema = z
-  .string()
-  .trim()
-  .url()
-  .max(MAX_URL_LENGTH)
-  .refine((value) => /^https?:$/i.test(new URL(value).protocol), {
-    message: "Only http:// and https:// links can be saved.",
-  });
 
 /**
  * One request that saves many links to the Inbox at once: the browser

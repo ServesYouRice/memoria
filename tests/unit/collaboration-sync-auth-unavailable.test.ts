@@ -17,6 +17,7 @@ vi.mock("@/lib/collaboration/sync/authorization", () => ({
   authorizeSyncConnection: captured.authorize,
   canWriteDocument: () => true,
   refreshSyncAuthorizations: vi.fn(async () => new Map()),
+  SYNC_SIGNED_OUT: "signed-out",
 }));
 
 import { createSyncServer } from "@/lib/collaboration/sync/server";
@@ -53,7 +54,7 @@ describe("sync onAuthenticate backend failures", () => {
   });
 
   it("still reports no access as forbidden", async () => {
-    captured.authorize.mockResolvedValue(null);
+    captured.authorize.mockResolvedValue({ status: "forbidden" });
     await expect(authenticate()).rejects.toMatchObject({
       reason: SYNC_CLOSE_REASONS.forbidden,
     });

@@ -332,6 +332,88 @@ describe("offline canvas document session", () => {
     expect(offline.acceptsWrites).toBe(false);
   });
 
+  it("keeps the device copy and the unsaved count when the session is signed out (TASK-166)", async () => {
+    const browser = new EventTarget();
+    vi.stubGlobal("window", browser);
+    const { session } = await storeOnlineCopy();
+    goOffline();
+    const pending = session.createItem(shape(50));
+    await session.whenCached();
+    session.destroy();
+
+    const reloaded = open();
+    await waitFor(() => reloaded.getSnapshot().restored);
+    const unsaved = reloaded.getSnapshot().unsavedChanges;
+    expect(unsaved).toBeGreaterThan(0);
+    latestProvider().config.onAuthenticationFailed({
+      reason: SYNC_CLOSE_REASONS.signedOut,
+    });
+    await waitFor(() => reloaded.getSnapshot().signedOut === true);
+    expect(reloaded.getSnapshot()).toMatchObject({
+      forbidden: false,
+      writable: false,
+      connected: false,
+      unsavedChanges: unsaved,
+    });
+    expect(reloaded.acceptsWrites).toBe(false);
+    expect(reloaded.hasItem(pending.id)).toBe(true);
+    expect(latestProvider().destroyed).toBe(true);
+
+    // Signed in again: the next online event dials in, once.
+    const dialled = providers.created.length;
+    browser.dispatchEvent(new Event("online"));
+    browser.dispatchEvent(new Event("online"));
+    expect(providers.created.length).toBe(dialled + 1);
+    serverSyncs();
+    await waitFor(() => reloaded.acceptsWrites);
+    expect(reloaded.getSnapshot()).toMatchObject({
+      signedOut: false,
+      unsavedChanges: unsaved,
+    });
+    expect(reloaded.hasItem(pending.id)).toBe(true);
+    await reloaded.whenCached();
+    reloaded.destroy();
+
+    const offline = open();
+    await waitFor(() => offline.getSnapshot().ready);
+    expect(offline.hasItem(pending.id)).toBe(true);
+    expect(offline.getSnapshot().unsavedChanges).toBe(unsaved);
+  });
+
+  it("keeps the device copy when a refresh finds the session signed out, and discards it if the next sign-in may not edit (TASK-166)", async () => {
+    const { session } = await storeOnlineCopy();
+    const pending = session.createItem(shape(70));
+    await session.whenCached();
+    latestProvider().config.onClose({
+      event: { reason: SYNC_CLOSE_REASONS.signedOut },
+    });
+    await waitFor(() => session.getSnapshot().signedOut === true);
+    expect(session.getSnapshot().unsavedChanges).toBeGreaterThan(0);
+    expect(session.hasItem(pending.id)).toBe(true);
+    expect(session.acceptsWrites).toBe(false);
+
+    // An explicit retry while still signed out changes nothing.
+    session.reconnect();
+    latestProvider().config.onAuthenticationFailed({
+      reason: SYNC_CLOSE_REASONS.signedOut,
+    });
+    await waitFor(() => latestProvider().destroyed);
+    expect(session.hasItem(pending.id)).toBe(true);
+
+    // Signed in again without edit access: as for any lost edit access,
+    // the unsaved changes can never be stored.
+    session.reconnect();
+    const provider = latestProvider();
+    provider.config.onStatus({ status: "connected" });
+    provider.config.onAuthenticated({ scope: "readonly" });
+    await waitFor(() => session.getSnapshot().generation === 1);
+    expect(session.hasItem(pending.id)).toBe(false);
+    expect(session.getSnapshot()).toMatchObject({
+      signedOut: false,
+      unsavedChanges: 0,
+    });
+  });
+
   it("never opens another user's copy", async () => {
     const { session, itemId } = await storeOnlineCopy();
     session.destroy();

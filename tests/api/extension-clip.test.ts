@@ -58,6 +58,8 @@ vi.mock("@/lib/db", () => {
 });
 
 import { POST } from "@/app/api/v1/extensions/clip/route";
+import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
+import { ItemType } from "@/types/canvas";
 
 function clip(body: Record<string, unknown>) {
   return POST(
@@ -144,5 +146,54 @@ describe("POST /api/v1/extensions/clip", () => {
     expect(body).toMatchObject({ created: true, duplicate: true });
     expect(body.duplicates).toHaveLength(1);
     expect(mocks.created).toHaveLength(1);
+  });
+
+  // TASK-226: the same bookmark rules as every other write path.
+  it.each([
+    ["a javascript: URL", { url: "javascript:alert(1)" }],
+    ["a data: URL", { url: "data:text/html,<script>alert(1)</script>" }],
+    ["an ftp: URL", { url: "ftp://example.com/file" }],
+    [
+      "a URL over the length limit",
+      { url: `https://example.com/${"a".repeat(2048)}` },
+    ],
+    [
+      "a title over 500 characters",
+      { url: "https://example.com/a", title: "t".repeat(600) },
+    ],
+    [
+      "a selection over 2000 characters",
+      { url: "https://example.com/a", selection: "s".repeat(2001) },
+    ],
+  ])("refuses %s", async (_label, body) => {
+    const response = await clip(body);
+    expect(response.status).toBe(400);
+    expect(mocks.created).toHaveLength(0);
+    expect(mocks.enqueueLinkEnrichment).not.toHaveBeenCalled();
+  });
+
+  it("stores the content the bookmark schema produces", async () => {
+    const response = await clip({
+      url: "https://example.com/article",
+      title: "Tab",
+      selection: "A highlight",
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.created[0]!.content).toEqual(
+      parseCanvasItemContent(ItemType.BOOKMARK, {
+        url: "https://example.com/article",
+        title: "Tab",
+        description: "A highlight",
+      }),
+    );
+  });
+
+  it("cuts a long URL used as the title to the title limit", async () => {
+    const url = `https://example.com/${"a".repeat(700)}`;
+    const response = await clip({ url });
+    expect(response.status).toBe(200);
+    const content = mocks.created[0]!.content as { url: string; title: string };
+    expect(content.url).toBe(url);
+    expect(content.title).toBe(url.slice(0, 500));
   });
 });
