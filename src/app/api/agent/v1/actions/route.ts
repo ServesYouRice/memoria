@@ -29,6 +29,7 @@ import {
   rejectSuggestion,
   revertChangeSet,
   assertAgentMayRevertChangeSet,
+  releaseSuggestionClaim,
 } from "@/lib/agents/service-core";
 import {
   PILES_SUGGESTION_KIND,
@@ -51,6 +52,10 @@ import {
   knowledgeRelationSuggestionPayloadSchema,
 } from "@/lib/agents/knowledge-schemas";
 import { ForbiddenError, NotFoundError, BadRequestError } from "@/lib/errors";
+import { requireExternalWebhookExecution } from "@/lib/agents/external-delivery-policy";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("agent-actions");
 
 const headerValueSchema = z.string().min(1).max(2000);
 const externalActionPayloadSchema = z.object({
@@ -156,6 +161,61 @@ async function getOwnedSuggestion(userId: string, suggestionId: string) {
   }
 
   return suggestion;
+}
+
+interface PreparedSuggestionRun {
+  /** The suggestion's write; it runs only after the claim succeeds. */
+  run: () => Promise<unknown>;
+  /**
+   * Whether a failed run may return the suggestion to APPROVED. True for
+   * internal writes, which roll back as one transaction when they throw.
+   */
+  releaseOnFailure: boolean;
+}
+
+/**
+ * Claims an approved suggestion, runs its prepared write and marks it
+ * executed. A failed internal write releases the claim so it can be retried.
+ */
+async function runClaimedSuggestion(
+  ids: { userId: string; suggestionId: string },
+  prepared: PreparedSuggestionRun,
+) {
+  await claimSuggestionForExecution(ids);
+
+  let result: unknown;
+  try {
+    result = await prepared.run();
+  } catch (error) {
+    if (prepared.releaseOnFailure) {
+      try {
+        await releaseSuggestionClaim(ids);
+      } catch (releaseError) {
+        log.error(
+          { err: releaseError, suggestionId: ids.suggestionId },
+          "Failed to release a suggestion claim after a failed execution",
+        );
+      }
+    } else {
+      log.error(
+        { err: error, suggestionId: ids.suggestionId },
+        "Suggestion execution failed after dispatch; left EXECUTING",
+      );
+    }
+    throw error;
+  }
+
+  try {
+    await markSuggestionExecuted(ids);
+  } catch (error) {
+    // The write committed; releasing now would allow it to run twice.
+    log.error(
+      { err: error, suggestionId: ids.suggestionId },
+      "Suggestion write committed but could not be marked executed",
+    );
+    throw error;
+  }
+  return result;
 }
 
 async function resolveRequiredAgentProfile(
@@ -405,11 +465,6 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       throw new BadRequestError("The selected suggestion has expired.");
     }
 
-    await claimSuggestionForExecution({
-      userId: context.userId,
-      suggestionId: suggestion.id,
-    });
-
     const actor = {
       userId: context.userId,
       agentProfileId: agentProfile.id,
@@ -420,9 +475,12 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     const payload = suggestion.payload as Record<string, unknown>;
     const payloadKind = typeof payload.kind === "string" ? payload.kind : null;
 
+    // Every parse, ownership, scope and rung check runs before the claim, so
+    // a refusal leaves the suggestion APPROVED. Only the write runs claimed.
     // Owner approval is the authority for internal-organization kinds: the
     // proposing agent needs its propose rung and canvas scope, not a
     // direct-write rung. External webhooks below still require rung 8.
+    let prepared: PreparedSuggestionRun;
 
     if (payloadKind === "canvas-item-create") {
       const parsed = z
@@ -438,59 +496,37 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       assertCanvasScope(agentProfile, parsed.canvasId);
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
-      const result = await createCanvasItemWrite({
-        actor,
-        canvasId: parsed.canvasId,
-        itemData: normalizedItem,
-        summary: suggestion.summary,
-      });
-
-      await markSuggestionExecuted({
-        userId: context.userId,
-        suggestionId: suggestion.id,
-      });
-
-      return NextResponse.json(
-        {
-          suggestionId: suggestion.id,
-          executed: result,
-        },
-        { status: 200 },
-      );
-    }
-
-    if (payloadKind === KNOWLEDGE_ENTITY_SUGGESTION_KIND) {
+      prepared = {
+        releaseOnFailure: true,
+        run: () =>
+          createCanvasItemWrite({
+            actor,
+            canvasId: parsed.canvasId,
+            itemData: normalizedItem,
+            summary: suggestion.summary,
+          }),
+      };
+    } else if (payloadKind === KNOWLEDGE_ENTITY_SUGGESTION_KIND) {
       const parsed = knowledgeEntitySuggestionPayloadSchema.parse(payload);
       const item = await getItemCanvasScope(context.userId, parsed.itemId);
 
       assertCanvasScope(agentProfile, item.canvasId);
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
-      const result = await createKnowledgeEntityWrite({
-        actor,
-        itemId: parsed.itemId,
-        entityType: parsed.entityType,
-        title: parsed.title,
-        summary: parsed.summary,
-        attributes: parsed.attributes,
-        sourceConfidence: parsed.sourceConfidence,
-      });
-
-      await markSuggestionExecuted({
-        userId: context.userId,
-        suggestionId: suggestion.id,
-      });
-
-      return NextResponse.json(
-        {
-          suggestionId: suggestion.id,
-          executed: result,
-        },
-        { status: 200 },
-      );
-    }
-
-    if (payloadKind === KNOWLEDGE_RELATION_SUGGESTION_KIND) {
+      prepared = {
+        releaseOnFailure: true,
+        run: () =>
+          createKnowledgeEntityWrite({
+            actor,
+            itemId: parsed.itemId,
+            entityType: parsed.entityType,
+            title: parsed.title,
+            summary: parsed.summary,
+            attributes: parsed.attributes,
+            sourceConfidence: parsed.sourceConfidence,
+          }),
+      };
+    } else if (payloadKind === KNOWLEDGE_RELATION_SUGGESTION_KIND) {
       const parsed = knowledgeRelationSuggestionPayloadSchema.parse(payload);
       const sourceEntity = await requireScopedKnowledgeEntity(
         { userId: context.userId, agentProfile },
@@ -513,31 +549,20 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       assertCanvasScope(agentProfile, sharedCanvasId);
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
-      const result = await createKnowledgeRelationWrite({
-        actor,
-        sourceEntityId: parsed.sourceEntityId,
-        targetEntityId: parsed.targetEntityId,
-        relationType: parsed.relationType,
-        summary: parsed.summary,
-        attributes: parsed.attributes,
-        confidence: parsed.confidence,
-      });
-
-      await markSuggestionExecuted({
-        userId: context.userId,
-        suggestionId: suggestion.id,
-      });
-
-      return NextResponse.json(
-        {
-          suggestionId: suggestion.id,
-          executed: result,
-        },
-        { status: 200 },
-      );
-    }
-
-    if (payloadKind === "canvas-item-batch-create") {
+      prepared = {
+        releaseOnFailure: true,
+        run: () =>
+          createKnowledgeRelationWrite({
+            actor,
+            sourceEntityId: parsed.sourceEntityId,
+            targetEntityId: parsed.targetEntityId,
+            relationType: parsed.relationType,
+            summary: parsed.summary,
+            attributes: parsed.attributes,
+            confidence: parsed.confidence,
+          }),
+      };
+    } else if (payloadKind === "canvas-item-batch-create") {
       const parsed = z
         .object({
           kind: z.literal("canvas-item-batch-create"),
@@ -557,57 +582,35 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       assertCanvasScope(agentProfile, parsed.canvasId);
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.PROPOSE);
 
-      const result = await createCanvasItemBatchWrite({
-        actor,
-        canvasId: parsed.canvasId,
-        items: normalizedItems,
-        summary: suggestion.summary,
-        rung,
-        checkpointId:
-          parsed.executionMode === "bulk" ? parsed.checkpointId : null,
-        checkpointReason: suggestion.summary,
-      });
-
-      await markSuggestionExecuted({
-        userId: context.userId,
-        suggestionId: suggestion.id,
-      });
-
-      return NextResponse.json(
-        {
-          suggestionId: suggestion.id,
-          executed: result,
-        },
-        { status: 200 },
-      );
-    }
-
-    if (payloadKind === PILES_SUGGESTION_KIND) {
+      prepared = {
+        releaseOnFailure: true,
+        run: () =>
+          createCanvasItemBatchWrite({
+            actor,
+            canvasId: parsed.canvasId,
+            items: normalizedItems,
+            summary: suggestion.summary,
+            rung,
+            checkpointId:
+              parsed.executionMode === "bulk" ? parsed.checkpointId : null,
+            checkpointReason: suggestion.summary,
+          }),
+      };
+    } else if (payloadKind === PILES_SUGGESTION_KIND) {
       const parsed = pilesSuggestionPayloadSchema.parse(payload);
       await verifyCanvasOwnership(context.userId, parsed.canvasId);
 
-      const result = await executePilesSuggestion({
-        actor,
-        agentProfile,
-        payload: parsed,
-        summary: suggestion.summary,
-      });
-
-      await markSuggestionExecuted({
-        userId: context.userId,
-        suggestionId: suggestion.id,
-      });
-
-      return NextResponse.json(
-        {
-          suggestionId: suggestion.id,
-          executed: result,
-        },
-        { status: 200 },
-      );
-    }
-
-    if (payloadKind === ASK_COMMAND_SUGGESTION_KIND) {
+      prepared = {
+        releaseOnFailure: true,
+        run: () =>
+          executePilesSuggestion({
+            actor,
+            agentProfile,
+            payload: parsed,
+            summary: suggestion.summary,
+          }),
+      };
+    } else if (payloadKind === ASK_COMMAND_SUGGESTION_KIND) {
       // Filed by Ask (IMP-068); only its own assistant profile may run it.
       const parsed = askCommandSuggestionPayloadSchema.parse(payload);
       if (suggestion.agentProfileId !== agentProfile.id) {
@@ -616,28 +619,17 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         );
       }
 
-      const result = await executeAskCommandSuggestion({
-        actor,
-        agentProfile,
-        payload: parsed,
-        summary: suggestion.summary,
-      });
-
-      await markSuggestionExecuted({
-        userId: context.userId,
-        suggestionId: suggestion.id,
-      });
-
-      return NextResponse.json(
-        {
-          suggestionId: suggestion.id,
-          executed: result,
-        },
-        { status: 200 },
-      );
-    }
-
-    if (payloadKind === "external-webhook") {
+      prepared = {
+        releaseOnFailure: true,
+        run: () =>
+          executeAskCommandSuggestion({
+            actor,
+            agentProfile,
+            payload: parsed,
+            summary: suggestion.summary,
+          }),
+      };
+    } else if (payloadKind === "external-webhook") {
       const parsed = externalActionPayloadSchema.parse(payload);
 
       await getOwnedIntegrationAccount(
@@ -649,33 +641,40 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         agentProfile,
         AGENT_CAPABILITY_RUNGS.EXECUTE_EXTERNAL,
       );
+      requireExternalWebhookExecution();
 
-      const result = await executeExternalWebhook({
-        actor,
-        integrationAccountId: parsed.integrationAccountId,
-        summary: suggestion.summary,
-        request: parsed.request,
-        metadata: {
-          suggestionId: suggestion.id,
-          compensatingAction: parsed.compensatingAction,
-        },
-      });
-
-      await markSuggestionExecuted({
-        userId: context.userId,
-        suggestionId: suggestion.id,
-      });
-
-      return NextResponse.json(
-        {
-          suggestionId: suggestion.id,
-          executed: result,
-        },
-        { status: 200 },
-      );
+      // A failed webhook may already have reached the receiver; releasing
+      // it for a retry could repeat the external effect, so it stays claimed.
+      prepared = {
+        releaseOnFailure: false,
+        run: () =>
+          executeExternalWebhook({
+            actor,
+            integrationAccountId: parsed.integrationAccountId,
+            summary: suggestion.summary,
+            request: parsed.request,
+            metadata: {
+              suggestionId: suggestion.id,
+              compensatingAction: parsed.compensatingAction,
+            },
+          }),
+      };
+    } else {
+      throw new BadRequestError("Unsupported suggestion payload.");
     }
 
-    throw new BadRequestError("Unsupported suggestion payload.");
+    const result = await runClaimedSuggestion(
+      { userId: context.userId, suggestionId: suggestion.id },
+      prepared,
+    );
+
+    return NextResponse.json(
+      {
+        suggestionId: suggestion.id,
+        executed: result,
+      },
+      { status: 200 },
+    );
   }
 
   return NextResponse.json({ error: "Unsupported action." }, { status: 400 });

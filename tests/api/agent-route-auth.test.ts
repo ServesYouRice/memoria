@@ -25,6 +25,7 @@ const serviceCoreMocks = vi.hoisted(() => ({
   createKnowledgeRelationWrite: vi.fn(),
   claimSuggestionForExecution: vi.fn(),
   markSuggestionExecuted: vi.fn(),
+  releaseSuggestionClaim: vi.fn(),
   executeExternalWebhook: vi.fn(),
   executeAgentAction: vi.fn(),
   ingestAgentKnowledge: vi.fn(),
@@ -75,6 +76,7 @@ vi.mock("@/lib/agents/service-core", () => ({
   createKnowledgeRelationWrite: serviceCoreMocks.createKnowledgeRelationWrite,
   claimSuggestionForExecution: serviceCoreMocks.claimSuggestionForExecution,
   markSuggestionExecuted: serviceCoreMocks.markSuggestionExecuted,
+  releaseSuggestionClaim: serviceCoreMocks.releaseSuggestionClaim,
   executeExternalWebhook: serviceCoreMocks.executeExternalWebhook,
   normalizeAgentItemWriteData: (item: unknown) => item,
   normalizeAgentItemWriteBatch: (items: unknown) => items,
@@ -604,6 +606,75 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
 
       expect(res.status).toBe(403);
       expect(serviceCoreMocks.createCanvasItemWrite).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        "an out-of-scope canvas",
+        () =>
+          arrange(payloads["canvas-item-create"], {
+            profile: {
+              ...proposeOnlyProfile,
+              allowedCanvasIds: [otherCanvasId],
+            },
+          }),
+        403,
+      ],
+      [
+        "a disabled propose rung",
+        () =>
+          arrange(payloads["canvas-item-create"], {
+            profile: { ...proposeOnlyProfile, enabledRungs: [0, 1, 2] },
+          }),
+        403,
+      ],
+      [
+        "an unsupported payload kind",
+        () => arrange({ kind: "not-a-kind" }),
+        400,
+      ],
+      [
+        "an invalid payload",
+        () =>
+          arrange({ kind: "canvas-item-batch-create", canvasId, items: [] }),
+        400,
+      ],
+    ])(
+      "refuses %s before claiming the suggestion",
+      async (_case, setup, status) => {
+        setup();
+
+        const res = await execute();
+
+        expect(res.status).toBe(status);
+        expect(
+          serviceCoreMocks.claimSuggestionForExecution,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it("releases the claim when the internal write fails, so a retry runs", async () => {
+      arrange(payloads["canvas-item-create"]);
+      serviceCoreMocks.createCanvasItemWrite.mockRejectedValueOnce(
+        new Error("Canvas is full"),
+      );
+
+      const failed = await execute();
+
+      expect(failed.status).toBe(500);
+      expect(serviceCoreMocks.releaseSuggestionClaim).toHaveBeenCalledWith({
+        userId: "user-123",
+        suggestionId,
+      });
+      expect(serviceCoreMocks.markSuggestionExecuted).not.toHaveBeenCalled();
+
+      const retried = await execute();
+
+      expect(retried.status).toBe(200);
+      expect(
+        serviceCoreMocks.claimSuggestionForExecution,
+      ).toHaveBeenCalledTimes(2);
+      expect(serviceCoreMocks.markSuggestionExecuted).toHaveBeenCalledTimes(1);
     });
 
     it("still requires rung 8 to execute an approved external webhook", async () => {

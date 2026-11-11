@@ -1071,6 +1071,28 @@ export async function markSuggestionExecuted(input: {
   });
 }
 
+/**
+ * Returns a claimed suggestion to APPROVED after its internal write failed
+ * and rolled back. Conditional on EXECUTING, so it never revives a row that
+ * finished or was rejected meanwhile.
+ */
+export async function releaseSuggestionClaim(input: {
+  userId: string;
+  suggestionId: string;
+}) {
+  return prisma.suggestion.updateMany({
+    where: {
+      id: input.suggestionId,
+      userId: input.userId,
+      status: SuggestionStatus.EXECUTING,
+    },
+    data: {
+      status: SuggestionStatus.APPROVED,
+      actedAt: new Date(),
+    },
+  });
+}
+
 export async function claimSuggestionForExecution(input: {
   userId: string;
   suggestionId: string;
