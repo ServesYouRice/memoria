@@ -15,6 +15,13 @@ import {
   Close as CloseIcon,
 } from "@mui/icons-material";
 
+function isComposingEvent(event: unknown): boolean {
+  const native =
+    (event as { nativeEvent?: KeyboardEvent } | null)?.nativeEvent ??
+    (event as KeyboardEvent | null);
+  return Boolean(native?.isComposing || native?.keyCode === 229);
+}
+
 interface WhisperModeProps {
   open: boolean;
   onClose: () => void;
@@ -57,7 +64,10 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Enter (or Escape) during an IME composition confirms or cancels the
+    // candidate; it is not a submit. Safari reports such keys as keyCode 229.
+    if (isComposingEvent(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
@@ -69,7 +79,13 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={(event, reason) => {
+        // Escape that cancels an IME candidate must not close the dialog.
+        if (reason === "escapeKeyDown" && isComposingEvent(event)) {
+          return;
+        }
+        onClose();
+      }}
       fullWidth
       maxWidth="sm"
       aria-labelledby="quick-capture-title"
@@ -120,11 +136,15 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
           variant="standard"
           value={text}
           onChange={(e) => {
+            // Read-only while saving: an edit made now would be cleared by
+            // the successful save and lost.
+            if (sendInFlightRef.current) return;
             setText(e.target.value);
             if (sendError) setSendError(null);
           }}
           onKeyDown={handleKeyDown}
           slotProps={{
+            htmlInput: { readOnly: sending, "aria-busy": sending },
             input: {
               disableUnderline: true,
               endAdornment: (
