@@ -4,6 +4,31 @@ import { useCanvasStore } from "@/stores/canvasStore";
 import { ItemType, type DrawingPath } from "@/types/canvas";
 import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
 
+/** Arrows shorter than this (in canvas units) are treated as a stray click. */
+const MIN_ARROW_LENGTH = 5;
+
+type Point = { x: number; y: number };
+
+/**
+ * An arrow item from a drag: positioned at the top-left of its bounding box,
+ * with start and end points relative to it, so the head lands where the drag
+ * was released whatever its direction. A straight horizontal or vertical
+ * arrow keeps a 1-unit box so it passes the positive-size validation.
+ */
+export function buildArrowCreation(start: Point, end: Point) {
+  const positionX = Math.min(start.x, end.x);
+  const positionY = Math.min(start.y, end.y);
+  return {
+    positionX,
+    positionY,
+    width: Math.max(Math.abs(end.x - start.x), 1),
+    height: Math.max(Math.abs(end.y - start.y), 1),
+    startPoint: { x: start.x - positionX, y: start.y - positionY },
+    endPoint: { x: end.x - positionX, y: end.y - positionY },
+    length: Math.hypot(end.x - start.x, end.y - start.y),
+  };
+}
+
 interface UseDrawingInteractionProps {
   canvasId: string;
   /** IMP-008: without it, no stroke or shape is started or created. */
@@ -28,6 +53,8 @@ export function useDrawingInteraction({
     x: number;
     y: number;
   } | null>(null);
+  // Where the pointer is now; the normalized rectangle loses the direction.
+  const creationEndRef = useRef<Point | null>(null);
   const [currentCreation, setCurrentCreation] = useState<{
     type: "shape" | "arrow";
     x: number;
@@ -56,6 +83,7 @@ export function useDrawingInteraction({
         currentPathRef.current = newPath;
       } else if (activeTool === "shape" || activeTool === "arrow") {
         setCreationStart({ x: pos.x, y: pos.y });
+        creationEndRef.current = { x: pos.x, y: pos.y };
         setCurrentCreation({
           type: activeTool,
           x: pos.x,
@@ -89,6 +117,7 @@ export function useDrawingInteraction({
       ) {
         const width = pos.x - creationStart.x;
         const height = pos.y - creationStart.y;
+        creationEndRef.current = { x: pos.x, y: pos.y };
 
         setCurrentCreation({
           type: activeTool,
@@ -151,37 +180,50 @@ export function useDrawingInteraction({
       creationStart &&
       currentCreation
     ) {
-      if (currentCreation.width > 5 && currentCreation.height > 5) {
+      if (activeTool === "arrow") {
+        const arrow = buildArrowCreation(
+          creationStart,
+          creationEndRef.current ?? creationStart,
+        );
+        if (arrow.length > MIN_ARROW_LENGTH) {
+          createItem({
+            canvasId,
+            type: ItemType.ARROW,
+            positionX: arrow.positionX,
+            positionY: arrow.positionY,
+            width: arrow.width,
+            height: arrow.height,
+            zIndex: 10,
+            tags: [],
+            content: {
+              arrowHeadStart: "none",
+              arrowHeadEnd: "arrow",
+              stroke: "#000000",
+              strokeWidth: 2,
+              startPoint: arrow.startPoint,
+              endPoint: arrow.endPoint,
+            },
+          });
+        }
+      } else if (currentCreation.width > 5 && currentCreation.height > 5) {
         createItem({
           canvasId,
-          type: activeTool === "shape" ? ItemType.SHAPE : ItemType.ARROW,
+          type: ItemType.SHAPE,
           positionX: currentCreation.x,
           positionY: currentCreation.y,
           width: currentCreation.width,
           height: currentCreation.height,
           zIndex: 10,
           tags: [],
-          content:
-            activeTool === "shape"
-              ? {
-                  shapeType: "rectangle",
-                  fill: "transparent",
-                  stroke: "#000000",
-                  strokeWidth: 2,
-                }
-              : {
-                  arrowHeadStart: "none",
-                  arrowHeadEnd: "arrow",
-                  stroke: "#000000",
-                  strokeWidth: 2,
-                  startPoint: { x: 0, y: 0 },
-                  endPoint: {
-                    x: currentCreation.width,
-                    y: currentCreation.height,
-                  },
-                },
+          content: {
+            shapeType: "rectangle",
+            fill: "transparent",
+            stroke: "#000000",
+            strokeWidth: 2,
+          },
         });
       }
+      creationEndRef.current = null;
       setCreationStart(null);
       setCurrentCreation(null);
     }
