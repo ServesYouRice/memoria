@@ -147,12 +147,16 @@ export const PATCH = withApiHandler(
     // Invalidate cache
     await invalidateCanvasCache(canvasId);
 
-    await logActivity({
-      userId,
-      type: ActivityType.CANVAS_UPDATED,
-      canvasId,
-      canvasName: updatedCanvas.name,
-    });
+    // Saving the viewport (after every pan or zoom) is not an edit anyone
+    // needs in the activity feed; renames and workspace moves are.
+    if (Object.values(canvasFields).some((value) => value !== undefined)) {
+      await logActivity({
+        userId,
+        type: ActivityType.CANVAS_UPDATED,
+        canvasId,
+        canvasName: updatedCanvas.name,
+      });
+    }
 
     return NextResponse.json({
       ...updatedCanvas,
