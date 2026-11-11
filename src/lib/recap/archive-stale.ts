@@ -34,30 +34,57 @@ export async function archiveRecapStaleLinks(input: {
     }
   }
 
+  const stale = staleLinkWhere(
+    input.userId,
+    staleCutoff(new Date(), recap.staleWeeks),
+  );
   const stillStale = await prisma.canvasItem.findMany({
-    where: {
-      id: { in: recap.staleItemIds },
-      ...staleLinkWhere(
-        input.userId,
-        staleCutoff(new Date(), recap.staleWeeks),
-      ),
-    },
+    where: { id: { in: recap.staleItemIds }, ...stale },
     select: { id: true },
   });
   const profile = await getAskAssistantProfile(input.userId);
-  const count = stillStale.length;
-  const result = await archiveItems({
+  const summary = (count: number) =>
+    `Archive ${count} ${count === 1 ? "link" : "links"} not opened in ${recap.staleWeeks} weeks`;
+  return archiveItems({
     actor: {
       userId: input.userId,
       agentProfileId: profile.id,
       modelCredentialId: profile.defaultModelCredentialId,
     },
     itemIds: stillStale.map((item) => item.id),
-    summary: `Archive ${count} ${count === 1 ? "link" : "links"} not opened in ${recap.staleWeeks} weeks`,
+    summary: summary(stillStale.length),
+    options: {
+      // A link opened or edited since the read above stays on its board.
+      eligibleWhere: stale,
+      onArchived: async (tx, archived) => {
+        // The undo link commits with the archive. Matching the value read
+        // above lets only one of two concurrent requests through.
+        const linked = await tx.weeklyRecap.updateMany({
+          where: {
+            id: recap.id,
+            userId: input.userId,
+            archivedChangeSetId: recap.archivedChangeSetId,
+          },
+          data: {
+            archivedChangeSetId: archived.changeSetId,
+            archivedAt: new Date(),
+          },
+        });
+        if (linked.count === 0) {
+          throw new ConflictError("These links are already archived.");
+        }
+        if (archived.itemIds.length !== stillStale.length) {
+          const data = { summary: summary(archived.itemIds.length) };
+          await tx.changeSet.update({
+            where: { id: archived.changeSetId },
+            data,
+          });
+          await tx.agentAction.update({
+            where: { id: archived.agentActionId },
+            data,
+          });
+        }
+      },
+    },
   });
-  await prisma.weeklyRecap.update({
-    where: { id: recap.id },
-    data: { archivedChangeSetId: result.changeSetId, archivedAt: new Date() },
-  });
-  return result;
 }
