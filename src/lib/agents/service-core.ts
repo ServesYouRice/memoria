@@ -1412,8 +1412,49 @@ async function applyRevertOperation(
         "The board this item came from is gone, so it cannot go back.",
       );
     }
+    // Only undo a move the user has not overridden: the item must still be
+    // live where the change set left it. Records without an `after` snapshot
+    // (older rows) fall back to "not trashed and not already back home".
+    const leftOn = snapshotCanvasId(changeRecord.after);
+    if (
+      existing.deletedAt ||
+      (leftOn
+        ? existing.canvasId !== leftOn
+        : existing.canvasId === snapshot.canvasId)
+    ) {
+      throw new BadRequestError(
+        "This item has moved since, so the move cannot be undone.",
+      );
+    }
     for (const canvasId of [existing.canvasId, snapshot.canvasId].sort()) {
       await lockCanvasForMutation(tx, canvasId);
+    }
+    // Lines cannot cross boards: lines drawn on the destination board after
+    // the move go with the undo, as the forward move dropped the old ones.
+    // The item's original lines come back through their DELETE records.
+    if (existing.canvasId !== snapshot.canvasId) {
+      const destinationLines = await tx.itemConnection.findMany({
+        where: {
+          canvasId: existing.canvasId,
+          OR: [{ fromId: existing.id }, { toId: existing.id }],
+        },
+      });
+      if (destinationLines.length > 0) {
+        await tx.itemConnection.deleteMany({
+          where: { id: { in: destinationLines.map((line) => line.id) } },
+        });
+        await tx.changeRecord.createMany({
+          data: destinationLines.map((line) => ({
+            changeSetId: rollbackChangeSetId,
+            targetType: "ItemConnection",
+            targetId: line.id,
+            operation: "ROLLBACK_DELETE",
+            before: toJsonValue(line),
+            after: Prisma.JsonNull,
+            reversible: false,
+          })),
+        });
+      }
     }
     const reverted = await tx.canvasItem.update({
       where: { id: changeRecord.targetId },

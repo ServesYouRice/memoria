@@ -830,6 +830,18 @@ export async function undoHomeBoardMove(input: {
     select: { id: true, agentProfileId: true, revertedAt: true },
   });
   if (!changeSet) throw new NotFoundError("Change set not found.");
+  if (!changeSet.revertedAt) {
+    // Never pull back an item the user has moved on or trashed since.
+    const item = await defaultPrisma.canvasItem.findFirst({
+      where: { id: row.itemId },
+      select: { canvasId: true, deletedAt: true },
+    });
+    if (!item || item.deletedAt || item.canvasId !== row.targetCanvasId) {
+      throw new BadRequestError(
+        "This item has moved since, so the move cannot be undone.",
+      );
+    }
+  }
   let rollbackChangeSetId: string | null = null;
   if (!changeSet.revertedAt) {
     const { actor } = await assistantActor(

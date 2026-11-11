@@ -540,6 +540,11 @@ describe("accept, dismiss, undo", () => {
     mocks.revertChangeSet.mockResolvedValue({
       rollbackChangeSetId: "cs-rollback",
     });
+    // The filed item is still on the board it was filed to.
+    mocks.db.canvasItem.findFirst.mockResolvedValue({
+      canvasId: "c-rome",
+      deletedAt: null,
+    });
 
     const result = await undoHomeBoardMove({
       userId: "user-1",
@@ -558,6 +563,27 @@ describe("accept, dismiss, undo", () => {
       where: { itemId: "item-1", status: "AUTO_FILED" },
       data: expect.objectContaining({ status: "REVERTED" }),
     });
+  });
+
+  it.each([
+    ["moved to another board", { canvasId: "c-work", deletedAt: null }],
+    ["trashed", { canvasId: "c-rome", deletedAt: new Date() }],
+  ])("refuses to undo once the user has %s the item", async (_case, item) => {
+    mocks.db.homeBoardSuggestion.findFirst.mockResolvedValue(
+      openRow({ status: "ACCEPTED", changeSetId: "cs-move" }),
+    );
+    mocks.db.changeSet.findFirst.mockResolvedValue({
+      id: "cs-move",
+      agentProfileId: profile.id,
+      revertedAt: null,
+    });
+    mocks.db.canvasItem.findFirst.mockResolvedValue(item);
+
+    await expect(
+      undoHomeBoardMove({ userId: "user-1", itemId: "item-1" }),
+    ).rejects.toMatchObject({ detail: expect.stringMatching(/moved since/) });
+    expect(mocks.revertChangeSet).not.toHaveBeenCalled();
+    expect(mocks.db.homeBoardSuggestion.updateMany).not.toHaveBeenCalled();
   });
 
   it("has nothing to undo for an open suggestion", async () => {
