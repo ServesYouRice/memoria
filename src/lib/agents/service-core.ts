@@ -27,6 +27,7 @@ import {
 } from "@/lib/collaboration/committed-events";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { ARCHIVE_OPERATION, revertArchivedItem } from "@/lib/services/archive";
+import { assertCanvasScope } from "@/lib/agents/policy";
 
 function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -1508,6 +1509,76 @@ async function applyRevertOperation(
   throw new BadRequestError(
     `Unsupported revert operation for ${changeRecord.targetType}:${changeRecord.operation}.`,
   );
+}
+
+/**
+ * Authorizes an agent or integration token to revert a change set. A token may
+ * only undo change sets made under its own agent profile, and only on canvases
+ * its allowlist still covers. A canvas-scoped change set is checked by its
+ * scope; any other scope is checked through the current canvas of every
+ * record it touches, and a record whose canvas cannot be resolved is denied.
+ * User-session undo does not go through this check.
+ */
+export async function assertAgentMayRevertChangeSet(input: {
+  userId: string;
+  agentProfile: Parameters<typeof assertCanvasScope>[0] & { id: string };
+  changeSetId: string;
+}) {
+  const changeSet = await prisma.changeSet.findFirst({
+    where: { id: input.changeSetId, userId: input.userId },
+    select: {
+      id: true,
+      agentProfileId: true,
+      scopeType: true,
+      scopeId: true,
+      changeRecords: { select: { targetType: true, targetId: true } },
+    },
+  });
+
+  if (!changeSet) {
+    throw new NotFoundError("Change set not found.");
+  }
+
+  if (changeSet.agentProfileId !== input.agentProfile.id) {
+    throw new ForbiddenError(
+      "The selected agent profile did not make this change set.",
+    );
+  }
+
+  if (changeSet.scopeType === "canvas") {
+    assertCanvasScope(input.agentProfile, changeSet.scopeId);
+    return;
+  }
+
+  const itemIds = [
+    ...new Set(
+      changeSet.changeRecords
+        .filter((record) => record.targetType === "CanvasItem")
+        .map((record) => record.targetId),
+    ),
+  ];
+  const items = itemIds.length
+    ? await prisma.canvasItem.findMany({
+        where: { id: { in: itemIds } },
+        select: { id: true, canvasId: true },
+      })
+    : [];
+  const canvasByItem = new Map(items.map((item) => [item.id, item.canvasId]));
+
+  for (const record of changeSet.changeRecords) {
+    const canvasId =
+      record.targetType === "CanvasItem"
+        ? canvasByItem.get(record.targetId)
+        : record.targetType === "Canvas"
+          ? record.targetId
+          : undefined;
+    if (!canvasId) {
+      throw new ForbiddenError(
+        "The selected agent profile is not allowed to revert this change set.",
+      );
+    }
+    assertCanvasScope(input.agentProfile, canvasId);
+  }
 }
 
 export async function revertChangeSet(input: {

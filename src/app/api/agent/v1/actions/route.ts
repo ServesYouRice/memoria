@@ -28,6 +28,7 @@ import {
   normalizeAgentItemWriteData,
   rejectSuggestion,
   revertChangeSet,
+  assertAgentMayRevertChangeSet,
 } from "@/lib/agents/service-core";
 import {
   PILES_SUGGESTION_KIND,
@@ -332,6 +333,11 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     // Undo is always the owner's right; only agents need the write rung.
     if (context.actorType !== "user") {
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+      await assertAgentMayRevertChangeSet({
+        userId: context.userId,
+        agentProfile,
+        changeSetId: data.changeSetId,
+      });
     }
 
     const result = await revertChangeSet({
