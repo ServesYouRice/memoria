@@ -7,7 +7,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -72,6 +72,10 @@ export function CreateBookmarkDialog({
   const [error, setError] = useState<string | null>(null);
   const [unfurling, setUnfurling] = useState(false);
   const [metadata, setMetadata] = useState<UnfurledMetadata | null>(null);
+  // The URL the automatic preview last tried: a failure for it is shown,
+  // not retried in a loop. Editing the URL or reopening clears it; the
+  // refresh button still retries on request.
+  const lastAutoUnfurlUrl = useRef<string | null>(null);
   const createItem = useCreateCanvasItem();
 
   const {
@@ -96,6 +100,7 @@ export function CreateBookmarkDialog({
     reset();
     setError(null);
     setMetadata(null);
+    lastAutoUnfurlUrl.current = null;
     onClose();
   };
 
@@ -107,10 +112,19 @@ export function CreateBookmarkDialog({
     // 3. There are no validation errors
     // 4. We don't already have metadata
     // 5. We're not currently unfurling
-    if (open && debouncedUrl && !errors.url && !metadata && !unfurling) {
+    // 6. We have not already tried this URL automatically
+    if (
+      open &&
+      debouncedUrl &&
+      !errors.url &&
+      !metadata &&
+      !unfurling &&
+      lastAutoUnfurlUrl.current !== debouncedUrl
+    ) {
       // Validate that it's a proper URL format
       try {
         new URL(debouncedUrl);
+        lastAutoUnfurlUrl.current = debouncedUrl;
         handleUnfurl(debouncedUrl);
       } catch {
         // Invalid URL format, don't auto-unfurl
@@ -212,6 +226,7 @@ export function CreateBookmarkDialog({
                       field.onChange(e);
                       // Clear metadata when URL changes
                       setMetadata(null);
+                      lastAutoUnfurlUrl.current = null;
                     }}
                   />
                   <IconButton
