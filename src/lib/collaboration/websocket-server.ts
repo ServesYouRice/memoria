@@ -346,6 +346,20 @@ async function handleRedisMessage(
   }
 }
 
+const REQUEST_URL_BASE = "http://collaboration.local";
+
+/** Parse only the path and query; never the caller-controlled Host header. */
+function parseRequestUrl(request: Pick<IncomingMessage, "url">): URL {
+  return new URL(request.url || "", REQUEST_URL_BASE);
+}
+
+function isPresencePath(rawUrl: string | undefined): boolean {
+  const path = (rawUrl || "").split("?")[0] ?? "";
+  return (
+    path.startsWith("/api/collaboration/") && path !== COLLABORATION_SYNC_PATH
+  );
+}
+
 /**
  * Initialize WebSocket server
  */
@@ -365,7 +379,18 @@ export function createCollaborationServer(server: any): WebSocketServer {
   server.on(
     "upgrade",
     async (request: IncomingMessage, socket: any, head: Buffer) => {
-      const url = new URL(request.url || "", `http://${request.headers.host}`);
+      // Only the path and query route; the Host header is caller-controlled
+      // and must neither throw here nor influence anything.
+      let url: URL;
+      try {
+        url = parseRequestUrl(request);
+      } catch (error) {
+        logger.warn({ error }, "WebSocket upgrade with an unparsable URL");
+        if (isPresencePath(request.url)) {
+          rejectUpgrade(socket, "HTTP/1.1 400 Bad Request\r\n\r\n");
+        }
+        return;
+      }
 
       // Only handle presence connections; document sync connections belong
       // to the sync server (IMP-042).
@@ -500,7 +525,11 @@ export function createCollaborationServer(server: any): WebSocketServer {
           });
         } catch (error) {
           logger.error({ error }, "WebSocket upgrade error");
-          rejectUpgrade(socket, "HTTP/1.1 500 Internal Server Error\r\n\r\n");
+          try {
+            rejectUpgrade(socket, "HTTP/1.1 500 Internal Server Error\r\n\r\n");
+          } catch {
+            socket.destroy?.();
+          }
         }
       } else {
         return;
@@ -509,8 +538,11 @@ export function createCollaborationServer(server: any): WebSocketServer {
   );
 
   // Handle new WebSocket connections
-  wss.on("connection", async (ws: WebSocket, request: IncomingMessage) => {
-    await handleConnection(ws, request);
+  wss.on("connection", (ws: WebSocket, request: IncomingMessage) => {
+    void handleConnection(ws, request).catch((error) => {
+      logger.error({ error }, "WebSocket connection setup failed");
+      ws.terminate();
+    });
   });
 
   let authorizationRefreshInFlight: Promise<void> | null = null;
@@ -574,9 +606,24 @@ async function handleConnection(
   ws: WebSocket,
   request: IncomingMessage,
 ): Promise<void> {
-  const url = new URL(request.url || "", `http://${request.headers.host}`);
+  // First, before any await: a malformed frame during admission or the Redis
+  // subscription must not surface as an unhandled EventEmitter error. The
+  // socket closes; whichever setup step is waiting sees it and releases.
+  const logContext: { canvasId?: string } = {};
+  ws.on("error", (error) => {
+    logger.error({ error, ...logContext }, "WebSocket error");
+    if (
+      ws.readyState === WebSocket.CONNECTING ||
+      ws.readyState === WebSocket.OPEN
+    ) {
+      ws.terminate();
+    }
+  });
+
+  const url = parseRequestUrl(request);
   const pathParts = url.pathname.split("/");
   const canvasId = pathParts[pathParts.length - 1];
+  logContext.canvasId = canvasId;
 
   // User is already authenticated and attached to request
   const user = (request as any).user as CollaborationUser & {
@@ -718,10 +765,6 @@ async function handleConnection(
 
   ws.on("pong", () => {
     connection.isAlive = true;
-  });
-
-  ws.on("error", (error) => {
-    logger.error({ error, canvasId }, "WebSocket error");
   });
 }
 
