@@ -45,6 +45,8 @@ const item = {
 function konvaNode(x: number, y: number, pointer = { x: 0, y: 0 }) {
   const stage = {
     getPointerPosition: () => pointer,
+    // Unzoomed, unpanned stage: world space equals container space (TASK-069).
+    getRelativePointerPosition: () => pointer,
     container: () => ({ style: {} }),
   };
   return { x: () => x, y: () => y, getStage: () => stage };

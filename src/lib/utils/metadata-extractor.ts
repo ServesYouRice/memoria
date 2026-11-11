@@ -15,6 +15,11 @@ export interface ExtractedMetadata {
   url?: string;
 }
 
+/** Page-supplied image and icon URLs are kept only for http(s). */
+function isHttpUrl(url: URL) {
+  return url.protocol === "http:" || url.protocol === "https:";
+}
+
 /**
  * Extract metadata from HTML content
  * Prioritizes Open Graph tags, falls back to standard meta tags
@@ -53,7 +58,9 @@ export function extractMetadata(
     try {
       // Resolve relative URLs
       const resolvedUrl = new URL(imageUrl, baseUrl);
-      metadata.image = resolvedUrl.toString();
+      metadata.image = isHttpUrl(resolvedUrl)
+        ? resolvedUrl.toString()
+        : undefined;
     } catch {
       // If URL resolution fails, skip the image
       metadata.image = undefined;
@@ -73,6 +80,7 @@ export function extractMetadata(
     if (faviconHref) {
       try {
         const resolvedUrl = new URL(faviconHref, baseUrl);
+        if (!isHttpUrl(resolvedUrl)) continue;
         metadata.favicon = resolvedUrl.toString();
         break;
       } catch {

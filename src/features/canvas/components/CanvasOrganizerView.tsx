@@ -43,6 +43,10 @@ import {
   type ChangeSetRecord,
 } from "@/lib/hooks/use-agent-control";
 import { useCanvasView, useSaveCanvasView } from "@/lib/hooks/use-canvas-views";
+import {
+  useCanvasGeometry,
+  type CanvasGeometryItem,
+} from "@/lib/hooks/use-canvas-index";
 
 interface CanvasOrganizerViewProps {
   canvasId: string;
@@ -82,9 +86,21 @@ function getItemSummary(item: CanvasItem) {
   return `${item.type.toLowerCase()} item`;
 }
 
+/**
+ * Items the organizer can resolve: full payloads for the loaded viewport,
+ * and the whole-canvas geometry index for every other item on this canvas.
+ */
+interface CanvasItemLookup {
+  canvasId: string;
+  itemsById: Map<string, CanvasItem>;
+  geometryById: Map<string, CanvasGeometryItem>;
+  /** The geometry index is still loading: unresolved links are pending. */
+  pending: boolean;
+}
+
 function getSuggestionCanvasId(
   suggestion: SuggestionRecord,
-  itemsById: Map<string, CanvasItem>,
+  lookup: CanvasItemLookup,
 ) {
   const payload = suggestion.payload;
   if (typeof payload.canvasId === "string") {
@@ -92,7 +108,9 @@ function getSuggestionCanvasId(
   }
 
   if (typeof payload.itemId === "string") {
-    return itemsById.get(payload.itemId)?.canvasId ?? null;
+    const loaded = lookup.itemsById.get(payload.itemId);
+    if (loaded) return loaded.canvasId;
+    return lookup.geometryById.has(payload.itemId) ? lookup.canvasId : null;
   }
 
   return null;
@@ -129,11 +147,34 @@ function getChangeSetStatusColor(status: ChangeSetRecord["status"]) {
 
 function renderEntityCard(
   entity: KnowledgeEntityRecord,
-  itemsById: Map<string, CanvasItem>,
+  lookup: CanvasItemLookup,
 ) {
+  // A loaded item shows its full summary; one known only from the geometry
+  // index (off the current viewport) shows a type-based label.
   const sourceItems = entity.itemLinks
-    .map((link) => itemsById.get(link.itemId))
-    .filter((item): item is CanvasItem => Boolean(item));
+    .map((link) => {
+      const loaded = lookup.itemsById.get(link.itemId);
+      if (loaded) {
+        return {
+          id: loaded.id,
+          type: loaded.type,
+          tags: loaded.tags,
+          summary: getItemSummary(loaded),
+        };
+      }
+      const indexed = lookup.geometryById.get(link.itemId);
+      return indexed
+        ? {
+            id: indexed.id,
+            type: indexed.type,
+            tags: null,
+            summary: `${indexed.type.toLowerCase()} item`,
+          }
+        : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const sourcesPending =
+    sourceItems.length === 0 && lookup.pending && entity.itemLinks.length > 0;
   const relationGroups: Array<{
     label: string;
     relations: KnowledgeRelationRecord[];
@@ -253,14 +294,27 @@ function renderEntityCard(
                         color: "text.secondary",
                       }}
                     >
-                      {item.tags.length > 0 ? item.tags.join(", ") : "untagged"}
+                      {item.tags === null
+                        ? "off screen"
+                        : item.tags.length > 0
+                          ? item.tags.join(", ")
+                          : "untagged"}
                     </Typography>
                   </Stack>
                   <Typography variant="body2" sx={{ mt: 0.75 }}>
-                    {getItemSummary(item)}
+                    {item.summary}
                   </Typography>
                 </Paper>
               ))
+            ) : sourcesPending ? (
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                }}
+              >
+                Loading source items…
+              </Typography>
             ) : (
               <Typography
                 variant="body2"
@@ -390,6 +444,17 @@ export function CanvasOrganizerView({
   itemCount = items.length,
 }: CanvasOrganizerViewProps) {
   const itemsById = new Map(items.map((item) => [item.id, item]));
+  // `items` covers only the loaded viewport; the geometry index lists every
+  // item on the canvas, so off-screen links and suggestions still resolve.
+  const geometryQuery = useCanvasGeometry(canvasId);
+  const itemLookup: CanvasItemLookup = {
+    canvasId,
+    itemsById,
+    geometryById: new Map(
+      (geometryQuery.data?.items ?? []).map((item) => [item.id, item]),
+    ),
+    pending: geometryQuery.isLoading,
+  };
   const viewQuery = useCanvasView(canvasId, CanvasViewType.ORGANIZER);
   const { mutate: saveCanvasView } = useSaveCanvasView(
     canvasId,
@@ -401,6 +466,9 @@ export function CanvasOrganizerView({
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
   const [suggestionStatusFilter, setSuggestionStatusFilter] = useState("OPEN");
   const hydratedViewRef = useRef(false);
+  // State, not just the ref: the save effect must first run in the render
+  // that already holds the hydrated filters, never in the mount commit.
+  const [hydrated, setHydrated] = useState(false);
   const lastSavedFiltersRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -434,10 +502,11 @@ export function CanvasOrganizerView({
     }
 
     hydratedViewRef.current = true;
+    setHydrated(true);
   }, [viewQuery.data]);
 
   useEffect(() => {
-    if (!hydratedViewRef.current) {
+    if (!hydrated) {
       return;
     }
 
@@ -459,7 +528,7 @@ export function CanvasOrganizerView({
         mode: "read-only",
       },
     });
-  }, [entityTypeFilter, saveCanvasView, suggestionStatusFilter]);
+  }, [entityTypeFilter, hydrated, saveCanvasView, suggestionStatusFilter]);
 
   const entities = (knowledgeQuery.data?.entities || []).filter((entity) =>
     entityTypeFilter === "all" ? true : entity.entityType === entityTypeFilter,
@@ -467,7 +536,7 @@ export function CanvasOrganizerView({
 
   const suggestions = (timelineQuery.data?.suggestions || []).filter(
     (suggestion) => {
-      const suggestionCanvasId = getSuggestionCanvasId(suggestion, itemsById);
+      const suggestionCanvasId = getSuggestionCanvasId(suggestion, itemLookup);
       if (suggestionCanvasId !== canvasId) {
         return false;
       }
@@ -742,7 +811,7 @@ export function CanvasOrganizerView({
               </Alert>
             ) : (
               <Stack spacing={2}>
-                {entities.map((entity) => renderEntityCard(entity, itemsById))}
+                {entities.map((entity) => renderEntityCard(entity, itemLookup))}
               </Stack>
             )}
           </Paper>

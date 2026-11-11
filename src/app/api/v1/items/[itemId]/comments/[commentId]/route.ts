@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { sanitizeComment } from "@/lib/sanitization";
 import { z } from "zod";
 
 import { withApiHandler } from "@/lib/api/route-handler";
@@ -15,11 +14,12 @@ import {
 // const _logger = createLogger('comments-api');
 
 const updateCommentSchema = z.object({
+  // Plain text: stored as typed (trimmed) and only ever rendered as text.
   content: z
     .string()
+    .trim()
     .min(1, "Comment cannot be empty")
-    .max(5000, "Comment too long")
-    .transform((val) => sanitizeComment(val)),
+    .max(5000, "Comment too long"),
 });
 
 const commentUserSelect = {
@@ -49,7 +49,7 @@ async function getCommentWithAccess(
             select: {
               userId: true,
               isPublic: true,
-              shares: { select: { recipientId: true } },
+              shares: { select: { recipientId: true, role: true } },
             },
           },
         },
@@ -60,24 +60,34 @@ async function getCommentWithAccess(
     },
   });
 
-  if (!comment || comment.deletedAt || comment.itemId !== itemId) {
+  if (
+    !comment ||
+    comment.deletedAt ||
+    comment.itemId !== itemId ||
+    comment.item.deletedAt
+  ) {
     throw notFoundError("Comment", commentId);
   }
   if (comment.item.deletedAt) {
     throw notFoundError("Item", itemId);
   }
 
+  // Access follows the caller's current canvas access; authorship alone
+  // grants nothing once a share is removed or downgraded.
   const isOwner = comment.item.canvas.userId === userId;
   const isAuthor = comment.userId === userId;
-  const hasShare = comment.item.canvas.shares.some(
-    (share) => share.recipientId === userId,
+  const share = comment.item.canvas.shares.find(
+    (entry) => entry.recipientId === userId,
   );
 
-  if (!isOwner && !isAuthor && !hasShare && !comment.item.canvas.isPublic) {
+  if (!isOwner && !share && !comment.item.canvas.isPublic) {
     throw forbiddenError();
   }
 
-  return { comment, isOwner, isAuthor };
+  const canWrite =
+    isOwner || (!!share && ["COMMENT", "EDIT"].includes(share.role));
+
+  return { comment, isOwner, isAuthor, canWrite };
 }
 
 type CommentWithAccess = Awaited<
@@ -134,13 +144,13 @@ export const PATCH = withApiHandler(
       );
     }
 
-    const { comment, isAuthor } = await getCommentWithAccess(
+    const { comment, isAuthor, canWrite } = await getCommentWithAccess(
       commentId,
       itemId,
       session.user.id,
     );
 
-    if (!isAuthor) {
+    if (!isAuthor || !canWrite) {
       throw forbiddenError();
     }
 
@@ -168,13 +178,13 @@ export const DELETE = withApiHandler(
     }
     const { itemId, commentId } = await params;
 
-    const { comment, isOwner, isAuthor } = await getCommentWithAccess(
+    const { comment, isOwner, isAuthor, canWrite } = await getCommentWithAccess(
       commentId,
       itemId,
       session.user.id,
     );
 
-    if (!isOwner && !isAuthor) {
+    if (!isOwner && !(isAuthor && canWrite)) {
       throw forbiddenError();
     }
 

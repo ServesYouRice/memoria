@@ -101,6 +101,11 @@ import {
   knowledgeRelationSuggestionPayloadSchema,
 } from "@/lib/agents/knowledge-schemas";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import {
+  assertSuggestionKindMatchesPayload,
+  externalActionPayloadSchema,
+  externalActionSummarySchema,
+} from "@/lib/agents/external-action-schema";
 
 function createTextResult(payload: unknown): McpToolCallResult {
   return {
@@ -226,6 +231,7 @@ async function executeApprovedSuggestion(
     },
     select: {
       id: true,
+      kind: true,
       status: true,
       summary: true,
       payload: true,
@@ -246,13 +252,41 @@ async function executeApprovedSuggestion(
     throw new BadRequestError("The selected suggestion has expired.");
   }
 
+  const storedPayload = suggestion.payload as Record<string, unknown> | null;
+  assertSuggestionKindMatchesPayload(
+    suggestion.kind,
+    typeof storedPayload?.kind === "string" ? storedPayload.kind : null,
+  );
+
   // Resolve the actor and run every parse, scope and rung check before the
-  // claim, so a refusal leaves the suggestion APPROVED.
-  const { actor, agentProfile } = await resolveWriteActor(context, {
-    agentProfileId:
-      typeof args.agentProfileId === "string" ? args.agentProfileId : undefined,
-    suggestionId,
-  });
+  // claim, so a refusal leaves the suggestion APPROVED. The suggestion runs
+  // as the profile that proposed it, so another agent can neither execute
+  // nor strand it.
+  if (!suggestion.agentProfileId) {
+    throw new BadRequestError(
+      "The selected suggestion is not attached to an agent profile.",
+    );
+  }
+  const requestedProfileId =
+    typeof args.agentProfileId === "string" ? args.agentProfileId : null;
+  if (
+    (context.agentProfile &&
+      context.agentProfile.id !== suggestion.agentProfileId) ||
+    (requestedProfileId && requestedProfileId !== suggestion.agentProfileId)
+  ) {
+    throw new ForbiddenError(
+      "This suggestion belongs to another agent profile.",
+    );
+  }
+  const agentProfile =
+    context.agentProfile ??
+    (await getOwnedAgentProfile(context.userId, suggestion.agentProfileId));
+  const actor = {
+    userId: context.userId,
+    agentProfileId: agentProfile.id,
+    integrationAccountId: context.integrationAccountId,
+    modelCredentialId: agentProfile.defaultModelCredentialId,
+  };
 
   const payload = suggestion.payload as Record<string, unknown>;
   const payloadKind = typeof payload.kind === "string" ? payload.kind : null;
@@ -438,6 +472,22 @@ async function executeApprovedSuggestion(
   return { suggestionId, executed: result };
 }
 
+/**
+ * Tools that return board, item, knowledge or action content. They need the
+ * READ rung, like the REST read routes, before any query runs; the scoped
+ * query helpers check canvas membership, not enabled rungs.
+ */
+const READ_TOOL_NAMES = new Set([
+  "items.search",
+  "items.get",
+  "items.list",
+  "canvases.list",
+  "canvases.get",
+  "boards.list",
+  "knowledge.list",
+  "actions.list",
+]);
+
 export async function executeMcpTool(
   context: AgentRequestContext,
   requestedToolName: string,
@@ -445,6 +495,9 @@ export async function executeMcpTool(
 ) {
   const args = getObjectArgument(rawArgs);
   const toolName = toInternalToolName(requestedToolName);
+  if (READ_TOOL_NAMES.has(toolName)) {
+    assertAgentCapability(context.agentProfile, AGENT_CAPABILITY_RUNGS.READ);
+  }
 
   switch (toolName) {
     case "inbox.save": {
@@ -1025,15 +1078,10 @@ export async function executeMcpTool(
       );
     }
     case "actions.propose_external": {
-      const payload =
-        args.payload && typeof args.payload === "object"
-          ? (args.payload as Record<string, unknown>)
-          : null;
-      if (!payload) {
-        throw new BadRequestError("payload is required.");
-      }
-
-      const integrationAccountId = String(payload.integrationAccountId || "");
+      // The same contract as REST propose-external, checked before lookups.
+      const payload = externalActionPayloadSchema.parse(args.payload);
+      const summary = externalActionSummarySchema.parse(args.summary);
+      const { integrationAccountId } = payload;
       const { actor, agentProfile } = await resolveWriteActor(context, {
         agentProfileId:
           typeof args.agentProfileId === "string"
@@ -1072,7 +1120,7 @@ export async function executeMcpTool(
         await createSuggestionRecord({
           actor,
           kind: SuggestionKind.EXTERNAL_ACTION,
-          summary: String(args.summary || ""),
+          summary,
           payload,
           rung: AGENT_CAPABILITY_RUNGS.PROPOSE_EXTERNAL,
         }),

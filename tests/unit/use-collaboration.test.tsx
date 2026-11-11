@@ -191,6 +191,45 @@ describe("useCollaboration transport behavior", () => {
     unmount();
   });
 
+  it("retries failed reconnect handshakes of a session that opened, then recovers online (TASK-186)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { result, unmount } = renderHook(() => useCollaboration(options));
+    await act(async () => {
+      MockWebSocket.instances[0]!.open();
+      await Promise.resolve();
+      MockWebSocket.instances[0]!.serverClose(1011);
+    });
+
+    // Every reconnect is answered by a 502 from the upgrade proxy: the
+    // socket closes without opening.
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      expect(result.current.status).toBe("reconnecting");
+      expect(result.current.connectionMessage ?? "").not.toMatch(
+        /access could not be established/i,
+      );
+      const delay = Math.min(15_000, 1_000 * 2 ** (attempt - 1));
+      act(() => vi.advanceTimersByTime(delay));
+      expect(MockWebSocket.instances).toHaveLength(attempt + 1);
+      act(() => MockWebSocket.instances[attempt]!.serverClose(1006));
+    }
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.connectionMessage).toMatch(/could not reconnect/i);
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(MockWebSocket.instances).toHaveLength(9);
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(MockWebSocket.instances).toHaveLength(10);
+    await act(async () => {
+      MockWebSocket.instances[9]!.open();
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("connected");
+    unmount();
+  });
+
   it("coalesces a committed-event burst into one consumer batch", () => {
     const onCommittedEvents = vi.fn();
     const { unmount } = renderHook(() =>

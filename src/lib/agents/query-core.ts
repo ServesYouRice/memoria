@@ -378,10 +378,81 @@ export async function listScopedKnowledgeEntities(
   return { entities };
 }
 
+function readPayloadString(payload: Prisma.JsonValue, key: string) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload))
+    return null;
+  const value = (payload as Record<string, Prisma.JsonValue>)[key];
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * Keeps an agent's suggestions to canvases in its current scope: the canvas
+ * comes from `payload.canvasId` or the canvas of `payload.itemId`. A
+ * suggestion whose canvas cannot be determined is left out.
+ */
+async function filterSuggestionsToScope<
+  T extends { payload: Prisma.JsonValue },
+>(userId: string, allowedCanvasIds: Set<string>, suggestions: T[]) {
+  const itemIds = [
+    ...new Set(
+      suggestions
+        .map((suggestion) => readPayloadString(suggestion.payload, "itemId"))
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const items = itemIds.length
+    ? await prisma.canvasItem.findMany({
+        where: { id: { in: itemIds }, canvas: { userId } },
+        select: { id: true, canvasId: true },
+      })
+    : [];
+  const itemCanvas = new Map(items.map((item) => [item.id, item.canvasId]));
+  return suggestions.filter((suggestion) => {
+    const canvasId = readPayloadString(suggestion.payload, "canvasId");
+    const itemId = readPayloadString(suggestion.payload, "itemId");
+    const itemCanvasId = itemId ? itemCanvas.get(itemId) : undefined;
+    if (canvasId && !allowedCanvasIds.has(canvasId)) return false;
+    if (itemId && (!itemCanvasId || !allowedCanvasIds.has(itemCanvasId)))
+      return false;
+    return Boolean(canvasId || itemCanvasId);
+  });
+}
+
+/**
+ * Ids of the newest suggestions that belong to one canvas: `payload.canvasId`
+ * names it, or `payload.itemId` is one of its items.
+ */
+async function findCanvasSuggestionIds(
+  where: { userId: string; agentProfileId?: string },
+  canvasId: string,
+  take: number,
+) {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT s."id" FROM "Suggestion" s
+    WHERE s."userId" = ${where.userId}
+      ${
+        where.agentProfileId
+          ? Prisma.sql`AND s."agentProfileId" = ${where.agentProfileId}`
+          : Prisma.empty
+      }
+      AND (
+        s."payload"->>'canvasId' = ${canvasId}
+        OR s."payload"->>'itemId' IN (
+          SELECT i."id" FROM "CanvasItem" i WHERE i."canvasId" = ${canvasId}
+        )
+      )
+    ORDER BY s."createdAt" DESC
+    LIMIT ${take}
+  `;
+  return rows.map((row) => row.id);
+}
+
 export async function listScopedActionTimeline(
   actor: ScopedActor,
   input: {
     limit: number;
+    /** Restrict change sets and suggestions to one canvas, in the query. */
+    canvasId?: string;
   },
 ) {
   const where = actor.agentProfile
@@ -392,17 +463,31 @@ export async function listScopedActionTimeline(
     : {
         userId: actor.userId,
       };
+  // An agent sees history only for canvases in its current scope (the same
+  // rule assertCanvasScope applies); a user session sees everything it owns.
+  const allowedCanvasIds = actor.agentProfile
+    ? new Set(actor.agentProfile.allowedCanvasIds)
+    : null;
+  const { canvasId } = input;
+  if (canvasId) assertCanvasScope(actor.agentProfile, canvasId);
+  // One extra row tells a canvas-filtered caller whether more exist.
+  const take = canvasId ? input.limit + 1 : input.limit;
+  const changeSetScope = canvasId
+    ? { scopeType: "canvas", scopeId: canvasId }
+    : allowedCanvasIds
+      ? { scopeType: "canvas", scopeId: { in: [...allowedCanvasIds] } }
+      : {};
 
-  const [actions, changeSets, suggestions] = await Promise.all([
+  const [actions, changeSetRows, suggestionRows] = await Promise.all([
     prisma.agentAction.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: input.limit,
     }),
     prisma.changeSet.findMany({
-      where,
+      where: { ...where, ...changeSetScope },
       orderBy: { startedAt: "desc" },
-      take: input.limit,
+      take,
       // Metadata only: the before/after snapshots hold whole serialized items
       // (one per item in a bulk write) and the timeline never shows them.
       // revertChangeSet loads the full records itself.
@@ -422,14 +507,32 @@ export async function listScopedActionTimeline(
         _count: { select: { changeRecords: true } },
       },
     }),
-    prisma.suggestion.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: input.limit,
-    }),
+    canvasId
+      ? findCanvasSuggestionIds(where, canvasId, take).then((ids) =>
+          prisma.suggestion.findMany({
+            where: { id: { in: ids } },
+            orderBy: { createdAt: "desc" },
+          }),
+        )
+      : prisma.suggestion.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take,
+        }),
   ]);
+  const hasMore =
+    changeSetRows.length > input.limit || suggestionRows.length > input.limit;
+  const changeSets = changeSetRows.slice(0, input.limit);
+  const scopedSuggestions = suggestionRows.slice(0, input.limit);
+  const suggestions = allowedCanvasIds
+    ? await filterSuggestionsToScope(
+        actor.userId,
+        allowedCanvasIds,
+        scopedSuggestions,
+      )
+    : scopedSuggestions;
 
-  return {
+  const timeline = {
     actions,
     changeSets: changeSets.map(({ _count, ...changeSet }) => ({
       ...changeSet,
@@ -437,6 +540,7 @@ export async function listScopedActionTimeline(
     })),
     suggestions,
   };
+  return canvasId ? { ...timeline, hasMore } : timeline;
 }
 
 export async function listOwnedIntegrationAccounts(userId: string) {

@@ -36,6 +36,7 @@ import {
   executePilesSuggestion,
   pilesSuggestionPayloadSchema,
 } from "@/lib/agents/piles";
+import { recordHomeBoardExecution } from "@/lib/agents/home-board";
 import {
   ASK_COMMAND_SUGGESTION_KIND,
   askCommandSuggestionPayloadSchema,
@@ -53,22 +54,16 @@ import {
 } from "@/lib/agents/knowledge-schemas";
 import { ForbiddenError, NotFoundError, BadRequestError } from "@/lib/errors";
 import { requireExternalWebhookExecution } from "@/lib/agents/external-delivery-policy";
+import {
+  assertSuggestionKindMatchesPayload,
+  externalActionPayloadSchema,
+  externalActionSummarySchema,
+} from "@/lib/agents/external-action-schema";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("agent-actions");
 
-const headerValueSchema = z.string().min(1).max(2000);
-const externalActionPayloadSchema = z.object({
-  kind: z.literal("external-webhook"),
-  integrationAccountId: z.string().cuid(),
-  request: z.object({
-    method: z.enum(["POST", "PUT", "PATCH"]).default("POST"),
-    path: z.string().min(1).max(2048).optional(),
-    headers: z.record(z.string(), headerValueSchema).default({}),
-    body: z.unknown(),
-  }),
-  compensatingAction: z.record(z.string(), z.unknown()).optional(),
-});
+const timelineCanvasIdSchema = z.string().cuid().optional();
 
 const createCheckpointSchema = z.object({
   canvasId: z.string().cuid(),
@@ -171,6 +166,8 @@ interface PreparedSuggestionRun {
    * internal writes, which roll back as one transaction when they throw.
    */
   releaseOnFailure: boolean;
+  /** Runs once the suggestion is marked executed. */
+  afterExecuted?: (result: unknown) => Promise<void>;
 }
 
 /**
@@ -215,6 +212,7 @@ async function runClaimedSuggestion(
     );
     throw error;
   }
+  await prepared.afterExecuted?.(result);
   return result;
 }
 
@@ -286,15 +284,24 @@ async function resolveRequiredAgentProfile(
 
 export const GET = withApiHandler(async (request: NextRequest) => {
   const context = await resolveAgentRequestContext(request);
+  assertAgentCapability(context.agentProfile, AGENT_CAPABILITY_RUNGS.READ);
 
   const { limit } = parsePagination(request.nextUrl.searchParams, {
     defaultLimit: 50,
     maxLimit: 100,
   });
+  const canvasId = timelineCanvasIdSchema.parse(
+    request.nextUrl.searchParams.get("canvasId") ?? undefined,
+  );
+  if (canvasId) {
+    assertCanvasScope(context.agentProfile, canvasId);
+    await verifyCanvasOwnership(context.userId, canvasId);
+  }
 
   return NextResponse.json(
     await listScopedActionTimeline(context, {
       limit,
+      canvasId,
     }),
   );
 });
@@ -338,7 +345,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     const data = z
       .object({
         action: z.literal("propose-external"),
-        summary: z.string().min(1).max(255),
+        summary: externalActionSummarySchema,
         payload: externalActionPayloadSchema,
       })
       .parse(body);
@@ -457,6 +464,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
       resolved.suggestion ||
       (await getOwnedSuggestion(context.userId, data.suggestionId));
 
+    // A token resolves to its own profile: it may only execute suggestions
+    // that profile proposed, and must not claim (and strand) anyone else's.
+    if (suggestion.agentProfileId !== agentProfile.id) {
+      throw new ForbiddenError(
+        "This suggestion belongs to another agent profile.",
+      );
+    }
+
     if (suggestion.status !== "APPROVED") {
       throw new BadRequestError("Only approved suggestions can be executed.");
     }
@@ -464,6 +479,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
     if (suggestion.expiresAt <= new Date()) {
       throw new BadRequestError("The selected suggestion has expired.");
     }
+
+    const suggestionPayload = suggestion.payload as Record<string, unknown>;
+    assertSuggestionKindMatchesPayload(
+      suggestion.kind,
+      typeof suggestionPayload?.kind === "string"
+        ? suggestionPayload.kind
+        : null,
+    );
 
     const actor = {
       userId: context.userId,
@@ -628,6 +651,21 @@ export const POST = withApiHandler(async (request: NextRequest) => {
             payload: parsed,
             summary: suggestion.summary,
           }),
+        // A home-board Ask suggestion is finalized like an Inbox accept, so
+        // the Inbox lists it as filed and its Undo works (TASK-025).
+        afterExecuted: async (result) => {
+          const changeSetId =
+            result && typeof result === "object" && "changeSetId" in result
+              ? result.changeSetId
+              : null;
+          if (typeof changeSetId === "string" && changeSetId) {
+            await recordHomeBoardExecution({
+              userId: context.userId,
+              suggestionId: suggestion.id,
+              changeSetId,
+            });
+          }
+        },
       };
     } else if (payloadKind === "external-webhook") {
       const parsed = externalActionPayloadSchema.parse(payload);

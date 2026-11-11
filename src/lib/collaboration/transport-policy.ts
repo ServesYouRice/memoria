@@ -277,13 +277,21 @@ export type CollaborationCloseDisposition = "stop" | "retry";
 
 const TERMINAL_CLOSE_CODES = new Set([1000, 1002, 1003, 1007, 1008, 1009]);
 
+/**
+ * Whether a closed collaboration socket should be retried. A socket that
+ * never opened is a refused upgrade on a first connection, but on a reconnect
+ * of a session that opened before it is usually a restarting realtime
+ * process (the upgrade proxy answers 502), so it retries with backoff.
+ */
 export function collaborationCloseDisposition(options: {
   code: number;
   opened: boolean;
   intentional: boolean;
+  /** An earlier socket of this canvas session opened. */
+  sessionHasOpened?: boolean;
 }): CollaborationCloseDisposition {
   if (options.intentional) return "stop";
-  if (!options.opened) return "stop";
+  if (!options.opened) return options.sessionHasOpened ? "retry" : "stop";
   return TERMINAL_CLOSE_CODES.has(options.code) ? "stop" : "retry";
 }
 

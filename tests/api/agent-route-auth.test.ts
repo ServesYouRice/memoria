@@ -528,7 +528,10 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
       prismaMocks.suggestionFindFirst.mockResolvedValue({
         id: suggestionId,
         agentProfileId: proposeOnlyProfile.id,
-        kind: "WRITE",
+        kind:
+          payload.kind === "external-webhook"
+            ? "EXTERNAL_ACTION"
+            : "INTERNAL_ORGANIZATION",
         status: overrides?.status ?? "APPROVED",
         summary: "Suggested change",
         payload,
@@ -694,6 +697,90 @@ describe("Agent Route Authentication Boundaries (IMP-059)", () => {
 
       expect(res.status).toBe(403);
       expect(serviceCoreMocks.executeExternalWebhook).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["another agent profile", "prof-other"],
+      ["no agent profile", null],
+    ])(
+      "refuses a token executing a suggestion of %s before claiming it",
+      async (_label, ownerProfileId) => {
+        arrange(payloads["canvas-item-create"]);
+        authMocks.resolveAgentRequestContext.mockResolvedValue({
+          actorType: "integration",
+          userId: "user-123",
+          agentProfile: proposeOnlyProfile,
+          integrationAccountId: "int-1",
+        });
+        prismaMocks.suggestionFindFirst.mockResolvedValue({
+          id: suggestionId,
+          agentProfileId: ownerProfileId,
+          kind: "WRITE",
+          status: "APPROVED",
+          summary: "Suggested change",
+          payload: payloads["canvas-item-create"],
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+
+        const res = await execute();
+
+        expect(res.status).toBe(403);
+        expect(
+          serviceCoreMocks.claimSuggestionForExecution,
+        ).not.toHaveBeenCalled();
+        expect(serviceCoreMocks.createCanvasItemWrite).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ["EXTERNAL_ACTION", payloads["canvas-item-batch-create"]],
+      [
+        "INTERNAL_ORGANIZATION",
+        {
+          kind: "external-webhook",
+          integrationAccountId: "cint0000000000000000000001",
+          request: { method: "POST", body: {} },
+        },
+      ],
+    ])(
+      "refuses a %s suggestion whose payload kind disagrees, before claiming",
+      async (kind, payload) => {
+        arrange(payload);
+        prismaMocks.suggestionFindFirst.mockResolvedValue({
+          id: suggestionId,
+          agentProfileId: proposeOnlyProfile.id,
+          kind,
+          status: "APPROVED",
+          summary: "Mismatched",
+          payload,
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+
+        const res = await execute();
+
+        expect(res.status).toBe(400);
+        expect(
+          serviceCoreMocks.claimSuggestionForExecution,
+        ).not.toHaveBeenCalled();
+        expect(
+          serviceCoreMocks.createCanvasItemBatchWrite,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it("lets a token execute its own profile's approved suggestion", async () => {
+      arrange(payloads["canvas-item-create"]);
+      authMocks.resolveAgentRequestContext.mockResolvedValue({
+        actorType: "integration",
+        userId: "user-123",
+        agentProfile: proposeOnlyProfile,
+        integrationAccountId: "int-1",
+      });
+
+      const res = await execute();
+
+      expect(res.status).toBe(200);
+      expect(serviceCoreMocks.claimSuggestionForExecution).toHaveBeenCalled();
     });
   });
 
