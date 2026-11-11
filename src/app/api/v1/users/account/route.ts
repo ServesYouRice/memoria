@@ -16,6 +16,7 @@ import { errorResponse, BadRequestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { UploadAssetStatus } from "@/generated/prisma/client";
 
 const logger = createLogger("users/account");
 
@@ -79,8 +80,23 @@ export async function DELETE(request: NextRequest) {
 
     const uploadAssets = await prisma.uploadAsset.findMany({
       where: { userId },
-      select: { id: true },
+      select: {
+        id: true,
+        size: true,
+        status: true,
+        canvas: { select: { userId: true } },
+      },
     });
+    // Uploads that back items kept on another owner's canvas move to that
+    // owner with the items (below); only the rest are deleted.
+    const isForeignActive = (asset: (typeof uploadAssets)[number]) =>
+      asset.status === UploadAssetStatus.ACTIVE &&
+      !!asset.canvas &&
+      asset.canvas.userId !== userId;
+    const transferredAssets = uploadAssets.filter(isForeignActive);
+    const deletedAssets = uploadAssets.filter(
+      (asset) => !isForeignActive(asset),
+    );
     const accountExports = await prisma.accountExport.findMany({
       where: { userId, storageKey: { not: null } },
       select: { id: true, storageMode: true, storageKey: true },
@@ -88,7 +104,30 @@ export async function DELETE(request: NextRequest) {
 
     // Use transaction for atomic deletion
     await prisma.$transaction(async (tx) => {
-      for (const asset of uploadAssets) {
+      for (const asset of transferredAssets) {
+        const newOwnerId = asset.canvas.userId;
+        // Conditional, so an asset that stopped being ACTIVE since the read
+        // above is deleted with the account instead of transferred.
+        const moved = await tx.uploadAsset.updateMany({
+          where: { id: asset.id, userId, status: UploadAssetStatus.ACTIVE },
+          data: { userId: newOwnerId },
+        });
+        if (moved.count !== 1) {
+          await enqueueUploadDeletion(tx, asset.id);
+          continue;
+        }
+        // The canvas owner now carries the bytes. The limit is not enforced:
+        // the upload already exists and the owner's items display it.
+        await tx.$executeRaw`
+          INSERT INTO "UploadQuota" ("userId", "assetCount", "totalBytes", "updatedAt")
+          VALUES (${newOwnerId}, 1, ${BigInt(asset.size)}, NOW())
+          ON CONFLICT ("userId") DO UPDATE SET
+            "assetCount" = "UploadQuota"."assetCount" + 1,
+            "totalBytes" = "UploadQuota"."totalBytes" + EXCLUDED."totalBytes",
+            "updatedAt" = NOW()
+        `;
+      }
+      for (const asset of deletedAssets) {
         await enqueueUploadDeletion(tx, asset.id);
       }
       for (const accountExport of accountExports) {
