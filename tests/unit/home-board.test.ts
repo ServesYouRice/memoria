@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => {
     suggestion: { findFirst: vi.fn(), updateMany: vi.fn() },
     canvasItem: { findFirst: vi.fn() },
     changeSet: { findFirst: vi.fn() },
+    changeRecord: { findFirst: vi.fn() },
+    canvas: { findFirst: vi.fn() },
     agentProfile: { findFirst: vi.fn() },
   };
   return {
@@ -18,6 +20,7 @@ const mocks = vi.hoisted(() => {
     createSuggestionRecordTx: vi.fn(),
     markSuggestionExecuted: vi.fn(),
     rejectSuggestion: vi.fn(),
+    releaseSuggestionClaim: vi.fn(),
     revertChangeSet: vi.fn(),
     executeAskCommandSuggestion: vi.fn(),
     getAskAssistantProfile: vi.fn(),
@@ -32,11 +35,13 @@ vi.mock("@/lib/agents/service-core", () => ({
   createSuggestionRecordTx: mocks.createSuggestionRecordTx,
   markSuggestionExecuted: mocks.markSuggestionExecuted,
   rejectSuggestion: mocks.rejectSuggestion,
+  releaseSuggestionClaim: mocks.releaseSuggestionClaim,
   revertChangeSet: mocks.revertChangeSet,
 }));
 vi.mock("@/lib/ai/ask-commands", () => ({
   ARCHIVE_BOARD_NAME: "Archive",
   ASK_COMMAND_SUGGESTION_KIND: "ask-command",
+  ASK_MOVE_OPERATION: "MOVE",
   executeAskCommandSuggestion: mocks.executeAskCommandSuggestion,
   getAskAssistantProfile: mocks.getAskAssistantProfile,
 }));
@@ -391,6 +396,104 @@ describe("accept, dismiss, undo", () => {
         changeSetId: "cs-move",
       }),
     });
+  });
+
+  it("a rerun after approve committed claims and runs the move without re-approving", async () => {
+    mocks.db.suggestion.findFirst.mockResolvedValue({
+      ...(await mocks.db.suggestion.findFirst()),
+      status: "APPROVED",
+    });
+
+    const result = await acceptHomeBoardSuggestion({
+      userId: "user-1",
+      itemId: "item-1",
+      automatic: true,
+    });
+
+    expect(mocks.approveSuggestion).not.toHaveBeenCalled();
+    expect(mocks.claimSuggestionForExecution).toHaveBeenCalled();
+    expect(mocks.executeAskCommandSuggestion).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ changeSetId: "cs-move" });
+    expect(mocks.db.homeBoardSuggestion.updateMany).toHaveBeenCalledWith({
+      where: { itemId: "item-1", status: "OPEN" },
+      data: expect.objectContaining({
+        status: "AUTO_FILED",
+        changeSetId: "cs-move",
+      }),
+    });
+  });
+
+  it("a rerun after the move committed records its change set instead of dismissing", async () => {
+    mocks.db.homeBoardSuggestion.findFirst.mockResolvedValue(
+      openRow({ createdAt: new Date("2026-11-01T00:00:00Z") }),
+    );
+    mocks.db.suggestion.findFirst.mockResolvedValue({
+      ...(await mocks.db.suggestion.findFirst()),
+      status: "EXECUTING",
+    });
+    mocks.db.canvasItem.findFirst.mockResolvedValue({ canvasId: "c-rome" });
+    mocks.db.changeRecord.findFirst.mockResolvedValue({
+      changeSetId: "cs-committed",
+      after: { canvasId: "c-rome" },
+    });
+    mocks.db.canvas.findFirst.mockResolvedValue({ name: "Rome trip" });
+
+    const result = await acceptHomeBoardSuggestion({
+      userId: "user-1",
+      itemId: "item-1",
+      automatic: true,
+    });
+
+    expect(mocks.executeAskCommandSuggestion).not.toHaveBeenCalled();
+    expect(mocks.markSuggestionExecuted).toHaveBeenCalledWith({
+      userId: "user-1",
+      suggestionId: "sug-1",
+    });
+    expect(result).toMatchObject({
+      changeSetId: "cs-committed",
+      boardId: "c-rome",
+      boardName: "Rome trip",
+    });
+    expect(mocks.db.homeBoardSuggestion.updateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.db.homeBoardSuggestion.updateMany).toHaveBeenCalledWith({
+      where: { itemId: "item-1", status: "OPEN" },
+      data: expect.objectContaining({
+        status: "AUTO_FILED",
+        changeSetId: "cs-committed",
+      }),
+    });
+    expect(mocks.db.suggestion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses rather than dismissing when a committed move cannot be found", async () => {
+    mocks.db.suggestion.findFirst.mockResolvedValue({
+      ...(await mocks.db.suggestion.findFirst()),
+      status: "EXECUTING",
+    });
+    mocks.db.canvasItem.findFirst.mockResolvedValue({ canvasId: "c-rome" });
+    mocks.db.changeRecord.findFirst.mockResolvedValue(null);
+
+    await expect(
+      acceptHomeBoardSuggestion({ userId: "user-1", itemId: "item-1" }),
+    ).rejects.toMatchObject({ detail: expect.stringMatching(/confirmed/) });
+    expect(mocks.db.homeBoardSuggestion.updateMany).not.toHaveBeenCalled();
+    expect(mocks.db.suggestion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("releases a stranded claim when the item never left the Inbox, then runs the move", async () => {
+    mocks.db.suggestion.findFirst.mockResolvedValue({
+      ...(await mocks.db.suggestion.findFirst()),
+      status: "EXECUTING",
+    });
+
+    await acceptHomeBoardSuggestion({ userId: "user-1", itemId: "item-1" });
+
+    expect(mocks.releaseSuggestionClaim).toHaveBeenCalledWith({
+      userId: "user-1",
+      suggestionId: "sug-1",
+    });
+    expect(mocks.claimSuggestionForExecution).toHaveBeenCalled();
+    expect(mocks.executeAskCommandSuggestion).toHaveBeenCalledTimes(1);
   });
 
   it("drops a suggestion whose item already left the Inbox", async () => {
