@@ -440,6 +440,23 @@ function captureServerError(error: unknown, requestId: string | undefined) {
   });
 }
 
+/** The text a client may see for an unexpected (non-ApiError) failure. */
+export function internalErrorMessage(error: unknown): string {
+  return process.env.NODE_ENV === "development" && error instanceof Error
+    ? error.message
+    : "An unexpected error occurred.";
+}
+
+/**
+ * Log and report a server failure that a handler turns into its own response
+ * format instead of going through errorResponse (for example JSON-RPC).
+ */
+export function reportServerError(error: unknown, instance?: string): void {
+  const requestId = getRequestId();
+  logger.error({ error, instance, requestId }, "API Error");
+  captureServerError(error, requestId);
+}
+
 export function errorResponse(
   error: unknown,
   instance?: string,
