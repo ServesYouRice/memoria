@@ -162,19 +162,14 @@ export async function saveToInbox(input: {
     };
   }
 
-  const occupied = await prisma.canvasItem.findMany({
-    where: { canvasId: inbox.id, deletedAt: null },
-    select: { positionX: true, positionY: true, width: true, height: true },
-  });
-  const slot = findOpenSlot(occupied, size);
-
   const result = await createCanvasItemWrite({
     actor: input.actor,
     canvasId: inbox.id,
     itemData: {
       type,
-      positionX: slot.x,
-      positionY: slot.y,
+      // Placeholders: the slot is chosen under the canvas lock below.
+      positionX: 0,
+      positionY: 0,
       ...size,
       zIndex: 1,
       content,
@@ -183,6 +178,16 @@ export async function saveToInbox(input: {
     summary: `Save ${isLink ? "link" : "note"} to ${inbox.name}`,
     rung: AGENT_CAPABILITY_RUNGS.INGEST,
     actionKind: AgentActionKind.INGEST,
+    // Read occupancy after the lock, so concurrent saves see each other and
+    // never pick the same slot.
+    resolvePlacement: async (tx) => {
+      const occupied = await tx.canvasItem.findMany({
+        where: { canvasId: inbox.id, deletedAt: null },
+        select: { positionX: true, positionY: true, width: true, height: true },
+      });
+      const slot = findOpenSlot(occupied, size);
+      return { positionX: slot.x, positionY: slot.y };
+    },
     // Saved links name, tag and summarize themselves (IMP-064); a title the
     // agent chose is kept.
     afterCreate: isLink

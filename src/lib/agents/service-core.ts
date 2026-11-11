@@ -427,13 +427,24 @@ export async function createCanvasItemWrite(input: {
     tx: Prisma.TransactionClient,
     item: PrismaCanvasItem,
   ) => Promise<void>;
+  /**
+   * Chooses the item's position under the canvas lock, so concurrent writers
+   * see each other's items (e.g. the next free Inbox slot). The positions in
+   * itemData are then placeholders.
+   */
+  resolvePlacement?: (
+    tx: Prisma.TransactionClient,
+  ) => Promise<{ positionX: number; positionY: number }>;
 }) {
-  const normalizedItem = normalizeAgentItemWriteData(input.itemData);
+  const validatedItem = normalizeAgentItemWriteData(input.itemData);
 
   return prisma.$transaction(async (tx) => {
     await lockCanvasForMutation(tx, input.canvasId);
     await getOwnedCanvasTx(tx, input.actor.userId, input.canvasId);
     await assertCanvasItemCapacity(tx, input.canvasId);
+    const normalizedItem = input.resolvePlacement
+      ? { ...validatedItem, ...(await input.resolvePlacement(tx)) }
+      : validatedItem;
 
     const agentAction = await tx.agentAction.create({
       data: {
