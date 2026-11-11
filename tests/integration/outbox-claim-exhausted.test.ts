@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { claimOutboxJobs } from "@/lib/outbox/repository";
+import { claimOutboxJobs, deferOutboxJob } from "@/lib/outbox/repository";
 
 const TYPE = "test.exhausted-lease";
 
@@ -74,5 +74,46 @@ describe("claimOutboxJobs and exhausted leases", () => {
       (await prisma.outboxJob.findUniqueOrThrow({ where: { id: live.id } }))
         .status,
     ).toBe("RUNNING");
+  });
+});
+
+describe("deferOutboxJob", () => {
+  it("returns an owned job to PENDING until retryAt without using an attempt", async () => {
+    await prisma.outboxJob.create({
+      data: { type: TYPE, payload: {}, status: "PENDING", maxAttempts: 3 },
+    });
+    const [claimed] = await claimOutboxJobs(prisma, {
+      owner: "worker-a",
+      limit: 1,
+      leaseMs: 30_000,
+      types: [TYPE],
+    });
+    expect(claimed!.attempts).toBe(1);
+    const retryAt = new Date(Date.now() + 60_000);
+
+    expect(
+      await deferOutboxJob(prisma, claimed!.id, "worker-b", retryAt, "busy"),
+    ).toBe(false);
+    expect(
+      await deferOutboxJob(prisma, claimed!.id, "worker-a", retryAt, "busy"),
+    ).toBe(true);
+
+    const row = await prisma.outboxJob.findUniqueOrThrow({
+      where: { id: claimed!.id },
+    });
+    expect(row).toMatchObject({
+      status: "PENDING",
+      attempts: 0,
+      leaseOwner: null,
+      nextRunAt: retryAt,
+    });
+    expect(
+      await claimOutboxJobs(prisma, {
+        owner: "worker-a",
+        limit: 1,
+        leaseMs: 30_000,
+        types: [TYPE],
+      }),
+    ).toEqual([]);
   });
 });

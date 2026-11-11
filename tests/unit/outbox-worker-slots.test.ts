@@ -5,6 +5,7 @@ const repository = vi.hoisted(() => ({
   claimOutboxJobs: vi.fn(),
   completeOutboxJob: vi.fn(),
   failOutboxJob: vi.fn(),
+  deferOutboxJob: vi.fn(),
   renewOutboxLease: vi.fn(),
 }));
 const incrementOperationalCounter = vi.hoisted(() => vi.fn());
@@ -21,6 +22,7 @@ vi.mock("@/lib/operations/runtime-metrics", () => ({
 vi.mock("@/lib/logger", () => ({ createLogger: () => log }));
 
 import { runOutboxWorker } from "@/lib/outbox/worker";
+import { OutboxDeferError } from "@/lib/outbox/types";
 
 function job(id: string): OutboxJob {
   const now = new Date();
@@ -50,6 +52,7 @@ beforeEach(() => {
   repository.completeOutboxJob.mockReset().mockResolvedValue(true);
   repository.failOutboxJob.mockReset().mockResolvedValue(true);
   repository.renewOutboxLease.mockReset().mockResolvedValue(true);
+  repository.deferOutboxJob.mockReset().mockResolvedValue(true);
 });
 
 const baseOptions = {
@@ -181,5 +184,38 @@ describe("outbox worker slots", () => {
     release();
     await worker;
     expect(repository.completeOutboxJob).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("outbox worker deferral", () => {
+  it("defers a job without completing or failing it", async () => {
+    const controller = new AbortController();
+    const retryAt = new Date(Date.now() + 60_000);
+    repository.claimOutboxJobs.mockResolvedValueOnce([job("deferred")]);
+    repository.claimOutboxJobs.mockResolvedValue([]);
+    repository.deferOutboxJob.mockImplementation(async () => {
+      controller.abort();
+      return true;
+    });
+
+    await runOutboxWorker({
+      ...baseOptions,
+      signal: controller.signal,
+      handlers: {
+        "test.job": async () => {
+          throw new OutboxDeferError(retryAt, "busy");
+        },
+      },
+    });
+
+    expect(repository.deferOutboxJob).toHaveBeenCalledWith(
+      prisma,
+      "deferred",
+      "worker-test",
+      retryAt,
+      "busy",
+    );
+    expect(repository.completeOutboxJob).not.toHaveBeenCalled();
+    expect(repository.failOutboxJob).not.toHaveBeenCalled();
   });
 });

@@ -4,10 +4,11 @@ import { createLogger } from "@/lib/logger";
 import {
   claimOutboxJobs,
   completeOutboxJob,
+  deferOutboxJob,
   failOutboxJob,
   renewOutboxLease,
 } from "./repository";
-import type { OutboxHandlers } from "./types";
+import { OutboxDeferError, type OutboxHandlers } from "./types";
 import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
 
 const logger = createLogger("outbox-worker");
@@ -158,6 +159,28 @@ export async function runOutboxWorker(options: {
         logger.warn(
           { jobId: job.id, type: job.type, owner },
           "Outbox handler stopped after lease loss",
+        );
+        return;
+      }
+      if (error instanceof OutboxDeferError) {
+        const deferred = await deferOutboxJob(
+          options.prisma,
+          job.id,
+          owner,
+          error.retryAt,
+          error.reason,
+        );
+        if (!deferred) {
+          incrementOperationalCounter("outbox_lease_lost_total");
+          logger.warn(
+            { jobId: job.id, type: job.type, owner },
+            "Outbox deferral could not update a job no longer owned",
+          );
+          return;
+        }
+        logger.info(
+          { jobId: job.id, type: job.type, retryAt: error.retryAt },
+          "Outbox job deferred",
         );
         return;
       }

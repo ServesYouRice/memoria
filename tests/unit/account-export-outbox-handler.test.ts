@@ -24,6 +24,8 @@ vi.mock("@/lib/outbox/enqueue", () => ({
 }));
 
 import { createAccountExportBuildHandler } from "@/lib/account-export/outbox-handler";
+import { accountExportTimeoutMs } from "@/lib/account-export/constants";
+import { OutboxDeferError } from "@/lib/outbox/types";
 
 const exportId = "clexportxxxxxxxxxxxxxxxxx";
 const userId = "cluserxxxxxxxxxxxxxxxxxxx";
@@ -210,15 +212,42 @@ describe("account export outbox handler", () => {
   });
 
   it("does not restart a fresh running delivery", async () => {
+    const startedAt = new Date();
     const { client, accountExport } = fakePrisma({
       initialStatus: AccountExportStatus.RUNNING,
-      startedAt: new Date(),
+      startedAt,
+    });
+
+    // It defers the job to the end of the stale window instead of
+    // acknowledging it (which would strand the export RUNNING forever).
+    const outcome = await createAccountExportBuildHandler(client)(job()).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(OutboxDeferError);
+    const windowMs = Math.max(accountExportTimeoutMs() * 2, 60_000);
+    expect(
+      (outcome as OutboxDeferError).retryAt.getTime(),
+    ).toBeGreaterThanOrEqual(startedAt.getTime() + windowMs);
+    expect(accountExport.updateMany).not.toHaveBeenCalled();
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+
+  it("takes over a running export once its stale window has passed", async () => {
+    const windowMs = Math.max(accountExportTimeoutMs() * 2, 60_000);
+    const { client, accountExport } = fakePrisma({
+      initialStatus: AccountExportStatus.RUNNING,
+      startedAt: new Date(Date.now() - windowMs - 1_000),
     });
 
     await createAccountExportBuildHandler(client)(job());
 
-    expect(accountExport.updateMany).not.toHaveBeenCalled();
-    expect(storage.write).not.toHaveBeenCalled();
+    expect(accountExport.updateMany.mock.calls[0]?.[0]).toMatchObject({
+      where: { status: AccountExportStatus.RUNNING },
+      data: { status: AccountExportStatus.RUNNING },
+    });
+    expect(storage.write).toHaveBeenCalled();
   });
 
   it("stops between bounded pages when cancellation is requested", async () => {

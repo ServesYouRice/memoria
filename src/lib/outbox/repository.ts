@@ -83,6 +83,31 @@ export async function completeOutboxJob(
   return result.count === 1;
 }
 
+/**
+ * Puts an owned job back to PENDING until `retryAt`. The claim counted an
+ * attempt; a deferral is not a failure, so it gives that attempt back.
+ */
+export async function deferOutboxJob(
+  prisma: PrismaClient,
+  jobId: string,
+  owner: string,
+  retryAt: Date,
+  reason: string,
+): Promise<boolean> {
+  const result = await prisma.outboxJob.updateMany({
+    where: { id: jobId, status: OutboxJobStatus.RUNNING, leaseOwner: owner },
+    data: {
+      status: OutboxJobStatus.PENDING,
+      nextRunAt: retryAt,
+      attempts: { decrement: 1 },
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      lastError: reason.slice(0, 500),
+    },
+  });
+  return result.count === 1;
+}
+
 export async function renewOutboxLease(
   prisma: PrismaClient,
   jobId: string,
