@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import {
@@ -11,6 +11,23 @@ const candidateSchema = z.object({ candidateId: z.string().cuid() }).strict();
 const deleteSchema = z
   .object({ storageKey: z.string().min(1).max(1024) })
   .strict();
+
+/**
+ * Queue deletion of a stored thumbnail object. The job carries only the
+ * storage key, so it still runs after the canvas row is gone; call it in the
+ * transaction that drops the reference (thumbnail reset, canvas or account
+ * deletion).
+ */
+export function enqueueThumbnailDeletion(
+  tx: Prisma.TransactionClient,
+  storageKey: string,
+) {
+  return enqueueOutboxJob(tx, {
+    type: "thumbnail.delete",
+    payload: { storageKey },
+    dedupeKey: `thumbnail.delete:${storageKey}`,
+  });
+}
 
 export function createThumbnailStoreHandler(
   prisma: PrismaClient,
@@ -81,11 +98,7 @@ export function createThumbnailStoreHandler(
     }
     if (install.oldKey) {
       await prisma.$transaction((tx) =>
-        enqueueOutboxJob(tx, {
-          type: "thumbnail.delete",
-          payload: { storageKey: install.oldKey! },
-          dedupeKey: `thumbnail.delete:${install.oldKey}`,
-        }),
+        enqueueThumbnailDeletion(tx, install.oldKey!),
       );
     }
   };

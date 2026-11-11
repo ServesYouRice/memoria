@@ -16,6 +16,7 @@ import { errorResponse, BadRequestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { enqueueThumbnailDeletion } from "@/lib/thumbnails/outbox-handler";
 import { UploadAssetStatus } from "@/generated/prisma/client";
 
 const logger = createLogger("users/account");
@@ -98,9 +99,15 @@ export async function DELETE(request: NextRequest) {
       // Get all user's canvases
       const userCanvases = await tx.canvas.findMany({
         where: { userId },
-        select: { id: true },
+        select: { id: true, thumbnailKey: true },
       });
       const canvasIds = userCanvases.map((c) => c.id);
+      // The canvases go below; their stored thumbnails would be orphaned.
+      for (const canvas of userCanvases) {
+        if (canvas.thumbnailKey) {
+          await enqueueThumbnailDeletion(tx, canvas.thumbnailKey);
+        }
+      }
 
       // Every upload that goes with the account: the user's own, and those
       // collaborators added to the user's canvases (the canvas delete below

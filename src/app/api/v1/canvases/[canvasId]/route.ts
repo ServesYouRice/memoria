@@ -11,6 +11,7 @@ import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
+import { enqueueThumbnailDeletion } from "@/lib/thumbnails/outbox-handler";
 
 const updateCanvasSchema = z
   .object({
@@ -177,7 +178,12 @@ export const DELETE = withApiHandler(
       // enqueueUploadDeletion releases each still-charged asset's quota in
       // this transaction, before the cascade below removes the rows.
       for (const asset of assets) await enqueueUploadDeletion(tx, asset.id);
-      return tx.canvas.delete({ where: { id: canvasId } });
+      // Nothing references the stored thumbnail once the row is gone.
+      const deleted = await tx.canvas.delete({ where: { id: canvasId } });
+      if (deleted.thumbnailKey) {
+        await enqueueThumbnailDeletion(tx, deleted.thumbnailKey);
+      }
+      return deleted;
     });
 
     // Invalidate cache
