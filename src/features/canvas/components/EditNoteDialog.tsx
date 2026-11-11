@@ -27,7 +27,7 @@ import {
   useCanvasDocument,
   useCanvasDocumentSnapshot,
 } from "@/lib/hooks/use-canvas-document";
-import { type CanvasItem, isNoteContent } from "@/types/canvas";
+import { type CanvasItem, ItemType, isNoteContent } from "@/types/canvas";
 import { TagInput } from "./TagInput";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { EMPTY_VERSIONED_NOTE_CONTENT } from "@/components/RichTextEditor";
@@ -134,6 +134,44 @@ function SharedNoteDialog({
   );
 }
 
+/**
+ * TEXT items store plain `text` beside their style fields and are drawn as
+ * plain text. The editor gets that text as literal paragraphs (never parsed
+ * as markup) and a save writes back plain text with the styles kept.
+ */
+function plainTextEditorContent(text: string): VersionedNoteContent {
+  return normalizeNoteContent(
+    {
+      formatVersion: 1,
+      document: {
+        type: "doc",
+        content: text
+          .split("\n")
+          .map((line) =>
+            line
+              ? { type: "paragraph", content: [{ type: "text", text: line }] }
+              : { type: "paragraph" },
+          ),
+      },
+    },
+    { allowEmpty: true },
+  );
+}
+
+const NOTE_FORMAT_KEYS = new Set(["formatVersion", "document", "plainText"]);
+
+function textItemContent(
+  stored: CanvasItem["content"],
+  edited: VersionedNoteContent,
+): Record<string, unknown> {
+  const styles = Object.fromEntries(
+    Object.entries(stored as Record<string, unknown>).filter(
+      ([key]) => !NOTE_FORMAT_KEYS.has(key),
+    ),
+  );
+  return { ...styles, text: normalizeNoteContent(edited).plainText };
+}
+
 const formSchema = z.object({
   content: z.custom<VersionedNoteContent>(),
   tags: z.array(z.string()).default([]),
@@ -173,15 +211,22 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
     },
   });
 
+  const isTextItem = item?.type === ItemType.TEXT;
+
   useEffect(() => {
     if (item && isNoteContent(item.content)) {
       try {
-        const normalized = normalizeNoteContent(item.content);
+        const normalized =
+          item.type === ItemType.TEXT
+            ? plainTextEditorContent(item.content.text ?? "")
+            : normalizeNoteContent(item.content);
         reset({
           content: normalized,
           tags: item.tags || [],
         });
-        setLegacyNormalized(item.content.formatVersion !== 1);
+        setLegacyNormalized(
+          item.type !== ItemType.TEXT && item.content.formatVersion !== 1,
+        );
         setError(null);
       } catch (normalizationError) {
         setError(
@@ -210,7 +255,9 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
         itemId: item.id,
         data: {
           version: item.version,
-          content: normalizeNoteContent(data.content),
+          content: isTextItem
+            ? textItemContent(item.content, data.content)
+            : normalizeNoteContent(data.content),
           tags: data.tags || [],
         },
       });
@@ -225,7 +272,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
     return null;
   }
 
-  if (sharedFragment && sharedEntry) {
+  if (sharedFragment && sharedEntry && !isTextItem) {
     return (
       <SharedNoteDialog
         open={open}
