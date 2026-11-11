@@ -48,9 +48,13 @@ const LOCKED_MESSAGE =
 
 type AuthErrorLike = { code?: string; status?: number } | null | undefined;
 
-function secondFactorErrorMessage(error: AuthErrorLike): string {
+export function secondFactorErrorMessage(error: AuthErrorLike): string {
+  // The proxy rate-limits /api/auth/two-factor/ with a 429 that has no code.
+  if (error?.status === 429) {
+    return "Too many attempts. Please wait and try again.";
+  }
   switch (error?.code) {
-    case "ACCOUNT_TEMPORARILY_LOCKED":
+    case "ACCOUNT_LOCKED":
       return LOCKED_MESSAGE;
     case "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE":
     case "INVALID_TWO_FACTOR_COOKIE":
