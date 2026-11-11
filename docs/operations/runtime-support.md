@@ -14,6 +14,18 @@ address from `src/lib/network/client-ip.ts`. `X-Forwarded-For` is honoured only
 when the TCP peer is inside `TRUSTED_PROXY_CIDRS`; with an empty value every
 request appears to come from the proxy.
 
+- **Collaboration sockets proxied by the app:** in single-port setups the app
+  server forwards `/api/collaboration/*` upgrades to the realtime process
+  over a new TCP connection, so the realtime process sees the app as the
+  peer. Set the same `COLLABORATION_PROXY_SECRET` (32+ characters) on the app
+  and the sync/realtime process: the app then sends the client address it
+  derived (with the rules above) in a signed `x-memoria-upgrade-client-ip`
+  header, valid for one minute, and the realtime process uses it for
+  per-client limits. Any copy a caller sends is removed, and an unsigned or
+  stale header is ignored. Without the secret the app logs a warning at
+  startup and proxied sockets keep today's behaviour (the app's address,
+  unless `TRUSTED_PROXY_CIDRS` covers it). Sockets a gateway routes straight
+  to the realtime process are unaffected.
 - **Bundled stack:** `pnpm setup --selfhost` writes
   `TRUSTED_PROXY_CIDRS=172.29.47.0/28`, the `edge` network pinned in
   `docker-compose.yml`. Besides the app and sync services, only the Caddy

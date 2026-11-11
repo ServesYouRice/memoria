@@ -11,6 +11,7 @@ import {
   assertSupportedSyncUpstream,
   proxySyncUpgrade,
 } from "./src/lib/collaboration/sync/upgrade-proxy";
+import { stampUpgradeClientIp } from "./src/lib/collaboration/upgrade-policy";
 import { logger } from "./src/lib/logger";
 import { deriveClientIp } from "./src/lib/network/client-ip";
 import { nanoid } from "nanoid";
@@ -69,10 +70,18 @@ app
     // Every collaboration socket (document sync and presence) belongs to the
     // realtime process (IMP-042, IMP-043). A gateway routes them there
     // directly; this proxy serves single-port and development setups.
+    // The realtime process sees this server as the peer of every proxied
+    // socket; the signed header tells it the real client (TASK-170).
+    const proxySecret = process.env.COLLABORATION_PROXY_SECRET;
+    if (!proxySecret)
+      logger.warn(
+        "COLLABORATION_PROXY_SECRET is not set: collaboration sockets proxied by this server share its address for per-client limits unless TRUSTED_PROXY_CIDRS covers it",
+      );
     server.on("upgrade", (req, socket, head) => {
       const pathname = parse(req.url || "").pathname || "";
       // Other upgrades (Next.js development HMR) are Next's own.
       if (!pathname.startsWith("/api/collaboration/")) return;
+      stampUpgradeClientIp(req, proxySecret);
       proxySyncUpgrade(syncServerUrl, req, socket, head);
     });
 

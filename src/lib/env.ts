@@ -83,6 +83,13 @@ const envSchema = z
         }
       }),
     ),
+    // Shared by the app server and the realtime process: signs the client
+    // address the app server passes on proxied collaboration upgrades.
+    COLLABORATION_PROXY_SECRET: emptyToUndefined(
+      z
+        .string()
+        .min(32, "COLLABORATION_PROXY_SECRET must be at least 32 characters"),
+    ),
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     // Per-group strict auth budgets; each falls back to the one above.
     AUTH_SIGN_IN_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
