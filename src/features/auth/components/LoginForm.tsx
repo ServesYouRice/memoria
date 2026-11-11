@@ -22,7 +22,7 @@ import { authClient } from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLayout } from "./AuthLayout";
 import { VerificationResendForm } from "./VerificationResendForm";
-import { safeAuthCallbackUrl } from "@/lib/auth/redirect";
+import { toSafeCallbackPath } from "@/lib/auth/redirect";
 import type { RegistrationMode } from "./RegisterForm";
 
 interface LoginFormProps {
@@ -88,15 +88,9 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
   });
 
   const goToDestination = () => {
-    const safeDestination = safeAuthCallbackUrl(
-      callbackUrl,
-      window.location.origin,
+    router.push(
+      toSafeCallbackPath(callbackUrl, window.location.origin, "/dashboard"),
     );
-    const destination =
-      new URL(safeDestination).pathname +
-      new URL(safeDestination).search +
-      new URL(safeDestination).hash;
-    router.push(callbackUrl ? destination : "/dashboard");
     router.refresh();
   };
 
