@@ -57,6 +57,15 @@ const store = vi.hoisted(() => {
       Object.assign(row, data);
       return { ...row };
     }),
+    updateMany: vi.fn(async ({ where, data }) => {
+      let count = 0;
+      for (const row of rows.values())
+        if (matches(row, where)) {
+          Object.assign(row, data);
+          count += 1;
+        }
+      return { count };
+    }),
     delete: vi.fn(async ({ where }) => {
       for (const [id, row] of rows)
         if (row.id === where.id) {

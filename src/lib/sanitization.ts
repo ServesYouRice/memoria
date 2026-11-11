@@ -28,11 +28,18 @@ function sanitizeAllowedHtml(
 
   root.find("script,style").remove();
 
+  // `.text()` is decoded text (and raw markup for <textarea>, <title>,
+  // <xmp>...). replaceWith() parses a string as HTML, so the text is escaped
+  // first: it lands in the DOM as a text node, never as new elements.
+  const replaceWithText = (element: Parameters<typeof $>[0]) => {
+    $(element).replaceWith(escapeHtml($(element).text()));
+  };
+
   root.find("*").each((_, element) => {
     const tagName = element.tagName?.toLowerCase();
 
     if (!tagName || !allowedTags.has(tagName)) {
-      $(element).replaceWith($(element).text());
+      replaceWithText(element);
       return;
     }
 
@@ -54,6 +61,16 @@ function sanitizeAllowedHtml(
       }
     }
   });
+
+  // Defensive pass: whatever the parser produced, only allowed tags remain.
+  for (let pass = 0; pass < 5; pass += 1) {
+    const stray = root
+      .find("*")
+      .toArray()
+      .filter((element) => !allowedTags.has(element.tagName.toLowerCase()));
+    if (stray.length === 0) break;
+    for (const element of stray) replaceWithText(element);
+  }
 
   return root.html()?.trim() || "";
 }

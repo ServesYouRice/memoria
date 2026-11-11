@@ -11,10 +11,30 @@ export interface GridOverlayProps {
   height: number;
   gridSize: number;
   visible: boolean;
+  /**
+   * World-space coordinate of the viewport's top-left corner
+   * (`-position / zoom`). The overlay sits inside the transformed Stage, so
+   * its lines are drawn in world coordinates.
+   */
   offset?: { x: number; y: number };
   zoom?: number;
   /** Line color; defaults to a light-mode grey. Pass a theme value for dark mode. */
   stroke?: string;
+}
+
+/** Grid lines are never drawn closer together than this on screen. */
+export const MIN_GRID_SCREEN_SPACING_PX = 10;
+
+/**
+ * Visual grid step: `gridSize` doubled until lines are at least
+ * MIN_GRID_SCREEN_SPACING_PX apart on screen, so every line stays on a snap
+ * position and the line count stays bounded at low zoom.
+ */
+export function gridStepForZoom(gridSize: number, zoom: number): number {
+  let step = gridSize;
+  if (!(step > 0) || !(zoom > 0)) return step;
+  while (step * zoom < MIN_GRID_SCREEN_SPACING_PX) step *= 2;
+  return step;
 }
 
 export function GridOverlay({
@@ -30,14 +50,11 @@ export function GridOverlay({
 
   const lines: React.ReactElement[] = [];
 
-  // Calculate adjusted grid size based on zoom
-  const adjustedGridSize = gridSize;
+  const adjustedGridSize = gridStepForZoom(gridSize, zoom);
 
-  // Calculate the starting positions based on offset
-  const startX =
-    Math.floor(-offset.x / zoom / adjustedGridSize) * adjustedGridSize;
-  const startY =
-    Math.floor(-offset.y / zoom / adjustedGridSize) * adjustedGridSize;
+  // `offset` is already the viewport's world origin.
+  const startX = Math.floor(offset.x / adjustedGridSize) * adjustedGridSize;
+  const startY = Math.floor(offset.y / adjustedGridSize) * adjustedGridSize;
 
   const endX = startX + width / zoom + adjustedGridSize;
   const endY = startY + height / zoom + adjustedGridSize;

@@ -1,4 +1,5 @@
-import { stripHtml, sanitizeNoteHtml, sanitizeUrl } from "@/lib/sanitization";
+import { load } from "cheerio";
+import { sanitizeNoteHtml, sanitizeUrl } from "@/lib/sanitization";
 import { MAX_NOTE_TEXT_LENGTH } from "@/lib/constants";
 
 export const MAX_DOCUMENT_BYTES = 50_000;
@@ -249,20 +250,228 @@ export function normalizeNoteContent(
   }
   if (typeof value.text !== "string")
     return fail("Invalid legacy note content.");
-  const safeHtml = sanitizeNoteHtml(value.text);
-  const plainText = stripHtml(safeHtml);
+  const document = legacyHtmlToDocument(sanitizeNoteHtml(value.text));
+  const plainText = extractText(document).trim();
   if (!plainText) return fail("Note text cannot be empty.");
   if (plainText.length > MAX_NOTE_TEXT_LENGTH)
     return fail("Note text is too long.");
   return {
     formatVersion: 1,
-    document: {
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: plainText }] },
-      ],
-    },
+    document,
     plainText,
-    text: safeHtml,
+    text: renderNode(document),
   };
+}
+
+/** The parts of a parsed DOM node the legacy converter reads. */
+type LegacyDomNode = {
+  type: string;
+  name?: string;
+  data?: string;
+  attribs?: Record<string, string>;
+  children?: LegacyDomNode[];
+};
+
+const LEGACY_MARK_TAGS: Record<string, TiptapMark["type"]> = {
+  strong: "bold",
+  b: "bold",
+  em: "italic",
+  i: "italic",
+  s: "strike",
+  code: "code",
+};
+const LEGACY_BLOCK_TAGS = new Set([
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "ul",
+  "ol",
+  "li",
+  "pre",
+  "blockquote",
+]);
+
+function legacyText(node: LegacyDomNode): string {
+  if (node.type === "text") return node.data || "";
+  if (node.type === "tag" && node.name === "br") return "\n";
+  return (node.children || []).map(legacyText).join("");
+}
+
+function legacyInline(
+  nodes: LegacyDomNode[],
+  marks: TiptapMark[],
+  out: TiptapNode[],
+) {
+  for (const node of nodes) {
+    if (node.type === "text") {
+      const text = (node.data || "").replace(/\s+/g, " ");
+      if (text)
+        out.push({
+          type: "text",
+          text,
+          ...(marks.length ? { marks: [...marks] } : {}),
+        });
+      continue;
+    }
+    if (node.type !== "tag") continue;
+    const name = node.name?.toLowerCase();
+    if (name === "br") {
+      out.push({ type: "hardBreak" });
+      continue;
+    }
+    let childMarks = marks;
+    const markType = name ? LEGACY_MARK_TAGS[name] : undefined;
+    if (markType && !marks.some((mark) => mark.type === markType)) {
+      childMarks = [...marks, { type: markType }];
+    } else if (name === "a" && !marks.some((mark) => mark.type === "link")) {
+      const href = sanitizeUrl(node.attribs?.href || "");
+      if (href) childMarks = [...marks, { type: "link", attrs: { href } }];
+    }
+    legacyInline(node.children || [], childMarks, out);
+  }
+}
+
+/** Trims the edges of a line of inline nodes and drops empty text nodes. */
+function tidyInline(nodes: TiptapNode[]): TiptapNode[] {
+  const trimmed = nodes.map((node, index) => {
+    if (node.type !== "text") return node;
+    let text = node.text || "";
+    const previous = nodes[index - 1];
+    const next = nodes[index + 1];
+    if (!previous || previous.type === "hardBreak") text = text.trimStart();
+    if (!next || next.type === "hardBreak") text = text.trimEnd();
+    return { ...node, text };
+  });
+  return trimmed.filter((node) => node.type !== "text" || node.text);
+}
+
+function legacyBlocks(nodes: LegacyDomNode[]): TiptapNode[] {
+  const blocks: TiptapNode[] = [];
+  let run: LegacyDomNode[] = [];
+  const flush = () => {
+    const content: TiptapNode[] = [];
+    legacyInline(run, [], content);
+    const tidy = tidyInline(content);
+    if (tidy.some((node) => node.type === "text"))
+      blocks.push({ type: "paragraph", content: tidy });
+    run = [];
+  };
+
+  for (const node of nodes) {
+    const name = node.type === "tag" ? node.name?.toLowerCase() : undefined;
+    if (!name || !LEGACY_BLOCK_TAGS.has(name)) {
+      run.push(node);
+      continue;
+    }
+    flush();
+    const children = node.children || [];
+    if (name === "p") {
+      const content: TiptapNode[] = [];
+      legacyInline(children, [], content);
+      blocks.push({ type: "paragraph", content: tidyInline(content) });
+    } else if (name === "h1" || name === "h2" || name === "h3") {
+      const content: TiptapNode[] = [];
+      legacyInline(children, [], content);
+      blocks.push({
+        type: "heading",
+        attrs: { level: Number(name[1]) },
+        content: tidyInline(content),
+      });
+    } else if (name === "pre") {
+      const text = legacyText(node);
+      blocks.push({
+        type: "codeBlock",
+        content: text ? [{ type: "text", text }] : [],
+      });
+    } else if (name === "ul" || name === "ol") {
+      const items = children.filter(
+        (child) => child.type === "tag" || (child.data || "").trim(),
+      );
+      blocks.push({
+        type: name === "ul" ? "bulletList" : "orderedList",
+        content: items.map((child) =>
+          legacyListItem(
+            child.type === "tag" && child.name?.toLowerCase() === "li"
+              ? child.children || []
+              : [child],
+          ),
+        ),
+      });
+    } else if (name === "li") {
+      blocks.push({
+        type: "bulletList",
+        content: [legacyListItem(children)],
+      });
+    } else {
+      const content = legacyBlocks(children);
+      blocks.push({
+        type: "blockquote",
+        content: content.length
+          ? content
+          : [{ type: "paragraph", content: [] }],
+      });
+    }
+  }
+  flush();
+  return blocks;
+}
+
+function legacyListItem(children: LegacyDomNode[]): TiptapNode {
+  const content = legacyBlocks(children);
+  if (content[0]?.type !== "paragraph")
+    content.unshift({ type: "paragraph", content: [] });
+  return { type: "listItem", content };
+}
+
+/** Plain text without markup: blank lines split paragraphs, lines break. */
+function plainTextToDocument(text: string): TiptapNode {
+  const content = text
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => {
+      const inline: TiptapNode[] = [];
+      paragraph.split("\n").forEach((line, index) => {
+        if (index > 0) inline.push({ type: "hardBreak" });
+        if (line.trim()) inline.push({ type: "text", text: line.trim() });
+      });
+      return { type: "paragraph", content: inline };
+    });
+  return { type: "doc", content };
+}
+
+/**
+ * Turns sanitized legacy note HTML into a rich-text document that keeps its
+ * blocks and marks. Text comes from DOM text nodes, so entities are decoded.
+ */
+function legacyHtmlToDocument(safeHtml: string): TiptapNode {
+  const $ = load(safeHtml, null, false);
+  const nodes = $.root().contents().toArray() as unknown as LegacyDomNode[];
+  const raw = nodes.some((node) => node.type === "tag")
+    ? { type: "doc", content: legacyBlocks(nodes) }
+    : plainTextToDocument(legacyText({ type: "root", children: nodes }));
+  try {
+    return validateNode(raw, 0, { value: 0 });
+  } catch {
+    // Too deep or too many nodes: keep the text, one paragraph per line, or
+    // as a single paragraph when even that has too many nodes.
+    const text = extractText(raw);
+    try {
+      return validateNode(plainTextToDocument(text.replace(/\n/g, "\n\n")), 0, {
+        value: 0,
+      });
+    } catch {
+      const flat = text.replace(/\s+/g, " ").trim();
+      return {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: flat ? [{ type: "text", text: flat }] : [],
+          },
+        ],
+      };
+    }
+  }
 }

@@ -2,9 +2,7 @@
 
 import React from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import Link from "@tiptap/extension-link";
 import Collaboration from "@tiptap/extension-collaboration";
 import type * as Y from "yjs";
 import {
@@ -12,7 +10,11 @@ import {
   type TiptapNode,
   type VersionedNoteContent,
 } from "@/lib/rich-text/note-format";
-import { collaborativeNoteExtensions } from "@/lib/collaboration/sync/note-schema";
+import {
+  collaborativeNoteExtensions,
+  standaloneNoteExtensions,
+} from "@/lib/collaboration/sync/note-schema";
+import { toCanonicalNoteDocument } from "@/lib/rich-text/editor-json";
 import {
   Box,
   Button,
@@ -81,6 +83,39 @@ function documentForEditor(content: EditorContentValue): TiptapNode {
   return EMPTY_TIPTAP_DOCUMENT;
 }
 
+function stableNoteNode(node: TiptapNode): unknown {
+  return {
+    type: node.type,
+    attrs: node.attrs,
+    text: node.text,
+    marks: node.marks?.length
+      ? node.marks
+          .map((mark) => ({ type: mark.type, href: mark.attrs?.href }))
+          .sort((left, right) =>
+            `${left.type}:${left.href ?? ""}`.localeCompare(
+              `${right.type}:${right.href ?? ""}`,
+            ),
+          )
+      : undefined,
+    content:
+      node.type === "text" || node.type === "hardBreak"
+        ? undefined
+        : (node.content ?? []).map(stableNoteNode),
+  };
+}
+
+/**
+ * Whether two note documents hold the same content, whatever their key
+ * order, mark order or whether empty nodes carry `content: []`. ProseMirror's
+ * toJSON and the note validator write the same document differently.
+ */
+export function noteDocumentsEqual(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(stableNoteNode(toCanonicalNoteDocument(left))) ===
+    JSON.stringify(stableNoteNode(toCanonicalNoteDocument(right)))
+  );
+}
+
 export interface RichTextEditorProps {
   content: EditorContentValue;
   onChange: (content: VersionedNoteContent) => void;
@@ -106,6 +141,9 @@ export function RichTextEditor({
   const [linkDialogOpen, setLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState("");
   const shared = Boolean(collaboration);
+  // The document this editor last emitted, so the parent echoing it back as
+  // `content` never replaces the text (and the selection) mid-typing.
+  const lastEmittedRef = React.useRef<TiptapNode | null>(null);
   const initialDocument = React.useMemo(
     () => documentForEditor(content),
     [content],
@@ -119,27 +157,14 @@ export function RichTextEditor({
           Placeholder.configure({ placeholder }),
           Collaboration.configure({ fragment: collaboration.fragment }),
         ]
-      : [
-          StarterKit.configure({
-            heading: {
-              levels: [1, 2, 3],
-            },
-          }),
-          Placeholder.configure({
-            placeholder,
-          }),
-          Link.configure({
-            openOnClick: false,
-            HTMLAttributes: {
-              target: "_blank",
-              rel: "noopener noreferrer",
-            },
-          }),
-        ],
+      : [...standaloneNoteExtensions(), Placeholder.configure({ placeholder })],
     ...(collaboration ? {} : { content: initialDocument }),
     editable,
     onUpdate: ({ editor }) => {
-      const document = editor.getJSON() as TiptapNode;
+      // getJSON() omits empty `content` and writes attribute defaults; the
+      // adapter gives the validator (and later submit) canonical input.
+      const document = toCanonicalNoteDocument(editor.getJSON());
+      lastEmittedRef.current = document;
       try {
         onChange(
           normalizeNoteContent(
@@ -165,8 +190,14 @@ export function RichTextEditor({
     // collaborators are typing.
     if (editor && !shared) {
       const nextDocument = documentForEditor(content);
-      if (JSON.stringify(editor.getJSON()) !== JSON.stringify(nextDocument)) {
+      if (
+        lastEmittedRef.current &&
+        noteDocumentsEqual(lastEmittedRef.current, nextDocument)
+      )
+        return;
+      if (!noteDocumentsEqual(editor.getJSON(), nextDocument)) {
         editor.commands.setContent(nextDocument, { emitUpdate: false });
+        lastEmittedRef.current = null;
       }
     }
   }, [editor, content, shared]);

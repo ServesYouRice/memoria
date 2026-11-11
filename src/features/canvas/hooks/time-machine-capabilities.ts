@@ -11,15 +11,30 @@ export function resolveBoardCapabilities(
   base: CanvasCapabilities,
   isTimeMachineActive: boolean,
 ): { capabilities: CanvasCapabilities; canRestore: boolean } {
-  const capabilities = isTimeMachineActive
-    ? {
-        ...base,
-        canMoveItems: false,
-        canResizeItems: false,
-        canEditItems: false,
-        canCreateItems: false,
-        canDeleteItems: false,
-      }
-    : base;
-  return { capabilities, canRestore: base.canEditItems };
+  return {
+    capabilities: resolveTimeMachineCapabilities(base, isTimeMachineActive),
+    canRestore: base.canEditItems,
+  };
+}
+
+/**
+ * While a historical version is previewed, the board shows snapshot items
+ * that carry the live item IDs, so any move, edit or delete would land on the
+ * live item. The preview is read-only; "Restore This Version" is the only way
+ * to apply history. Copying and commenting are left as they are.
+ */
+export function resolveTimeMachineCapabilities(
+  capabilities: CanvasCapabilities,
+  previewActive: boolean,
+): CanvasCapabilities {
+  if (!previewActive) return capabilities;
+  return {
+    ...capabilities,
+    canMoveItems: false,
+    canResizeItems: false,
+    canEditItems: false,
+    canCreateItems: false,
+    canDeleteItems: false,
+    canVote: false,
+  };
 }

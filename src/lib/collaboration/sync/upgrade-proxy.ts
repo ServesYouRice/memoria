@@ -12,8 +12,25 @@
  */
 
 import type { IncomingMessage } from "http";
-import { connect } from "net";
+import { connect, isIP } from "net";
 import type { Duplex } from "stream";
+import { connect as connectTls } from "tls";
+
+const SECURE_PROTOCOLS = new Set(["https:", "wss:"]);
+const SUPPORTED_PROTOCOLS = new Set(["http:", "ws:", ...SECURE_PROTOCOLS]);
+
+/**
+ * Fail fast on a sync upstream the proxy cannot speak to. Called at startup so
+ * a mistyped SYNC_SERVER_INTERNAL_URL crashes the server instead of every
+ * collaboration socket.
+ */
+export function assertSupportedSyncUpstream(target: URL): void {
+  if (!SUPPORTED_PROTOCOLS.has(target.protocol)) {
+    throw new Error(
+      `Unsupported sync upstream scheme ${target.protocol} (use http:, https:, ws: or wss:)`,
+    );
+  }
+}
 
 export function proxySyncUpgrade(
   target: URL,
@@ -21,13 +38,23 @@ export function proxySyncUpgrade(
   socket: Duplex,
   head: Buffer,
 ): void {
-  const upstream = connect(
-    Number(target.port || (target.protocol === "https:" ? 443 : 80)),
-    target.hostname,
-  );
+  const secure = SECURE_PROTOCOLS.has(target.protocol);
+  const port = Number(target.port || (secure ? 443 : 80));
+  // URL keeps IPv6 literals bracketed; sockets want the bare address.
+  const host = target.hostname.replace(/^\[(.*)\]$/, "$1");
+  // An https:/wss: upstream gets a verified TLS connection (SNI set to the
+  // target's name); nothing is written until the handshake completes.
+  const upstream = secure
+    ? connectTls({
+        host,
+        port,
+        // SNI carries names only (RFC 6066); certificate checks still apply.
+        ...(isIP(host) ? {} : { servername: host }),
+      })
+    : connect(port, host);
   let connected = false;
 
-  upstream.once("connect", () => {
+  upstream.once(secure ? "secureConnect" : "connect", () => {
     connected = true;
     const forwarded = [
       request.headers["x-forwarded-for"],

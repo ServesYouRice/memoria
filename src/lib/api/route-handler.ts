@@ -16,6 +16,10 @@ import type { Prisma } from "@/generated/prisma/client";
 
 const logger = createLogger("api");
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+/** An in-flight request holds its key this long past its last renewal. */
+const IN_FLIGHT_LEASE_MS = 60 * 1000;
+/** How often a running request renews its lease (lockedAt). */
+const LEASE_RENEW_MS = 20 * 1000;
 
 /** Standard error response shape */
 interface ErrorResponse {
@@ -134,7 +138,9 @@ export function withAuthValidation<T, C = unknown>(
   return withAuth<unknown, C>(async (req, session, context) => {
     let body: unknown;
     try {
-      body = await req.json();
+      // Parse a clone: runIdempotent hashes the request body through
+      // req.clone(), which throws once the original body has been read.
+      body = await req.clone().json();
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new BadRequestError("Invalid JSON");
@@ -232,7 +238,6 @@ export async function runIdempotent<T>(
   };
 
   const expiryCutoff = new Date(Date.now() - IDEMPOTENCY_TTL_MS);
-  const IN_FLIGHT_LEASE_MS = 60 * 1000;
 
   let existing = await prisma.idempotencyKey.findUnique({
     where: { key_userId_method_path: scope },
@@ -259,12 +264,14 @@ export async function runIdempotent<T>(
       );
     }
 
-    // An expired lease with no journaled response is not proof the mutation
-    // failed: it may have committed before the journal update was lost.
-    // Running the handler again could repeat it, so the key is refused until
-    // its TTL frees it (Q-001).
-    const isLeaseExpired =
-      Date.now() - existing.createdAt.getTime() > IN_FLIGHT_LEASE_MS;
+    // The lease runs from lockedAt, which the running request renews, so a
+    // slow handler is never mistaken for an abandoned one. A lease nobody
+    // has renewed for IN_FLIGHT_LEASE_MS with no journaled response is still
+    // not proof the mutation failed: it may have committed before the
+    // journal update was lost. Running the handler again could repeat it, so
+    // the key is refused until its TTL frees it (Q-001).
+    const lockedAt = existing.lockedAt ?? existing.createdAt;
+    const isLeaseExpired = Date.now() - lockedAt.getTime() > IN_FLIGHT_LEASE_MS;
     if (isLeaseExpired) {
       throw new ConflictError(
         "The earlier request with this idempotency key did not finish recording its result, so its outcome is unknown. Check the current state or retry with a new idempotency key.",
@@ -276,7 +283,8 @@ export async function runIdempotent<T>(
   let claimId: string;
   try {
     const claim = await prisma.idempotencyKey.create({
-      data: { ...scope, requestHash },
+      data: { ...scope, requestHash, lockedAt: new Date() },
+      select: { id: true },
     });
     claimId = claim.id;
   } catch {
@@ -297,8 +305,24 @@ export async function runIdempotent<T>(
     throw new ConflictError("Idempotency key conflict");
   }
 
+  // Renew the lease while this request runs so a slow handler is not
+  // reported as abandoned.
+  const heartbeat = setInterval(() => {
+    void prisma.idempotencyKey
+      .updateMany({
+        where: { id: claimId, responseCode: null },
+        data: { lockedAt: new Date() },
+      })
+      .catch((error) =>
+        logger.warn({ error, key, userId }, "Idempotency lease renewal failed"),
+      );
+  }, LEASE_RENEW_MS);
+  heartbeat.unref?.();
+
   // Transient failures (5xx, 429) say nothing about the request itself:
   // free the key so a retry runs again instead of replaying the failure.
+  // Every write targets this request's own row id, so a row that replaced
+  // it (after the TTL freed the key) is never released or overwritten.
   const settle = async (
     response: Response,
     onJournalError: (error: unknown) => void,
@@ -315,15 +339,23 @@ export async function runIdempotent<T>(
       return;
     }
     const body = await readResponseBody(response);
-    await prisma.idempotencyKey
-      .update({
-        where: { key_userId_method_path: scope },
+    try {
+      const result = await prisma.idempotencyKey.updateMany({
+        where: { id: claimId },
         data: {
           responseCode: response.status,
           responseBody: body as Prisma.InputJsonValue,
         },
-      })
-      .catch(onJournalError);
+      });
+      if (result.count === 0) {
+        logger.warn(
+          { key, userId },
+          "Idempotency claim was superseded; response not journaled",
+        );
+      }
+    } catch (error) {
+      onJournalError(error);
+    }
   };
 
   try {
@@ -339,5 +371,7 @@ export async function runIdempotent<T>(
     const failureResponse = errorResponse(error, req.url);
     await settle(failureResponse, () => {});
     return failureResponse;
+  } finally {
+    clearInterval(heartbeat);
   }
 }

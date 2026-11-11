@@ -93,6 +93,9 @@ function hydrateSnapshotItems(
   });
 }
 
+// Re-exported for existing importers; the rule lives with the board helper.
+export { resolveTimeMachineCapabilities } from "./time-machine-capabilities";
+
 export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
   const viewportInitializedRef = useRef(false);
   // The viewport the server holds (loaded, or last saved): an unchanged

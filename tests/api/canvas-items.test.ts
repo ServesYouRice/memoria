@@ -294,7 +294,7 @@ describe("Canvas Items API (IMP-062)", () => {
           height: 150,
           zIndex: 1,
           content: expect.objectContaining({
-            text: "Hello note",
+            text: "<p>Hello note</p>",
             plainText: "Hello note",
             formatVersion: 1,
           }),
@@ -477,7 +477,7 @@ describe("Canvas Items API (IMP-062)", () => {
           positionX: 150,
           positionY: 250,
           content: expect.objectContaining({
-            text: "Updated note",
+            text: "<p>Updated note</p>",
             plainText: "Updated note",
             formatVersion: 1,
           }),

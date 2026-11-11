@@ -52,6 +52,8 @@ const logger = createLogger("link-enrichment");
 export const LINK_ENRICH_JOB = "link.enrich";
 /** Worker deadline: one page fetch plus one AI request. */
 export const LINK_ENRICH_TIMEOUT_MS = 90_000;
+/** The locked write is small; match the repository pattern for its budget. */
+const LINK_ENRICH_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 15_000 };
 const LINK_ENRICH_MAX_ATTEMPTS = 4;
 const MAX_ITEM_TAGS = 20;
 
@@ -398,6 +400,23 @@ export function createLinkEnrichmentHandler(
       context?.signal.throwIfAborted();
     }
 
+    // Score near-duplicates before taking the canvas lock: the scan reads and
+    // compares up to a thousand JSON vectors, and every canvas mutation waits
+    // on that lock. Inside the transaction only a cheap liveness check runs.
+    let similarCandidateIds: string[] = [];
+    if (embedding) {
+      similarCandidateIds = (
+        await findSimilarLinks(prisma, {
+          userId: enrichment.userId,
+          itemId,
+          provider: embedding.provider,
+          model: embedding.model,
+          vector: embedding.vector,
+        })
+      ).map((match) => match.itemId);
+      context?.signal.throwIfAborted();
+    }
+
     const outcome = await prisma.$transaction(async (tx) => {
       const located = await tx.canvasItem.findFirst({
         where: { id: itemId, deletedAt: null },
@@ -419,6 +438,25 @@ export function createLinkEnrichmentHandler(
         },
       });
       if (!fresh || fresh.status !== ItemEnrichmentStatus.PENDING || !current) {
+        return null;
+      }
+      // The page, AI suggestion and embedding describe the URL this job read.
+      // If the user replaced the link meanwhile, write none of it; leave the
+      // row PENDING and enqueue a fresh job keyed to this version so the new
+      // URL is enriched.
+      if ((current.content as BookmarkContentLike | null)?.url !== url) {
+        await enqueueOutboxJobs(tx, [
+          {
+            type: LINK_ENRICH_JOB,
+            payload: { itemId },
+            dedupeKey: `${linkEnrichmentDedupeKey(itemId)}:v${current.version}`,
+            maxAttempts: LINK_ENRICH_MAX_ATTEMPTS,
+          },
+        ]);
+        logger.info(
+          { itemId },
+          "Bookmark URL changed during enrichment; re-enqueued for the new URL",
+        );
         return null;
       }
 
@@ -479,15 +517,17 @@ export function createLinkEnrichmentHandler(
           },
           update: { contentHash: embeddingHash, vector: embedding.vector },
         });
-        similarItemIds = (
-          await findSimilarLinks(tx, {
-            userId: fresh.userId,
-            itemId,
-            provider: embedding.provider,
-            model: embedding.model,
-            vector: embedding.vector,
-          })
-        ).map((match) => match.itemId);
+        if (similarCandidateIds.length > 0) {
+          const live = new Set(
+            (
+              await tx.canvasItem.findMany({
+                where: { id: { in: similarCandidateIds }, deletedAt: null },
+                select: { id: true },
+              })
+            ).map((row) => row.id),
+          );
+          similarItemIds = similarCandidateIds.filter((id) => live.has(id));
+        }
         plan.filledFields.push("embedding");
       }
       await tx.itemEnrichment.update({
@@ -517,7 +557,7 @@ export function createLinkEnrichmentHandler(
         similarItemIds,
       });
       return { canvasId: current.canvasId, changed: plan.changed };
-    });
+    }, LINK_ENRICH_TRANSACTION_OPTIONS);
 
     if (outcome?.changed) await invalidateCanvasCache(outcome.canvasId);
   };

@@ -9,6 +9,13 @@ const mocks = vi.hoisted(() => {
     canvas: { findUnique: vi.fn(), delete: vi.fn() },
     canvasItem: { count: vi.fn(), findMany: vi.fn() },
     uploadAsset: { count: vi.fn() },
+    // The other rows a board delete would cascade (TASK-131).
+    canvasVersion: { count: vi.fn(async () => 0) },
+    canvasEmbed: { count: vi.fn(async () => 0) },
+    canvasShare: { count: vi.fn(async () => 0) },
+    canvasShareInvitation: { count: vi.fn(async () => 0) },
+    clipBatch: { count: vi.fn(async () => 0) },
+    itemConnection: { count: vi.fn(async () => 0) },
     agentProfile: { findFirst: vi.fn(), update: vi.fn() },
   };
   return { tx, changeSetFindFirst: vi.fn() };

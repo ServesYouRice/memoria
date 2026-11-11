@@ -7,7 +7,7 @@
 export function assertSeedAllowed(env: { NODE_ENV?: string }): void {
   if (env.NODE_ENV === "production") {
     throw new Error(
-      "Refusing to seed: NODE_ENV is production. The seed creates accounts with a known password.",
+      "Refusing to seed: NODE_ENV is production. The development seed creates fixture accounts with a known password and disables first-run setup.",
     );
   }
 }

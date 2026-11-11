@@ -76,9 +76,11 @@ export const prisma =
         : [{ emit: "stdout", level: "error" }],
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+// Shared through globalThis in every environment: development keeps one client
+// across hot reloads, and in production the custom server and the Next.js
+// route bundles (separate module instances in one process) share one pool, so
+// the server's graceful shutdown disconnects the pool requests actually use.
+globalForPrisma.prisma = prisma;
 
 // Log query events in development for debugging
 if (process.env.NODE_ENV === "development") {
@@ -115,26 +117,28 @@ if (process.env.NODE_ENV === "production") {
     logger.info("Skipping eager database connect during build-time execution");
   }
 
-  // Handle graceful shutdown
-  const shutdown = async (signal: string) => {
-    logger.info({ signal }, "Shutting down database connection");
+  // Process signals belong to the entrypoint (server.ts, the sync server, the
+  // outbox worker). Each one stops its own work first and then calls
+  // `disconnectDatabase()`; a listener here would end the pool and exit while
+  // the HTTP server is still draining in-flight requests.
+  process.on("beforeExit", () => {
+    void disconnectDatabase();
+  });
+}
+
+let disconnecting: Promise<void> | undefined;
+
+/**
+ * Close the Prisma connection pool once. Entrypoints call this at the end of
+ * their own graceful shutdown, after in-flight work has finished.
+ */
+export function disconnectDatabase(): Promise<void> {
+  disconnecting ??= (async () => {
+    logger.info("Shutting down database connection");
     await prisma.$disconnect();
     globalForPrisma.prismaConnected = false;
-  };
-
-  process.on("beforeExit", async () => {
-    await shutdown("beforeExit");
-  });
-
-  process.on("SIGINT", async () => {
-    await shutdown("SIGINT");
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    await shutdown("SIGTERM");
-    process.exit(0);
-  });
+  })();
+  return disconnecting;
 }
 
 /**
