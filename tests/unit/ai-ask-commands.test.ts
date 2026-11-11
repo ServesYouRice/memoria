@@ -291,7 +291,9 @@ describe("executing an approved Ask command", () => {
       id: "board-new",
       name: "Japan",
     });
+    // First read, the re-read under the locks, then the target's items.
     mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1"), canvasItem("i2", "canvas-b")])
       .mockResolvedValueOnce([canvasItem("i1"), canvasItem("i2", "canvas-b")])
       .mockResolvedValueOnce([]);
 
@@ -320,7 +322,7 @@ describe("executing an approved Ask command", () => {
     });
     expect(mocks.tx.canvasItem.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "i1" },
+        where: { id: "i1", canvasId: "canvas-a", deletedAt: null },
         data: expect.objectContaining({ canvasId: "board-new" }),
       }),
     );
@@ -337,6 +339,7 @@ describe("executing an approved Ask command", () => {
   it("drops the moved item's lines on the old board in the same change set", async () => {
     mocks.tx.canvas.findFirst.mockResolvedValue({ id: "board-b", name: "B" });
     mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([canvasItem("i1")])
       .mockResolvedValueOnce([canvasItem("i1")])
       .mockResolvedValueOnce([]);
     const lines = [

@@ -9,7 +9,7 @@ import {
 import { createHash } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { BadRequestError, NotFoundError } from "@/lib/errors";
+import { BadRequestError, ConflictError, NotFoundError } from "@/lib/errors";
 import { AGENT_CAPABILITY_RUNGS } from "@/lib/agents/constants";
 import { assertAgentCapability } from "@/lib/agents/policy";
 import { proposeCanvasPiles } from "@/lib/agents/piles";
@@ -110,6 +110,12 @@ async function loadOwnedItems(
     );
   }
   return items;
+}
+
+function staleAskMove() {
+  return new ConflictError(
+    "Some items changed while this was running. Ask again.",
+  );
 }
 
 function assertMovable(items: { type: string }[]) {
@@ -326,11 +332,12 @@ export async function executeAskCommandSuggestion(input: {
 
     if (!target) throw new NotFoundError("Board not found.");
 
+    // This first read is not locked: it only picks the boards to lock.
     const items = command.itemIds.length
       ? await loadOwnedItems(tx, userId, command.itemIds)
       : [];
     assertMovable(items);
-    const moving = items.filter((item) => item.canvasId !== target!.id);
+    let moving = items.filter((item) => item.canvasId !== target!.id);
 
     if (moving.length > 0) {
       // One lock order for every board involved, so concurrent moves cannot deadlock.
@@ -341,6 +348,26 @@ export async function executeAskCommandSuggestion(input: {
         await lockCanvasForMutation(tx, canvasId);
         touched.add(canvasId);
       }
+      // Re-read under the locks: an item moved or trashed since the first
+      // read must not be moved from its stale board. No extra locks are
+      // taken out of order; the user asks again instead.
+      const lockedCanvasIds = new Set(canvasIds);
+      let current: typeof items;
+      try {
+        current = await loadOwnedItems(
+          tx,
+          userId,
+          moving.map((item) => item.id),
+        );
+      } catch (error) {
+        if (error instanceof BadRequestError) throw staleAskMove();
+        throw error;
+      }
+      if (current.some((item) => !lockedCanvasIds.has(item.canvasId))) {
+        throw staleAskMove();
+      }
+      assertMovable(current);
+      moving = current.filter((item) => item.canvasId !== target!.id);
       await assertCanvasItemCapacity(tx, target.id, moving.length);
 
       const existing = await tx.canvasItem.findMany({
@@ -378,16 +405,23 @@ export async function executeAskCommandSuggestion(input: {
             })),
           });
         }
-        const updated = await tx.canvasItem.update({
-          where: { id: item.id },
-          data: {
-            canvasId: target.id,
-            positionX: position.x,
-            positionY: position.y,
-            version: { increment: 1 },
-            updatedById: userId,
-          },
-        });
+        const updated = await tx.canvasItem
+          .update({
+            where: { id: item.id, canvasId: item.canvasId, deletedAt: null },
+            data: {
+              canvasId: target.id,
+              positionX: position.x,
+              positionY: position.y,
+              version: { increment: 1 },
+              updatedById: userId,
+            },
+          })
+          .catch((error: unknown) => {
+            // P2025: the item left its locked board or was trashed.
+            if ((error as { code?: string } | null)?.code === "P2025")
+              throw staleAskMove();
+            throw error;
+          });
         await recordCanvasItemEvent(tx, {
           canvasId: item.canvasId,
           actorId: userId,
