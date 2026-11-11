@@ -19,9 +19,22 @@ export function isPreselected(tab) {
 }
 
 /**
+ * Loopback development hosts, the only ones plain http:// may reach:
+ * localhost (and *.localhost), 127.0.0.0/8 and [::1]. URL.hostname keeps the
+ * brackets around IPv6 addresses.
+ */
+export function isLoopbackHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "[::1]") return true;
+  return /^127(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(host);
+}
+
+/**
  * Normalize what the person pasted as their Memoria address to an origin
  * ("memoria.example.com" -> "https://memoria.example.com"). Throws on input
- * that is not an http(s) address.
+ * that is not an https address, or a plain http address of a loopback host:
+ * the API key must never cross the network in cleartext.
  */
 export function normalizeServerUrl(input) {
   const trimmed = String(input || "").trim();
@@ -36,6 +49,9 @@ export function normalizeServerUrl(input) {
     throw new Error("That does not look like a web address.");
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("The Memoria address must start with https://.");
+  }
+  if (parsed.protocol === "http:" && !isLoopbackHost(parsed.hostname)) {
     throw new Error("The Memoria address must start with https://.");
   }
   return parsed.origin;
@@ -112,19 +128,19 @@ export async function sendBatch({
   idempotencyKey,
   fetchImpl = fetch,
 }) {
+  // Validate the address before the request, so an address that may not
+  // carry the key (plain http to a remote host) never reaches fetch.
+  const url = `${normalizeServerUrl(serverUrl)}${BATCH_PATH}`;
   let response;
   try {
-    response = await fetchImpl(
-      `${normalizeServerUrl(serverUrl)}${BATCH_PATH}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": String(apiKey).trim(),
-        },
-        body: JSON.stringify(buildBatchBody(tabs, note, idempotencyKey)),
+    response = await fetchImpl(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": String(apiKey).trim(),
       },
-    );
+      body: JSON.stringify(buildBatchBody(tabs, note, idempotencyKey)),
+    });
   } catch {
     throw new Error(
       "Could not reach Memoria. Check the address and your connection.",

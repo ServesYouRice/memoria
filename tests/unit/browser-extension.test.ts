@@ -49,6 +49,47 @@ describe("browser extension helpers", () => {
     expect(() => normalizeServerUrl("ftp://memoria.example.com")).toThrow();
   });
 
+  it("refuses plain-HTTP Memoria addresses except loopback", () => {
+    expect(() => normalizeServerUrl("http://memoria.example.com")).toThrow(
+      "must start with https://",
+    );
+    expect(() => normalizeServerUrl("http://192.168.1.5")).toThrow(
+      "must start with https://",
+    );
+    expect(() => originPattern("http://memoria.example.com")).toThrow();
+    expect(normalizeServerUrl("https://memoria.example.com")).toBe(
+      "https://memoria.example.com",
+    );
+    expect(normalizeServerUrl("http://localhost:3000")).toBe(
+      "http://localhost:3000",
+    );
+    expect(normalizeServerUrl("http://app.localhost:3000")).toBe(
+      "http://app.localhost:3000",
+    );
+    expect(normalizeServerUrl("http://127.0.0.1:3000")).toBe(
+      "http://127.0.0.1:3000",
+    );
+    expect(normalizeServerUrl("http://127.5.6.7")).toBe("http://127.5.6.7");
+    expect(normalizeServerUrl("http://[::1]:3000")).toBe("http://[::1]:3000");
+    expect(() => normalizeServerUrl("http://127.0.0.1.example.com")).toThrow();
+    expect(() => normalizeServerUrl("http://localhost.example.com")).toThrow();
+  });
+
+  it("never sends the API key to a remote plain-HTTP address", async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      sendBatch({
+        serverUrl: "http://memoria.example.com",
+        apiKey: "mk_abcdefghijklmnopqrstuvwxyz",
+        tabs: [{ url: "https://example.com", title: "Example" }],
+        note: "",
+        idempotencyKey: "00000000-0000-4000-8000-000000000000",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("must start with https://");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("recognizes Memoria API keys", () => {
     expect(isApiKey("mk_abcdefghijklmnopqrstuvwxyz")).toBe(true);
     expect(isApiKey("sk_abcdefghijklmnopqrstuvwxyz")).toBe(false);

@@ -284,8 +284,20 @@ async function start() {
   settings = await loadSettings();
   pending =
     (await ext.storage.local.get("pendingBatches")).pendingBatches ?? {};
-  if (settings) await showTabs();
-  else openSetup();
+  if (!settings) {
+    openSetup();
+    return;
+  }
+  try {
+    normalizeServerUrl(settings.serverUrl);
+  } catch (error) {
+    // A saved address this version no longer accepts (such as plain http to
+    // a remote host): send the person to setup instead of using it.
+    openSetup();
+    setMessage("setup-error", error.message);
+    return;
+  }
+  await showTabs();
 }
 
 start().catch((error) => {
