@@ -1258,17 +1258,31 @@ async function applyRevertOperation(
       select: { id: true, name: true, userId: true, createdAt: true },
     });
     if (existing) {
-      const [liveItems, liveUploads] = await Promise.all([
-        tx.canvasItem.count({
-          where: { canvasId: existing.id, deletedAt: null },
+      // Deleting the canvas cascades to every row below, so any of them
+      // means the board holds the user's content: items in the trash or
+      // archive, saved (MANUAL) versions, embeds, shares, open invitations,
+      // clip batches, connections and uploads. AUTO versions are retention-
+      // thinned snapshots and do not count. revertChangeSet already holds the
+      // canvas mutation lock, so nothing can be added between these counts
+      // and the delete.
+      const canvasId = existing.id;
+      const counts = await Promise.all([
+        tx.canvasItem.count({ where: { canvasId } }),
+        tx.canvasVersion.count({ where: { canvasId, kind: "MANUAL" } }),
+        tx.canvasEmbed.count({ where: { canvasId } }),
+        tx.canvasShare.count({ where: { canvasId } }),
+        tx.canvasShareInvitation.count({
+          where: { canvasId, respondedAt: null },
         }),
+        tx.clipBatch.count({ where: { canvasId } }),
+        tx.itemConnection.count({ where: { canvasId } }),
         tx.uploadAsset.count({
-          where: { canvasId: existing.id, status: { not: "DELETED" } },
+          where: { canvasId, status: { not: "DELETED" } },
         }),
       ]);
-      if (liveItems > 0 || liveUploads > 0) {
+      if (counts.some((count) => count > 0)) {
         throw new BadRequestError(
-          "This board has items on it now. Undo those first, or delete the board in Memoria.",
+          "This board holds content now (items, including ones in the trash, saved versions, embeds or shares). Undo those first, or delete the board in Memoria.",
         );
       }
       await tx.canvas.delete({ where: { id: existing.id } });
