@@ -24,6 +24,9 @@ vi.mock("@/lib/hooks/use-canvas-views", () => ({
   useCanvasView: () => ({ data: hooks.viewData }),
   useSaveCanvasView: () => ({ mutate: hooks.save }),
 }));
+vi.mock("@/lib/hooks/use-canvas-index", () => ({
+  useCanvasGeometry: () => ({ data: { items: [] }, isLoading: false }),
+}));
 vi.mock("@/lib/hooks/use-agent-control", () => ({
   useAgentKnowledge: () => ({
     data: {
