@@ -270,15 +270,27 @@ async function readOriginal(
   storageKey: string,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
-  const object = await readPrivateUploadObject(storageMode, storageKey);
+  const object = await readPrivateUploadObject(storageMode, storageKey, signal);
   const reader = object.body.getReader();
+  // A pending read does not watch the signal, so cancel the stream when it
+  // fires: the read settles and the storage request stops.
+  const onAbort = () => {
+    reader.cancel(signal?.reason).catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let finished = false;
   try {
     while (true) {
-      if (signal?.aborted) throw new Error("Upload read aborted");
+      signal?.throwIfAborted();
       const { done, value } = await reader.read();
-      if (done) break;
+      // A cancelled read resolves as done; never return partial data.
+      signal?.throwIfAborted();
+      if (done) {
+        finished = true;
+        break;
+      }
       total += value.byteLength;
       if (total > MAX_READ_BYTES) {
         throw new UploadNoteJobError("Upload is larger than allowed", false);
@@ -286,6 +298,8 @@ async function readOriginal(
       chunks.push(value);
     }
   } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (!finished) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
   return Buffer.concat(chunks);

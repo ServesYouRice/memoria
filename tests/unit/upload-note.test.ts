@@ -345,6 +345,41 @@ describe("upload.note handler", () => {
     expect(created).toHaveLength(0);
   });
 
+  it("cancels a stalled storage read when the worker aborts the job", async () => {
+    const cancelled = vi.fn();
+    mocks.readPrivateUploadObject.mockImplementation(async () => ({
+      // A body that never delivers a chunk, like a stalled S3 response.
+      body: new ReadableStream<Uint8Array>({
+        pull: () => new Promise<void>(() => undefined),
+        cancel: cancelled,
+      }),
+      etag: "e",
+    }));
+    const controller = new AbortController();
+    const run = createUploadNoteHandler(fakePrisma())(job(), {
+      signal: controller.signal,
+    } as never);
+    const outcome = run.then(
+      () => "resolved",
+      () => "rejected",
+    );
+    await vi.waitFor(() =>
+      expect(mocks.readPrivateUploadObject).toHaveBeenCalled(),
+    );
+    expect(mocks.readPrivateUploadObject.mock.calls[0]![2]).toBe(
+      controller.signal,
+    );
+    controller.abort(new Error("job timed out"));
+    const settled = await Promise.race([
+      outcome,
+      new Promise((resolve) => setTimeout(() => resolve("hung"), 500)),
+    ]);
+    expect(settled).toBe("rejected");
+    expect(cancelled).toHaveBeenCalled();
+    expect(mocks.readImageText).not.toHaveBeenCalled();
+    expect(created).toHaveLength(0);
+  });
+
   it("applies the AI budget to the job", async () => {
     vi.stubEnv("AI_DAILY_TOKEN_BUDGET", "100");
     try {
