@@ -5,7 +5,7 @@ import { applySecurityHeaders } from "./middleware/security-headers";
 import { finalizeEarlyResponse } from "./middleware/finalize-response";
 import {
   apiRateLimit,
-  authRateLimit,
+  authGroupRateLimits,
   uploadRateLimit,
   canvasesRateLimit,
   itemsRateLimit,
@@ -21,7 +21,7 @@ import {
   imageProxyRateLimit,
 } from "./middleware/rate-limit";
 import { applyCors, handleCorsPreflight } from "./middleware/cors";
-import { shouldApplyStrictAuthRateLimit } from "./middleware/auth-rate-limit";
+import { strictAuthRateLimitGroup } from "./middleware/auth-rate-limit";
 import { getVersionHeaders, validateApiVersion } from "./lib/api/versioning";
 import { createRequestLogger, redactTokenPath } from "./lib/logger";
 import { resolveEmbedFramingOrigins } from "./lib/embeds/framing";
@@ -93,9 +93,10 @@ export async function proxy(request: NextRequest) {
 
   // Apply rate limiting for authentication routes (Issue #19)
   // Stricter rate limits to prevent brute force attacks
-  if (shouldApplyStrictAuthRateLimit(pathname, request.method)) {
+  const authGroup = strictAuthRateLimitGroup(pathname, request.method);
+  if (authGroup) {
     specificRateLimitApplied = true;
-    const rateLimitResponse = await authRateLimit(request);
+    const rateLimitResponse = await authGroupRateLimits[authGroup](request);
     if (rateLimitResponse) {
       logger.warn(
         {

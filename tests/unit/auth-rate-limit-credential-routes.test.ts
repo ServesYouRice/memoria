@@ -9,7 +9,13 @@ import type * as RateLimitModule from "@/middleware/rate-limit";
 const spies = vi.hoisted(() => ({ strict: vi.fn(async () => null) }));
 vi.mock("@/middleware/rate-limit", async (importOriginal) => {
   const actual = await importOriginal<typeof RateLimitModule>();
-  return { ...actual, authRateLimit: spies.strict };
+  return {
+    ...actual,
+    authGroupRateLimits: {
+      ...actual.authGroupRateLimits,
+      account: spies.strict,
+    },
+  };
 });
 vi.mock("@/lib/db", () => ({
   prisma: { canvasEmbed: { findUnique: vi.fn(async () => null) } },

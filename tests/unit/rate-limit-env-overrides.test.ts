@@ -111,6 +111,39 @@ describe("rate limit environment overrides", () => {
 
     const ceilings = await loadCeilings();
 
-    expect(ceilings.get("auth")?.maxRequests).toBe(5);
+    expect(ceilings.get("auth-sign-in")?.maxRequests).toBe(5);
+  });
+
+  it("gives each auth group its own bucket and override", async () => {
+    delete process.env.AUTH_RATE_LIMIT_MAX_REQUESTS;
+    process.env.AUTH_TWO_FACTOR_RATE_LIMIT_MAX_REQUESTS = "12";
+
+    const ceilings = await loadCeilings();
+
+    for (const group of [
+      "sign-in",
+      "passkey",
+      "registration",
+      "password-reset",
+      "email-verification",
+      "account",
+    ]) {
+      expect(ceilings.get(`auth-${group}`)).toMatchObject({
+        maxRequests: 5,
+        windowSeconds: 15 * 60,
+      });
+    }
+    expect(ceilings.get("auth-two-factor")?.maxRequests).toBe(12);
+  });
+
+  it("keeps AUTH_RATE_LIMIT_MAX_REQUESTS as every group's default", async () => {
+    process.env.AUTH_RATE_LIMIT_MAX_REQUESTS = "9";
+    process.env.AUTH_SIGN_IN_RATE_LIMIT_MAX_REQUESTS = "3";
+
+    const ceilings = await loadCeilings();
+
+    expect(ceilings.get("auth-sign-in")?.maxRequests).toBe(3);
+    expect(ceilings.get("auth-registration")?.maxRequests).toBe(9);
+    expect(ceilings.get("auth-two-factor")?.maxRequests).toBe(9);
   });
 });

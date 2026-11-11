@@ -23,6 +23,10 @@ import {
 } from "@/lib/constants";
 import { createHash } from "node:crypto";
 import { createRateLimiter } from "@/lib/rate-limit";
+import {
+  AUTH_RATE_LIMIT_GROUPS,
+  type AuthRateLimitGroup,
+} from "./auth-rate-limit";
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -153,14 +157,32 @@ export function userRateLimit(config: RateLimitConfig) {
 /**
  * Endpoint-specific rate limits
  */
-export const authRateLimit = rateLimit({
-  maxRequests: configuredMaxRequests(
-    "AUTH_RATE_LIMIT_MAX_REQUESTS",
-    AUTH_RATE_LIMIT_MAX_REQUESTS,
-  ),
-  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
-  keyPrefix: "auth",
-});
+/**
+ * One per-IP bucket per strict auth route group (keyPrefix `auth-<group>`).
+ * Each group reads `AUTH_<GROUP>_RATE_LIMIT_MAX_REQUESTS` and falls back to
+ * AUTH_RATE_LIMIT_MAX_REQUESTS, so existing deployments keep their budget.
+ */
+const defaultAuthMaxRequests = configuredMaxRequests(
+  "AUTH_RATE_LIMIT_MAX_REQUESTS",
+  AUTH_RATE_LIMIT_MAX_REQUESTS,
+);
+
+export const authGroupRateLimits = Object.fromEntries(
+  AUTH_RATE_LIMIT_GROUPS.map((group) => [
+    group,
+    rateLimit({
+      maxRequests: configuredMaxRequests(
+        `AUTH_${group.toUpperCase().replace(/-/g, "_")}_RATE_LIMIT_MAX_REQUESTS`,
+        defaultAuthMaxRequests,
+      ),
+      windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+      keyPrefix: `auth-${group}`,
+    }),
+  ]),
+) as Record<
+  AuthRateLimitGroup,
+  (request: NextRequest) => Promise<NextResponseType | null>
+>;
 
 export const apiRateLimit = rateLimit({
   maxRequests: configuredMaxRequests(
