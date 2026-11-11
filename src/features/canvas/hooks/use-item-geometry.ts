@@ -108,6 +108,8 @@ export function useItemGeometry({
     return () => {
       for (const queue of queues.values()) {
         void queue.flush().catch(() => {});
+        // The final flush is the last attempt; no retry outlives the canvas.
+        queue.dispose();
       }
       queues.clear();
       statuses.clear();

@@ -33,7 +33,9 @@ function item(id: string): CanvasItem {
   } as CanvasItem;
 }
 
-beforeEach(() => mutateAsync.mockReset());
+beforeEach(() => {
+  mutateAsync.mockReset();
+});
 
 describe("useItemGeometry aggregate status", () => {
   it("keeps item A's failure visible after item B saves, until A succeeds", async () => {
@@ -121,5 +123,33 @@ describe("useItemGeometry version refresh", () => {
       itemId: "a",
       data: { positionX: 5, positionY: 5, version: 7 },
     });
+  });
+});
+
+describe("useItemGeometry unmount", () => {
+  it("makes the final flush the last attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      mutateAsync.mockImplementation(async () => {
+        throw new TypeError("offline");
+      });
+      const { result, unmount } = renderHook(() =>
+        useItemGeometry({ capabilities: resolveCanvasCapabilities("EDIT") }),
+      );
+      act(() => {
+        result.current.commitGeometry(item("a"), {
+          positionX: 1,
+          positionY: 1,
+        });
+      });
+      await act(async () => {});
+      const calls = mutateAsync.mock.calls.length;
+      unmount();
+      await vi.advanceTimersByTimeAsync(120_000);
+      // At most the unmount flush; no scheduled retry after disposal.
+      expect(mutateAsync.mock.calls.length).toBeLessThanOrEqual(calls + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

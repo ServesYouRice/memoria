@@ -41,7 +41,9 @@ function press(key: string) {
   );
 }
 
-beforeEach(() => mutateAsync.mockReset());
+beforeEach(() => {
+  mutateAsync.mockReset();
+});
 afterEach(() => {
   document.body.innerHTML = "";
 });

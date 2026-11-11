@@ -36,6 +36,7 @@ export function useAutosave({
   );
   const queueItemRef = useRef<string | null>(null);
   if (!queueRef.current || queueItemRef.current !== itemId) {
+    queueRef.current?.dispose();
     queueItemRef.current = itemId;
     queueRef.current = new SerializedDeltaQueue(
       version,
@@ -83,7 +84,10 @@ export function useAutosave({
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      void queueRef.current?.flush().catch(() => {});
+      const queue = queueRef.current;
+      void queue?.flush().catch(() => {});
+      // The final flush is the last attempt; no retry outlives the component.
+      queue?.dispose();
     },
     [],
   );
