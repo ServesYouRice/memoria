@@ -252,14 +252,36 @@ async function executeApprovedSuggestion(
     typeof storedPayload?.kind === "string" ? storedPayload.kind : null,
   );
 
+  // The suggestion runs as the profile that proposed it. Check this before
+  // claiming, so another agent can neither execute nor strand it.
+  if (!suggestion.agentProfileId) {
+    throw new BadRequestError(
+      "The selected suggestion is not attached to an agent profile.",
+    );
+  }
+  const requestedProfileId =
+    typeof args.agentProfileId === "string" ? args.agentProfileId : null;
+  if (
+    (context.agentProfile &&
+      context.agentProfile.id !== suggestion.agentProfileId) ||
+    (requestedProfileId && requestedProfileId !== suggestion.agentProfileId)
+  ) {
+    throw new ForbiddenError(
+      "This suggestion belongs to another agent profile.",
+    );
+  }
+  const agentProfile =
+    context.agentProfile ??
+    (await getOwnedAgentProfile(context.userId, suggestion.agentProfileId));
+  const actor = {
+    userId: context.userId,
+    agentProfileId: agentProfile.id,
+    integrationAccountId: context.integrationAccountId,
+    modelCredentialId: agentProfile.defaultModelCredentialId,
+  };
+
   await claimSuggestionForExecution({
     userId: context.userId,
-    suggestionId,
-  });
-
-  const { actor, agentProfile } = await resolveWriteActor(context, {
-    agentProfileId:
-      typeof args.agentProfileId === "string" ? args.agentProfileId : undefined,
     suggestionId,
   });
 
