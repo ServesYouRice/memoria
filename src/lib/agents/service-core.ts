@@ -285,20 +285,19 @@ async function completeChangeSetTx(
   });
 }
 
-async function createCanvasCheckpointTx(
+/**
+ * Reads everything a canvas checkpoint stores, in one ownership-checked
+ * canvas read. It takes no lock: a caller that needs the snapshot to match
+ * the locked state compares canvasCheckpointFingerprint before and after.
+ */
+async function buildCanvasCheckpointSnapshot(
   tx: Prisma.TransactionClient,
-  input: {
-    actor: ActorContext;
-    canvasId: string;
-    reason: string;
-  },
+  input: { userId: string; canvasId: string },
 ) {
-  await getOwnedCanvasTx(tx, input.actor.userId, input.canvasId);
-
   const canvas = await tx.canvas.findFirst({
     where: {
       id: input.canvasId,
-      userId: input.actor.userId,
+      userId: input.userId,
     },
     select: {
       id: true,
@@ -329,7 +328,7 @@ async function createCanvasCheckpointTx(
 
   const knowledgeEntities = await tx.knowledgeEntity.findMany({
     where: {
-      userId: input.actor.userId,
+      userId: input.userId,
       itemLinks: {
         some: {
           item: {
@@ -346,22 +345,99 @@ async function createCanvasCheckpointTx(
     },
   });
 
-  const snapshot = {
+  return {
     canvas,
     knowledgeEntities,
   };
+}
 
+/**
+ * A cheap summary of what a checkpoint snapshot covers: counts and latest
+ * update times of the canvas, its live items and comments, and their entity
+ * links. Any write the snapshot would see changes at least one of them.
+ */
+async function canvasCheckpointFingerprint(
+  tx: Prisma.TransactionClient,
+  input: { userId: string; canvasId: string },
+) {
+  const liveItem = { canvasId: input.canvasId, deletedAt: null };
+  const [canvas, items, comments, links, entities] = await Promise.all([
+    tx.canvas.findFirst({
+      where: { id: input.canvasId, userId: input.userId },
+      select: { updatedAt: true },
+    }),
+    tx.canvasItem.aggregate({
+      where: liveItem,
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+    tx.comment.aggregate({
+      where: { deletedAt: null, item: liveItem },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+    tx.itemEntityLink.aggregate({
+      where: { item: { canvasId: input.canvasId } },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    }),
+    tx.knowledgeEntity.aggregate({
+      where: {
+        userId: input.userId,
+        itemLinks: { some: { item: { canvasId: input.canvasId } } },
+      },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+  ]);
+  return JSON.stringify([
+    canvas?.updatedAt ?? null,
+    items._count._all,
+    items._max.updatedAt,
+    comments._count._all,
+    comments._max.updatedAt,
+    links._count._all,
+    links._max.createdAt,
+    entities._count._all,
+    entities._max.updatedAt,
+  ]);
+}
+
+async function persistCanvasCheckpoint(
+  tx: Prisma.TransactionClient,
+  input: {
+    actor: ActorContext;
+    canvasId: string;
+    reason: string;
+    snapshot: Awaited<ReturnType<typeof buildCanvasCheckpointSnapshot>>;
+  },
+) {
   return tx.workspaceCheckpoint.create({
     data: {
       userId: input.actor.userId,
       scopeType: "canvas",
       scopeId: input.canvasId,
-      snapshot: toJsonValue(snapshot),
+      snapshot: toJsonValue(input.snapshot),
       reason: input.reason,
       createdByActorType: WorkspaceCheckpointActorType.AGENT,
       createdByActorId: input.actor.agentProfileId,
     },
   });
+}
+
+async function createCanvasCheckpointTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    actor: ActorContext;
+    canvasId: string;
+    reason: string;
+  },
+) {
+  const snapshot = await buildCanvasCheckpointSnapshot(tx, {
+    userId: input.actor.userId,
+    canvasId: input.canvasId,
+  });
+  return persistCanvasCheckpoint(tx, { ...input, snapshot });
 }
 
 export async function createSuggestionRecord(input: {
@@ -545,6 +621,18 @@ export async function createCanvasItemBatchWrite(input: {
   }
 
   return prisma.$transaction(async (tx) => {
+    const scope = { userId: input.actor.userId, canvasId: input.canvasId };
+    // A bulk write stores a checkpoint of the canvas as it is when locked.
+    // Build it before the lock so the row lock is not held while every item
+    // is loaded, then confirm under the lock that nothing changed meanwhile.
+    const prebuilt =
+      rung >= AGENT_CAPABILITY_RUNGS.BULK && !input.checkpointId
+        ? {
+            fingerprint: await canvasCheckpointFingerprint(tx, scope),
+            snapshot: await buildCanvasCheckpointSnapshot(tx, scope),
+          }
+        : null;
+
     await lockCanvasForMutation(tx, input.canvasId);
     await getOwnedCanvasTx(tx, input.actor.userId, input.canvasId);
     await assertCanvasItemCapacity(tx, input.canvasId, normalizedItems.length);
@@ -568,10 +656,18 @@ export async function createCanvasItemBatchWrite(input: {
           );
         }
       } else {
-        const checkpoint = await createCanvasCheckpointTx(tx, {
+        const unchanged =
+          prebuilt !== null &&
+          (await canvasCheckpointFingerprint(tx, scope)) ===
+            prebuilt.fingerprint;
+        const checkpoint = await persistCanvasCheckpoint(tx, {
           actor: input.actor,
           canvasId: input.canvasId,
           reason: input.checkpointReason || input.summary,
+          snapshot:
+            unchanged && prebuilt
+              ? prebuilt.snapshot
+              : await buildCanvasCheckpointSnapshot(tx, scope),
         });
         checkpointId = checkpoint.id;
       }
