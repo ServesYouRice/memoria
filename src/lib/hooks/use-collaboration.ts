@@ -6,7 +6,10 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { createLogger } from "@/lib/logger";
-import type { CommittedCanvasItemEvent as CanvasItemEvent } from "@/lib/hooks/use-canvas-items";
+import type {
+  CanvasEventSeed,
+  CommittedCanvasItemEvent as CanvasItemEvent,
+} from "@/lib/hooks/use-canvas-items";
 import {
   CURSOR_TICK_MS,
   collaborationCloseDisposition,
@@ -60,6 +63,12 @@ export interface UseCollaborationOptions {
     events: CommittedCanvasItemEvent[],
   ) => void | Promise<void>;
   onSnapshotRequired?: () => void;
+  /**
+   * The event revision read before the item load the board renders from,
+   * asked for once when a canvas session starts. Its first replay then starts
+   * after that revision instead of from the beginning.
+   */
+  getInitialEventSeed?: () => CanvasEventSeed | null;
 }
 
 export type CollaborationOutgoingMessage =
@@ -105,6 +114,7 @@ export function useCollaboration(
     onMessage,
     onCommittedEvents,
     onSnapshotRequired,
+    getInitialEventSeed,
   } = options;
 
   const [users, setUsers] = useState<CollaborationUser[]>([]);
@@ -167,6 +177,7 @@ export function useCollaboration(
   >(null);
   const onCommittedEventsRef = useRef(onCommittedEvents);
   const onSnapshotRequiredRef = useRef(onSnapshotRequired);
+  const getInitialEventSeedRef = useRef(getInitialEventSeed);
 
   const MAX_RECONNECT_ATTEMPTS = 8;
   // A failing replay is retried after 1 s, 2 s and 4 s, then given up.
@@ -180,7 +191,8 @@ export function useCollaboration(
     onMessageRef.current = onMessage;
     onCommittedEventsRef.current = onCommittedEvents;
     onSnapshotRequiredRef.current = onSnapshotRequired;
-  }, [onCommittedEvents, onMessage, onSnapshotRequired]);
+    getInitialEventSeedRef.current = getInitialEventSeed;
+  }, [getInitialEventSeed, onCommittedEvents, onMessage, onSnapshotRequired]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -442,8 +454,12 @@ export function useCollaboration(
 
   useEffect(() => {
     committedBatchGenerationRef.current += 1;
-    lastCursorRef.current = 0n;
-    lastCanvasCursorRef.current = null;
+    // A canvas session starts after the revision its item load read, so the
+    // first replay does not resend history the items already reflect. Later
+    // reconnects continue from the last applied cursor.
+    const seed = getInitialEventSeedRef.current?.() ?? null;
+    lastCursorRef.current = seed ? BigInt(seed.cursor) : 0n;
+    lastCanvasCursorRef.current = seed ? BigInt(seed.canvasSequence) : null;
     resetReplay();
     pendingCommittedEventsRef.current = [];
     committedFlushInFlightRef.current = false;

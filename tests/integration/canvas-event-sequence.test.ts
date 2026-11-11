@@ -2,10 +2,19 @@
  * TASK-188 — per-canvas item event numbers are contiguous, serialized per
  * canvas, and survive rollbacks without holes, while the global sequence
  * they sit next to does not.
+ * TASK-187 — the revision-only summary reads the replay seed in both cursor
+ * spaces from one snapshot.
  */
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as AuthModule from "@/lib/api/auth";
+
+const authState = vi.hoisted(() => ({ userId: "", email: "" }));
+vi.mock("@/lib/api/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof AuthModule>()),
+  requireAuth: async () => ({ ...authState }),
+}));
 vi.mock("@/lib/cache/redis-client", () => ({ getRedisClient: () => null }));
 
 import { prisma } from "@/lib/db";
@@ -15,12 +24,18 @@ import {
   toCommittedEventEnvelope,
 } from "@/lib/collaboration/committed-events";
 
+import { GET as summaryGet } from "@/app/api/v1/canvas-items/summary/route";
+import { GET as eventsGet } from "@/app/api/v1/canvases/[canvasId]/events/route";
+import { NextRequest } from "next/server";
+
 const ITEM = "cjld2cjxh0000qzrmn831i7rn";
 
 async function setup() {
   const owner = await prisma.user.create({
     data: { email: `evseq-${Date.now()}-${Math.random()}@example.com` },
   });
+  authState.userId = owner.id;
+  authState.email = owner.email;
   const [a, b] = await Promise.all(
     ["A", "B"].map((name) =>
       prisma.canvas.create({ data: { name, userId: owner.id } }),
@@ -107,5 +122,43 @@ describe("per-canvas event numbers", () => {
     // The global sequence of canvas A does have holes (canvas B, rollback).
     const sequences = (await rowsOf(a.id)).map((row) => row.sequence);
     expect(sequences.at(-1)! - sequences[0]!).toBeGreaterThan(10n);
+  });
+
+  it("serves a replay seed after which the events route returns only later events", async () => {
+    const { owner, a, b } = await setup();
+    await recordCanvasItemEvent(prisma, event(a.id, owner.id));
+    await recordCanvasItemEvent(prisma, event(b.id, owner.id));
+    await recordCanvasItemEvent(prisma, event(a.id, owner.id));
+    const response = await summaryGet(
+      new Request(
+        `http://localhost/api/v1/canvas-items/summary?canvasId=${a.id}&revisionOnly=1`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    const seed = await response.json();
+    const before = await rowsOf(a.id);
+    expect(seed).toEqual({
+      revision: before.at(-1)!.sequence.toString(),
+      canvasRevision: "2",
+    });
+
+    // Committed after the seed was read: the replay from it returns exactly
+    // this event, numbered right after the seed.
+    await recordCanvasItemEvent(prisma, event(b.id, owner.id));
+    const later = await recordCanvasItemEvent(prisma, event(a.id, owner.id));
+    const replay = await eventsGet(
+      new NextRequest(
+        `http://localhost/api/v1/canvases/${a.id}/events?cursor=${seed.revision}&limit=200`,
+      ),
+      { params: Promise.resolve({ canvasId: a.id }) },
+    );
+    const body = await replay.json();
+    expect(body.snapshotRequired).toBe(false);
+    expect(
+      body.events.map((item: { cursor: string; canvasCursor: string }) => [
+        item.cursor,
+        item.canvasCursor,
+      ]),
+    ).toEqual([[later.sequence.toString(), "3"]]);
   });
 });

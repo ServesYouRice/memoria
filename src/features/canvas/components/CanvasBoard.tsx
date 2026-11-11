@@ -21,6 +21,7 @@ import {
   useUpdateCanvasItem,
   canvasItemKeys,
   mergeCommittedCanvasItemEvents,
+  getCanvasEventSeed,
   type CommittedCanvasItemEvent,
 } from "@/lib/hooks/use-canvas-items";
 import { useQueryClient } from "@tanstack/react-query";
@@ -635,6 +636,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     [canvasId, queryClient],
   );
 
+  // Read before the item load this board rendered from.
+  const getInitialEventSeed = useCallback(
+    () => getCanvasEventSeed(queryClient, canvasId),
+    [canvasId, queryClient],
+  );
+
   const handleCommittedSnapshotRequired = useCallback(() => {
     void queryClient.invalidateQueries({
       queryKey: canvasItemKeys.list(canvasId),
@@ -657,6 +664,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     onMessage: handleRemoteMessage,
     onCommittedEvents: handleCommittedEvents,
     onSnapshotRequired: handleCommittedSnapshotRequired,
+    getInitialEventSeed,
   });
 
   // Follow Mode
