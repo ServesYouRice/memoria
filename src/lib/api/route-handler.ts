@@ -179,6 +179,11 @@ async function readResponseBody(response: Response): Promise<unknown> {
   }
 }
 
+/** Responses saved against an idempotency key and replayed until its TTL. */
+function isJournaledStatus(status: number): boolean {
+  return status < 500 && status !== 429;
+}
+
 function buildReplayResponse(
   status: number,
   body: unknown,
@@ -188,6 +193,8 @@ function buildReplayResponse(
   if (idempotencyHit) {
     headers["X-Idempotency-Hit"] = "true";
   }
+  const requestId = getRequestId();
+  if (requestId) headers["x-request-id"] = requestId;
 
   if (status === 204 || body === null || body === undefined) {
     return new NextResponse(null, { status, headers });
@@ -198,7 +205,10 @@ function buildReplayResponse(
     return new NextResponse(body, { status, headers });
   }
 
-  return NextResponse.json(body, { status, headers });
+  // Stored errors are problem documents (errorResponse); the rest is JSON.
+  headers["Content-Type"] =
+    status >= 400 ? "application/problem+json" : "application/json";
+  return new NextResponse(JSON.stringify(body), { status, headers });
 }
 
 export async function runIdempotent<T>(
@@ -263,10 +273,12 @@ export async function runIdempotent<T>(
     throw new ConflictError("Request is currently being processed");
   }
 
+  let claimId: string;
   try {
-    await prisma.idempotencyKey.create({
+    const claim = await prisma.idempotencyKey.create({
       data: { ...scope, requestHash },
     });
+    claimId = claim.id;
   } catch {
     const raced = await prisma.idempotencyKey.findUnique({
       where: { key_userId_method_path: scope },
@@ -279,20 +291,30 @@ export async function runIdempotent<T>(
     }
 
     if (raced?.responseCode !== null && raced?.responseCode !== undefined) {
-      return buildReplayResponse(
-        raced.responseCode,
-        raced.responseBody,
-        true,
-      );
+      return buildReplayResponse(raced.responseCode, raced.responseBody, true);
     }
 
     throw new ConflictError("Idempotency key conflict");
   }
 
-  try {
-    const response = await handler();
+  // Transient failures (5xx, 429) say nothing about the request itself:
+  // free the key so a retry runs again instead of replaying the failure.
+  const settle = async (
+    response: Response,
+    onJournalError: (error: unknown) => void,
+  ) => {
+    if (!isJournaledStatus(response.status)) {
+      await prisma.idempotencyKey
+        .deleteMany({ where: { id: claimId, responseCode: null } })
+        .catch((error) =>
+          logger.error(
+            { error, key, userId },
+            "Could not release an idempotency key after a transient failure",
+          ),
+        );
+      return;
+    }
     const body = await readResponseBody(response);
-
     await prisma.idempotencyKey
       .update({
         where: { key_userId_method_path: scope },
@@ -301,28 +323,21 @@ export async function runIdempotent<T>(
           responseBody: body as Prisma.InputJsonValue,
         },
       })
-      .catch((error) =>
-        logger.error(
-          { error, key, userId },
-          "Mutation succeeded but idempotency response journaling failed",
-        ),
-      );
+      .catch(onJournalError);
+  };
 
+  try {
+    const response = await handler();
+    await settle(response, (error) =>
+      logger.error(
+        { error, key, userId },
+        "Mutation succeeded but idempotency response journaling failed",
+      ),
+    );
     return response;
   } catch (error) {
     const failureResponse = errorResponse(error, req.url);
-    const body = await readResponseBody(failureResponse);
-
-    await prisma.idempotencyKey
-      .update({
-        where: { key_userId_method_path: scope },
-        data: {
-          responseCode: failureResponse.status,
-          responseBody: body as Prisma.InputJsonValue,
-        },
-      })
-      .catch(() => {});
-
+    await settle(failureResponse, () => {});
     return failureResponse;
   }
 }
