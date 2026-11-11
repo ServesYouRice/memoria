@@ -53,6 +53,11 @@ export function EditBookmarkDialog({
   const [error, setError] = useState<string | null>(null);
   const [isUnfurling, setIsUnfurling] = useState(false);
   const [metadata, setMetadata] = useState<any>(null);
+  // The URL `metadata` describes, and whether it was fetched in this dialog
+  // (rather than loaded from the saved bookmark). Metadata is only shown and
+  // saved while this URL matches the one in the form.
+  const [metadataUrl, setMetadataUrl] = useState<string | null>(null);
+  const [metadataFetched, setMetadataFetched] = useState(false);
   const updateItem = useUpdateCanvasItem();
 
   const {
@@ -85,6 +90,8 @@ export function EditBookmarkDialog({
         previewImage: item.content.previewImage,
         siteName: item.content.siteName,
       });
+      setMetadataUrl(item.content.url || null);
+      setMetadataFetched(false);
     }
   }, [item, reset]);
 
@@ -92,6 +99,8 @@ export function EditBookmarkDialog({
     reset();
     setError(null);
     setMetadata(null);
+    setMetadataUrl(null);
+    setMetadataFetched(false);
     onClose();
   };
 
@@ -101,6 +110,7 @@ export function EditBookmarkDialog({
       return;
     }
 
+    const requestedUrl = urlValue;
     try {
       setError(null);
       setIsUnfurling(true);
@@ -108,7 +118,7 @@ export function EditBookmarkDialog({
       const response = await fetch("/api/v1/unfurl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: urlValue }),
+        body: JSON.stringify({ url: requestedUrl }),
       });
 
       if (!response.ok) {
@@ -118,6 +128,8 @@ export function EditBookmarkDialog({
 
       const data = await response.json();
       setMetadata(data);
+      setMetadataUrl(requestedUrl);
+      setMetadataFetched(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch preview");
     } finally {
@@ -131,18 +143,30 @@ export function EditBookmarkDialog({
     try {
       setError(null);
 
-      // Merge the URL with existing or newly fetched metadata
+      const urlUnchanged =
+        isBookmarkContent(item.content) && item.content.url === data.url;
+      // Metadata loaded or fetched for another URL must not be saved with
+      // this one, or the bookmark would show the old page's title and image.
+      const metadataMatches = metadata !== null && metadataUrl === data.url;
+      const saved = metadataMatches ? metadata : null;
+      let unfurledAt: string | undefined;
+      if (metadataMatches && metadataFetched) {
+        unfurledAt = new Date().toISOString();
+      } else if (urlUnchanged && isBookmarkContent(item.content)) {
+        unfurledAt = item.content.unfurledAt;
+      }
+
       const updatedContent = {
         url: data.url,
-        title: metadata?.title || undefined,
-        description: metadata?.description || undefined,
-        favicon: metadata?.favicon || undefined,
-        previewImage: metadata?.previewImage || undefined,
-        siteName: metadata?.siteName || undefined,
-        unfurledAt: metadata ? new Date().toISOString() : undefined,
+        title: saved?.title || undefined,
+        description: saved?.description || undefined,
+        favicon: saved?.favicon || undefined,
+        previewImage: saved?.previewImage || undefined,
+        siteName: saved?.siteName || undefined,
+        unfurledAt,
         // Keep the enrichment summary while the link stays the same.
         summary:
-          isBookmarkContent(item.content) && item.content.url === data.url
+          urlUnchanged && isBookmarkContent(item.content)
             ? item.content.summary
             : undefined,
       };
@@ -212,47 +236,49 @@ export function EditBookmarkDialog({
               </Button>
             </Box>
 
-            {metadata && (metadata.title || metadata.description) && (
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Preview
-                  </Typography>
-                  {metadata.title && (
-                    <Typography
-                      variant="body1"
-                      gutterBottom
-                      sx={{
-                        fontWeight: "bold",
-                      }}
-                    >
-                      {metadata.title}
+            {metadata &&
+              metadataUrl === urlValue &&
+              (metadata.title || metadata.description) && (
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Preview
                     </Typography>
-                  )}
-                  {metadata.description && (
-                    <Typography
-                      variant="body2"
-                      gutterBottom
-                      sx={{
-                        color: "text.secondary",
-                      }}
-                    >
-                      {metadata.description}
-                    </Typography>
-                  )}
-                  {metadata.siteName && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color: "text.secondary",
-                      }}
-                    >
-                      {metadata.siteName}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                    {metadata.title && (
+                      <Typography
+                        variant="body1"
+                        gutterBottom
+                        sx={{
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {metadata.title}
+                      </Typography>
+                    )}
+                    {metadata.description && (
+                      <Typography
+                        variant="body2"
+                        gutterBottom
+                        sx={{
+                          color: "text.secondary",
+                        }}
+                      >
+                        {metadata.description}
+                      </Typography>
+                    )}
+                    {metadata.siteName && (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                        }}
+                      >
+                        {metadata.siteName}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
             <Controller
               name="tags"
