@@ -644,10 +644,34 @@ describe("collaboration sync server", () => {
     ).toBe(0);
 
     // Signing out (or an administrator revoking sessions) deletes the row.
+    // The client keeps its device copy for the next sign-in (TASK-166).
     await prisma.session.deleteMany({ where: { userId: leaver.user.id } });
     await waitFor(() =>
-      client.closeReasons.includes(SYNC_CLOSE_REASONS.forbidden),
+      client.closeReasons.includes(SYNC_CLOSE_REASONS.signedOut),
     );
+    expect(client.closeReasons).not.toContain(SYNC_CLOSE_REASONS.forbidden);
+  });
+
+  it("tells an expired session it is signed out, not that access is lost (TASK-166)", async () => {
+    const lapsed = await createSignedInUser("lapsed");
+    const canvas = await createCanvas(lapsed.user.id);
+    await prisma.session.updateMany({
+      where: { userId: lapsed.user.id },
+      data: { expiresAt: new Date(Date.now() - 60_000) },
+    });
+    const { url } = await startServer();
+    const client = connect({ url, canvasId: canvas.id, cookie: lapsed.cookie });
+    await waitFor(() => client.authFailures.length > 0);
+    expect(client.authFailures).toEqual([SYNC_CLOSE_REASONS.signedOut]);
+
+    // Signed in, but never given access: still forbidden.
+    const stranger = connect({
+      url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+    });
+    await waitFor(() => stranger.authFailures.length > 0);
+    expect(stranger.authFailures).toEqual([SYNC_CLOSE_REASONS.forbidden]);
   });
 
   it("lets a public-link guest read but not write, until the link is revoked", async () => {
@@ -750,8 +774,9 @@ describe("collaboration sync server", () => {
     const { url } = await startServer();
     const anonymous = connect({ url, canvasId: canvas.id });
     await waitFor(() =>
-      anonymous.authFailures.includes(SYNC_CLOSE_REASONS.forbidden),
+      anonymous.authFailures.includes(SYNC_CLOSE_REASONS.signedOut),
     );
+    expect(anonymous.provider.isSynced).toBe(false);
 
     const status = await new Promise<number>((resolve) => {
       const socket = new WebSocket(url, {

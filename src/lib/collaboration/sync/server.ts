@@ -55,6 +55,8 @@ import {
   isAllowedCollaborationOrigin,
 } from "@/lib/collaboration/upgrade-policy";
 import {
+  SYNC_SIGNED_OUT,
+  type SyncAuthorization,
   type SyncConnectionContext,
   authorizeSyncConnection,
   canWriteDocument,
@@ -347,9 +349,9 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
       token,
       connectionConfig,
     }) {
-      let context: SyncConnectionContext | null;
+      let authorization: SyncAuthorization;
       try {
-        context = await authorizeSyncConnection(prisma, {
+        authorization = await authorizeSyncConnection(prisma, {
           documentName,
           headers: requestHeaders,
           token,
@@ -367,12 +369,21 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
           SYNC_CLOSE_REASONS.unavailable,
         );
       }
-      if (!context) {
+      if (authorization.status === "signed-out") {
+        // Not a lost grant: the client keeps its device copy and stops
+        // until the user signs in again.
+        throw new SyncCloseError(
+          SYNC_CLOSE_CODES.signedOut,
+          SYNC_CLOSE_REASONS.signedOut,
+        );
+      }
+      if (authorization.status !== "granted") {
         throw new SyncCloseError(
           SYNC_CLOSE_CODES.forbidden,
           SYNC_CLOSE_REASONS.forbidden,
         );
       }
+      const { context } = authorization;
       // View and comment roles never apply updates (Hocuspocus refuses them
       // for read-only connections); the hook below re-checks the role.
       connectionConfig.readOnly = !canWriteDocument(context.access);
@@ -550,6 +561,18 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     }
     for (const { canvasId, connection, context } of open) {
       const access = results.get(context);
+      if (access === SYNC_SIGNED_OUT) {
+        logger.info(
+          { canvasId, userId: context.principalId },
+          "Closing a sync connection whose session ended",
+        );
+        closeConnection(
+          connection,
+          SYNC_CLOSE_CODES.signedOut,
+          SYNC_CLOSE_REASONS.signedOut,
+        );
+        continue;
+      }
       if (!access) {
         logger.info(
           { canvasId, userId: context.principalId },
