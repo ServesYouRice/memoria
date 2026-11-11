@@ -22,7 +22,7 @@ import {
 import { applyCors, handleCorsPreflight } from "./middleware/cors";
 import { shouldApplyStrictAuthRateLimit } from "./middleware/auth-rate-limit";
 import { getVersionHeaders, validateApiVersion } from "./lib/api/versioning";
-import { createRequestLogger } from "./lib/logger";
+import { createRequestLogger, redactTokenPath } from "./lib/logger";
 import { resolveEmbedFramingOrigins } from "./lib/embeds/framing";
 
 export function isUploadWriteRequest(
@@ -65,7 +65,7 @@ export async function proxy(request: NextRequest) {
     {
       requestId,
       method: request.method,
-      pathname: request.nextUrl.pathname,
+      pathname: redactTokenPath(request.nextUrl.pathname),
       userAgent: request.headers.get("user-agent"),
     },
     "Incoming request",
@@ -99,7 +99,7 @@ export async function proxy(request: NextRequest) {
     if (rateLimitResponse) {
       logger.warn(
         {
-          pathname: request.nextUrl.pathname,
+          pathname: redactTokenPath(request.nextUrl.pathname),
           ip: request.headers.get("x-memoria-client-ip"),
         },
         "Auth rate limit exceeded",
@@ -137,7 +137,7 @@ export async function proxy(request: NextRequest) {
     if (rateLimitResponse) {
       logger.warn(
         {
-          pathname: request.nextUrl.pathname,
+          pathname: redactTokenPath(request.nextUrl.pathname),
           ip: request.headers.get("x-memoria-client-ip"),
         },
         "Upload rate limit exceeded",

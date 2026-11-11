@@ -131,6 +131,18 @@ const logger = pino({
   ...(process.env.NODE_ENV === "development" && {}),
 });
 
+const TOKEN_PATH_PATTERN =
+  /^(\/(?:api\/v1\/)?(?:embed|share|share-invitations))\/[^/]+(?=\/|$)/;
+
+/**
+ * Replace the bearer token segment of /embed, /share and /share-invitations
+ * paths (page and API forms) so request logs never hold a reusable access
+ * credential. Every other path is returned unchanged.
+ */
+export function redactTokenPath(pathname: string): string {
+  return pathname.replace(TOKEN_PATH_PATTERN, "$1/[redacted]");
+}
+
 /**
  * Generate a unique request ID for request tracing.
  *
