@@ -1,0 +1,260 @@
+# Progress
+
+Tick a task when it is done and verified; note anything left open under it.
+
+- [ ] 01 `TASK-001` Serendipity: authorize cross-canvas reads by recipient-bound shares, not email
+- [ ] 02 `TASK-002` Single-comment GET: return an allowlisted DTO (no shares, emails, canvas row or BigInt)
+- [ ] 03 `TASK-003` Extension: refuse plain-HTTP Memoria addresses except loopback
+- [ ] 04 `TASK-004` Extension popup: in-flight save guard and re-check tab URLs before closing
+- [ ] 05 `TASK-005` Report App Router boundary errors and server render errors to Sentry; load browser Sentry
+- [ ] 06 `TASK-006` Scope IntegrationAccount uniqueness to the agent profile and return 409 on duplicates
+- [ ] 07 `TASK-007` Clear CanvasItem.archivedAt on every undelete path and repair live rows
+- [ ] 08 `TASK-008` Release upload quota when a canvas deletion cascades its UploadAsset rows
+- [ ] 09 `TASK-009` Account deletion: keep uploads that back preserved items on other owners' canvases
+- [ ] 10 `TASK-010` Make home-board accept and auto-file atomic; stop dismissing on transient errors
+- [ ] 11 `TASK-011` Make server.ts the single owner of SIGTERM/SIGINT and disconnect Prisma only after the HTTP drain
+- [ ] 12 `TASK-012` Bind the HTTP listener to the configured hostname
+- [ ] 13 `TASK-013` Validate TRUSTED_PROXY_CIDRS at startup and cache the parsed list
+- [ ] 14 `TASK-014` Use TLS for https/wss sync upstreams in proxySyncUpgrade and reject unsupported schemes at startup
+- [ ] 15 `TASK-015` Refuse to seed in production and make seed re-runs safe
+- [ ] 16 `TASK-016` Use a renewed lockedAt lease and row-id-scoped writes in runIdempotent
+- [ ] 17 `TASK-017` Release upload quota when an asset enters DELETING and re-arm DEAD upload.delete jobs
+- [ ] 18 `TASK-018` Queue cleanup for collaborators' uploads on the deleted user's canvases during account deletion
+- [ ] 19 `TASK-019` Run the embedding similarity scan outside the canvas-locked enrichment transaction
+- [ ] 20 `TASK-020` Detect committed-event gaps per canvas instead of assuming contiguous global sequences
+- [ ] 21 `TASK-021` Gate the agent action timeline on the READ rung and current canvas scope
+- [ ] 22 `TASK-022` Filter the organizer's proposal queue and audited writes by canvas on the server
+- [ ] 23 `TASK-023` Require suggestion ownership before claiming in REST execute-suggestion
+- [ ] 24 `TASK-024` Validate MCP external proposals with the shared schema and match suggestion kind to payload kind
+- [ ] 25 `TASK-025` Finalize HomeBoardSuggestion rows when Ask suggestions run through generic execution
+- [ ] 26 `TASK-026` Use a dedicated outbound signing secret for new WEBHOOK integrations
+- [ ] 27 `TASK-027` Bound CSP report body reading before buffering
+- [ ] 28 `TASK-028` Stop reporting unknown backup state as a fresh backup
+- [ ] 29 `TASK-029` Select the built-in AI credential by tag in the query, not after a 25-row window
+- [ ] 30 `TASK-030` Do not silently fall back to env AI keys when a saved built-in credential is unusable
+- [ ] 31 `TASK-031` Mark AI credentials rejected only on 401 and only for the secret that failed
+- [ ] 32 `TASK-032` Require re-entering the AI key to change the saved base URL
+- [ ] 33 `TASK-033` Pin AI provider connections to the validated IP and cap provider response bytes
+- [ ] 34 `TASK-034` Stop built-in AI PUT from rewriting a credential an agent profile still uses
+- [ ] 35 `TASK-035` Make API key 'Expires on' follow the chosen local day and show server errors
+- [ ] 36 `TASK-036` Revoke API keys on password reset/change and gate key creation behind re-authentication
+- [ ] 37 `TASK-038` HTML-escape the user name in reset, verification and welcome email templates
+- [ ] 38 `TASK-037` Remove the existing-account timing difference from forgot-password
+- [ ] 39 `TASK-039` Keep EditBookmarkDialog from saving metadata that belongs to a different URL
+- [ ] 40 `TASK-040` Discard link-enrichment results when the bookmark URL changed during the job
+- [ ] 41 `TASK-041` Validate bookmark refresh content with the canonical bookmark schema
+- [ ] 42 `TASK-042` Enforce the poll policy on command creates and the ids hydration read
+- [ ] 43 `TASK-043` Queue thumbnail object deletion when a canvas or account is deleted
+- [ ] 44 `TASK-044` Stop no-op viewport PATCHes and viewport-only 'updated canvas' activity
+- [ ] 45 `TASK-045` Report correct hasMore on public share cursor pages
+- [ ] 46 `TASK-046` Make invitation revocation atomic with acceptance
+- [ ] 47 `TASK-047` Show and revoke pending invitations in ShareDialog
+- [ ] 48 `TASK-048` Require current canvas access in the single-comment route
+- [ ] 49 `TASK-049` Store and display comments as plain text
+- [ ] 50 `TASK-050` Guard version restore against double submit
+- [ ] 51 `TASK-051` Queue thumbnail deletion when a canvas is deleted
+- [ ] 52 `TASK-052` Recheck edit access under lock before an upload-note job writes
+- [ ] 53 `TASK-053` Prevent overlapping notification preference saves from reverting choices
+- [ ] 54 `TASK-054` Add result paging to GlobalSearchDialog
+- [ ] 55 `TASK-055` Reduce repeated match-predicate scans in global search without changing results
+- [ ] 56 `TASK-056` Scope dashboard bulk selection to the visible workspace
+- [ ] 57 `TASK-057` Stop the not-found page reading client-only theme exports from a Server Component
+- [ ] 58 `TASK-058` Cap password length before zxcvbn in register, reset-password and validatePasswordStrength
+- [ ] 59 `TASK-059` Run idempotency before withAuthValidation consumes the request body
+- [ ] 60 `TASK-060` Make unfurl cache keys preserve path/query case and repeated parameters
+- [ ] 61 `TASK-061` Check every GIF image-descriptor frame size in parseGif
+- [ ] 62 `TASK-062` Keep the malware-scan timeout active while reading the scan response body
+- [ ] 63 `TASK-063` Bound account deletion's interactive transaction
+- [ ] 64 `TASK-064` Report hasMore and nextCursor correctly on public share cursor pages
+- [ ] 65 `TASK-065` Stop CreateBookmarkDialog retrying a failed unfurl for the same URL
+- [ ] 66 `TASK-066` Delete uncommitted uploads when CreateImageDialog is abandoned or the image is replaced
+- [ ] 67 `TASK-067` Sign the user out and send them to login after a successful password change
+- [ ] 68 `TASK-068` Guard the CanvasBoard Stage drag handlers so item drags do not pan the viewport
+- [ ] 69 `TASK-069` Convert bookmark resize pointer coordinates to world space
+- [ ] 70 `TASK-070` Reset the search type filter and always show a way to clear it
+- [ ] 71 `TASK-071` Show error states in AgentControlCenter instead of empty-state messages
+- [ ] 72 `TASK-072` Measure the public share Stage after the canvas container mounts
+- [ ] 73 `TASK-073` Make stripHtmlTags parse note HTML in an inert document
+- [ ] 74 `TASK-074` Send bounded chat history from AIDialog through the chat route to the providers
+- [ ] 75 `TASK-075` Reject protocol-relative callback paths after login
+- [ ] 76 `TASK-076` Stop late camera streams and keep the AR video attached across re-renders
+- [ ] 77 `TASK-077` Give ConfirmDialog a pending state and contain onConfirm rejections
+- [ ] 78 `TASK-078` Surface restore and Autopilot failures in CanvasBoard and keep VersionHistoryDialog guarded
+- [ ] 79 `TASK-079` Report account-export cancellation only after the server confirms it
+- [ ] 80 `TASK-080` Fix GridOverlay world-space origin and bound line count with a zoom-adaptive step
+- [ ] 81 `TASK-081` Quick capture: keep edits made during save and ignore IME-confirmation Enter
+- [ ] 82 `TASK-082` Serendipity: await item creation before closing and surface failures
+- [ ] 83 `TASK-083` AI dialog: keep the generated note until creation succeeds
+- [ ] 84 `TASK-084` Organizer view: stop the mount-commit default-filter write over saved filters
+- [ ] 85 `TASK-085` Organizer view: resolve source items and suggestions against the whole canvas, not the viewport
+- [ ] 86 `TASK-086` JSON and Markdown exports include every canvas item
+- [ ] 87 `TASK-087` PDF export fits the snapshot inside the page
+- [ ] 88 `TASK-088` Sort into piles: ignore stale organizer responses after close, reopen or re-sort
+- [ ] 89 `TASK-089` Microphone startup: no recording after unmount and no concurrent recorders
+- [ ] 90 `TASK-090` Fix Note/Image resize: stop handle drag bubbling and use world-space pointer coordinates
+- [ ] 91 `TASK-091` Focus the CursorChat input so typing never triggers canvas shortcuts
+- [ ] 92 `TASK-092` Bound AI chat context to the chatSchema limit and surface validation failures
+- [ ] 93 `TASK-094` Gate drawing tools by create capability for read-only users
+- [ ] 94 `TASK-093` Render a live preview for in-progress pen strokes, shapes and arrows
+- [ ] 95 `TASK-095` Keep the marquee selection when the click after a marquee drag fires
+- [ ] 96 `TASK-096` Make BookmarkItem's memo comparator respect capabilities and current callbacks
+- [ ] 97 `TASK-097` Make Time Machine preview read-only
+- [ ] 98 `TASK-098` Aggregate geometry save status across per-item queues
+- [ ] 99 `TASK-099` Route keyboard nudges and align/distribute through the geometry queue
+- [ ] 100 `TASK-100` Make Autopilot lay out the full canvas item set, not the viewport subset
+- [ ] 101 `TASK-101` Make the item-list filter key reach the board's viewport query and write updated versions into it
+- [ ] 102 `TASK-102` Scope the committed-event merge and delete rollback to the event's canvas and viewport window
+- [ ] 103 `TASK-103` Bound committed-event replay retries and ignore replay responses from a superseded canvas session
+- [ ] 104 `TASK-104` Make time-machine preview read-only while keeping version restore
+- [ ] 105 `TASK-105` Place Whisper and Serendipity items at the zoom-aware viewport centre
+- [ ] 106 `TASK-106` Keep stage resize tracking after switching back from organizer view
+- [ ] 107 `TASK-107` Stop EditNoteDialog from rewriting TEXT items as note content
+- [ ] 108 `TASK-108` Release late camera streams and stop the AR dialog remounting its video
+- [ ] 109 `TASK-109` Let the list view's nested Edit and Delete buttons handle their own keys
+- [ ] 110 `TASK-110` Prevent CreateImageDialog from submitting the previous image during replacement
+- [ ] 111 `TASK-111` Preserve drag direction for arrows and allow horizontal and vertical arrows
+- [ ] 112 `TASK-112` Stop BookmarkItem resize-handle drags from bubbling into the Group move handlers
+- [ ] 113 `TASK-113` Let SerializedDeltaQueue adopt newer item versions and stop replaying conflicted deltas
+- [ ] 114 `TASK-114` Automatically retry transient delta-queue failures with bounded backoff
+- [ ] 115 `TASK-115` Ignore stale public-status responses in ShareDialog
+- [ ] 116 `TASK-116` Prevent orphaned microphone recorders in UploadNoteOffer
+- [ ] 117 `TASK-117` Scope AskPalette settlement to the suggestion that was applied
+- [ ] 118 `TASK-118` Make the global process error handlers unable to throw before Sentry capture and exit
+- [ ] 119 `TASK-119` Export PNG/PDF of the whole canvas without the viewport transform or overlays
+- [ ] 120 `TASK-120` Make account-export writeChunk settle when the gzip pipeline fails
+- [ ] 121 `TASK-121` Require the READ rung for MCP content-read tools
+- [ ] 122 `TASK-122` Scope related entities and item links in knowledge listings
+- [ ] 123 `TASK-124` Make built-in pile grouping always satisfy pilesSchema
+- [ ] 124 `TASK-123` Identify the built-in organizer by a system marker and grant canvas scope only after its capability check
+- [ ] 125 `TASK-125` Execute MCP-approved suggestions only under the proposing agent profile
+- [ ] 126 `TASK-126` Observe the account-export pipeline promise from creation
+- [ ] 127 `TASK-127` Let Sort into piles retry execution after a successful approval
+- [ ] 128 `TASK-128` Add status, canvas and revertable filters plus a cursor to the action timeline
+- [ ] 129 `TASK-129` Show actionable suggestions and revertable change sets in AgentControlCenter
+- [ ] 130 `TASK-130` Use server-side canvas and status filtering in CanvasOrganizerView
+- [ ] 131 `TASK-131` Refuse undo of an agent-created board when cascaded user content exists
+- [ ] 132 `TASK-132` Enforce agent canvas scope and change-set ownership on REST revert-change-set
+- [ ] 133 `TASK-133` Make approveSuggestion and rejectSuggestion compare-and-set transitions
+- [ ] 134 `TASK-134` Validate before claiming and release failed claims in REST and MCP suggestion execution
+- [ ] 135 `TASK-135` Make acceptHomeBoardSuggestion resumable after partial completion
+- [ ] 136 `TASK-136` Let AskPalette retry execution without re-approving
+- [ ] 137 `TASK-137` Bound knowledge attribute size, key count and depth
+- [ ] 138 `TASK-138` Apply the polls launch gate to agent item writes
+- [ ] 139 `TASK-139` Store canvasId on knowledge-relation proposals so the organizer shows them
+- [ ] 140 `TASK-140` Select inbox slots under the canvas mutation lock
+- [ ] 141 `TASK-141` Stop loading change-record snapshots in the action timeline
+- [ ] 142 `TASK-142` Atomic revert claim and up-front sorted canvas lock set in revertChangeSet
+- [ ] 143 `TASK-143` Guard MOVE undo against later relocation, deletion and destination-board connections
+- [ ] 144 `TASK-144` Stop CanvasItem UPDATE undo from overwriting later edits
+- [ ] 145 `TASK-145` Archive undo restores only items still in the state the archive left them
+- [ ] 146 `TASK-146` Ask move re-reads items under its locks and honors an expected source board
+- [ ] 147 `TASK-147` Collaborative projection tolerates items moved to another board
+- [ ] 148 `TASK-148` Enforce canvas scope on MCP actions.revert_change_set
+- [ ] 149 `TASK-149` Shorten the canvas-lock window for workspace checkpoints and drop the duplicate canvas read
+- [ ] 150 `TASK-150` Prune WorkspaceCheckpoint rows according to an agreed retention policy
+- [ ] 151 `TASK-151` Keep generated AI output when the post-success usage read fails
+- [ ] 152 `TASK-152` Replace the persistent AI concurrency counter with expiring per-request leases
+- [ ] 153 `TASK-153` Flag a saved AI credential only on a real key rejection, and only if the failing secret is still saved
+- [ ] 154 `TASK-154` Stop idempotency recovery from re-running a mutation whose completion was not journaled
+- [ ] 155 `TASK-155` Guard the seed script so it refuses to create known-password accounts on production databases
+- [ ] 156 `TASK-156` Show a distinct sign-in message when the lockout store is unavailable
+- [ ] 157 `TASK-157` Apply account lockout to the two-factor endpoints that check the password
+- [ ] 158 `TASK-158` Rotate failing bookmarks out of the refresh batch and stop enqueueing when unfurling is disabled
+- [ ] 159 `TASK-159` Expose offline cache failure in the document snapshot and stop claiming edits are kept on the device
+- [ ] 160 `TASK-160` Merge into the shared device-copy state on compaction instead of overwriting another tab's edits
+- [ ] 161 `TASK-161` Load the persisted canvas document from a single database snapshot so compaction cannot skip committed updates
+- [ ] 162 `TASK-162` Harden the presence upgrade listener and connection setup against malformed Host headers and early socket errors
+- [ ] 163 `TASK-163` Serialize the presence socket's per-canvas Redis subscription reference count
+- [ ] 164 `TASK-164` Stop sending collaborators' email addresses in presence, cursor-chat and reaction payloads
+- [ ] 165 `TASK-165` Require the current share token for signed-in non-recipients on public canvases (sync and presence)
+- [ ] 166 `TASK-166` Classify sync authentication failures so transient errors retry and signed-out sessions keep the device copy
+- [ ] 167 `TASK-167` Send only missing changes on reconnect instead of the whole document, and stop the oversized-frame reconnect loop
+- [ ] 168 `TASK-168` Count same-update deletions before the item capacity check in document projection
+- [ ] 169 `TASK-169` Let shared admission renewal recreate missing leases for connections the process still holds
+- [ ] 170 `TASK-170` Give proxied collaboration upgrades the real client identity in the realtime process
+- [ ] 171 `TASK-171` Enforce concurrent connection limits on the sync server
+- [ ] 172 `TASK-172` Let committed-event replay pass a 'restored' CanvasEvent
+- [ ] 173 `TASK-173` Use the normalized SMTP password (SMTP_PASS or SMTP_PASSWORD) when building the SMTP config
+- [ ] 174 `TASK-174` Apply the production placeholder check to storage, database and SMTP credentials
+- [ ] 175 `TASK-175` Report 5xx ApiErrors to Sentry and stop dropping ECONNREFUSED events
+- [ ] 176 `TASK-176` Log, report and redact internal errors in the MCP JSON-RPC route
+- [ ] 177 `TASK-177` Do not journal transient 5xx/429 failures in runIdempotent, and replay with correct headers
+- [ ] 178 `TASK-178` Return 403 instead of 401 for permission failures in the item comments API
+- [ ] 179 `TASK-179` Show problem+json detail on the reset-password and forgot-password pages
+- [ ] 180 `TASK-180` Make useItemConnections fetch every page of connections
+- [ ] 181 `TASK-181` Apply connection_limit and pool_timeout from DATABASE_URL to the pg pool
+- [ ] 182 `TASK-182` Bound slow consumers' outbound queues in websocket broadcasts
+- [ ] 183 `TASK-183` Keep over-long tab URLs out of extension batches and name the rejected tab
+- [ ] 184 `TASK-184` Map upstream HTTP failures in the unfurl route to 502 instead of passing the third-party status through
+- [ ] 185 `TASK-185` Stop the optimistic create updater from rewriting the accessible infinite query
+- [ ] 186 `TASK-186` Retry failed reconnect handshakes with backoff instead of ending collaboration
+- [ ] 187 `TASK-187` Seed the committed-event cursor from the loaded snapshot's revision instead of replaying from 0
+- [ ] 188 `TASK-188` Stop global-sequence holes from triggering committed-event replays (gated on section-8911816ae25d00a3b49e7b7a/Q-001)
+- [ ] 189 `TASK-189` Remove the quadratic trailing-slash regex from isMcpResource and cap OAuth form input size
+- [ ] 190 `TASK-190` Revoke the whole refresh-token family when a rotated refresh token is reused
+- [ ] 191 `TASK-191` Revoke tokens issued from an authorization code when the code is reused
+- [ ] 192 `TASK-192` Let retention sweeps process all eligible rows instead of 500 per table per day
+- [ ] 193 `TASK-193` Prune old COMPLETED outbox rows without breaking deduplication
+- [ ] 194 `TASK-194` Fence the account-export failure update to the owning attempt
+- [ ] 195 `TASK-195` Stop sanitizeAllowedHtml from re-parsing decoded text as HTML
+- [ ] 196 `TASK-196` Convert legacy HTML notes into a structured, entity-decoded document
+- [ ] 197 `TASK-197` Adapt raw ProseMirror JSON to the canonical note format in the non-shared editor
+- [ ] 198 `TASK-198` Give the non-shared editor the same schema as the note validator, with history kept
+- [ ] 199 `TASK-199` Replace RichTextEditor's key-order-sensitive setContent check with a canonical comparison
+- [ ] 200 `TASK-200` Make writeNoteFragment's fallback keep block boundaries
+- [ ] 201 `TASK-201` Run the outbox worker as a continuous slot pool that survives job-state persistence failures
+- [ ] 202 `TASK-202` Move expired-lease jobs that have used all their attempts to DEAD instead of reclaiming them
+- [ ] 203 `TASK-203` Defer account-export redeliveries that find a recent RUNNING export instead of acknowledging the job
+- [ ] 204 `TASK-204` Retry link enrichment on transient AI concurrency or budget-store errors
+- [ ] 205 `TASK-205` Cancel upload-note storage reads when the worker aborts
+- [ ] 206 `TASK-206` Make note row→document conversion symmetric and never replace a note with an empty paragraph
+- [ ] 207 `TASK-207` Convert legacy HTML notes with decoded entities, block separators and a structured document
+- [ ] 208 `TASK-208` Stop reparsing note plainText as HTML in list view and canvas search
+- [ ] 209 `TASK-209` Prevent EditNoteDialog from saving stale or default form values when a note fails normalization
+- [ ] 210 `TASK-210` Enforce the per-canvas item limit on Trash restore and archive undo
+- [ ] 211 `TASK-211` Limit Ask's move-only type check to move and create-board commands
+- [ ] 212 `TASK-212` Re-read Ask move items under canvas locks and guard the write
+- [ ] 213 `TASK-213` Make thumbnail installation revision-safe under the canvas lock
+- [ ] 214 `TASK-214` Re-check staleness under locks and commit the recap archive link in the archive transaction
+- [ ] 215 `TASK-215` Close only tabs whose URL was saved or exactly matches an existing copy
+- [ ] 216 `TASK-216` Check clip-batch duplicates under the Inbox lock and de-duplicate within a batch
+- [ ] 217 `TASK-217` Block the IPv6 unspecified address and missing special-purpose ranges in isPrivateIp
+- [ ] 218 `TASK-218` Add a total deadline to SSRF-safe fetches and wire the webhook AbortController
+- [ ] 219 `TASK-219` Guard upload asset status transitions and stop double quota debits for FAILED assets
+- [ ] 220 `TASK-220` Release upload quota inside the canvas DELETE transaction
+- [ ] 221 `TASK-221` Compensate successful object writes whose activation fails
+- [ ] 222 `TASK-222` Make thumbnail cleanup durable before the candidate row is removed
+- [ ] 223 `TASK-223` Ignore unfurl responses for a URL that is no longer in the bookmark field
+- [ ] 224 `TASK-224` Require an explicit click before the share-target page saves a link
+- [ ] 225 `TASK-225` Keep hash-route fragments in normalizeLinkUrl
+- [ ] 226 `TASK-226` Validate single-link clips with the canonical bookmark content schema
+- [ ] 227 `TASK-227` Forward the CSP header on the request so Next.js nonces its framework scripts
+- [ ] 228 `TASK-228` Stop CreateBookmarkDialog from retrying a failed unfurl in a loop
+- [ ] 229 `TASK-229` Load sentry.client.config.ts in the browser bundle
+- [ ] 230 `TASK-230` Render schema-valid TEXT, ARROW and FRAME items that lack optional fields
+- [ ] 231 `TASK-231` Stop the SSRF hostname pre-check from rejecting public domains that look like IP prefixes
+- [ ] 232 `TASK-232` Resolve link-page metadata against the final URL after redirects
+- [ ] 233 `TASK-233` Derive the client IP correctly when X-Forwarded-For contains malformed entries
+- [ ] 234 `TASK-234` Show a rate-limit message when the two-factor step returns 429
+- [ ] 235 `TASK-235` Redact share, embed and invitation tokens from proxy request logs
+- [ ] 236 `TASK-236` Count dashboard thumbnail GETs against the assets budget, not the canvases limiter
+- [ ] 237 `TASK-237` Apply the strict auth rate limit to password change and account deletion
+- [ ] 238 `TASK-238` Keep clip batches from failing on untitled long URLs
+- [ ] 239 `TASK-239` Finalize every early proxy response with request id, CORS, security headers and CSP
+- [ ] 240 `TASK-240` Partition the strict auth rate limit into per-route-group buckets
+- [ ] 241 `TASK-241` Give /api/csp-report its own rate-limit bucket separate from OAuth and setup
+- [ ] 242 `TASK-242` Make per-user canvas and item budgets reachable via a session-aware per-IP ceiling
+- [ ] 243 `TASK-243` Bound bulk canvas delete concurrency, stop on 429 and surface server errors
+
+## Unsure, after the tasks (optional)
+
+The audit could not settle these, and most such reports do not hold. Check one only when the tasks are done, and change nothing for it unless a test or a run shows the defect.
+
+- [ ] check 01 `C-462d220a995e` Infinite Loop on Process Exit via Asynchronous beforeExit Handler in Database Client
+- [ ] check 02 `C-15b5d2347d0d` UPLOAD_NOTE_TIMEOUT_MS is never used in the snapshot, and the worker's default handler deadline is 15 s
+- [ ] check 03 `C-315d63b362c8` An item larger than the response byte budget returns an empty page with hasMore=true and nextCursor=null, so loading stops at that item
+- [ ] check 04 `C-928b98029fe2` Reasoning and thinking models get small output-token caps and no reasoning-effort setting, so they can return empty answers
+- [ ] check 05 `C-a23855d38e28` prisma/seed.ts does not load environment variables via dotenv
+- [ ] check 06 `C-b4bad70805c6` Every canvas item mutation queues a publish job whose default publisher always throws when Redis is not configured
+- [ ] check 07 `C-bebf528a7147` Prisma cursor pagination can silently cut a section short if the cursor row is deleted during the export
+- [ ] check 08 `C-d4f70d4b64d5` The browser extension has no manifest.json, so it cannot be installed and permissions.request has no optional host permission to grant
