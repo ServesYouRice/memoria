@@ -281,11 +281,14 @@ describe("useCollaboration transport behavior", () => {
       useCollaboration({ ...options, onCommittedEvents, onSnapshotRequired }),
     );
     const socket = MockWebSocket.instances[0]!;
-    const event = (cursor: number) => ({
+    // `canvasCursor` is the per-canvas number gap detection reads; a
+    // restore takes a global sequence but no per-canvas number.
+    const event = (cursor: number, canvasCursor = cursor) => ({
       type: "committed-event",
       event: {
         schemaVersion: 1,
         cursor: String(cursor),
+        canvasCursor: String(canvasCursor),
         operation: "updated",
         entity: { type: "canvas-item", id: `item-${cursor}`, version: 2 },
       },
@@ -308,7 +311,7 @@ describe("useCollaboration transport behavior", () => {
     });
     expect(onSnapshotRequired).toHaveBeenCalledTimes(1);
     // The next item event follows the restore: no gap, no replay.
-    act(() => socket.receive(event(12)));
+    act(() => socket.receive(event(12, 10)));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });
@@ -331,13 +334,13 @@ describe("useCollaboration transport behavior", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         ),
     );
-    act(() => socket.receive(event(21)));
+    act(() => socket.receive(event(21, 12)));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(onSnapshotRequired).toHaveBeenCalledTimes(2);
-    act(() => socket.receive(event(22)));
+    act(() => socket.receive(event(22, 13)));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(100);
     });

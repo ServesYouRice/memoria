@@ -153,6 +153,8 @@ model Canvas {
   thumbnailKey String?
   thumbnailRevision BigInt @default(0)
   restoreRevision Int @default(0)
+  /// Last per-canvas item event number handed out (`CanvasEvent.canvasSequence`).
+  eventSequence   BigInt @default(0)
   thumbnailCandidates CanvasThumbnailCandidate[]
   /// Agent checkpoints of this canvas; they are deleted with it.
   workspaceCheckpoints WorkspaceCheckpoint[]
@@ -771,6 +773,9 @@ model AgentProfile {
   maxCapabilityRung Int        @default(3)
   enabledRungs Int[]           @default([0, 1, 2, 3])
   allowedCanvasIds String[]    @default([])
+  /// Marks a built-in profile ("organizer"). Set only by the server, never
+  /// from the API; NULL for every profile a user creates.
+  systemKey String?
   defaultModelCredentialId String?
   defaultModelCredential ModelCredential? @relation("DefaultModelCredential", fields: [defaultModelCredentialId], references: [id], onDelete: SetNull)
   integrationAccounts IntegrationAccount[]
@@ -783,6 +788,7 @@ model AgentProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, systemKey])
   @@index([userId, status])
   @@index([defaultModelCredentialId])
 }
@@ -1126,6 +1132,9 @@ model CanvasDocumentUpdate {
 model CanvasEvent {
   id              String   @id @default(cuid())
   sequence        BigInt   @default(autoincrement()) @unique
+  /// Contiguous per-canvas number of an item event, allocated from
+  /// `Canvas.eventSequence`. Null for 'restored' events.
+  canvasSequence  BigInt?
   canvasId        String
   actorId         String
   entityId        String
@@ -1136,6 +1145,7 @@ model CanvasEvent {
   createdAt       DateTime @default(now())
 
   @@index([canvasId, sequence])
+  @@unique([canvasId, canvasSequence])
   @@index([createdAt])
 }
 

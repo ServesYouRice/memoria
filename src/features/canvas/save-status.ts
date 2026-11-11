@@ -53,25 +53,38 @@ const TOOLTIPS = {
   failed: "Changes were not saved",
 } satisfies Record<AutosaveStatus, string>;
 
-/**
- * `offlineChanges` is set when the offline status comes from the document:
- * the number of edits kept on this device that the server has not stored.
- */
+export interface SaveStatusDetails {
+  /**
+   * Set when the offline status comes from the document: the number of
+   * edits the server has not stored.
+   */
+  offlineChanges?: number;
+  /**
+   * The copy kept on this device could not be written
+   * (`CanvasDocumentSnapshot.deviceCopyFailed`): those edits are held only
+   * in this tab.
+   */
+  deviceCopyFailed?: boolean;
+}
+
 export function describeSaveStatus(
   status: AutosaveStatus,
-  offlineChanges?: number,
+  { offlineChanges, deviceCopyFailed = false }: SaveStatusDetails = {},
 ): { label: string; tooltip: string } {
   if (status !== "offline/retrying" || offlineChanges === undefined)
     return { label: LABELS[status], tooltip: TOOLTIPS[status] };
   if (offlineChanges === 0)
     return {
       label: "Offline",
-      tooltip:
-        "Offline. Showing the copy kept on this device; changes you make are kept here and sync when you reconnect.",
+      tooltip: deviceCopyFailed
+        ? "Offline. Changes you make cannot be stored on this device and are held only in this tab until you reconnect."
+        : "Offline. Showing the copy kept on this device; changes you make are kept here and sync when you reconnect.",
     };
   const plural = offlineChanges !== 1;
   return {
     label: `Offline · ${offlineChanges} unsaved ${plural ? "changes" : "change"}`,
-    tooltip: `Offline. ${offlineChanges} ${plural ? "changes are" : "change is"} kept on this device and will sync when you reconnect.`,
+    tooltip: deviceCopyFailed
+      ? `Offline. ${offlineChanges} ${plural ? "changes" : "change"} could not be stored on this device and ${plural ? "are" : "is"} held only in this tab until you reconnect. Keep this tab open.`
+      : `Offline. ${offlineChanges} ${plural ? "changes are" : "change is"} kept on this device and will sync when you reconnect.`,
   };
 }

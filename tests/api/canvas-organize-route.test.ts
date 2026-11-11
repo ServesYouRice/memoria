@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   canvasFindFirst: vi.fn(),
   listLooseItems: vi.fn(),
-  getOrganizerProfileForCanvas: vi.fn(),
+  getOrganizerProfile: vi.fn(),
+  grantOrganizerCanvas: vi.fn(),
   proposeCanvasPiles: vi.fn(),
   getLatestClipBatchNote: vi.fn(),
   getAiAvailability: vi.fn(),
@@ -35,7 +36,8 @@ vi.mock("@/lib/agents/piles", async (importOriginal) => {
   return {
     ...actual,
     listLooseItems: mocks.listLooseItems,
-    getOrganizerProfileForCanvas: mocks.getOrganizerProfileForCanvas,
+    getOrganizerProfile: mocks.getOrganizerProfile,
+    grantOrganizerCanvas: mocks.grantOrganizerCanvas,
     proposeCanvasPiles: mocks.proposeCanvasPiles,
   };
 });
@@ -70,7 +72,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireAuth.mockResolvedValue({ userId: "u1", email: "u@x.dev" });
   mocks.canvasFindFirst.mockResolvedValue({ id: "c1" });
-  mocks.getOrganizerProfileForCanvas.mockResolvedValue(organizer);
+  mocks.getOrganizerProfile.mockResolvedValue(organizer);
+  mocks.grantOrganizerCanvas.mockImplementation(async (profile) => profile);
   mocks.getLatestClipBatchNote.mockResolvedValue(null);
   mocks.getAiAvailability.mockResolvedValue({ configured: false });
 });
@@ -160,7 +163,7 @@ describe("POST /api/v1/canvases/:canvasId/organize", () => {
         tags: [],
       },
     ]);
-    mocks.getOrganizerProfileForCanvas.mockResolvedValue({
+    mocks.getOrganizerProfile.mockResolvedValue({
       ...organizer,
       status: AgentProfileStatus.DISABLED,
     });
@@ -249,7 +252,7 @@ describe("POST /api/v1/canvases/:canvasId/organize", () => {
   it("does not call the AI for a disabled organizer", async () => {
     mocks.listLooseItems.mockResolvedValue(recipeItems);
     mocks.getAiAvailability.mockResolvedValue({ configured: true });
-    mocks.getOrganizerProfileForCanvas.mockResolvedValue({
+    mocks.getOrganizerProfile.mockResolvedValue({
       ...organizer,
       status: AgentProfileStatus.DISABLED,
     });

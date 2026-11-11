@@ -332,6 +332,88 @@ describe("offline canvas document session", () => {
     expect(offline.acceptsWrites).toBe(false);
   });
 
+  it("keeps the device copy and the unsaved count when the session is signed out (TASK-166)", async () => {
+    const browser = new EventTarget();
+    vi.stubGlobal("window", browser);
+    const { session } = await storeOnlineCopy();
+    goOffline();
+    const pending = session.createItem(shape(50));
+    await session.whenCached();
+    session.destroy();
+
+    const reloaded = open();
+    await waitFor(() => reloaded.getSnapshot().restored);
+    const unsaved = reloaded.getSnapshot().unsavedChanges;
+    expect(unsaved).toBeGreaterThan(0);
+    latestProvider().config.onAuthenticationFailed({
+      reason: SYNC_CLOSE_REASONS.signedOut,
+    });
+    await waitFor(() => reloaded.getSnapshot().signedOut === true);
+    expect(reloaded.getSnapshot()).toMatchObject({
+      forbidden: false,
+      writable: false,
+      connected: false,
+      unsavedChanges: unsaved,
+    });
+    expect(reloaded.acceptsWrites).toBe(false);
+    expect(reloaded.hasItem(pending.id)).toBe(true);
+    expect(latestProvider().destroyed).toBe(true);
+
+    // Signed in again: the next online event dials in, once.
+    const dialled = providers.created.length;
+    browser.dispatchEvent(new Event("online"));
+    browser.dispatchEvent(new Event("online"));
+    expect(providers.created.length).toBe(dialled + 1);
+    serverSyncs();
+    await waitFor(() => reloaded.acceptsWrites);
+    expect(reloaded.getSnapshot()).toMatchObject({
+      signedOut: false,
+      unsavedChanges: unsaved,
+    });
+    expect(reloaded.hasItem(pending.id)).toBe(true);
+    await reloaded.whenCached();
+    reloaded.destroy();
+
+    const offline = open();
+    await waitFor(() => offline.getSnapshot().ready);
+    expect(offline.hasItem(pending.id)).toBe(true);
+    expect(offline.getSnapshot().unsavedChanges).toBe(unsaved);
+  });
+
+  it("keeps the device copy when a refresh finds the session signed out, and discards it if the next sign-in may not edit (TASK-166)", async () => {
+    const { session } = await storeOnlineCopy();
+    const pending = session.createItem(shape(70));
+    await session.whenCached();
+    latestProvider().config.onClose({
+      event: { reason: SYNC_CLOSE_REASONS.signedOut },
+    });
+    await waitFor(() => session.getSnapshot().signedOut === true);
+    expect(session.getSnapshot().unsavedChanges).toBeGreaterThan(0);
+    expect(session.hasItem(pending.id)).toBe(true);
+    expect(session.acceptsWrites).toBe(false);
+
+    // An explicit retry while still signed out changes nothing.
+    session.reconnect();
+    latestProvider().config.onAuthenticationFailed({
+      reason: SYNC_CLOSE_REASONS.signedOut,
+    });
+    await waitFor(() => latestProvider().destroyed);
+    expect(session.hasItem(pending.id)).toBe(true);
+
+    // Signed in again without edit access: as for any lost edit access,
+    // the unsaved changes can never be stored.
+    session.reconnect();
+    const provider = latestProvider();
+    provider.config.onStatus({ status: "connected" });
+    provider.config.onAuthenticated({ scope: "readonly" });
+    await waitFor(() => session.getSnapshot().generation === 1);
+    expect(session.hasItem(pending.id)).toBe(false);
+    expect(session.getSnapshot()).toMatchObject({
+      signedOut: false,
+      unsavedChanges: 0,
+    });
+  });
+
   it("never opens another user's copy", async () => {
     const { session, itemId } = await storeOnlineCopy();
     session.destroy();
@@ -356,6 +438,73 @@ describe("offline canvas document session", () => {
     await waitFor(() => session.acceptsWrites);
     session.createItem(shape());
     expect(broken.append).not.toHaveBeenCalled();
+  });
+
+  it("reports a device copy it could not write, and keeps editing", async () => {
+    const full: CanvasDocumentCache = {
+      load: () => Promise.resolve(null),
+      append: vi.fn(() => Promise.reject(new Error("QuotaExceededError"))),
+      saveMeta: vi.fn(() => Promise.resolve()),
+      compact: vi.fn(() => Promise.resolve()),
+      clear: vi.fn(() => Promise.resolve()),
+    };
+    const session = open({ cache: full });
+    await waitFor(() => providers.created.length === 1);
+    serverSyncs();
+    await waitFor(() => session.acceptsWrites);
+    await session.whenCached();
+    expect(session.getSnapshot().deviceCopyFailed).toBe(false);
+
+    goOffline();
+    session.createItem(shape());
+    await session.whenCached();
+    expect(full.append).toHaveBeenCalledTimes(1);
+    expect(session.getSnapshot()).toMatchObject({
+      deviceCopyFailed: true,
+      unsavedChanges: 1,
+    });
+
+    // Editing goes on, in memory only; nothing more is written.
+    session.createItem(shape(40));
+    await session.whenCached();
+    expect(full.append).toHaveBeenCalledTimes(1);
+    expect(session.getSnapshot()).toMatchObject({
+      deviceCopyFailed: true,
+      unsavedChanges: 2,
+    });
+  });
+
+  it("reports a device copy it could not read or clear", async () => {
+    const unreadable: CanvasDocumentCache = {
+      load: () => Promise.reject(new Error("IndexedDB unavailable")),
+      append: vi.fn(() => Promise.resolve()),
+      saveMeta: vi.fn(() => Promise.resolve()),
+      compact: vi.fn(() => Promise.resolve()),
+      clear: vi.fn(() => Promise.resolve()),
+    };
+    const first = open({ cache: unreadable });
+    await waitFor(() => providers.created.length === 1);
+    expect(first.getSnapshot().deviceCopyFailed).toBe(true);
+
+    const onRejectedChange = vi.fn();
+    const unclearable: CanvasDocumentCache = {
+      ...unreadable,
+      load: () => Promise.resolve(null),
+      clear: vi.fn(() => Promise.reject(new Error("closed"))),
+    };
+    const second = open({ cache: unclearable, onRejectedChange });
+    await waitFor(() => providers.created.length === 2);
+    serverSyncs();
+    await waitFor(() => second.acceptsWrites);
+    expect(second.getSnapshot().deviceCopyFailed).toBe(false);
+    // A refused change resets the document, which clears the copy.
+    latestProvider().config.onClose({
+      event: { reason: SYNC_CLOSE_REASONS.invalidUpdate },
+    });
+    await waitFor(() => onRejectedChange.mock.calls.length === 1);
+    await second.whenCached();
+    expect(unclearable.clear).toHaveBeenCalled();
+    expect(second.getSnapshot().deviceCopyFailed).toBe(true);
   });
 
   it("restores the same document after compacting the copy", async () => {

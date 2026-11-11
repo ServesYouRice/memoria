@@ -40,6 +40,9 @@ RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts
 FROM node:26.13.0-alpine AS runtime
 
 ENV NODE_ENV=production
+# server.ts binds the interface HOSTNAME names, and the container runtime
+# would otherwise set HOSTNAME to the container's own name.
+ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 RUN npm install --global pnpm@11.13.1 \
   && addgroup -S memoria \

@@ -644,10 +644,34 @@ describe("collaboration sync server", () => {
     ).toBe(0);
 
     // Signing out (or an administrator revoking sessions) deletes the row.
+    // The client keeps its device copy for the next sign-in (TASK-166).
     await prisma.session.deleteMany({ where: { userId: leaver.user.id } });
     await waitFor(() =>
-      client.closeReasons.includes(SYNC_CLOSE_REASONS.forbidden),
+      client.closeReasons.includes(SYNC_CLOSE_REASONS.signedOut),
     );
+    expect(client.closeReasons).not.toContain(SYNC_CLOSE_REASONS.forbidden);
+  });
+
+  it("tells an expired session it is signed out, not that access is lost (TASK-166)", async () => {
+    const lapsed = await createSignedInUser("lapsed");
+    const canvas = await createCanvas(lapsed.user.id);
+    await prisma.session.updateMany({
+      where: { userId: lapsed.user.id },
+      data: { expiresAt: new Date(Date.now() - 60_000) },
+    });
+    const { url } = await startServer();
+    const client = connect({ url, canvasId: canvas.id, cookie: lapsed.cookie });
+    await waitFor(() => client.authFailures.length > 0);
+    expect(client.authFailures).toEqual([SYNC_CLOSE_REASONS.signedOut]);
+
+    // Signed in, but never given access: still forbidden.
+    const stranger = connect({
+      url,
+      canvasId: canvas.id,
+      cookie: owner.cookie,
+    });
+    await waitFor(() => stranger.authFailures.length > 0);
+    expect(stranger.authFailures).toEqual([SYNC_CLOSE_REASONS.forbidden]);
   });
 
   it("lets a public-link guest read but not write, until the link is revoked", async () => {
@@ -750,8 +774,9 @@ describe("collaboration sync server", () => {
     const { url } = await startServer();
     const anonymous = connect({ url, canvasId: canvas.id });
     await waitFor(() =>
-      anonymous.authFailures.includes(SYNC_CLOSE_REASONS.forbidden),
+      anonymous.authFailures.includes(SYNC_CLOSE_REASONS.signedOut),
     );
+    expect(anonymous.provider.isSynced).toBe(false);
 
     const status = await new Promise<number>((resolve) => {
       const socket = new WebSocket(url, {
@@ -768,6 +793,65 @@ describe("collaboration sync server", () => {
       socket.on("error", () => undefined);
     });
     expect(status).toBe(403);
+  });
+
+  it("limits one principal's concurrent document connections and frees a slot on disconnect (TASK-171)", async () => {
+    const canvas = await createCanvas(owner.user.id);
+    const { url } = await startServer();
+    const open = Array.from({ length: 10 }, () =>
+      connect({ url, canvasId: canvas.id, cookie: owner.cookie }),
+    );
+    await waitFor(() => open.every(({ provider }) => provider.isSynced));
+
+    const extra = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+    // Retryable, never forbidden (which would clear the device copy).
+    await waitFor(() =>
+      extra.authFailures.includes(SYNC_CLOSE_REASONS.unavailable),
+    );
+    expect(extra.provider.isSynced).toBe(false);
+    expect(extra.authFailures).not.toContain(SYNC_CLOSE_REASONS.forbidden);
+
+    open[0]!.provider.destroy();
+    extra.provider.destroy();
+    await waitFor(async () => {
+      const next = connect({ url, canvasId: canvas.id, cookie: owner.cookie });
+      try {
+        await waitFor(
+          () => next.provider.isSynced || next.authFailures.length > 0,
+        );
+        return next.provider.isSynced;
+      } finally {
+        next.provider.destroy();
+      }
+    });
+  });
+
+  it("bounds one client's concurrent sockets before authentication (TASK-171)", async () => {
+    const { url } = await startServer();
+    const sockets: WebSocket[] = [];
+    const open = () =>
+      new Promise<number>((resolve) => {
+        const socket = new WebSocket(url, { headers: { origin: TEST_ORIGIN } });
+        sockets.push(socket);
+        socket.on("unexpected-response", (_request, response) => {
+          resolve(response.statusCode ?? 0);
+          socket.terminate();
+        });
+        socket.on("open", () => resolve(101));
+        socket.on("error", () => undefined);
+      });
+    try {
+      for (let index = 0; index < 30; index += 1)
+        expect(await open()).toBe(101);
+      expect(await open()).toBe(429);
+      // A closed socket gives its slot back.
+      const closed = new Promise((resolve) => sockets[0]!.on("close", resolve));
+      sockets[0]!.terminate();
+      await closed;
+      await waitFor(async () => (await open()) === 101);
+    } finally {
+      for (const socket of sockets) socket.terminate();
+    }
   });
 
   it("snapshots versions from the document and restores them into open documents", async () => {

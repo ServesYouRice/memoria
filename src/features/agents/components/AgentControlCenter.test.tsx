@@ -28,7 +28,7 @@ vi.mock("@/lib/hooks/use-agent-control", () => {
     useAgentProfiles: () => queries.profiles,
     useAgentProviders: () => queries.providers,
     useAgentIntegrations: () => queries.integrations,
-    useAgentTimeline: () => queries.timeline,
+    useAgentTimelinePages: () => queries.timeline,
     useApproveSuggestion: mutation,
     useRejectSuggestion: mutation,
     useExecuteSuggestion: mutation,
@@ -50,7 +50,7 @@ beforeEach(() => {
   queries.profiles = ok({ agentProfiles: [] });
   queries.providers = ok({ providerSlots: [], credentials: [] });
   queries.integrations = ok({ integrationAccounts: [] });
-  queries.timeline = ok({ suggestions: [], changeSets: [] });
+  queries.timeline = ok({ pages: [{ suggestions: [], changeSets: [] }] });
 });
 afterEach(cleanup);
 
@@ -65,7 +65,7 @@ describe("AgentControlCenter query failures", () => {
       screen.queryByText("No suggestions are waiting for review."),
     ).toBeNull();
     expect(
-      screen.queryByText("No change sets have been recorded yet."),
+      screen.queryByText("No change sets are waiting to be rolled back."),
     ).toBeNull();
     expect(
       screen.getByText("Agent profiles could not be loaded."),

@@ -111,6 +111,8 @@ export interface CanvasHeaderProps {
    * edits kept on this device that the server has not stored yet.
    */
   offlineChanges?: number;
+  /** The device copy could not be written: those edits are only in this tab. */
+  deviceCopyFailed?: boolean;
 }
 
 const ZOOM_STEP = 0.1;
@@ -156,6 +158,7 @@ export function CanvasHeader({
   saveStatus,
   saveError,
   offlineChanges,
+  deviceCopyFailed,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -518,11 +521,19 @@ export function CanvasHeader({
           <Tooltip
             title={
               saveError ||
-              describeSaveStatus(saveStatus, offlineChanges).tooltip
+              describeSaveStatus(saveStatus, {
+                offlineChanges,
+                deviceCopyFailed,
+              }).tooltip
             }
           >
             <Chip
-              label={describeSaveStatus(saveStatus, offlineChanges).label}
+              label={
+                describeSaveStatus(saveStatus, {
+                  offlineChanges,
+                  deviceCopyFailed,
+                }).label
+              }
               size="small"
               color={
                 saveStatus === "saved"

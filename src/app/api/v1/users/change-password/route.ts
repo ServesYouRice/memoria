@@ -91,8 +91,9 @@ export async function POST(request: NextRequest) {
     // Hash new password
     const hashedPassword = await hashPassword(data.newPassword);
 
-    // Replace the hash and delete every server-side session in the same
-    // transaction so no existing cookie (or WebSocket) survives the change.
+    // Replace the hash, delete every server-side session and revoke the live
+    // API keys in the same transaction so no existing cookie, WebSocket or
+    // key survives the change.
     await prisma.$transaction(async (tx) => {
       const updated = await setCredentialPassword(tx, userId, hashedPassword);
       if (updated !== 1) {
@@ -101,6 +102,10 @@ export async function POST(request: NextRequest) {
         );
       }
       await tx.session.deleteMany({ where: { userId } });
+      await tx.apiKey.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
     });
 
     return NextResponse.json({ message: "Password changed successfully" });

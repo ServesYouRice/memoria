@@ -11,7 +11,9 @@
  * to the HTTP API; when the server cannot store a change right now
  * (`memoria:unavailable`) the session reconnects and resends it; when the
  * role changes (`memoria:reauthenticate`) it reconnects to learn the new
- * scope, discarding unsaved changes if it may no longer edit.
+ * scope, discarding unsaved changes if it may no longer edit; when the
+ * session has ended (`memoria:signed-out`) it stops without discarding
+ * anything, and connects again on the next online event or `reconnect()`.
  *
  * IMP-045 — with a device cache (`offline-store.ts`) the session also keeps
  * the document on this device: every update is appended to IndexedDB, and a
@@ -94,6 +96,12 @@ export interface CanvasDocumentSnapshot {
   localChanges: boolean;
   /** Access was refused or revoked; the canvas uses the HTTP API instead. */
   forbidden: boolean;
+  /**
+   * The login session ended. The document and its device copy are kept,
+   * with their unsaved edits, but nothing is written until the user signs
+   * in again and the session reconnects.
+   */
+  signedOut?: boolean;
   /** Increments when a refused change or lost access replaced the document. */
   generation: number;
   /** Increments when the server reports a change in access. */
@@ -103,6 +111,11 @@ export interface CanvasDocumentSnapshot {
    * the session keeps its unsaved edits and retries with a growing delay.
    */
   sendBlocked?: boolean;
+  /**
+   * Reading, writing or clearing the copy kept on this device failed, so
+   * edits made since are held only in this tab until the server stores them.
+   */
+  deviceCopyFailed?: boolean;
   items: ReadonlyMap<string, CanvasDocumentEntry>;
 }
 
@@ -248,6 +261,7 @@ export class CanvasDocumentSession {
     forbidden: false,
     generation: 0,
     accessRevision: 0,
+    deviceCopyFailed: false,
     items: new Map(),
   };
   private readonly listeners = new Set<() => void>();
@@ -262,6 +276,8 @@ export class CanvasDocumentSession {
   private cacheWrites: Promise<unknown> = Promise.resolve();
   /** connect() ran while the browser was offline; the online event connects. */
   private waitingForNetwork = false;
+  /** The session could edit when it was signed out. */
+  private writableBeforeSignOut = false;
 
   constructor(options: CanvasDocumentSessionOptions) {
     this.options = options;
@@ -293,6 +309,16 @@ export class CanvasDocumentSession {
       this.snapshot.writable &&
       !this.snapshot.forbidden
     );
+  }
+
+  /**
+   * Try the sync server again after `signedOut`, for example once the user
+   * has signed in. Still signed out leaves everything as it is.
+   */
+  reconnect(): void {
+    if (this.destroyed || !this.snapshot.signedOut || this.provider) return;
+    this.clearRetry();
+    this.connect();
   }
 
   /** Settles once every device-copy write issued so far has finished. */
@@ -420,6 +446,10 @@ export class CanvasDocumentSession {
       this.connect();
       return;
     }
+    if (this.snapshot.signedOut) {
+      this.reconnect();
+      return;
+    }
     if (this.snapshot.connected || this.snapshot.forbidden || this.retryTimer)
       return;
     void this.provider?.connect();
@@ -497,7 +527,10 @@ export class CanvasDocumentSession {
       onAuthenticated: ({ scope }) => {
         if (this.provider !== provider) return;
         const writable = scope === "read-write";
-        if (this.snapshot.writable && !writable) {
+        const couldWrite = this.snapshot.writable || this.writableBeforeSignOut;
+        this.writableBeforeSignOut = false;
+        if (this.snapshot.signedOut) this.update({ signedOut: false });
+        if (couldWrite && !writable) {
           // Edit access is gone: local changes the server has not stored can
           // never be stored, so start again from the server's copy.
           this.later(() => this.reset());
@@ -512,7 +545,9 @@ export class CanvasDocumentSession {
         this.later(() =>
           reason === SYNC_CLOSE_REASONS.unavailable
             ? this.retry()
-            : this.forbid(),
+            : reason === SYNC_CLOSE_REASONS.signedOut
+              ? this.signOut()
+              : this.forbid(),
         );
       },
       onSynced: ({ state }) => {
@@ -541,6 +576,8 @@ export class CanvasDocumentSession {
           this.later(() => this.reset(this.options.onRejectedChange));
         else if (reason === SYNC_CLOSE_REASONS.forbidden)
           this.later(() => this.forbid());
+        else if (reason === SYNC_CLOSE_REASONS.signedOut)
+          this.later(() => this.signOut());
         else if (reason === SYNC_CLOSE_REASONS.unavailable)
           this.later(() => this.retry());
         else if (reason === SYNC_CLOSE_REASONS.reauthenticate)
@@ -604,6 +641,24 @@ export class CanvasDocumentSession {
     this.connect();
   }
 
+  /**
+   * The login session ended. Unlike forbid(), the edits can still be stored
+   * once the same user signs in again (the device copy is kept per user), so
+   * keep the document, the device copy and the unsaved count, and only stop
+   * writing and dialling.
+   */
+  private signOut(): void {
+    this.clearRetry();
+    this.disconnect();
+    this.writableBeforeSignOut ||= this.snapshot.writable;
+    this.update({
+      signedOut: true,
+      writable: false,
+      connected: false,
+      accessRevision: this.snapshot.accessRevision + 1,
+    });
+  }
+
   private forbid(): void {
     this.clearRetry();
     this.disconnect();
@@ -652,7 +707,7 @@ export class CanvasDocumentSession {
       stored = await cache.load();
     } catch {
       // IndexedDB is unavailable (private mode, quota): stay online-only.
-      this.cacheStopped = true;
+      this.stopFailedCache();
     }
     if (this.destroyed) return;
     if (stored && stored.updates.length > 0) {
@@ -692,8 +747,15 @@ export class CanvasDocumentSession {
     this.cacheWrites = write(cache).catch(() => {
       // Quota or a closed database: keep editing online-only. What is stored
       // stays a consistent, older copy.
-      this.cacheStopped = true;
+      this.stopFailedCache();
     });
+  }
+
+  /** The device copy failed: stop writing it and say so in the snapshot. */
+  private stopFailedCache(): void {
+    this.cacheStopped = true;
+    if (!this.destroyed && !this.snapshot.deviceCopyFailed)
+      this.update({ deviceCopyFailed: true });
   }
 
   private clearCache(): void {
@@ -701,7 +763,7 @@ export class CanvasDocumentSession {
     if (!cache) return;
     this.updatesSinceCompaction = 0;
     this.cacheWrites = cache.clear().catch(() => {
-      this.cacheStopped = true;
+      this.stopFailedCache();
     });
   }
 

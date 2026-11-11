@@ -58,6 +58,12 @@ export const SYNC_CLOSE_REASONS = {
   unavailable: "memoria:unavailable",
   /** The role changed (edit <-> read-only): reconnect to learn the new scope. */
   reauthenticate: "memoria:reauthenticate",
+  /**
+   * No valid session and no share token: keep the device copy and stop
+   * until the user signs in again. Clients that do not know this reason
+   * treat it as `forbidden`.
+   */
+  signedOut: "memoria:signed-out",
 } as const;
 
 export type SyncCloseReason =
@@ -66,6 +72,7 @@ export type SyncCloseReason =
 /** WebSocket close codes paired with the reasons above. */
 export const SYNC_CLOSE_CODES = {
   invalidUpdate: 4400,
+  signedOut: 4401,
   forbidden: 4403,
   reauthenticate: 4409,
   unavailable: 4503,

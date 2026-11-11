@@ -162,3 +162,22 @@ export async function replayDeadOutboxJob(prisma: PrismaClient, jobId: string) {
     },
   });
 }
+
+/**
+ * Deletes one bounded batch of COMPLETED jobs finished before `cutoff`,
+ * oldest first, skipping `keepTypes`. PENDING, RUNNING and DEAD rows are
+ * never touched. Returns how many rows were deleted.
+ */
+export async function pruneCompletedOutboxJobs(
+  prisma: PrismaClient,
+  options: { cutoff: Date; keepTypes: readonly string[]; batchSize: number },
+): Promise<number> {
+  return prisma.$executeRaw`
+    DELETE FROM "OutboxJob" WHERE "id" IN (
+      SELECT "id" FROM "OutboxJob"
+      WHERE "status" = 'COMPLETED' AND "completedAt" < ${options.cutoff}
+        AND "type" <> ALL(${[...options.keepTypes]}::text[])
+      ORDER BY "completedAt" ASC LIMIT ${options.batchSize}
+    )
+  `;
+}

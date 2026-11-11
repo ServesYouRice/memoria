@@ -659,42 +659,57 @@ export async function executePilesSuggestion(input: {
   });
 }
 
+/** Marker of the built-in organizer in `AgentProfile.systemKey`. */
+export const ORGANIZER_SYSTEM_KEY = "organizer";
+
 /**
  * The built-in sorter acts through its own agent profile so its proposals,
- * change sets and undo history look exactly like any other agent's.
+ * change sets and undo history look exactly like any other agent's. It is
+ * found by its server-set marker, never by name: a user's profile that only
+ * shares the display name is not the organizer. A new organizer starts with
+ * no canvases; `grantOrganizerCanvas` adds one once the caller has checked
+ * that the organizer may propose.
  */
-export async function getOrganizerProfileForCanvas(
-  userId: string,
-  canvasId: string,
-) {
-  const enabledRungs = [
-    AGENT_CAPABILITY_RUNGS.READ,
-    AGENT_CAPABILITY_RUNGS.PROPOSE,
-  ];
-  const existing = await prisma.agentProfile.findFirst({
-    where: { userId, name: ORGANIZER_PROFILE_NAME },
-    orderBy: { createdAt: "asc" },
-  });
+export async function getOrganizerProfile(userId: string) {
+  const where = { userId, systemKey: ORGANIZER_SYSTEM_KEY };
+  const existing = await prisma.agentProfile.findFirst({ where });
+  if (existing) return existing;
 
-  if (!existing) {
-    return prisma.agentProfile.create({
+  try {
+    return await prisma.agentProfile.create({
       data: {
         userId,
+        systemKey: ORGANIZER_SYSTEM_KEY,
         name: ORGANIZER_PROFILE_NAME,
         status: AgentProfileStatus.ACTIVE,
         maxCapabilityRung: AGENT_CAPABILITY_RUNGS.PROPOSE,
-        enabledRungs,
-        allowedCanvasIds: [canvasId],
+        enabledRungs: [
+          AGENT_CAPABILITY_RUNGS.READ,
+          AGENT_CAPABILITY_RUNGS.PROPOSE,
+        ],
+        allowedCanvasIds: [],
       },
     });
+  } catch (error) {
+    // A concurrent sort created it first (unique per user and marker).
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return prisma.agentProfile.findFirstOrThrow({ where });
+    }
+    throw error;
   }
+}
 
-  if (existing.allowedCanvasIds.includes(canvasId)) {
-    return existing;
-  }
-
+/** Adds the canvas to the organizer's scope; call after its PROPOSE check. */
+export async function grantOrganizerCanvas(
+  organizer: Awaited<ReturnType<typeof getOrganizerProfile>>,
+  canvasId: string,
+) {
+  if (organizer.allowedCanvasIds.includes(canvasId)) return organizer;
   return prisma.agentProfile.update({
-    where: { id: existing.id },
+    where: { id: organizer.id },
     data: { allowedCanvasIds: { push: canvasId } },
   });
 }

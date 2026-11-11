@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateManyAndReturn: vi.fn(),
     },
   };
   return {
@@ -35,6 +36,9 @@ vi.mock("@/lib/collaboration/committed-events", () => ({
   recordCanvasItemEventsBatch: vi.fn(),
 }));
 vi.mock("@/lib/cache/canvas-cache", () => ({ invalidateCanvasCache: vi.fn() }));
+vi.mock("@/lib/policy/capacity", () => ({
+  assertCanvasItemCapacity: vi.fn(),
+}));
 vi.mock("@/lib/agents/piles", () => ({ suggestPilesForOwner: vi.fn() }));
 
 import {
@@ -439,6 +443,48 @@ describe("archiving links and undoing it", () => {
       mocks.tx,
       expect.objectContaining({ itemId: "i2", operation: "deleted" }),
     );
+  });
+
+  it("skips an item whose conditional write no longer matches", async () => {
+    const eligibleWhere = { updatedAt: { lt: NOW } };
+    mocks.tx.canvasItem.findMany
+      .mockResolvedValueOnce([{ canvasId: "canvas-a" }])
+      .mockResolvedValueOnce([bookmark("i1"), bookmark("i2")]);
+    // `i1` was opened between the locked read and its write.
+    mocks.tx.canvasItem.updateManyAndReturn.mockImplementation(
+      async ({ where, data }) =>
+        where.id === "i1" ? [] : [{ ...bookmark(where.id), ...data }],
+    );
+    const onArchived = vi.fn();
+
+    const result = await archiveItems({
+      actor: { userId: "user-1", agentProfileId: "prof-ask" },
+      itemIds: ["i1", "i2"],
+      summary: "Archive 2 links",
+      options: { eligibleWhere, onArchived },
+    });
+
+    expect(result).toMatchObject({
+      archivedItemIds: ["i2"],
+      archivedItemCount: 1,
+    });
+    expect(mocks.tx.canvasItem.findMany.mock.calls[1]![0].where).toMatchObject({
+      AND: [eligibleWhere],
+    });
+    expect(
+      mocks.tx.canvasItem.updateManyAndReturn.mock.calls[0]![0].where,
+    ).toEqual({ id: "i1", deletedAt: null, AND: [eligibleWhere] });
+    expect(mocks.tx.canvasItem.update).not.toHaveBeenCalled();
+    expect(
+      mocks.tx.changeRecord.create.mock.calls.map(
+        ([call]) => call.data.targetId,
+      ),
+    ).toEqual(["i2"]);
+    expect(onArchived).toHaveBeenCalledWith(mocks.tx, {
+      agentActionId: expect.any(String),
+      changeSetId: "cs-1",
+      itemIds: ["i2"],
+    });
   });
 
   it("refuses when nothing is left to archive, without writing", async () => {

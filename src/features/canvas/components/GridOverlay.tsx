@@ -5,6 +5,7 @@
 
 import React from "react";
 import { Layer, Line } from "react-konva";
+import { EXPORT_EXCLUDE_NAME } from "@/lib/export/export-utils";
 
 export interface GridOverlayProps {
   width: number;
@@ -85,7 +86,11 @@ export function GridOverlay({
     );
   }
 
-  return <Layer listening={false}>{lines}</Layer>;
+  return (
+    <Layer name={EXPORT_EXCLUDE_NAME} listening={false}>
+      {lines}
+    </Layer>
+  );
 }
 
 /**

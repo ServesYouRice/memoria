@@ -1,5 +1,6 @@
 import type { OutboxJob, PrismaClient } from "@/generated/prisma/client";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { pruneCompletedOutboxJobs } from "@/lib/outbox/repository";
 import type { OutboxHandler, OutboxHandlerContext } from "@/lib/outbox/types";
 import {
   LAUNCH_LIMITS,
@@ -42,6 +43,29 @@ export async function runBatchedRetention(
     }
   }
 }
+
+/**
+ * COMPLETED outbox rows are kept this long, then pruned. A kept row is what
+ * makes a repeated enqueue with the same dedupeKey a no-op, so the window
+ * must outlast every date-scoped key: the longest is the weekly recap
+ * (`recap.weekly-sweep:<week>`, `recap.weekly:<weekStart>:<user>`); daily
+ * retention and version-history keys and bookmark refresh buckets are
+ * shorter. Keys built from a unique id (event, email, export, upload,
+ * thumbnail revision, continuation) are never enqueued again.
+ */
+export const COMPLETED_OUTBOX_RETENTION_DAYS = 14;
+
+/**
+ * Job types whose dedupeKey names a long-lived entity, so the COMPLETED row
+ * must stay: `board.propose:<item>` and `link.enrich:<item>` would run again
+ * for an item that was already handled, and `upload.note:<asset>` is read
+ * back as the note's status and re-armed in place.
+ */
+export const OUTBOX_PRUNE_KEEP_TYPES = [
+  "board.propose",
+  "link.enrich",
+  "upload.note",
+] as const;
 
 function retentionDeadline(context?: OutboxHandlerContext) {
   const budgetEnd = Date.now() + RETENTION_TIME_BUDGET_MS;
@@ -137,7 +161,19 @@ export function createMaintenanceRetentionHandler(
       deadlineAt,
       signal: context?.signal,
     });
-    if (keysRemain || candidatesRemain || checkpointsRemain) {
+    const outboxCutoff = new Date(
+      Date.now() - COMPLETED_OUTBOX_RETENTION_DAYS * 86_400_000,
+    );
+    const outboxRemain = await runBatchedRetention(
+      () =>
+        pruneCompletedOutboxJobs(prisma, {
+          cutoff: outboxCutoff,
+          keepTypes: OUTBOX_PRUNE_KEEP_TYPES,
+          batchSize: RETENTION_BATCH_SIZE,
+        }),
+      { deadlineAt, signal: context?.signal },
+    );
+    if (keysRemain || candidatesRemain || checkpointsRemain || outboxRemain) {
       await enqueueContinuation(prisma, job);
     }
   };

@@ -63,53 +63,46 @@ export function createThumbnailStoreHandler(
       candidate.mimeType,
       context?.signal,
     );
-    const install = await prisma.$transaction(async (tx) => {
+    // Every follow-up deletion is queued in the transaction that deletes the
+    // candidate: once the candidate is gone a retry of this job does nothing,
+    // so cleanup must already be durable by then.
+    await prisma.$transaction(async (tx) => {
       // Mutations take this lock before writing events, so no event can land
       // between the revision check below and the write.
       await lockCanvasForMutation(tx, candidate.canvasId);
       const currentRows = await tx.$queryRaw<Array<{ revision: bigint }>>`
         SELECT COALESCE(MAX("sequence"), 0) AS revision FROM "CanvasEvent" WHERE "canvasId" = ${candidate.canvasId}
       `;
-      if ((currentRows[0]?.revision ?? 0n) !== candidate.revision) {
-        await tx.canvasThumbnailCandidate.delete({
-          where: { id: candidate.id },
-        });
-        return { installed: false, oldKey: null };
-      }
       const current = await tx.canvas.findUnique({
         where: { id: candidate.canvasId },
         select: { thumbnailKey: true },
       });
       // Never replace a newer installed thumbnail.
-      const updated = await tx.canvas.updateMany({
-        where: {
-          id: candidate.canvasId,
-          thumbnailRevision: { lt: candidate.revision },
-        },
-        data: {
-          thumbnailKey: storageKey,
-          thumbnailRevision: candidate.revision,
-        },
-      });
+      const updated =
+        (currentRows[0]?.revision ?? 0n) === candidate.revision
+          ? await tx.canvas.updateMany({
+              where: {
+                id: candidate.canvasId,
+                thumbnailRevision: { lt: candidate.revision },
+              },
+              data: {
+                thumbnailKey: storageKey,
+                thumbnailRevision: candidate.revision,
+              },
+            })
+          : { count: 0 };
       await tx.canvasThumbnailCandidate.delete({ where: { id: candidate.id } });
-      if (updated.count === 0) return { installed: false, oldKey: null };
-      return {
-        installed: true,
-        oldKey:
-          current?.thumbnailKey && current.thumbnailKey !== storageKey
-            ? current.thumbnailKey
-            : null,
-      };
+      if (updated.count === 0) {
+        // Stale: the object written above is not referenced by the canvas.
+        if (current?.thumbnailKey !== storageKey) {
+          await enqueueThumbnailDeletion(tx, storageKey);
+        }
+        return;
+      }
+      if (current?.thumbnailKey && current.thumbnailKey !== storageKey) {
+        await enqueueThumbnailDeletion(tx, current.thumbnailKey);
+      }
     });
-    if (!install.installed) {
-      await deletePrivateUploadObject(storageMode, storageKey, context?.signal);
-      return;
-    }
-    if (install.oldKey) {
-      await prisma.$transaction((tx) =>
-        enqueueThumbnailDeletion(tx, install.oldKey!),
-      );
-    }
   };
 }
 

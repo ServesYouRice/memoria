@@ -277,3 +277,145 @@ describe("canvas-filtered timeline (TASK-022)", () => {
     expect(denied.status).toBe(403);
   });
 });
+
+describe("timeline status, revertable and cursor filters (TASK-128)", () => {
+  async function seedNoise() {
+    const { owner, inScope, descoped } = await setup();
+    const old = new Date(Date.now() - 86_400_000);
+    // The four seeded suggestions stay OPEN and become the oldest rows; the
+    // two seeded change sets stay revertable and become the oldest rows.
+    await prisma.suggestion.updateMany({
+      where: { userId: owner.id },
+      data: { createdAt: old },
+    });
+    await prisma.changeSet.updateMany({
+      where: { userId: owner.id },
+      data: { startedAt: old },
+    });
+    const profileId = (
+      await prisma.agentProfile.findFirstOrThrow({
+        where: { userId: owner.id },
+      })
+    ).id;
+    await prisma.suggestion.createMany({
+      data: Array.from({ length: 15 }, (_, i) => ({
+        userId: owner.id,
+        agentProfileId: profileId,
+        kind: "INTERNAL_ORGANIZATION" as const,
+        status: i % 2 ? ("EXECUTED" as const) : ("REJECTED" as const),
+        summary: `resolved ${i}`,
+        payload: { canvasId: inScope.id },
+        expiresAt: new Date(Date.now() + 60_000),
+      })),
+    });
+    await prisma.changeSet.createMany({
+      data: Array.from({ length: 15 }, (_, i) => ({
+        userId: owner.id,
+        agentProfileId: profileId,
+        scopeType: "canvas",
+        scopeId: inScope.id,
+        status: i % 2 ? ("REVERTED" as const) : ("FAILED" as const),
+        revertedAt: i % 2 ? new Date() : null,
+        summary: `closed ${i}`,
+      })),
+    });
+    contextState.current = {
+      ...agentContext(owner.id, null),
+      actorType: "user",
+    };
+    return { owner, inScope, descoped };
+  }
+
+  async function get(query: string) {
+    const response = await actionsGet(
+      new NextRequest(`http://localhost/api/agent/v1/actions?${query}`),
+    );
+    return { status: response.status, body: await response.json() };
+  }
+
+  it("returns older OPEN suggestions and revertable change sets past newer resolved ones", async () => {
+    const { inScope } = await seedNoise();
+
+    // The plain request is unchanged: newest rows of any status, old shape.
+    const plain = await get("limit=12");
+    expect(Object.keys(plain.body).sort()).toEqual([
+      "actions",
+      "changeSets",
+      "suggestions",
+    ]);
+    expect(
+      plain.body.suggestions.every((s: { status: string }) =>
+        ["EXECUTED", "REJECTED"].includes(s.status),
+      ),
+    ).toBe(true);
+
+    const filtered = await get(
+      "limit=12&suggestionStatus=OPEN,APPROVED&revertable=true",
+    );
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.suggestions).toHaveLength(4);
+    expect(
+      filtered.body.suggestions.every(
+        (s: { status: string }) => s.status === "OPEN",
+      ),
+    ).toBe(true);
+    expect(filtered.body.changeSets).toHaveLength(2);
+    expect(
+      filtered.body.changeSets.every(
+        (c: { status: string; revertedAt: string | null }) =>
+          c.status === "COMPLETED" && c.revertedAt === null,
+      ),
+    ).toBe(true);
+    expect(filtered.body).toMatchObject({
+      suggestionsHasMore: false,
+      changeSetsHasMore: false,
+      nextSuggestionCursor: null,
+      nextChangeSetCursor: null,
+    });
+
+    // Canvas and status together: only this canvas's open suggestions.
+    const canvas = await get(
+      `limit=12&canvasId=${inScope.id}&suggestionStatus=OPEN&revertable=true`,
+    );
+    expect(
+      canvas.body.suggestions.map((s: { summary: string }) => s.summary).sort(),
+    ).toEqual(["canvas suggestion In scope", "item suggestion In scope"]);
+    expect(
+      canvas.body.changeSets.map((c: { scopeId: string }) => c.scopeId),
+    ).toEqual([inScope.id]);
+  });
+
+  it("pages each list with its cursor", async () => {
+    await seedNoise();
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 5; page += 1) {
+      const { body } = await get(
+        `limit=3&suggestionStatus=OPEN${cursor ? `&suggestionCursor=${cursor}` : ""}`,
+      );
+      seen.push(...body.suggestions.map((s: { id: string }) => s.id));
+      cursor = body.nextSuggestionCursor;
+      expect(body.suggestionsHasMore).toBe(cursor !== null);
+      if (!cursor) break;
+    }
+    expect(seen).toHaveLength(4);
+    expect(new Set(seen).size).toBe(4);
+
+    const first = await get("limit=10");
+    expect(first.body.changeSets).toHaveLength(10);
+    const paged = await get(
+      "limit=10&revertable=false&changeSetCursor=" +
+        first.body.changeSets[9].id,
+    );
+    expect(paged.body.changeSets).toHaveLength(7);
+    expect(paged.body.changeSetsHasMore).toBe(false);
+    const ids = new Set([
+      ...first.body.changeSets.map((c: { id: string }) => c.id),
+      ...paged.body.changeSets.map((c: { id: string }) => c.id),
+    ]);
+    expect(ids.size).toBe(17);
+
+    expect((await get("suggestionStatus=NOPE")).status).toBe(400);
+    expect((await get("revertable=maybe")).status).toBe(400);
+  });
+});

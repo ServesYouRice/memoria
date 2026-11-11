@@ -11,6 +11,7 @@ const prismaMocks = vi.hoisted(() => ({
   apiKeyFindUnique: vi.fn(),
   apiKeyCreate: vi.fn(),
   apiKeyUpdate: vi.fn(),
+  sessionFindUnique: vi.fn(),
 }));
 
 const apiKeyMocks = vi.hoisted(() => ({
@@ -21,8 +22,15 @@ vi.mock("@/lib/api/auth", () => ({
   requireAuth: authMocks.requireAuth,
 }));
 
+// POST also needs a recent sign-in (TASK-036): the session row's createdAt.
+vi.mock("@/lib/api/session-cache", () => ({
+  getCachedSession: vi.fn(async () => ({ session: { id: "session-1" } })),
+  runWithSessionCache: (fn: () => unknown) => fn(),
+}));
+
 vi.mock("@/lib/db", () => ({
   prisma: {
+    session: { findUnique: prismaMocks.sessionFindUnique },
     apiKey: {
       findMany: prismaMocks.apiKeyFindMany,
       findUnique: prismaMocks.apiKeyFindUnique,
@@ -70,6 +78,9 @@ describe("API Key Management Routes (IMP-063)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMocks.sessionFindUnique.mockImplementation(async () => ({
+      createdAt: new Date(),
+    }));
   });
 
   afterEach(() => {
@@ -139,6 +150,65 @@ describe("API Key Management Routes (IMP-063)", () => {
       expect(res.status).toBe(401);
       expect(apiKeyMocks.generateApiKey).not.toHaveBeenCalled();
       expect(prismaMocks.apiKeyCreate).not.toHaveBeenCalled();
+    });
+
+    it("rejects a session that signed in more than 15 minutes ago with a stable code", async () => {
+      authMocks.requireAuth.mockResolvedValue({ userId });
+      prismaMocks.sessionFindUnique.mockResolvedValue({
+        createdAt: new Date(Date.now() - 15 * 60_000 - 1_000),
+      });
+
+      const res = await apiKeysPost(
+        createNextRequest("http://localhost/api/v1/api-keys", {
+          method: "POST",
+          body: { name: "Test Key" },
+        }),
+      );
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.code).toBe("recent_sign_in_required");
+      expect(json.detail).toMatch(/sign in again/i);
+      expect(prismaMocks.sessionFindUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "session-1" } }),
+      );
+      expect(apiKeyMocks.generateApiKey).not.toHaveBeenCalled();
+      expect(prismaMocks.apiKeyCreate).not.toHaveBeenCalled();
+    });
+
+    it("accepts a session that signed in just inside the window", async () => {
+      authMocks.requireAuth.mockResolvedValue({ userId });
+      prismaMocks.sessionFindUnique.mockResolvedValue({
+        createdAt: new Date(Date.now() - 14 * 60_000),
+      });
+      apiKeyMocks.generateApiKey.mockResolvedValue({
+        key: "mem_abcdefghijklmnop",
+        hash: "hash",
+      });
+      prismaMocks.apiKeyCreate.mockResolvedValue({
+        id: "key-1",
+        name: "Test Key",
+        keyPrefix: "mem_abc",
+        keySuffix: "mnop",
+        createdAt: new Date(),
+        lastUsedAt: null,
+        expiresAt: null,
+        revokedAt: null,
+      });
+
+      const res = await apiKeysPost(
+        createNextRequest("http://localhost/api/v1/api-keys", {
+          method: "POST",
+          body: { name: "Test Key" },
+        }),
+      );
+
+      expect(res.status).toBe(201);
+      expect(prismaMocks.apiKeyCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userId, expiresAt: null }),
+        }),
+      );
     });
 
     it("rejects empty name before generating key or creating record", async () => {
