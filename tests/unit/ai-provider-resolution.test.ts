@@ -19,6 +19,7 @@ import {
   AI_NOT_CONFIGURED_DETAIL,
   BUILTIN_AI_CAPABILITY,
   assertSafeAiBaseUrl,
+  findAiProvider,
   getAiAvailability,
   resolveAiProvider,
 } from "@/lib/ai/provider-resolution";
@@ -96,13 +97,57 @@ describe("AI provider lookup order", () => {
     expect(resolved.credentialId).toBeNull();
   });
 
-  it("skips a saved credential that cannot be decrypted", async () => {
+  it("does not fall back to a server key when the saved credential cannot be decrypted", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-server");
+    vi.stubEnv("OPENAI_API_KEY", "sk-server");
     prismaMocks.findMany.mockResolvedValue([
       credential({ encryptedSecret: "not-a-payload" }),
     ]);
-    const resolved = await resolveAiProvider("user-1");
-    expect(resolved).toMatchObject({ source: "env", provider: "ANTHROPIC" });
+    await expect(findAiProvider("user-1")).resolves.toBeNull();
+    await expect(resolveAiProvider("user-1")).rejects.toBeInstanceOf(
+      ServiceUnavailableError,
+    );
+    await expect(getAiAvailability("user-1")).resolves.toMatchObject({
+      configured: false,
+      reason: "saved-credential-unusable",
+    });
+  });
+
+  it("does not fall back to a server key for an OpenAI-compatible credential with no base URL", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-server");
+    prismaMocks.findMany.mockResolvedValue([
+      credential({ provider: "OPENAI_COMPAT", baseUrl: null }),
+    ]);
+    await expect(findAiProvider("user-1")).resolves.toBeNull();
+    await expect(getAiAvailability("user-1")).resolves.toMatchObject({
+      configured: false,
+      reason: "saved-credential-unusable",
+    });
+  });
+
+  it("does not fall back to a server key when the saved credential was rejected", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-server");
+    // The usable-status query finds nothing; the any-status query finds the
+    // rejected built-in row.
+    prismaMocks.findMany.mockImplementation(
+      async (args: { where: { status?: unknown } }) =>
+        args.where.status ? [] : [{ id: "cred-1", ...credential({ status: "ERROR" }) }],
+    );
+    await expect(findAiProvider("user-1")).resolves.toBeNull();
+    await expect(getAiAvailability("user-1")).resolves.toMatchObject({
+      configured: false,
+      reason: "saved-credential-unusable",
+    });
+  });
+
+  it("still uses the server key for a user with no saved built-in credential", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-server");
+    await expect(findAiProvider("user-1")).resolves.toMatchObject({
+      source: "env",
+    });
+    const availability = await getAiAvailability("user-1");
+    expect(availability).toMatchObject({ configured: true, source: "env" });
+    expect(availability.reason).toBeUndefined();
   });
 
   it("falls back to OPENAI_API_KEY before ANTHROPIC_API_KEY", async () => {

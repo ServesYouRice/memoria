@@ -6,6 +6,7 @@ import { encryptSecret } from "@/lib/agents/crypto";
 import {
   BUILTIN_AI_CAPABILITY,
   findAiProvider,
+  getAiAvailability,
 } from "@/lib/ai/provider-resolution";
 
 afterAll(async () => {
@@ -52,6 +53,32 @@ describe("built-in AI credential lookup", () => {
       source: "user",
       credentialId: builtin.id,
       apiKey: "sk-builtin",
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it("does not use the server key when the saved built-in credential was rejected", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-server");
+    const user = await prisma.user.create({
+      data: { email: `ai-${randomBytes(6).toString("hex")}@example.com` },
+    });
+    await prisma.modelCredential.create({
+      data: {
+        userId: user.id,
+        provider: "OPENAI",
+        label: "Built-in AI",
+        defaultModel: "gpt-4o-mini",
+        encryptedSecret: encryptSecret("sk-rejected"),
+        secretFingerprint: "fp-rejected",
+        capabilities: [BUILTIN_AI_CAPABILITY],
+        status: "ERROR",
+      },
+    });
+
+    await expect(findAiProvider(user.id)).resolves.toBeNull();
+    await expect(getAiAvailability(user.id)).resolves.toMatchObject({
+      configured: false,
+      reason: "saved-credential-unusable",
     });
     vi.unstubAllEnvs();
   });
