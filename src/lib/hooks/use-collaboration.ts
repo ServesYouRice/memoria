@@ -150,36 +150,52 @@ export function useCollaboration(
     statusRef.current = status;
   }, [status]);
 
-  // Handle incoming WebSocket messages
-  const handleMessage = useCallback((message: any) => {
-    switch (message.type) {
-      case "presence":
-        // Update user presence
-        setUsers(message.users || []);
-        break;
-
-      case "cursors":
-        // Update cursor positions
-        setCursors(message.cursors || []);
-        break;
-
-      case "message":
-        // Handle generic broadcast messages
-        if (onMessageRef.current) {
-          onMessageRef.current(message.payload);
-        }
-        break;
-
-      case "committed-event":
-      case "event": {
-        const event = message.event ?? message.payload;
-        if (isCommittedCanvasItemEvent(event)) {
-          acceptCommittedEventRef.current?.(event);
-        }
-        break;
-      }
-    }
+  /** Move the committed-event cursor forward to a snapshot's cursor. */
+  const advanceCursor = useCallback((value: unknown) => {
+    if (typeof value !== "string" || !/^\d+$/.test(value)) return;
+    const cursor = BigInt(value);
+    if (cursor > lastCursorRef.current) lastCursorRef.current = cursor;
   }, []);
+
+  // Handle incoming WebSocket messages
+  const handleMessage = useCallback(
+    (message: any) => {
+      switch (message.type) {
+        case "presence":
+          // Update user presence
+          setUsers(message.users || []);
+          break;
+
+        case "cursors":
+          // Update cursor positions
+          setCursors(message.cursors || []);
+          break;
+
+        case "message":
+          // A version restore replaced the canvas: reload it and continue
+          // after the restore's sequence.
+          if (message.payload?.type === "canvas-restore-required") {
+            advanceCursor(message.payload.cursor);
+            onSnapshotRequiredRef.current?.();
+          }
+          // Handle generic broadcast messages
+          if (onMessageRef.current) {
+            onMessageRef.current(message.payload);
+          }
+          break;
+
+        case "committed-event":
+        case "event": {
+          const event = message.event ?? message.payload;
+          if (isCommittedCanvasItemEvent(event)) {
+            acceptCommittedEventRef.current?.(event);
+          }
+          break;
+        }
+      }
+    },
+    [advanceCursor],
+  );
 
   const flushCommittedEvents = useCallback(() => {
     committedFlushTimeoutRef.current = null;
@@ -271,6 +287,10 @@ export function useCollaboration(
             snapshotRequired?: boolean;
           };
           if (payload.snapshotRequired) {
+            // The snapshot covers everything up to nextCursor (a restore, or
+            // events no longer kept): continue after it, or every later
+            // event would look like a gap and replay the same range again.
+            advanceCursor(payload.nextCursor);
             onSnapshotRequiredRef.current?.();
             return;
           }
@@ -303,7 +323,7 @@ export function useCollaboration(
         for (const event of deferred) acceptCommittedEvent(event);
       }
     },
-    [acceptCommittedEvent, canvasId],
+    [acceptCommittedEvent, advanceCursor, canvasId],
   );
 
   useEffect(() => {
