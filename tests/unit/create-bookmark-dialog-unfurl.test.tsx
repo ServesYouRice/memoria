@@ -73,4 +73,24 @@ describe("CreateBookmarkDialog unfurl failures (TASK-065)", () => {
       url: "https://example.com/b",
     });
   });
+
+  it("does not loop on a failed URL but still unfurls on Refresh (TASK-228)", async () => {
+    render(
+      <CreateBookmarkDialog open onClose={() => undefined} canvasId="c1" />,
+    );
+    const input = screen.getByRole("textbox", { name: /url/i });
+    fireEvent.change(input, { target: { value: "https://example.com/a" } });
+    await settle();
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTitle("Fetch preview"));
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      url: "https://example.com/a",
+    });
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
