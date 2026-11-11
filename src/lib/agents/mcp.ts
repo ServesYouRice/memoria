@@ -88,6 +88,7 @@ import {
   normalizeAgentItemWriteData,
   rejectSuggestion,
   revertChangeSet,
+  assertChangeSetWithinCanvasScope,
 } from "@/lib/agents/service-core";
 import { requireExternalWebhookExecution } from "@/lib/agents/external-delivery-policy";
 import { createLogger } from "@/lib/logger";
@@ -993,6 +994,13 @@ export async function executeMcpTool(
         changeSetId,
       });
       assertAgentCapability(agentProfile, AGENT_CAPABILITY_RUNGS.WRITE_SINGLE);
+      // Like every other MCP write, a revert stays inside the profile's
+      // allowed canvases, for each canvas the change set touches.
+      await assertChangeSetWithinCanvasScope({
+        userId: context.userId,
+        agentProfile,
+        changeSetId,
+      });
       return createTextResult(await revertChangeSet({ actor, changeSetId }));
     }
     case "actions.create_checkpoint": {

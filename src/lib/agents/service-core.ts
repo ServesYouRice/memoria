@@ -1761,6 +1761,76 @@ export async function assertAgentMayRevertChangeSet(input: {
   }
 }
 
+/**
+ * Rejects a revert that would change state on a canvas outside the agent
+ * profile's allowedCanvasIds. A canvas-scoped change set touches its scope
+ * canvas; a user-scoped one (archive, Ask move) touches every canvas its
+ * records name: Canvas targets, the canvases in each before/after snapshot
+ * and the board each recorded item is on now. A record naming no canvas
+ * cannot be scoped and is refused. Authorship is not checked here.
+ */
+export async function assertChangeSetWithinCanvasScope(input: {
+  userId: string;
+  agentProfile: Parameters<typeof assertCanvasScope>[0];
+  changeSetId: string;
+}) {
+  const changeSet = await prisma.changeSet.findFirst({
+    where: { id: input.changeSetId, userId: input.userId },
+    select: {
+      scopeType: true,
+      scopeId: true,
+      changeRecords: {
+        select: { targetType: true, targetId: true, before: true, after: true },
+      },
+    },
+  });
+  if (!changeSet) {
+    throw new NotFoundError("Change set not found.");
+  }
+  if (changeSet.scopeType === "canvas") {
+    assertCanvasScope(input.agentProfile, changeSet.scopeId);
+  }
+
+  const itemIds = [
+    ...new Set(
+      changeSet.changeRecords
+        .filter((record) => record.targetType === "CanvasItem")
+        .map((record) => record.targetId),
+    ),
+  ];
+  const items = itemIds.length
+    ? await prisma.canvasItem.findMany({
+        where: { id: { in: itemIds } },
+        select: { id: true, canvasId: true },
+      })
+    : [];
+  const canvasByItem = new Map(items.map((item) => [item.id, item.canvasId]));
+
+  for (const record of changeSet.changeRecords) {
+    const canvasIds = new Set<string>();
+    if (record.targetType === "Canvas") canvasIds.add(record.targetId);
+    const current =
+      record.targetType === "CanvasItem"
+        ? canvasByItem.get(record.targetId)
+        : undefined;
+    for (const canvasId of [
+      current,
+      snapshotCanvasId(record.before),
+      snapshotCanvasId(record.after),
+    ]) {
+      if (canvasId) canvasIds.add(canvasId);
+    }
+    if (canvasIds.size === 0 && changeSet.scopeType !== "canvas") {
+      throw new ForbiddenError(
+        "The selected agent profile is not allowed to revert this change set.",
+      );
+    }
+    for (const canvasId of canvasIds) {
+      assertCanvasScope(input.agentProfile, canvasId);
+    }
+  }
+}
+
 function snapshotCanvasId(value: Prisma.JsonValue | null) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const canvasId = (value as Record<string, unknown>).canvasId;
