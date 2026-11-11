@@ -30,6 +30,7 @@ import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
 import {
   existingFor,
+  existingLinkPath,
   findExistingLinks,
   normalizeLinkUrl,
   type ExistingLink,
@@ -80,13 +81,54 @@ function hashBatch(input: ClipBatchInput) {
     .digest("hex");
 }
 
+/**
+ * With `skipDuplicates`, a link whose normalized URL already appeared earlier
+ * in the batch is not saved again. Maps each such repeat's position to the
+ * position of the copy this batch saved.
+ */
+function batchRepeats(
+  links: ClipBatchInput["links"],
+  savedByIndex: Map<number, string>,
+): Map<number, number> {
+  const firstSaved = new Map<string, number>();
+  const repeats = new Map<number, number>();
+  links.forEach((link, index) => {
+    const key = normalizeLinkUrl(link.url);
+    if (!key) return;
+    if (savedByIndex.has(index)) {
+      if (!firstSaved.has(key)) firstSaved.set(key, index);
+      return;
+    }
+    const first = firstSaved.get(key);
+    if (first !== undefined) repeats.set(index, first);
+  });
+  return repeats;
+}
+
 function describeDuplicates(
   links: ClipBatchInput["links"],
   found: Map<string, ExistingLink[]>,
   savedByIndex: Map<number, string>,
+  inbox: { canvasId: string; skipDuplicates: boolean },
 ): ClipBatchDuplicate[] {
+  const repeats = inbox.skipDuplicates
+    ? batchRepeats(links, savedByIndex)
+    : new Map<number, number>();
   return links.flatMap((link, index) => {
-    const existing = existingFor(found, link.url);
+    const first = repeats.get(index);
+    const existing: ExistingLink[] =
+      first !== undefined
+        ? [
+            {
+              itemId: savedByIndex.get(first)!,
+              canvasId: inbox.canvasId,
+              canvasName: INBOX_CANVAS_NAME,
+              title: links[first]!.title || links[first]!.url,
+              url: links[first]!.url,
+              path: existingLinkPath(inbox.canvasId, savedByIndex.get(first)!),
+            },
+          ]
+        : existingFor(found, link.url);
     return existing.length > 0
       ? [
           {
@@ -192,25 +234,38 @@ export async function saveClipBatch(input: {
           data.links,
           found,
           new Map(previous.items.map((item) => [item.position, item.itemId])),
+          {
+            canvasId: previous.canvasId,
+            skipDuplicates: !!data.skipDuplicates,
+          },
         ),
       };
     }
 
+    const canvasId = await findOrCreateInbox(tx, userId);
+    await lockCanvasForMutation(tx, canvasId);
+
+    // Under the Inbox lock, so a concurrent batch's saved links are visible
+    // and two batches cannot both save the same new link.
     const found = await findExistingLinks(
       tx,
       userId,
       data.links.map((link) => link.url),
     );
-    // Original request positions of the links this batch saves.
+    // Original request positions of the links this batch saves. With
+    // skipDuplicates, a link repeated within the batch is saved once.
+    const seen = new Set<string>();
     const positions = data.links
       .map((link, index) => ({ link, index }))
-      .filter(
-        ({ link }) =>
-          !data.skipDuplicates || existingFor(found, link.url).length === 0,
-      );
-
-    const canvasId = await findOrCreateInbox(tx, userId);
-    await lockCanvasForMutation(tx, canvasId);
+      .filter(({ link }) => {
+        if (!data.skipDuplicates) return true;
+        if (existingFor(found, link.url).length > 0) return false;
+        const key = normalizeLinkUrl(link.url);
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     await assertCanvasItemCapacity(tx, canvasId, positions.length);
 
     const occupied = await tx.canvasItem.findMany({
@@ -295,6 +350,7 @@ export async function saveClipBatch(input: {
         new Map(
           items.map((item, created) => [positions[created]!.index, item.id]),
         ),
+        { canvasId, skipDuplicates: !!data.skipDuplicates },
       ),
     };
   });
