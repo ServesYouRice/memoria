@@ -226,6 +226,16 @@ export const sensitiveEndpointRateLimit = rateLimit({
   keyPrefix: "sensitive",
 });
 
+/**
+ * Browsers post CSP violation reports on their own, so they get a bucket of
+ * their own and cannot spend the OAuth/setup budget above.
+ */
+export const cspReportRateLimit = rateLimit({
+  maxRequests: configuredMaxRequests("CSP_REPORT_RATE_LIMIT_MAX_REQUESTS", 20),
+  windowMs: 60 * 1000,
+  keyPrefix: "csp-report",
+});
+
 const MINUTE_MS = 60 * 1000;
 
 /**

@@ -11,6 +11,7 @@ import {
   itemsRateLimit,
   agentRateLimit,
   sensitiveEndpointRateLimit,
+  cspReportRateLimit,
   apiSessionIpRateLimit,
   apiUserRateLimit,
   canvasesUserRateLimit,
@@ -116,11 +117,14 @@ export async function proxy(request: NextRequest) {
       return finalizeEarlyResponse(request, rateLimitResponse, requestId);
   }
 
-  if (
-    pathname === "/api/csp-report" ||
-    pathname.startsWith("/api/setup") ||
-    pathname.startsWith("/api/oauth")
-  ) {
+  if (pathname === "/api/csp-report") {
+    specificRateLimitApplied = true;
+    const rateLimitResponse = await cspReportRateLimit(request);
+    if (rateLimitResponse)
+      return finalizeEarlyResponse(request, rateLimitResponse, requestId);
+  }
+
+  if (pathname.startsWith("/api/setup") || pathname.startsWith("/api/oauth")) {
     specificRateLimitApplied = true;
     const rateLimitResponse = await sensitiveEndpointRateLimit(request);
     if (rateLimitResponse)
