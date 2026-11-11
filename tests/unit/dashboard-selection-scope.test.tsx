@@ -29,7 +29,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => state.params,
 }));
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: vi.fn(async () => undefined) }),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(async () => undefined),
+    setQueriesData: vi.fn(),
+  }),
 }));
 vi.mock("@/lib/hooks/use-canvases", () => ({
   canvasKeys: { all: ["canvases"] },

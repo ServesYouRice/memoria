@@ -42,6 +42,8 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { useThemeMode } from "@/lib/theme-context";
 import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
+import { apiFetch } from "@/lib/api/fetch-client";
+import { deleteCanvasesBounded, removeCanvasesFromPages } from "./bulk-delete";
 
 export function DashboardContent({ userName }: { userName?: string | null }) {
   const router = useRouter();
@@ -152,41 +154,54 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     setIsDeleting(true);
 
     try {
-      const results = await Promise.allSettled(
-        ids.map(async (id) => {
-          const response = await fetch(`/api/v1/canvases/${id}`, {
-            method: "DELETE",
-          });
-          if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.detail || "Failed to delete canvas");
-          }
-          return id;
-        }),
+      // apiFetch shares the 401 sign-in redirect and reads the problem detail.
+      const result = await deleteCanvasesBounded(ids, (id) =>
+        apiFetch(`/api/v1/canvases/${id}`, { method: "DELETE" }),
       );
+      const succeeded = result.deleted.length;
+      const plural = (count: number) =>
+        `${count} canvas${count === 1 ? "" : "es"}`;
 
-      const succeeded = results.filter((r) => r.status === "fulfilled").length;
-      const failed = results.filter((r) => r.status === "rejected").length;
-
-      if (failed === 0) {
-        toast.success(
-          `Deleted ${succeeded} canvas${succeeded === 1 ? "" : "es"}`,
-        );
+      if (result.failed.length === 0 && result.notAttempted.length === 0) {
+        toast.success(`Deleted ${plural(succeeded)}`);
         setSelectedCanvasIds(new Set());
         setSelectionMode(false);
-      } else if (succeeded > 0) {
-        toast.warning(
-          `Deleted ${succeeded} canvas${succeeded === 1 ? "" : "es"}, ${failed} failed`,
-        );
-        const failedIds = new Set(
-          ids.filter((_, idx) => results[idx].status === "rejected"),
-        );
-        setSelectedCanvasIds(failedIds);
       } else {
-        toast.error("Failed to delete selected canvases");
+        const unfinished = result.failed.length + result.notAttempted.length;
+        const reason = result.rateLimited
+          ? `Rate limit reached; try again${
+              result.retryAfterSeconds != null
+                ? ` in ${result.retryAfterSeconds} seconds`
+                : " shortly"
+            }.`
+          : (result.failed.find((failure) => failure.detail)?.detail ??
+            "Failed to delete canvas");
+        const message =
+          succeeded > 0
+            ? `Deleted ${plural(succeeded)}, ${unfinished} not deleted. ${reason}`
+            : `Failed to delete selected canvases. ${reason}`;
+        if (succeeded > 0) toast.warning(message);
+        else toast.error(message);
+        setSelectedCanvasIds(
+          new Set([
+            ...result.failed.map((failure) => failure.id),
+            ...result.notAttempted,
+          ]),
+        );
       }
       setDeleteConfirmOpen(false);
-      await queryClient.invalidateQueries({ queryKey: canvasKeys.all });
+
+      const deleted = new Set(result.deleted);
+      queryClient.setQueriesData({ queryKey: canvasKeys.all }, (data) =>
+        removeCanvasesFromPages(data, deleted),
+      );
+      // After a 429 the canvases budget is spent; mark the lists stale
+      // without refetching straight into the exhausted window.
+      await queryClient.invalidateQueries(
+        result.rateLimited
+          ? { queryKey: canvasKeys.all, refetchType: "none" }
+          : { queryKey: canvasKeys.all },
+      );
     } finally {
       setIsDeleting(false);
     }
