@@ -31,6 +31,7 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-078](tasks/IMP-078.md) | Canvas top bar fits on a phone | |
 | [IMP-087](tasks/IMP-087.md) | Same page width and top bar on every page | |
 | [IMP-089](tasks/IMP-089.md) | Empty pages offer a next step | |
+| [IMP-088](tasks/IMP-088.md) | The app says "canvas" everywhere, never "board" | |
 
 ## WAITING
 
@@ -45,7 +46,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-084](tasks/IMP-084.md) | Canvas: clearer top bar and add bar | IMP-078, IMP-079 |
 | [IMP-085](tasks/IMP-085.md) | Canvas notes and background look finished | IMP-077, IMP-079 |
 | [IMP-086](tasks/IMP-086.md) | Settings: a side menu instead of one long page | IMP-075, IMP-079 |
-| [IMP-088](tasks/IMP-088.md) | One name for the same thing ("canvas" or "board") | DEC-016 |
 | [IMP-090](tasks/IMP-090.md) | Canvas cards are real links; buttons are finger-sized | IMP-083 |
 
 ## USER DECISIONS
@@ -59,4 +59,4 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | DEC-003 | Give agent sessions push access to `ServesYouRice/infra` (session permission for adding the repo was denied) | Allow `add_repo` for infra in session settings | Yes (owner, 2026-11-06) | IMP-056 |
 | DEC-004 | Fill the infra PR's secrets and `CHANGE_ME` values (hosts, R2, SMTP, SOPS), confirm registration modes, then release a staging image | Staging first; registration `closed` on staging, `invite` on production | | IMP-056 |
 | DEC-005 | Run `pnpm gate integration`, `pnpm gate e2e`, `pnpm gate container` and `pnpm smoke` on Node 26 on the dev machine (agent sessions are blocked by Prisma's AI guard on `migrate reset` and by the sandbox proxy's TLS in the image build) | Run on the dev machine | Done, no errors reported (owner, 2026-11-07) | IMP-058, IMP-056 |
-| DEC-016 | Which single word does the app use for a user's space: "canvas" or "board"? | "canvas" (already used on the dashboard and in most screens) | | IMP-088 |
+| DEC-016 | Which single word does the app use for a user's space: "canvas" or "board"? | "canvas" (already used on the dashboard and in most screens) | "canvas" (owner, 2026-11-11) | IMP-088 |
