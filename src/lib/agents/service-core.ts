@@ -950,77 +950,108 @@ export async function createKnowledgeRelationWrite(input: {
   });
 }
 
+async function readOwnedSuggestion(userId: string, suggestionId: string) {
+  const suggestion = await prisma.suggestion.findFirst({
+    where: { id: suggestionId, userId },
+  });
+  if (!suggestion) {
+    throw new NotFoundError("Suggestion not found.");
+  }
+  return suggestion;
+}
+
+async function expireOpenSuggestion(userId: string, suggestionId: string) {
+  await prisma.suggestion.updateMany({
+    where: { id: suggestionId, userId, status: SuggestionStatus.OPEN },
+    data: {
+      status: SuggestionStatus.EXPIRED,
+      actedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Approval and rejection are compare-and-set transitions: the write only
+ * applies while the row is still in an allowed source status, so a slow
+ * request cannot move an EXECUTING, EXECUTED or REJECTED suggestion back.
+ */
 export async function approveSuggestion(input: {
   userId: string;
   suggestionId: string;
 }) {
-  const suggestion = await prisma.suggestion.findFirst({
+  const assertApprovable = async (
+    suggestion: Awaited<ReturnType<typeof readOwnedSuggestion>>,
+  ) => {
+    if (suggestion.status !== SuggestionStatus.OPEN) {
+      throw new BadRequestError("Only open suggestions can be approved.");
+    }
+    if (suggestion.expiresAt <= new Date()) {
+      await expireOpenSuggestion(input.userId, suggestion.id);
+      throw new BadRequestError("This suggestion has expired.");
+    }
+  };
+
+  await assertApprovable(
+    await readOwnedSuggestion(input.userId, input.suggestionId),
+  );
+
+  const approved = await prisma.suggestion.updateMany({
     where: {
       id: input.suggestionId,
       userId: input.userId,
+      status: SuggestionStatus.OPEN,
+      expiresAt: { gt: new Date() },
     },
-  });
-
-  if (!suggestion) {
-    throw new NotFoundError("Suggestion not found.");
-  }
-
-  if (suggestion.status !== SuggestionStatus.OPEN) {
-    throw new BadRequestError("Only open suggestions can be approved.");
-  }
-
-  if (suggestion.expiresAt <= new Date()) {
-    await prisma.suggestion.update({
-      where: { id: suggestion.id },
-      data: {
-        status: SuggestionStatus.EXPIRED,
-        actedAt: new Date(),
-      },
-    });
-
-    throw new BadRequestError("This suggestion has expired.");
-  }
-
-  return prisma.suggestion.update({
-    where: { id: suggestion.id },
     data: {
       status: SuggestionStatus.APPROVED,
       actedAt: new Date(),
     },
   });
+
+  const current = await readOwnedSuggestion(input.userId, input.suggestionId);
+  if (approved.count !== 1) {
+    await assertApprovable(current);
+    throw new BadRequestError("Only open suggestions can be approved.");
+  }
+  return current;
 }
 
 export async function rejectSuggestion(input: {
   userId: string;
   suggestionId: string;
 }) {
-  const suggestion = await prisma.suggestion.findFirst({
+  const rejectable: SuggestionStatus[] = [
+    SuggestionStatus.OPEN,
+    SuggestionStatus.APPROVED,
+  ];
+  const notRejectable = () =>
+    new BadRequestError("Only open or approved suggestions can be rejected.");
+
+  const suggestion = await readOwnedSuggestion(
+    input.userId,
+    input.suggestionId,
+  );
+  if (!rejectable.includes(suggestion.status)) {
+    throw notRejectable();
+  }
+
+  const rejected = await prisma.suggestion.updateMany({
     where: {
       id: input.suggestionId,
       userId: input.userId,
+      status: { in: rejectable },
     },
-  });
-
-  if (!suggestion) {
-    throw new NotFoundError("Suggestion not found.");
-  }
-
-  if (
-    suggestion.status !== SuggestionStatus.OPEN &&
-    suggestion.status !== SuggestionStatus.APPROVED
-  ) {
-    throw new BadRequestError(
-      "Only open or approved suggestions can be rejected.",
-    );
-  }
-
-  return prisma.suggestion.update({
-    where: { id: suggestion.id },
     data: {
       status: SuggestionStatus.REJECTED,
       actedAt: new Date(),
     },
   });
+
+  const current = await readOwnedSuggestion(input.userId, input.suggestionId);
+  if (rejected.count !== 1) {
+    throw notRejectable();
+  }
+  return current;
 }
 
 export async function markSuggestionExecuted(input: {
