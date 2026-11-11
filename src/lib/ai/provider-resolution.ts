@@ -77,8 +77,14 @@ export function allowsPrivateAiBaseUrls(): boolean {
  * Owner-supplied base URLs are fetched by the server, so they pass the same
  * SSRF rules as bookmark unfurling. Self-hosters who run a local model server
  * opt in to private addresses with AI_ALLOW_PRIVATE_BASE_URLS=true.
+ *
+ * Returns the address the check validated, so the request can connect to it
+ * rather than resolve the host again (DNS rebinding); null when private
+ * addresses are allowed and no address was checked.
  */
-export async function assertSafeAiBaseUrl(baseUrl: string): Promise<void> {
+export async function assertSafeAiBaseUrl(
+  baseUrl: string,
+): Promise<string | null> {
   if (allowsPrivateAiBaseUrls()) {
     let url: URL;
     try {
@@ -93,17 +99,18 @@ export async function assertSafeAiBaseUrl(baseUrl: string): Promise<void> {
     ) {
       throw new ServiceUnavailableError("The saved AI base URL is invalid.");
     }
-    return;
+    return null;
   }
   const syntactic = validateUrlForSsrf(baseUrl);
   const result = syntactic.valid
     ? await validateUrlForSsrfWithDns(baseUrl)
-    : syntactic;
-  if (!result.valid) {
+    : { ...syntactic, pinnedIp: undefined };
+  if (!result.valid || !result.pinnedIp) {
     throw new ServiceUnavailableError(
       `The saved AI base URL cannot be used: ${result.error ?? "blocked"}.`,
     );
   }
+  return result.pinnedIp;
 }
 
 function resolvedFrom(

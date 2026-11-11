@@ -238,7 +238,7 @@ describe("assertSafeAiBaseUrl", () => {
     vi.stubEnv("AI_ALLOW_PRIVATE_BASE_URLS", "true");
     await expect(
       assertSafeAiBaseUrl("http://localhost:11434/v1"),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
     await expect(
       assertSafeAiBaseUrl("ftp://localhost/v1"),
     ).rejects.toBeInstanceOf(ServiceUnavailableError);

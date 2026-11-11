@@ -1,4 +1,5 @@
 import type { ModelProvider } from "@/generated/prisma/client";
+import { pinnedHttpRequest } from "@/lib/utils/ssrf-protection";
 
 /**
  * Optional capabilities an adapter can advertise. Each optional capability
@@ -19,6 +20,11 @@ export interface AiProviderConfig {
   model: string;
   apiKey: string;
   baseUrl: string;
+  /**
+   * The address the SSRF check validated for a user-supplied `baseUrl`.
+   * When set, requests connect to it instead of resolving the host again.
+   */
+  pinnedIp?: string | null;
 }
 
 export interface AiTextRequest {
@@ -106,6 +112,8 @@ export class AiUpstreamError extends Error {
 }
 
 export const AI_PROVIDER_TIMEOUT_MS = 60_000;
+/** Largest provider response body read, on success and error paths alike. */
+export const AI_PROVIDER_MAX_RESPONSE_BYTES = 1024 * 1024;
 
 export function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
@@ -117,6 +125,7 @@ export async function postJson(
   headers: Record<string, string>,
   body: unknown,
   signal?: AbortSignal,
+  pinnedIp?: string | null,
 ): Promise<unknown> {
   return postBody(
     adapter,
@@ -124,6 +133,7 @@ export async function postJson(
     { "content-type": "application/json", ...headers },
     JSON.stringify(body),
     signal,
+    pinnedIp,
   );
 }
 
@@ -134,9 +144,134 @@ export async function postForm(
   headers: Record<string, string>,
   body: FormData,
   signal?: AbortSignal,
+  pinnedIp?: string | null,
 ): Promise<unknown> {
   // fetch sets the multipart content-type with its boundary.
-  return postBody(adapter, url, headers, body, signal);
+  return postBody(adapter, url, headers, body, signal, pinnedIp);
+}
+
+interface ProviderResponse {
+  status: number;
+  ok: boolean;
+  requestId: string | null;
+  /** The body, or null when it passed the byte cap. */
+  body: Buffer | null;
+}
+
+/** Reads at most `limit` bytes; null (and the stream cancelled) past it. */
+async function readCapped(
+  response: Response,
+  limit: number,
+): Promise<Buffer | null> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    await response.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+async function viaFetch(
+  url: string,
+  headers: Record<string, string>,
+  body: string | FormData,
+  signal: AbortSignal,
+): Promise<ProviderResponse> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body,
+    // A saved base URL is validated before use; never follow it elsewhere.
+    redirect: "error",
+    signal,
+  });
+  return {
+    status: response.status,
+    ok: response.ok,
+    requestId:
+      response.headers.get("request-id") ??
+      response.headers.get("x-request-id"),
+    // An error body is only drained; a failed read keeps the status.
+    body: response.ok
+      ? await readCapped(response, AI_PROVIDER_MAX_RESPONSE_BYTES)
+      : await readCapped(response, AI_PROVIDER_MAX_RESPONSE_BYTES).catch(
+          () => null,
+        ),
+  };
+}
+
+/**
+ * Connects to the address the SSRF check validated, so a second DNS answer
+ * (rebinding) is never contacted. Redirects are not followed.
+ */
+async function viaPinnedIp(
+  url: string,
+  pinnedIp: string,
+  headers: Record<string, string>,
+  body: string | FormData,
+  signal: AbortSignal,
+): Promise<ProviderResponse> {
+  let payload: Buffer;
+  const sent: Record<string, string> = {
+    accept: "application/json",
+    "user-agent": "Memoria/1.0",
+    ...headers,
+  };
+  if (typeof body === "string") {
+    payload = Buffer.from(body, "utf8");
+  } else {
+    // Encode the multipart body (and its boundary) the way fetch would.
+    const encoded = new Response(body);
+    payload = Buffer.from(await encoded.arrayBuffer());
+    sent["content-type"] = encoded.headers.get("content-type")!;
+  }
+  sent["content-length"] = String(payload.byteLength);
+  try {
+    const response = await pinnedHttpRequest(new URL(url), pinnedIp, {
+      method: "POST",
+      headers: sent,
+      body: payload,
+      timeout: AI_PROVIDER_TIMEOUT_MS,
+      maxSize: AI_PROVIDER_MAX_RESPONSE_BYTES,
+      signal,
+    });
+    const requestId =
+      response.headers["request-id"] ?? response.headers["x-request-id"];
+    return {
+      status: response.status,
+      ok: response.ok,
+      requestId: typeof requestId === "string" ? requestId : null,
+      body: response.rawBody,
+    };
+  } catch (error) {
+    const status = (error as { status?: unknown })?.status;
+    if (
+      (error as Error)?.message === "Response too large" &&
+      typeof status === "number"
+    ) {
+      return {
+        status,
+        ok: status >= 200 && status < 300,
+        requestId: null,
+        body: null,
+      };
+    }
+    throw error;
+  }
 }
 
 async function postBody(
@@ -145,18 +280,15 @@ async function postBody(
   headers: Record<string, string>,
   body: string | FormData,
   signal?: AbortSignal,
+  pinnedIp?: string | null,
 ): Promise<unknown> {
   const timeout = AbortSignal.timeout(AI_PROVIDER_TIMEOUT_MS);
-  let response: Response;
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  let response: ProviderResponse;
   try {
-    response = await fetch(url, {
-      method: "POST",
-      headers,
-      body,
-      // A saved base URL is validated before use; never follow it elsewhere.
-      redirect: "error",
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    });
+    response = pinnedIp
+      ? await viaPinnedIp(url, pinnedIp, headers, body, combined)
+      : await viaFetch(url, headers, body, combined);
   } catch (error) {
     throw new AiUpstreamError(
       adapter,
@@ -164,12 +296,10 @@ async function postBody(
       `Request failed: ${(error as Error)?.name ?? "Error"}`,
     );
   }
-  const requestId =
-    response.headers.get("request-id") ?? response.headers.get("x-request-id");
+  const { requestId } = response;
   if (!response.ok) {
-    // Drain the body so the connection is released, but never log or surface
-    // it: provider error bodies can echo prompt content.
-    await response.text().catch(() => undefined);
+    // The (capped) body is never logged or surfaced: provider error bodies
+    // can echo prompt content.
     throw new AiUpstreamError(
       adapter,
       response.status,
@@ -177,8 +307,16 @@ async function postBody(
       requestId,
     );
   }
+  if (response.body === null) {
+    throw new AiUpstreamError(
+      adapter,
+      response.status,
+      "Provider response was too large",
+      requestId,
+    );
+  }
   try {
-    return await response.json();
+    return JSON.parse(response.body.toString("utf8"));
   } catch {
     throw new AiUpstreamError(
       adapter,

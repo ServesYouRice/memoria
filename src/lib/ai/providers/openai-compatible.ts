@@ -97,6 +97,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       headers,
       body,
       request.signal,
+      config.pinnedIp,
     )) as ChatCompletionResponse;
     const content = payload?.choices?.[0]?.message?.content;
     if (typeof content !== "string") {
@@ -123,6 +124,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       authHeaders(config),
       form,
       request.signal,
+      config.pinnedIp,
     )) as TranscriptionResponse;
     if (typeof payload?.text !== "string") {
       throw new AiUpstreamError(
@@ -161,6 +163,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       authHeaders(config),
       body,
       request.signal,
+      config.pinnedIp,
     )) as ChatCompletionResponse;
     return messageContent(payload);
   },
@@ -171,6 +174,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       authHeaders(config),
       { model: request.model, input: request.input },
       request.signal,
+      config.pinnedIp,
     )) as EmbeddingResponse;
     const rows = Array.isArray(payload?.data) ? [...payload.data] : [];
     rows.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));

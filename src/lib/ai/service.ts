@@ -29,12 +29,13 @@ export interface GenerateOptions {
   signal?: AbortSignal;
 }
 
+/** Validates a saved custom base URL and pins requests to the checked IP. */
 async function assertUsableBaseUrl(resolved: ResolvedAiProvider) {
   if (resolved.source !== "user") return;
   if (resolved.baseUrl === getProviderSlot(resolved.provider).defaultBaseUrl) {
     return;
   }
-  await assertSafeAiBaseUrl(resolved.baseUrl);
+  resolved.pinnedIp = await assertSafeAiBaseUrl(resolved.baseUrl);
 }
 
 export async function generateText(options: GenerateOptions): Promise<string> {

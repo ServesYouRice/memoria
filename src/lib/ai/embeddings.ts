@@ -54,7 +54,7 @@ export async function embedText(input: {
       resolved.source === "user" &&
       resolved.baseUrl !== getProviderSlot(resolved.provider).defaultBaseUrl
     ) {
-      await assertSafeAiBaseUrl(resolved.baseUrl);
+      resolved.pinnedIp = await assertSafeAiBaseUrl(resolved.baseUrl);
     }
     const { value } = await runBudgetedAi(
       input.userId,

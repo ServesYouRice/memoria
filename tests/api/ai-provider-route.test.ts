@@ -192,7 +192,11 @@ describe("/api/v1/ai/provider", () => {
   it("refuses to move a saved key to a new base URL without the key", async () => {
     vi.stubEnv("AI_ALLOW_PRIVATE_BASE_URLS", "true");
     prismaMocks.modelCredential.findMany.mockResolvedValue([
-      { ...savedRow, provider: "OPENAI_COMPAT", baseUrl: "https://llm.example.com/v1" },
+      {
+        ...savedRow,
+        provider: "OPENAI_COMPAT",
+        baseUrl: "https://llm.example.com/v1",
+      },
     ]);
 
     const moved = await PUT(

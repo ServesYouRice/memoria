@@ -53,6 +53,7 @@ function postMessages(
     },
     body,
     signal,
+    config.pinnedIp,
   ) as Promise<MessagesResponse>;
 }
 
@@ -87,6 +88,7 @@ export const anthropicAdapter: AiProviderAdapter = {
       },
       body,
       request.signal,
+      config.pinnedIp,
     )) as MessagesResponse;
 
     if (payload?.stop_reason === "refusal") {

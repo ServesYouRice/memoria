@@ -104,7 +104,9 @@ describe("built-in AI credential lookup", () => {
   });
 
   it("keeps the saved key on a provider 403 and flags it on a 401", async () => {
-    const credential = await seedBuiltin(`sk-${randomBytes(4).toString("hex")}`);
+    const credential = await seedBuiltin(
+      `sk-${randomBytes(4).toString("hex")}`,
+    );
     const respond = vi.fn(async () => new Response("{}", { status: 403 }));
     vi.stubGlobal("fetch", respond);
     try {
@@ -112,15 +114,21 @@ describe("built-in AI credential lookup", () => {
         generateText({ prompt: "Hi", userId: credential.userId }),
       ).rejects.toMatchObject({ status: 502 });
       await expect(
-        prisma.modelCredential.findUniqueOrThrow({ where: { id: credential.id } }),
+        prisma.modelCredential.findUniqueOrThrow({
+          where: { id: credential.id },
+        }),
       ).resolves.toMatchObject({ status: "ACTIVE" });
 
-      respond.mockImplementation(async () => new Response("{}", { status: 401 }));
+      respond.mockImplementation(
+        async () => new Response("{}", { status: 401 }),
+      );
       await expect(
         generateText({ prompt: "Hi", userId: credential.userId }),
       ).rejects.toMatchObject({ status: 502 });
       await expect(
-        prisma.modelCredential.findUniqueOrThrow({ where: { id: credential.id } }),
+        prisma.modelCredential.findUniqueOrThrow({
+          where: { id: credential.id },
+        }),
       ).resolves.toMatchObject({ status: "ERROR" });
     } finally {
       vi.unstubAllGlobals();
@@ -128,7 +136,9 @@ describe("built-in AI credential lookup", () => {
   });
 
   it("does not flag a replacement key when a late rejection names the old one", async () => {
-    const credential = await seedBuiltin(`sk-${randomBytes(4).toString("hex")}`);
+    const credential = await seedBuiltin(
+      `sk-${randomBytes(4).toString("hex")}`,
+    );
     const resolved = await findAiProvider(credential.userId);
     expect(resolved?.credentialId).toBe(credential.id);
 
@@ -140,10 +150,15 @@ describe("built-in AI credential lookup", () => {
         status: "UNVERIFIED",
       },
     });
-    await markAiCredentialRejected(resolved!.credentialId!, resolved!.secretFingerprint!);
+    await markAiCredentialRejected(
+      resolved!.credentialId!,
+      resolved!.secretFingerprint!,
+    );
 
     await expect(
-      prisma.modelCredential.findUniqueOrThrow({ where: { id: credential.id } }),
+      prisma.modelCredential.findUniqueOrThrow({
+        where: { id: credential.id },
+      }),
     ).resolves.toMatchObject({ status: "UNVERIFIED" });
   });
 });

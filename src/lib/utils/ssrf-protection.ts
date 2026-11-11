@@ -209,7 +209,7 @@ export function pinnedHttpRequest(
   options: {
     method?: string;
     headers?: Record<string, string>;
-    body?: string;
+    body?: string | Buffer;
     timeout?: number;
     maxSize?: number;
     signal?: AbortSignal;
@@ -252,10 +252,16 @@ export function pinnedHttpRequest(
     }
 
     const req = lib.request(reqOptions, (res) => {
+      // `status` lets callers keep status-based error mapping for an
+      // oversized error body.
+      const tooLarge = () =>
+        Object.assign(new Error("Response too large"), {
+          status: res.statusCode || 0,
+        });
       const contentLength = res.headers["content-length"];
       if (contentLength && parseInt(contentLength, 10) > maxSize) {
         req.destroy();
-        return reject(new Error("Response too large"));
+        return reject(tooLarge());
       }
 
       let totalSize = 0;
@@ -265,7 +271,7 @@ export function pinnedHttpRequest(
         totalSize += chunk.length;
         if (totalSize > maxSize) {
           req.destroy();
-          return reject(new Error("Response too large"));
+          return reject(tooLarge());
         }
         chunks.push(chunk);
       });
