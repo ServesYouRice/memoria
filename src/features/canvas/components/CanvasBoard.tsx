@@ -82,6 +82,7 @@ import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganize
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { isVersionConflict } from "@/lib/api/fetch-client";
+import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -1374,12 +1375,14 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             x={position.x}
             y={position.y}
             draggable={!isDrawing && isSpacePressed && !isTimeMachineActive}
-            onDragMove={(event) =>
-              setPosition({ x: event.target.x(), y: event.target.y() })
-            }
-            onDragEnd={(event) =>
-              setPosition({ x: event.target.x(), y: event.target.y() })
-            }
+            onDragMove={(event) => {
+              const next = stageDragPosition(event);
+              if (next) setPosition(next);
+            }}
+            onDragEnd={(event) => {
+              const next = stageDragPosition(event);
+              if (next) setPosition(next);
+            }}
             onWheel={(event) => {
               event.evt.preventDefault();
               const stage = event.target.getStage();
