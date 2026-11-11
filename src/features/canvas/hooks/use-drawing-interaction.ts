@@ -6,12 +6,17 @@ import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
 
 interface UseDrawingInteractionProps {
   canvasId: string;
+  /** IMP-008: without it, no stroke or shape is started or created. */
+  canCreateItems: boolean;
 }
 
 export function useDrawingInteraction({
   canvasId,
+  canCreateItems,
 }: UseDrawingInteractionProps) {
-  const { activeTool, drawingState } = useCanvasStore();
+  const { activeTool: storedTool, drawingState } = useCanvasStore();
+  // The persisted tool may come from a canvas this user could edit.
+  const activeTool = canCreateItems ? storedTool : "select";
   const { mutate: createItem } = useCreateCanvasItem();
 
   const [isDrawing, setIsDrawing] = useState(false);

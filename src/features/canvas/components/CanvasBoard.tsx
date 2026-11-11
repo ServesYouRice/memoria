@@ -327,6 +327,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     canvasId,
     stageRef: stageRef as React.RefObject<Konva.Stage>,
     activeTool,
+    canCreateItems: capabilities.canCreateItems,
     zoom,
     position,
     isSelecting,
