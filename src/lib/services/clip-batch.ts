@@ -26,6 +26,7 @@ import {
   assertCanvasItemCapacity,
 } from "@/lib/policy/capacity";
 import { findOpenSlot, INBOX_CANVAS_NAME } from "@/lib/agents/inbox";
+import { MAX_BOOKMARK_TITLE_LENGTH } from "@/lib/constants";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { enqueueLinkEnrichment } from "@/lib/services/link-enrichment";
 import {
@@ -66,6 +67,14 @@ export interface ClipBatchResult {
   replayed: boolean;
   /** Links already in the user's boards (IMP-065). */
   duplicates: ClipBatchDuplicate[];
+}
+
+/**
+ * The saved bookmark's title: the sent title, or the URL cut to the bookmark
+ * title limit, since a URL may be longer than a title can be.
+ */
+function bookmarkTitle(link: ClipBatchInput["links"][number]) {
+  return (link.title?.trim() || link.url).slice(0, MAX_BOOKMARK_TITLE_LENGTH);
 }
 
 function hashBatch(input: ClipBatchInput) {
@@ -123,7 +132,7 @@ function describeDuplicates(
               itemId: savedByIndex.get(first)!,
               canvasId: inbox.canvasId,
               canvasName: INBOX_CANVAS_NAME,
-              title: links[first]!.title || links[first]!.url,
+              title: bookmarkTitle(links[first]!),
               url: links[first]!.url,
               path: existingLinkPath(inbox.canvasId, savedByIndex.get(first)!),
             },
@@ -278,7 +287,7 @@ export async function saveClipBatch(input: {
       occupied.push(rect);
       const content = parseCanvasItemContent(ItemType.BOOKMARK, {
         url: link.url,
-        title: link.title || link.url,
+        title: bookmarkTitle(link),
       });
       return {
         canvasId,
@@ -335,7 +344,7 @@ export async function saveClipBatch(input: {
       userId,
       items.map((item, created) => {
         const link = positions[created]!.link;
-        return { itemId: item.id, baseTitle: link.title || link.url };
+        return { itemId: item.id, baseTitle: bookmarkTitle(link) };
       }),
     );
 
