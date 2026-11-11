@@ -50,6 +50,14 @@ interface Share {
   createdAt: string;
 }
 
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: "VIEW" | "COMMENT" | "EDIT";
+  expiresAt: string;
+  createdAt: string;
+}
+
 function formatShareError(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
     const retry = error.retryAfterSeconds
@@ -83,6 +91,8 @@ export function ShareDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
   const [shares, setShares] = useState<Share[]>([]);
+  // Sharing by email sends an invitation; it stays here until it is answered.
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
   const [sharingWithUser, setSharingWithUser] = useState(false);
   const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
 
@@ -93,6 +103,7 @@ export function ShareDialog({
       if (response.ok) {
         const data = await response.json();
         setShares(data.shares || []);
+        setInvitations(data.invitations || []);
       }
     } catch (err) {
       setError(formatShareError(err, "Failed to load shares"));
@@ -261,6 +272,34 @@ export function ShareDialog({
       setError(formatShareError(err, "Failed to revoke share"));
     } finally {
       setRevokingShareId(null);
+    }
+  };
+
+  const handleRevokeInvitation = async (
+    invitationId: string,
+    invitationEmail: string,
+  ) => {
+    const confirmed = await confirmDialog({
+      title: "Revoke invitation?",
+      message: `The invitation sent to ${invitationEmail} will stop working.`,
+      confirmText: "Revoke invitation",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setRevokingShareId(invitationId);
+    setError(null);
+    try {
+      await apiFetch(`/api/v1/canvases/${canvasId}/share/${invitationId}`, {
+        method: "DELETE",
+      });
+      setSuccess(`Invitation revoked for ${invitationEmail}`);
+    } catch (err) {
+      // A conflict means the invitation was answered meanwhile; the reload
+      // below moves an accepted invitee into the collaborator list.
+      setError(formatShareError(err, "Failed to revoke invitation"));
+    } finally {
+      setRevokingShareId(null);
+      loadShares();
     }
   };
 
@@ -444,6 +483,42 @@ export function ShareDialog({
                   </ListItem>
                 ))}
               </List>
+            )}
+
+            {invitations.length > 0 && (
+              <>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ mt: 1, color: "text.secondary" }}
+                >
+                  Pending invitations
+                </Typography>
+                <List dense aria-label="Pending invitations">
+                  {invitations.map((invitation) => (
+                    <ListItem key={invitation.id}>
+                      <ListItemText
+                        primary={invitation.email}
+                        secondary={`Invited to ${invitation.role.toLowerCase()}`}
+                      />
+                      <ListItemSecondaryAction>
+                        <IconButton
+                          edge="end"
+                          aria-label={`Revoke invitation for ${invitation.email}`}
+                          onClick={() =>
+                            void handleRevokeInvitation(
+                              invitation.id,
+                              invitation.email,
+                            )
+                          }
+                          disabled={revokingShareId !== null}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                </List>
+              </>
             )}
           </Box>
 
