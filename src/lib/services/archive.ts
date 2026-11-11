@@ -39,6 +39,24 @@ export interface ArchiveItemsResult {
   archivedItemCount: number;
 }
 
+export interface ArchiveItemsOptions {
+  /**
+   * Extra condition an item must still meet to be archived. It is applied to
+   * the read under the board locks and again in each write, so an item that
+   * stopped matching meanwhile (a writer that takes no board lock included)
+   * is skipped.
+   */
+  eligibleWhere?: Prisma.CanvasItemWhereInput;
+  /**
+   * Runs inside the archive transaction after the items are archived. A
+   * throw rolls the whole archive back.
+   */
+  onArchived?: (
+    tx: Prisma.TransactionClient,
+    archived: { agentActionId: string; changeSetId: string; itemIds: string[] },
+  ) => Promise<void>;
+}
+
 /**
  * Archives the given items the actor owns and still has on a board. Items
  * that are gone, already in the trash or on someone else's board are skipped;
@@ -48,6 +66,7 @@ export async function archiveItems(input: {
   actor: ActorContext;
   itemIds: string[];
   summary: string;
+  options?: ArchiveItemsOptions;
 }): Promise<ArchiveItemsResult> {
   const userId = input.actor.userId;
   const itemIds = Array.from(new Set(input.itemIds));
@@ -57,6 +76,7 @@ export async function archiveItems(input: {
       `Archive at most ${ARCHIVE_MAX_ITEMS} items at a time.`,
     );
   }
+  const eligibleWhere = input.options?.eligibleWhere;
   const touched = new Set<string>();
 
   const result = await prisma.$transaction(async (tx) => {
@@ -85,6 +105,7 @@ export async function archiveItems(input: {
         id: { in: itemIds },
         deletedAt: null,
         canvas: { userId, isTemplate: false },
+        ...(eligibleWhere ? { AND: [eligibleWhere] } : {}),
       },
       orderBy: { id: "asc" },
     });
@@ -120,17 +141,28 @@ export async function archiveItems(input: {
     });
 
     const now = new Date();
+    const archivedItemIds: string[] = [];
     for (const item of items) {
-      const archived = await tx.canvasItem.update({
-        where: { id: item.id },
-        data: {
-          deletedAt: now,
-          deletedById: userId,
-          archivedAt: now,
-          version: { increment: 1 },
-          updatedById: userId,
-        },
-      });
+      const data = {
+        deletedAt: now,
+        deletedById: userId,
+        archivedAt: now,
+        version: { increment: 1 },
+        updatedById: userId,
+      };
+      let archived;
+      if (eligibleWhere) {
+        // The write itself carries the condition: PostgreSQL re-checks it on
+        // the committed row when it had to wait for a concurrent writer.
+        [archived] = await tx.canvasItem.updateManyAndReturn({
+          where: { id: item.id, deletedAt: null, AND: [eligibleWhere] },
+          data,
+        });
+        if (!archived) continue;
+      } else {
+        archived = await tx.canvasItem.update({ where: { id: item.id }, data });
+      }
+      archivedItemIds.push(item.id);
       await recordCanvasItemEvent(tx, {
         canvasId: item.canvasId,
         actorId: userId,
@@ -150,6 +182,9 @@ export async function archiveItems(input: {
         },
       });
     }
+    if (archivedItemIds.length === 0) {
+      throw new BadRequestError("These items are already archived or gone.");
+    }
 
     await tx.changeSet.update({
       where: { id: changeSet.id },
@@ -159,12 +194,17 @@ export async function archiveItems(input: {
       where: { id: agentAction.id },
       data: { status: AgentActionStatus.COMPLETED },
     });
+    await input.options?.onArchived?.(tx, {
+      agentActionId: agentAction.id,
+      changeSetId: changeSet.id,
+      itemIds: archivedItemIds,
+    });
 
     return {
       agentActionId: agentAction.id,
       changeSetId: changeSet.id,
-      archivedItemIds: items.map((item) => item.id),
-      archivedItemCount: items.length,
+      archivedItemIds,
+      archivedItemCount: archivedItemIds.length,
     };
   });
 
