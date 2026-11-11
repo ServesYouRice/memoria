@@ -290,8 +290,19 @@ const api = {
 export const canvasItemKeys = {
   all: ["canvas-items"] as const,
   lists: () => [...canvasItemKeys.all, "list"] as const,
+  // Only defined filters become own keys. TanStack's partial matching checks
+  // every key of a filter object, so `viewport: undefined` would never match
+  // the board's viewport query; hashes are unchanged because hashing already
+  // drops undefined values.
   list: (canvasId: string, type?: ItemType, viewport?: ViewportParams) =>
-    [...canvasItemKeys.lists(), { canvasId, type, viewport }] as const,
+    [
+      ...canvasItemKeys.lists(),
+      {
+        canvasId,
+        ...(type !== undefined ? { type } : {}),
+        ...(viewport !== undefined ? { viewport } : {}),
+      } as { canvasId: string; type?: ItemType; viewport?: ViewportParams },
+    ] as const,
   detail: (itemId: string) =>
     [...canvasItemKeys.all, "detail", itemId] as const,
 };
@@ -762,12 +773,14 @@ export function useCreateCanvasItem() {
 
       queryClient.setQueriesData(
         { queryKey: canvasItemKeys.list(newItem.canvasId) },
-        (old: { items?: CanvasItem[] } | undefined) => ({
-          ...old,
-          items: old?.items
-            ? [...old.items, optimisticItem as unknown as CanvasItem]
-            : [optimisticItem as unknown as CanvasItem],
-        }),
+        (old: { items?: CanvasItem[] } | undefined) => {
+          // Paged or unloaded caches keep their shape; they refetch below.
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: [...old.items, optimisticItem as unknown as CanvasItem],
+          };
+        },
       );
 
       return { tempId, canvasId: newItem.canvasId, route: "http" as const };
@@ -867,9 +880,10 @@ export function useUpdateCanvasItem() {
           canvasItemKeys.detail(itemId),
           (old: CanvasItem | undefined) => {
             if (!old) return old;
+            const { version: _version, ...changes } = data;
             return {
               ...old,
-              ...data,
+              ...changes,
               updatedAt: new Date(),
             };
           },
@@ -881,11 +895,17 @@ export function useUpdateCanvasItem() {
             if (!old?.items) return old;
             return {
               ...old,
-              items: old.items.map((item) =>
-                item.id === itemId
-                  ? ({ ...item, ...data, updatedAt: new Date() } as CanvasItem)
-                  : item,
-              ),
+              items: old.items.map((item) => {
+                if (item.id !== itemId) return item;
+                // The caller's version is the precondition it sent; the
+                // cached version moves only when the server returns one.
+                const { version: _version, ...changes } = data;
+                return {
+                  ...item,
+                  ...changes,
+                  updatedAt: new Date(),
+                } as CanvasItem;
+              }),
             };
           },
         );
@@ -898,16 +918,27 @@ export function useUpdateCanvasItem() {
         canvasItemKeys.detail(updatedItem.id),
         updatedItem,
       );
+      const replace = (items: CanvasItem[]) =>
+        items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
       queryClient.setQueriesData(
         { queryKey: canvasItemKeys.list(updatedItem.canvasId) },
-        (old: { items?: CanvasItem[] } | undefined) => {
-          if (!old?.items) return old;
-          return {
-            ...old,
-            items: old.items.map((item) =>
-              item.id === updatedItem.id ? updatedItem : item,
-            ),
-          };
+        (
+          old:
+            | { items?: CanvasItem[]; pages?: undefined }
+            | { items?: undefined; pages?: Array<{ items: CanvasItem[] }> }
+            | undefined,
+        ) => {
+          if (old?.items) return { ...old, items: replace(old.items) };
+          if (Array.isArray(old?.pages)) {
+            return {
+              ...old,
+              pages: old.pages.map((page) => ({
+                ...page,
+                items: replace(page.items),
+              })),
+            };
+          }
+          return old;
         },
       );
       // A document write is not stored yet; the board refreshes the index
