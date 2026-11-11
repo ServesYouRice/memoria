@@ -1252,6 +1252,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             ? documentState.unsavedChanges
             : undefined
         }
+        deviceCopyFailed={documentState.deviceCopyFailed}
         saveError={
           updateItemMutation.isError &&
           updateItemMutation.error instanceof Error
