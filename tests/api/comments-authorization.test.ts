@@ -132,6 +132,8 @@ describe("Comment Authorization by Visibility and Role (IMP-065)", () => {
           { recipientId: viewShareUserId, role: "VIEW" },
           { recipientId: commentShareUserId, role: "COMMENT" },
           { recipientId: editShareUserId, role: "EDIT" },
+          // The author commented through a current COMMENT share.
+          { recipientId: authorUserId, role: "COMMENT" },
         ],
       },
     },

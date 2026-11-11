@@ -55,21 +55,31 @@ async function getCommentWithAccess(
     },
   });
 
-  if (!comment || comment.deletedAt || comment.itemId !== itemId) {
+  if (
+    !comment ||
+    comment.deletedAt ||
+    comment.itemId !== itemId ||
+    comment.item.deletedAt
+  ) {
     throw notFoundError("Comment", commentId);
   }
 
+  // Access follows the caller's current canvas access; authorship alone
+  // grants nothing once a share is removed or downgraded.
   const isOwner = comment.item.canvas.userId === userId;
   const isAuthor = comment.userId === userId;
-  const hasShare = comment.item.canvas.shares.some(
-    (share) => share.recipientId === userId,
+  const share = comment.item.canvas.shares.find(
+    (entry) => entry.recipientId === userId,
   );
 
-  if (!isOwner && !isAuthor && !hasShare && !comment.item.canvas.isPublic) {
+  if (!isOwner && !share && !comment.item.canvas.isPublic) {
     throw forbiddenError();
   }
 
-  return { comment, isOwner, isAuthor };
+  const canWrite =
+    isOwner || (!!share && ["COMMENT", "EDIT"].includes(share.role));
+
+  return { comment, isOwner, isAuthor, canWrite };
 }
 
 export const GET = withApiHandler(
@@ -107,13 +117,13 @@ export const PATCH = withApiHandler(
       );
     }
 
-    const { comment, isAuthor } = await getCommentWithAccess(
+    const { comment, isAuthor, canWrite } = await getCommentWithAccess(
       commentId,
       itemId,
       session.user.id,
     );
 
-    if (!isAuthor) {
+    if (!isAuthor || !canWrite) {
       throw forbiddenError();
     }
 
@@ -141,13 +151,13 @@ export const DELETE = withApiHandler(
     }
     const { itemId, commentId } = await params;
 
-    const { comment, isOwner, isAuthor } = await getCommentWithAccess(
+    const { comment, isOwner, isAuthor, canWrite } = await getCommentWithAccess(
       commentId,
       itemId,
       session.user.id,
     );
 
-    if (!isOwner && !isAuthor) {
+    if (!isOwner && !(isAuthor && canWrite)) {
       throw forbiddenError();
     }
 
