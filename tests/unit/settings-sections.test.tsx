@@ -62,13 +62,14 @@ afterEach(() => {
 });
 
 describe("settings groups", () => {
-  it("has six groups, each with its own address", () => {
+  it("has seven groups, each with its own address", () => {
     expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
       "Account",
       "Sign-in and security",
       "Appearance",
       "Notifications",
       "AI assistant",
+      "Import",
       "Your data",
     ]);
     expect(settingsSectionFromSegments(undefined)?.id).toBe("account");

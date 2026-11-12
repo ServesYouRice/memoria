@@ -165,6 +165,7 @@ describe("findOpenSlot", () => {
     expect(findOpenSlot([], { width: 360, height: 120 })).toEqual({
       x: 80,
       y: 80,
+      index: 0,
     });
   });
 
@@ -176,6 +177,13 @@ describe("findOpenSlot", () => {
     expect(findOpenSlot(occupied, { width: 360, height: 120 })).toEqual({
       x: 880,
       y: 80,
+      index: 2,
     });
+  });
+
+  it("can start from a later cell for bulk saves (IMP-091)", () => {
+    const first = findOpenSlot([], { width: 360, height: 120 }, 7);
+    expect(first.index).toBe(7);
+    expect(first).toMatchObject({ x: 480, y: 340 });
   });
 });

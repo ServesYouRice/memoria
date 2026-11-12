@@ -49,6 +49,18 @@ export async function assertCanvasItemCapacity(
   )
     exceeded("canvas items", LAUNCH_LIMITS.itemsPerCanvas);
 }
+/**
+ * How many more items fit on a canvas, under the same lock as
+ * `assertCanvasItemCapacity`. For bulk saves that keep what fits and report
+ * the rest (IMP-091).
+ */
+export async function canvasItemRoom(tx: Store, canvasId: string) {
+  await lock(tx, "canvas-item", canvasId);
+  const count = await tx.canvasItem.count({
+    where: { canvasId, deletedAt: null },
+  });
+  return Math.max(0, LAUNCH_LIMITS.itemsPerCanvas - count);
+}
 export async function assertCanvasShareCapacity(
   tx: Store,
   canvasId: string,

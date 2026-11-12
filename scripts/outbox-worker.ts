@@ -46,6 +46,11 @@ import {
   createLinkEnrichmentHandler,
 } from "../src/lib/services/link-enrichment";
 import {
+  BOOKMARK_IMPORT_JOB,
+  BOOKMARK_IMPORT_TIMEOUT_MS,
+  createBookmarkImportHandler,
+} from "../src/lib/import/bookmark-import";
+import {
   HOME_BOARD_JOB,
   createHomeBoardProposalHandler,
   enqueueHomeBoardProposal,
@@ -92,6 +97,7 @@ await runOutboxWorker({
       },
     }),
     [HOME_BOARD_JOB]: createHomeBoardProposalHandler(prisma),
+    [BOOKMARK_IMPORT_JOB]: createBookmarkImportHandler(prisma),
     [RECAP_SWEEP_JOB]: createWeeklyRecapSweepHandler(prisma),
     [RECAP_USER_JOB]: createWeeklyRecapHandler(prisma),
     [RECAP_EMAIL_JOB]: createWeeklyRecapEmailHandler(prisma),
@@ -103,6 +109,7 @@ await runOutboxWorker({
     "account-export.build": accountExportTimeoutMs(),
     [UPLOAD_NOTE_JOB]: UPLOAD_NOTE_TIMEOUT_MS,
     [LINK_ENRICH_JOB]: LINK_ENRICH_TIMEOUT_MS,
+    [BOOKMARK_IMPORT_JOB]: BOOKMARK_IMPORT_TIMEOUT_MS,
     [RECAP_USER_JOB]: RECAP_USER_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),

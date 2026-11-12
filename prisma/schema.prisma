@@ -33,43 +33,44 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  canvases      Canvas[]
-  sessions      Session[]
-  accounts      Account[]
-  twoFactors    TwoFactor[]
-  passkeys      Passkey[]
-  workspaces    Workspace[]
+  canvases   Canvas[]
+  sessions   Session[]
+  accounts   Account[]
+  twoFactors TwoFactor[]
+  passkeys   Passkey[]
+  workspaces Workspace[]
 
   createdVersions CanvasVersion[] @relation("VersionCreatedBy")
-  createdItems  CanvasItem[] @relation("ItemCreatedBy")
-  updatedItems  CanvasItem[] @relation("ItemUpdatedBy")
-  deletedItems  CanvasItem[] @relation("ItemDeletedBy")
-  comments      Comment[]
+  createdItems    CanvasItem[]    @relation("ItemCreatedBy")
+  updatedItems    CanvasItem[]    @relation("ItemUpdatedBy")
+  deletedItems    CanvasItem[]    @relation("ItemDeletedBy")
+  comments        Comment[]
 
-  activities    Activity[]
-  apiKeys       ApiKey[]
-  agentProfiles AgentProfile[]
-  modelCredentials ModelCredential[]
-  agentActions  AgentAction[]
-  changeSets    ChangeSet[]
-  suggestions   Suggestion[]
-  knowledgeEntities KnowledgeEntity[]
-  knowledgeRelations KnowledgeRelation[]
-  workspaceCheckpoints WorkspaceCheckpoint[]
-  canvasViews   CanvasView[]
-  agentJobs     AgentJob[]
+  activities              Activity[]
+  apiKeys                 ApiKey[]
+  agentProfiles           AgentProfile[]
+  modelCredentials        ModelCredential[]
+  agentActions            AgentAction[]
+  changeSets              ChangeSet[]
+  suggestions             Suggestion[]
+  knowledgeEntities       KnowledgeEntity[]
+  knowledgeRelations      KnowledgeRelation[]
+  workspaceCheckpoints    WorkspaceCheckpoint[]
+  canvasViews             CanvasView[]
+  agentJobs               AgentJob[]
   oauthAuthorizationCodes OAuthAuthorizationCode[]
-  oauthTokens   OAuthToken[]
-  uploadAssets  UploadAsset[]
-  uploadQuota   UploadQuota?
-  receivedShares CanvasShare[] @relation("ShareRecipient")
-  sentShareInvitations CanvasShareInvitation[] @relation("InvitationSender")
-  notifications Notification[] @relation("NotificationRecipient")
-  notificationActions Notification[] @relation("NotificationActor")
+  oauthTokens             OAuthToken[]
+  uploadAssets            UploadAsset[]
+  uploadQuota             UploadQuota?
+  receivedShares          CanvasShare[]            @relation("ShareRecipient")
+  sentShareInvitations    CanvasShareInvitation[]  @relation("InvitationSender")
+  notifications           Notification[]           @relation("NotificationRecipient")
+  notificationActions     Notification[]           @relation("NotificationActor")
   notificationPreferences NotificationPreference[]
-  accountExports AccountExport[]
-  clipBatches   ClipBatch[]
-  weeklyRecaps  WeeklyRecap[]
+  accountExports          AccountExport[]
+  bookmarkImports         BookmarkImport[]
+  clipBatches             ClipBatch[]
+  weeklyRecaps            WeeklyRecap[]
 }
 
 enum AccountExportStatus {
@@ -79,6 +80,50 @@ enum AccountExportStatus {
   FAILED
   CANCELLED
   EXPIRED
+}
+
+enum BookmarkImportStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum BookmarkImportDestination {
+  INBOX
+  FOLDERS
+}
+
+/// A bookmark file being imported in the background (IMP-091). `links` holds
+/// the validated rows; `cursor` is the next row to import and moves forward
+/// in the same transaction as the items it imports, so a rerun resumes.
+model BookmarkImport {
+  id             String                    @id @default(cuid())
+  userId         String
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         BookmarkImportStatus      @default(QUEUED)
+  destination    BookmarkImportDestination
+  enrich         Boolean                   @default(false)
+  fileName       String
+  format         String
+  fileHash       String
+  links          Json
+  total          Int
+  cursor         Int                       @default(0)
+  imported       Int                       @default(0)
+  duplicates     Int                       @default(0)
+  overLimit      Int                       @default(0)
+  invalid        Int                       @default(0)
+  failed         Int                       @default(0)
+  /// Folder name -> canvas id for FOLDERS imports.
+  folderCanvases Json                      @default("{}")
+  lastError      String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 model AccountExport {
@@ -105,15 +150,15 @@ model AccountExport {
 }
 
 model Activity {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        ActivityType
-  canvasId    String?
-  canvasName  String?
-  itemId      String?
-  metadata    Json?
-  createdAt   DateTime @default(now())
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       ActivityType
+  canvasId   String?
+  canvasName String?
+  itemId     String?
+  metadata   Json?
+  createdAt  DateTime     @default(now())
 
   @@index([userId, createdAt])
   @@index([canvasId, createdAt])
@@ -133,50 +178,50 @@ enum ActivityType {
 }
 
 model Canvas {
-  id          String      @id @default(cuid())
-  name        String      @default("Untitled Canvas")
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items       CanvasItem[]
-  shares      CanvasShare[]
+  id               String                  @id @default(cuid())
+  name             String                  @default("Untitled Canvas")
+  userId           String
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items            CanvasItem[]
+  shares           CanvasShare[]
   shareInvitations CanvasShareInvitation[]
-  notifications Notification[]
-  versions    CanvasVersion[]
-  document    CanvasDocument?
-  embeds      CanvasEmbed[]
-  clipBatches ClipBatch[]
+  notifications    Notification[]
+  versions         CanvasVersion[]
+  document         CanvasDocument?
+  embeds           CanvasEmbed[]
+  clipBatches      ClipBatch[]
 
-  zoomLevel   Float       @default(1.0)
-  panX        Float       @default(0)
-  panY        Float       @default(0)
+  zoomLevel Float @default(1.0)
+  panX      Float @default(0)
+  panY      Float @default(0)
 
-  thumbnailKey String?
-  thumbnailRevision BigInt @default(0)
-  restoreRevision Int @default(0)
+  thumbnailKey         String?
+  thumbnailRevision    BigInt                     @default(0)
+  restoreRevision      Int                        @default(0)
   /// Last per-canvas item event number handed out (`CanvasEvent.canvasSequence`).
-  eventSequence   BigInt @default(0)
-  thumbnailCandidates CanvasThumbnailCandidate[]
+  eventSequence        BigInt                     @default(0)
+  thumbnailCandidates  CanvasThumbnailCandidate[]
   /// Agent checkpoints of this canvas; they are deleted with it.
   workspaceCheckpoints WorkspaceCheckpoint[]
 
   // Sharing settings
-  isPublic    Boolean     @default(false)
-  shareToken  String?     @unique // For public sharing links
+  isPublic   Boolean @default(false)
+  shareToken String? @unique // For public sharing links
 
   // Template settings
-  isTemplate  Boolean     @default(false)
+  isTemplate          Boolean @default(false)
   templateDescription String?
-  templateCategory String?
-  usageCount  Int         @default(0)
+  templateCategory    String?
+  usageCount          Int     @default(0)
 
-  workspaceId String?
-  workspace   Workspace?  @relation(fields: [workspaceId], references: [id])
-  canvasViews CanvasView[]
-  connections ItemConnection[]
+  workspaceId  String?
+  workspace    Workspace?       @relation(fields: [workspaceId], references: [id])
+  canvasViews  CanvasView[]
+  connections  ItemConnection[]
   uploadAssets UploadAsset[]
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
   @@index([userId, updatedAt])
@@ -191,15 +236,15 @@ model Canvas {
 /// Signed, revocable read-only embed of a canvas. Only the SHA-256 digest of
 /// the token is stored; the token itself is shown once at creation.
 model CanvasEmbed {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   canvasId       String
-  canvas         Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  label          String   @default("")
-  tokenDigest    String   @unique
+  canvas         Canvas    @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  label          String    @default("")
+  tokenDigest    String    @unique
   allowedOrigins String[]
   expiresAt      DateTime
   revokedAt      DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   @@index([canvasId, createdAt])
 }
@@ -213,11 +258,11 @@ enum CanvasVersionKind {
 }
 
 model CanvasVersion {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   canvasId    String
-  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  canvas      Canvas            @relation(fields: [canvasId], references: [id], onDelete: Cascade)
   name        String
-  snapshot    Json     // Complete canvas state including items
+  snapshot    Json // Complete canvas state including items
   /// Encoded Yjs state the snapshot was derived from (IMP-042); null for
   /// versions taken before the canvas had a collaborative document.
   yjsState    Bytes?
@@ -225,11 +270,11 @@ model CanvasVersion {
   /// The person who saved or restored a manual version; null for automatic
   /// snapshots and once that account is deleted.
   createdById String?
-  createdBy   User?    @relation("VersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?             @relation("VersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   /// SHA-256 of the canvas content (items, ignoring view position), used to
   /// skip an automatic snapshot that would repeat the latest version.
   contentHash String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 
   @@index([canvasId, createdAt])
   @@index([canvasId, kind, createdAt])
@@ -237,40 +282,49 @@ model CanvasVersion {
 }
 
 model CanvasItem {
-  id          String   @id @default(cuid())
-  canvasId    String
-  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  type        ItemType
+  id       String   @id @default(cuid())
+  canvasId String
+  canvas   Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  type     ItemType
 
-  positionX   Float
-  positionY   Float
-  width       Float
-  height      Float
-  zIndex      Int      @default(0)
+  positionX Float
+  positionY Float
+  width     Float
+  height    Float
+  zIndex    Int   @default(0)
 
-  content     Json
-  tags        String[] @default([])
+  content      Json
+  tags         String[]                 @default([])
   searchVector Unsupported("tsvector")?
 
-  version     Int      @default(1)
-  deletedAt   DateTime?
+  version   Int       @default(1)
+  deletedAt DateTime?
 
   createdById String
   updatedById String?
   deletedById String?
-  createdBy   User     @relation("ItemCreatedBy", fields: [createdById], references: [id])
-  updatedBy   User?    @relation("ItemUpdatedBy", fields: [updatedById], references: [id])
-  deletedBy   User?    @relation("ItemDeletedBy", fields: [deletedById], references: [id])
+  createdBy   User    @relation("ItemCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?   @relation("ItemUpdatedBy", fields: [updatedById], references: [id])
+  deletedBy   User?   @relation("ItemDeletedBy", fields: [deletedById], references: [id])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
   bookmarkRefreshedAt DateTime?
   /// Bookmark URL normalized for "you saved this already" (IMP-065).
-  normalizedUrl String?
+  normalizedUrl       String?
   /// Last time the owner opened the link (IMP-070); null before tracking began.
-  lastOpenedAt DateTime?
+  lastOpenedAt        DateTime?
   /// Set with deletedAt when the item went to the archive: the trash sweep keeps it.
-  archivedAt   DateTime?
+  archivedAt          DateTime?
+
+  comments            Comment[]
+  connectionsFrom     ItemConnection[]     @relation("ConnectionFrom")
+  connectionsTo       ItemConnection[]     @relation("ConnectionTo")
+  entityLinks         ItemEntityLink[]
+  embeddings          ItemEmbedding[]
+  clipBatchItems      ClipBatchItem[]
+  enrichment          ItemEnrichment?
+  homeBoardSuggestion HomeBoardSuggestion?
 
   @@index([canvasId, deletedAt])
   @@index([normalizedUrl])
@@ -281,15 +335,6 @@ model CanvasItem {
   @@index([canvasId, createdById]) // For filtering by creator (Issue #12)
   @@index([searchVector], type: Gin, map: "idx_canvas_item_fts")
   @@index([tags], type: Gin, map: "idx_canvas_item_tags_gin")
-
-  comments      Comment[]
-  connectionsFrom ItemConnection[] @relation("ConnectionFrom")
-  connectionsTo   ItemConnection[] @relation("ConnectionTo")
-  entityLinks   ItemEntityLink[]
-  embeddings    ItemEmbedding[]
-  clipBatchItems ClipBatchItem[]
-  enrichment    ItemEnrichment?
-  homeBoardSuggestion HomeBoardSuggestion?
 }
 
 model CanvasThumbnailCandidate {
@@ -306,15 +351,15 @@ model CanvasThumbnailCandidate {
 }
 
 model Comment {
-  id          String   @id @default(cuid())
-  itemId      String
-  item        CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content     String   @db.Text
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  id        String     @id @default(cuid())
+  itemId    String
+  item      CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String     @db.Text
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
 
   @@index([itemId, deletedAt])
   @@index([itemId, createdAt]) // For chronological comments (Issue #12)
@@ -336,21 +381,21 @@ enum ItemType {
 }
 
 enum ShareRole {
-  VIEW    // Can only view
+  VIEW // Can only view
   COMMENT // Can view and comment
-  EDIT    // Can view, comment, and edit
+  EDIT // Can view, comment, and edit
 }
 
 model CanvasShare {
-  id        String    @id @default(cuid())
-  canvasId  String
-  canvas    Canvas    @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  email     String    // Email of person shared with
+  id          String    @id @default(cuid())
+  canvasId    String
+  canvas      Canvas    @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  email       String // Email of person shared with
   recipientId String?
-  recipient User? @relation("ShareRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
-  role      ShareRole @default(VIEW)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  recipient   User?     @relation("ShareRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  role        ShareRole @default(VIEW)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([canvasId, email])
   @@index([canvasId])
@@ -364,20 +409,20 @@ enum ShareInvitationResponse {
 }
 
 model CanvasShareInvitation {
-  id             String    @id @default(cuid())
+  id             String                   @id @default(cuid())
   canvasId       String
-  canvas         Canvas    @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  canvas         Canvas                   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
   invitedById    String
-  invitedBy      User      @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitedBy      User                     @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
   email          String
-  role           ShareRole @default(VIEW)
-  tokenHash      String    @unique
+  role           ShareRole                @default(VIEW)
+  tokenHash      String                   @unique
   deliverySecret String
   expiresAt      DateTime
   respondedAt    DateTime?
   response       ShareInvitationResponse?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
 
   @@index([canvasId, email, respondedAt])
   @@index([expiresAt, respondedAt])
@@ -407,14 +452,14 @@ model Notification {
 }
 
 model NotificationPreference {
-  id             String           @id @default(cuid())
-  userId         String
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type           NotificationType
-  inAppEnabled   Boolean          @default(true)
-  emailEnabled   Boolean          @default(true)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         NotificationType
+  inAppEnabled Boolean          @default(true)
+  emailEnabled Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   @@unique([userId, type])
   @@index([userId])
@@ -501,25 +546,25 @@ model Passkey {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
+  id        String    @id @default(cuid())
+  token     String    @unique
   email     String
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([email, expiresAt])
   @@index([token, expiresAt])
 }
 
 model EmailVerificationToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  email     String
-  expiresAt DateTime
-  usedAt    DateTime?
+  id             String    @id @default(cuid())
+  token          String    @unique
+  email          String
+  expiresAt      DateTime
+  usedAt         DateTime?
   deliverySecret String?
-  createdAt DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   @@index([email, expiresAt])
   @@index([token, expiresAt])
@@ -544,16 +589,16 @@ model AuditLog {
 }
 
 model ItemConnection {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   canvasId  String
-  canvas    Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  canvas    Canvas     @relation(fields: [canvasId], references: [id], onDelete: Cascade)
   fromId    String
   fromItem  CanvasItem @relation("ConnectionFrom", fields: [fromId], references: [id], onDelete: Cascade)
   toId      String
   toItem    CanvasItem @relation("ConnectionTo", fields: [toId], references: [id], onDelete: Cascade)
   label     String?
-  style     String   @default("SOLID")
-  createdAt DateTime @default(now())
+  style     String     @default("SOLID")
+  createdAt DateTime   @default(now())
 
   @@unique([canvasId, fromId, toId])
   @@index([canvasId])
@@ -583,7 +628,7 @@ model IdempotencyKey {
   createdAt   DateTime @default(now())
   lockedAt    DateTime @default(now())
   requestHash String?
-  
+
   responseCode Int?
   responseBody Json?
 
@@ -593,18 +638,18 @@ model IdempotencyKey {
 }
 
 model ApiKey {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  keyPrefix String?
-  keySuffix String?
-  name      String
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  expiresAt DateTime?
+  id         String    @id @default(cuid())
+  key        String    @unique
+  keyPrefix  String?
+  keySuffix  String?
+  name       String
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
   lastUsedAt DateTime?
-  revokedAt DateTime?
-  
+  revokedAt  DateTime?
+
   @@index([userId])
   @@index([key])
 }
@@ -697,12 +742,12 @@ enum KnowledgeEntityStatus {
 }
 
 model UploadAsset {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   canvasId    String
-  canvas      Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  storageKey  String   @unique
+  canvas      Canvas            @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  storageKey  String            @unique
   storageMode String
   filename    String
   mimeType    String
@@ -713,7 +758,7 @@ model UploadAsset {
   // the same transaction that creates the note, so a repeated job skips. Not a
   // foreign key: notes are soft-deleted, and re-requesting clears it.
   noteItemId  String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime          @default(now())
 
   @@index([userId, createdAt])
   @@index([canvasId, createdAt])
@@ -721,12 +766,12 @@ model UploadAsset {
 }
 
 model RegistrationInvite {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
   email     String
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([email, expiresAt])
   @@index([usedAt, expiresAt])
@@ -765,28 +810,28 @@ enum AgentJobStatus {
 }
 
 model AgentProfile {
-  id        String             @id @default(cuid())
-  userId    String
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  status    AgentProfileStatus @default(ACTIVE)
-  maxCapabilityRung Int        @default(3)
-  enabledRungs Int[]           @default([0, 1, 2, 3])
-  allowedCanvasIds String[]    @default([])
+  id                       String                   @id @default(cuid())
+  userId                   String
+  user                     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                     String
+  status                   AgentProfileStatus       @default(ACTIVE)
+  maxCapabilityRung        Int                      @default(3)
+  enabledRungs             Int[]                    @default([0, 1, 2, 3])
+  allowedCanvasIds         String[]                 @default([])
   /// Marks a built-in profile ("organizer"). Set only by the server, never
   /// from the API; NULL for every profile a user creates.
-  systemKey String?
+  systemKey                String?
   defaultModelCredentialId String?
-  defaultModelCredential ModelCredential? @relation("DefaultModelCredential", fields: [defaultModelCredentialId], references: [id], onDelete: SetNull)
-  integrationAccounts IntegrationAccount[]
-  agentActions AgentAction[]
-  changeSets  ChangeSet[]
-  suggestions Suggestion[]
-  jobs        AgentJob[]
-  oauthAuthorizationCodes OAuthAuthorizationCode[]
-  oauthTokens OAuthToken[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  defaultModelCredential   ModelCredential?         @relation("DefaultModelCredential", fields: [defaultModelCredentialId], references: [id], onDelete: SetNull)
+  integrationAccounts      IntegrationAccount[]
+  agentActions             AgentAction[]
+  changeSets               ChangeSet[]
+  suggestions              Suggestion[]
+  jobs                     AgentJob[]
+  oauthAuthorizationCodes  OAuthAuthorizationCode[]
+  oauthTokens              OAuthToken[]
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 
   @@unique([userId, systemKey])
   @@index([userId, status])
@@ -794,45 +839,45 @@ model AgentProfile {
 }
 
 model ModelCredential {
-  id        String           @id @default(cuid())
-  userId     String
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider   ModelProvider
-  label      String
-  baseUrl    String?
-  defaultModel String
-  encryptedSecret String
-  secretFingerprint String
-  capabilities Json?
-  dailySpendCap Float?
-  monthlySpendCap Float?
-  status      CredentialStatus @default(UNVERIFIED)
-  lastVerifiedAt DateTime?
-  defaultForProfiles AgentProfile[] @relation("DefaultModelCredential")
-  agentActions AgentAction[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String           @id @default(cuid())
+  userId             String
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider           ModelProvider
+  label              String
+  baseUrl            String?
+  defaultModel       String
+  encryptedSecret    String
+  secretFingerprint  String
+  capabilities       Json?
+  dailySpendCap      Float?
+  monthlySpendCap    Float?
+  status             CredentialStatus @default(UNVERIFIED)
+  lastVerifiedAt     DateTime?
+  defaultForProfiles AgentProfile[]   @relation("DefaultModelCredential")
+  agentActions       AgentAction[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   @@unique([userId, secretFingerprint])
   @@index([userId, provider, status])
 }
 
 model IntegrationAccount {
-  id        String                 @id @default(cuid())
-  agentProfileId String
-  agentProfile AgentProfile        @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
-  providerType IntegrationProviderType
-  externalAccountId String
-  authMode   IntegrationAuthMode
+  id                    String                  @id @default(cuid())
+  agentProfileId        String
+  agentProfile          AgentProfile            @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  providerType          IntegrationProviderType
+  externalAccountId     String
+  authMode              IntegrationAuthMode
   encryptedSecretOrHash String
-  secretPrefix String?
-  secretSuffix String?
-  replayCursor Json?
-  status     IntegrationStatus     @default(ACTIVE)
-  lastSeenAt DateTime?
-  agentActions AgentAction[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  secretPrefix          String?
+  secretSuffix          String?
+  replayCursor          Json?
+  status                IntegrationStatus       @default(ACTIVE)
+  lastSeenAt            DateTime?
+  agentActions          AgentAction[]
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
 
   @@unique([agentProfileId, providerType, externalAccountId])
   @@index([agentProfileId, status])
@@ -840,24 +885,24 @@ model IntegrationAccount {
 }
 
 model AgentAction {
-  id        String            @id @default(cuid())
-  userId     String
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agentProfileId String
-  agentProfile AgentProfile   @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  id                   String              @id @default(cuid())
+  userId               String
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentProfileId       String
+  agentProfile         AgentProfile        @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
   integrationAccountId String?
-  integrationAccount IntegrationAccount? @relation(fields: [integrationAccountId], references: [id], onDelete: SetNull)
-  modelCredentialId String?
-  modelCredential ModelCredential? @relation(fields: [modelCredentialId], references: [id], onDelete: SetNull)
-  kind      AgentActionKind
-  rung      Int
-  status    AgentActionStatus
-  summary   String
-  requestFingerprint String
-  metadata  Json?
-  changeSets ChangeSet[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  integrationAccount   IntegrationAccount? @relation(fields: [integrationAccountId], references: [id], onDelete: SetNull)
+  modelCredentialId    String?
+  modelCredential      ModelCredential?    @relation(fields: [modelCredentialId], references: [id], onDelete: SetNull)
+  kind                 AgentActionKind
+  rung                 Int
+  status               AgentActionStatus
+  summary              String
+  requestFingerprint   String
+  metadata             Json?
+  changeSets           ChangeSet[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@index([userId, createdAt])
   @@index([agentProfileId, createdAt])
@@ -865,21 +910,21 @@ model AgentAction {
 }
 
 model ChangeSet {
-  id        String         @id @default(cuid())
-  userId     String
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   agentProfileId String
-  agentProfile AgentProfile @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
-  agentActionId String?
-  agentAction AgentAction? @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
-  scopeType  String
-  scopeId    String
-  status     ChangeSetStatus
-  summary    String
-  startedAt  DateTime @default(now())
-  completedAt DateTime?
-  revertedAt DateTime?
-  changeRecords ChangeRecord[]
+  agentProfile   AgentProfile    @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  agentActionId  String?
+  agentAction    AgentAction?    @relation(fields: [agentActionId], references: [id], onDelete: SetNull)
+  scopeType      String
+  scopeId        String
+  status         ChangeSetStatus
+  summary        String
+  startedAt      DateTime        @default(now())
+  completedAt    DateTime?
+  revertedAt     DateTime?
+  changeRecords  ChangeRecord[]
 
   @@index([userId, startedAt])
   @@index([agentActionId])
@@ -887,76 +932,76 @@ model ChangeSet {
 }
 
 model ChangeRecord {
-  id        String   @id @default(cuid())
+  id          String    @id @default(cuid())
   changeSetId String
-  changeSet ChangeSet @relation(fields: [changeSetId], references: [id], onDelete: Cascade)
-  targetType String
-  targetId   String
-  operation  String
-  before     Json?
-  after      Json?
-  reversible Boolean @default(true)
-  revertedAt DateTime?
-  createdAt  DateTime @default(now())
+  changeSet   ChangeSet @relation(fields: [changeSetId], references: [id], onDelete: Cascade)
+  targetType  String
+  targetId    String
+  operation   String
+  before      Json?
+  after       Json?
+  reversible  Boolean   @default(true)
+  revertedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([changeSetId])
   @@index([targetType, targetId])
 }
 
 model Suggestion {
-  id        String           @id @default(cuid())
-  userId     String
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   agentProfileId String?
-  agentProfile AgentProfile?  @relation(fields: [agentProfileId], references: [id], onDelete: SetNull)
-  kind      SuggestionKind
-  status    SuggestionStatus  @default(OPEN)
-  summary   String
-  payload   Json
-  expiresAt DateTime
-  actedAt   DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  agentProfile   AgentProfile?    @relation(fields: [agentProfileId], references: [id], onDelete: SetNull)
+  kind           SuggestionKind
+  status         SuggestionStatus @default(OPEN)
+  summary        String
+  payload        Json
+  expiresAt      DateTime
+  actedAt        DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([userId, status, expiresAt])
   @@index([agentProfileId, createdAt])
 }
 
 model KnowledgeEntity {
-  id        String                @id @default(cuid())
-  userId     String
-  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entityType String
-  title      String
-  summary    String?
-  status     KnowledgeEntityStatus @default(ACTIVE)
-  attributes Json?
-  sourceConfidence Float?
-  itemLinks  ItemEntityLink[]
-  outgoingRelations KnowledgeRelation[] @relation("KnowledgeRelationSource")
-  incomingRelations KnowledgeRelation[] @relation("KnowledgeRelationTarget")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                String                @id @default(cuid())
+  userId            String
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entityType        String
+  title             String
+  summary           String?
+  status            KnowledgeEntityStatus @default(ACTIVE)
+  attributes        Json?
+  sourceConfidence  Float?
+  itemLinks         ItemEntityLink[]
+  outgoingRelations KnowledgeRelation[]   @relation("KnowledgeRelationSource")
+  incomingRelations KnowledgeRelation[]   @relation("KnowledgeRelationTarget")
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([userId, entityType])
   @@index([userId, title])
 }
 
 model KnowledgeRelation {
-  id        String                  @id @default(cuid())
-  userId     String
-  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String                  @id @default(cuid())
+  userId         String
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceEntityId String
-  sourceEntity KnowledgeEntity       @relation("KnowledgeRelationSource", fields: [sourceEntityId], references: [id], onDelete: Cascade)
+  sourceEntity   KnowledgeEntity         @relation("KnowledgeRelationSource", fields: [sourceEntityId], references: [id], onDelete: Cascade)
   targetEntityId String
-  targetEntity KnowledgeEntity       @relation("KnowledgeRelationTarget", fields: [targetEntityId], references: [id], onDelete: Cascade)
-  relationType String
-  summary    String?
-  status     KnowledgeRelationStatus @default(ACTIVE)
-  attributes Json?
-  confidence Float?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  targetEntity   KnowledgeEntity         @relation("KnowledgeRelationTarget", fields: [targetEntityId], references: [id], onDelete: Cascade)
+  relationType   String
+  summary        String?
+  status         KnowledgeRelationStatus @default(ACTIVE)
+  attributes     Json?
+  confidence     Float?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   @@unique([sourceEntityId, targetEntityId, relationType], map: "KnowledgeRelation_source_target_type_key")
   @@index([userId, relationType])
@@ -965,48 +1010,48 @@ model KnowledgeRelation {
 }
 
 model ItemEntityLink {
-  id        String             @id @default(cuid())
-  itemId     String
-  item       CanvasItem         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  id                String             @id @default(cuid())
+  itemId            String
+  item              CanvasItem         @relation(fields: [itemId], references: [id], onDelete: Cascade)
   knowledgeEntityId String
-  knowledgeEntity KnowledgeEntity @relation(fields: [knowledgeEntityId], references: [id], onDelete: Cascade)
-  linkType   ItemEntityLinkType @default(SOURCE)
-  confidence Float?
-  createdAt  DateTime @default(now())
+  knowledgeEntity   KnowledgeEntity    @relation(fields: [knowledgeEntityId], references: [id], onDelete: Cascade)
+  linkType          ItemEntityLinkType @default(SOURCE)
+  confidence        Float?
+  createdAt         DateTime           @default(now())
 
   @@unique([itemId, knowledgeEntityId, linkType])
   @@index([knowledgeEntityId])
 }
 
 model ItemEmbedding {
-  id        String   @id @default(cuid())
-  itemId     String
-  item       CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  provider   String
-  model      String
+  id          String     @id @default(cuid())
+  itemId      String
+  item        CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  provider    String
+  model       String
   contentHash String
-  vector     Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  vector      Json
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@unique([itemId, provider, model])
   @@index([provider, model])
 }
 
 model WorkspaceCheckpoint {
-  id        String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scopeType  String
-  scopeId    String
+  id                 String                       @id @default(cuid())
+  userId             String
+  user               User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scopeType          String
+  scopeId            String
   /// The checkpointed canvas for scopeType "canvas", so the rows go with it.
-  canvasId   String?
-  canvas     Canvas?  @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  snapshot   Json
-  reason     String
+  canvasId           String?
+  canvas             Canvas?                      @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  snapshot           Json
+  reason             String
   createdByActorType WorkspaceCheckpointActorType
-  createdByActorId String
-  createdAt  DateTime @default(now())
+  createdByActorId   String
+  createdAt          DateTime                     @default(now())
 
   @@index([userId, scopeType, scopeId, createdAt])
   @@index([scopeType, scopeId, createdAt])
@@ -1015,38 +1060,38 @@ model WorkspaceCheckpoint {
 }
 
 model CanvasView {
-  id        String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  canvasId   String
-  canvas     Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  viewType   CanvasViewType
-  name       String?
-  filters    Json?
-  layout     Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId  String
+  canvas    Canvas         @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  viewType  CanvasViewType
+  name      String?
+  filters   Json?
+  layout    Json?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   @@unique([userId, canvasId, viewType])
   @@index([canvasId])
 }
 
 model AgentJob {
-  id        String         @id @default(cuid())
-  userId     String
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   agentProfileId String?
-  agentProfile AgentProfile? @relation(fields: [agentProfileId], references: [id], onDelete: SetNull)
-  jobType    String
-  status     AgentJobStatus @default(QUEUED)
-  payload    Json
-  result     Json?
-  error      Json?
-  scheduledAt DateTime @default(now())
-  startedAt  DateTime?
-  completedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  agentProfile   AgentProfile?  @relation(fields: [agentProfileId], references: [id], onDelete: SetNull)
+  jobType        String
+  status         AgentJobStatus @default(QUEUED)
+  payload        Json
+  result         Json?
+  error          Json?
+  scheduledAt    DateTime       @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@index([status, scheduledAt])
   @@index([agentProfileId, createdAt])
@@ -1102,36 +1147,36 @@ model OutboxJob {
 /// updates since the last compaction are appended to `CanvasDocumentUpdate` in
 /// the same transaction that projects them onto `CanvasItem` rows.
 model CanvasDocument {
-  canvasId      String   @id
-  canvas        Canvas   @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  canvasId         String                 @id
+  canvas           Canvas                 @relation(fields: [canvasId], references: [id], onDelete: Cascade)
   /// `Y.encodeStateAsUpdate` of the document through `compactedThrough`.
-  state         Bytes
+  state            Bytes
   /// Highest `CanvasDocumentUpdate.id` folded into `state`.
-  compactedThrough BigInt @default(0)
+  compactedThrough BigInt                 @default(0)
   /// Highest `CanvasEvent.sequence` reconciled from rows into the document.
-  eventSequence BigInt   @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  updates       CanvasDocumentUpdate[]
+  eventSequence    BigInt                 @default(0)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  updates          CanvasDocumentUpdate[]
 }
 
 /// Append-only Yjs updates accepted by the sync server since the last
 /// compaction. `actorId` is the editing user, or null for updates the sync
 /// server derived from committed `CanvasItem` row changes.
 model CanvasDocumentUpdate {
-  id        BigInt   @id @default(autoincrement())
+  id        BigInt         @id @default(autoincrement())
   canvasId  String
   document  CanvasDocument @relation(fields: [canvasId], references: [canvasId], onDelete: Cascade)
   update    Bytes
   actorId   String?
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
 
   @@index([canvasId, id])
 }
 
 model CanvasEvent {
   id              String   @id @default(cuid())
-  sequence        BigInt   @default(autoincrement()) @unique
+  sequence        BigInt   @unique @default(autoincrement())
   /// Contiguous per-canvas number of an item event, allocated from
   /// `Canvas.eventSequence`. Null for 'restored' events.
   canvasSequence  BigInt?
@@ -1144,8 +1189,8 @@ model CanvasEvent {
   schemaVersion   Int      @default(1)
   createdAt       DateTime @default(now())
 
-  @@index([canvasId, sequence])
   @@unique([canvasId, canvasSequence])
+  @@index([canvasId, sequence])
   @@index([createdAt])
 }
 
@@ -1153,17 +1198,17 @@ model CanvasEvent {
 // Each consent creates an AgentProfile, so the existing capability rungs and
 // canvas scope govern what a connected app can do.
 model OAuthClient {
-  id                 String                   @id @default(cuid())
-  clientId           String                   @unique
-  clientName         String
-  redirectUris       String[]
-  clientUri          String?
+  id                      String                   @id @default(cuid())
+  clientId                String                   @unique
+  clientName              String
+  redirectUris            String[]
+  clientUri               String?
   // "none" for public PKCE clients; confidential clients get a hashed secret.
   tokenEndpointAuthMethod String                   @default("none")
   clientSecretHash        String?
-  createdAt          DateTime                 @default(now())
-  authorizationCodes OAuthAuthorizationCode[]
-  tokens             OAuthToken[]
+  createdAt               DateTime                 @default(now())
+  authorizationCodes      OAuthAuthorizationCode[]
+  tokens                  OAuthToken[]
 }
 
 model OAuthAuthorizationCode {
@@ -1256,25 +1301,25 @@ enum ItemEnrichmentStatus {
 /// a title or tag list that still equals them (or what it wrote itself), so a
 /// user's edit always wins, and `filledFields` records what it filled.
 model ItemEnrichment {
-  itemId       String               @id
-  item         CanvasItem           @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId         String               @id
+  item           CanvasItem           @relation(fields: [itemId], references: [id], onDelete: Cascade)
   /// Owner of the board, whose settings and AI budget the job uses.
-  userId       String
-  status       ItemEnrichmentStatus @default(PENDING)
-  baseTitle    String?
-  baseTags     String[]             @default([])
+  userId         String
+  status         ItemEnrichmentStatus @default(PENDING)
+  baseTitle      String?
+  baseTags       String[]             @default([])
   /// The saver chose this title on purpose; keep it even if it is unchanged.
-  titleLocked  Boolean              @default(false)
-  filledFields String[]             @default([])
-  filledTitle  String?
-  filledTags   String[]             @default([])
+  titleLocked    Boolean              @default(false)
+  filledFields   String[]             @default([])
+  filledTitle    String?
+  filledTags     String[]             @default([])
   /// Why the AI step did not run: not-configured, disabled, budget or provider-error.
-  aiSkipReason String?
+  aiSkipReason   String?
   /// Other links of this user that look like the same page (embeddings, IMP-065).
-  similarItemIds String[]           @default([])
-  completedAt  DateTime?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  similarItemIds String[]             @default([])
+  completedAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@index([userId, status])
   @@index([userId, completedAt])
@@ -1317,26 +1362,26 @@ model HomeBoardSuggestion {
 /// what makes the weekly job safe to run twice: only the run that inserts the
 /// row writes the notification and queues the email.
 model WeeklyRecap {
-  id             String    @id @default(cuid())
-  userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  weekStart      DateTime
-  periodStart    DateTime
-  periodEnd      DateTime
-  savedCount     Int       @default(0)
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStart           DateTime
+  periodStart         DateTime
+  periodEnd           DateTime
+  savedCount          Int       @default(0)
   /// Links saved in the period, newest first: [{ id, title, url }].
-  savedLinks     Json
+  savedLinks          Json
   /// Suggested piles for the period's links: [{ title, itemIds }].
-  suggestedPiles Json
-  staleWeeks     Int
-  staleCount     Int       @default(0)
+  suggestedPiles      Json
+  staleWeeks          Int
+  staleCount          Int       @default(0)
   /// The stale links "Archive these" acts on (capped); re-checked at archive time.
-  staleItemIds   String[]  @default([])
-  notificationId String?
-  emailQueued    Boolean   @default(false)
+  staleItemIds        String[]  @default([])
+  notificationId      String?
+  emailQueued         Boolean   @default(false)
   archivedChangeSetId String?
-  archivedAt     DateTime?
-  createdAt      DateTime  @default(now())
+  archivedAt          DateTime?
+  createdAt           DateTime  @default(now())
 
   @@unique([userId, weekStart])
   @@index([userId, createdAt])

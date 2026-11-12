@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-091](tasks/IMP-091.md) | Import bookmarks from a browser, Pocket or Raindrop | |
 | [IMP-092](tasks/IMP-092.md) | Saving from an iPhone is easy to set up | |
 | [IMP-093](tasks/IMP-093.md) | Browser button saves the page you are on | |
 | [IMP-094](tasks/IMP-094.md) | Keep the text of saved pages | |

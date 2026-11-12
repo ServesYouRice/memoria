@@ -1,6 +1,6 @@
 /**
- * IMP-086: Settings is split into six groups, each at its own address.
- * `/settings` opens Account.
+ * IMP-086: Settings is split into groups, each at its own address.
+ * `/settings` opens Account. IMP-091 added Import.
  */
 export const SETTINGS_SECTIONS = [
   {
@@ -35,6 +35,13 @@ export const SETTINGS_SECTIONS = [
     label: "AI assistant",
     intro:
       "Connect your own AI key, see what it used today, and control the AI helpers and agents.",
+  },
+  {
+    id: "import",
+    path: "/settings/import",
+    label: "Import",
+    intro:
+      "Bring your saved links from a browser, Pocket or Raindrop. Links you already have are skipped.",
   },
   {
     id: "data",

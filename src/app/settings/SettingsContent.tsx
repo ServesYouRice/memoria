@@ -55,6 +55,7 @@ import { AiProviderSettings } from "./AiProviderSettings";
 import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
 import { AutoFileSettings } from "./AutoFileSettings";
 import { WeeklyRecapSettings } from "./WeeklyRecapSettings";
+import { BookmarkImportSettings } from "./BookmarkImportSettings";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 import { DisabledReason } from "@/components/DisabledReason";
 import {
@@ -266,6 +267,7 @@ export function SettingsContent({
             {section === "appearance" && <AppearanceGroup />}
             {section === "notifications" && <NotificationsGroup />}
             {section === "ai" && <AiGroup />}
+            {section === "import" && <BookmarkImportSettings />}
             {section === "data" && <DataGroup />}
           </Stack>
         </Box>

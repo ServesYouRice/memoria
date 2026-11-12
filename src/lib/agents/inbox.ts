@@ -42,25 +42,31 @@ function overlaps(a: Rect, b: Rect) {
   );
 }
 
-/** First grid cell that no existing item covers, so saves never stack. */
+/**
+ * First grid cell that no existing item covers, so saves never stack. A bulk
+ * save passes the `index` of the slot it last filled as `startIndex`, so
+ * placing many links does not search from the first cell every time.
+ */
 export function findOpenSlot(
   occupied: Rect[],
   size: { width: number; height: number },
+  startIndex = 0,
 ) {
-  for (let index = 0; index < MAX_SLOT_SEARCH; index += 1) {
+  for (let index = startIndex; index < MAX_SLOT_SEARCH; index += 1) {
     const candidate = {
       positionX: SLOT_ORIGIN + (index % SLOT_COLUMNS) * SLOT_WIDTH,
       positionY: SLOT_ORIGIN + Math.floor(index / SLOT_COLUMNS) * SLOT_HEIGHT,
       ...size,
     };
     if (!occupied.some((rect) => overlaps(rect, candidate))) {
-      return { x: candidate.positionX, y: candidate.positionY };
+      return { x: candidate.positionX, y: candidate.positionY, index };
     }
   }
 
   return {
     x: SLOT_ORIGIN,
     y: SLOT_ORIGIN + Math.ceil(MAX_SLOT_SEARCH / SLOT_COLUMNS) * SLOT_HEIGHT,
+    index: MAX_SLOT_SEARCH,
   };
 }
 
