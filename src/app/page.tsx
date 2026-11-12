@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import {
@@ -5,72 +6,110 @@ import {
   Button,
   Container,
   Typography,
-  Card,
-  CardContent,
   Stack,
   Divider,
+  Link,
 } from "@mui/material";
-import {
-  Dashboard as MultiCanvasIcon,
-  Lock as SecurityIcon,
-  Speed as PerformanceIcon,
-  Devices as ExportIcon,
-  BrushOutlined as CanvasIcon,
-  Groups as CollaborationIcon,
-  BookmarkBorder as BookmarkIcon,
-} from "@mui/icons-material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 
-const FEATURES = [
+// Pictures of a real canvas (IMP-081), one per colour mode. The app sets
+// data-theme on <html> before paint, so the matching one shows without a
+// flash; both keep fixed dimensions so nothing jumps while they load.
+const DARK = '[data-theme="dark"] &';
+// Sized through classes, not inline styles: the CSP blocks style attributes.
+const FIT_IMAGE = {
+  "& img": { display: "block", width: "100%", height: "auto" },
+};
+const LIGHT_ONLY = {
+  ...FIT_IMAGE,
+  display: "block",
+  [DARK]: { display: "none" },
+};
+const DARK_ONLY = {
+  ...FIT_IMAGE,
+  display: "none",
+  [DARK]: { display: "block" },
+};
+
+const HERO_PICTURE = {
+  name: "canvas",
+  width: 1260,
+  height: 645,
+  alt: "A Memoria canvas planning a weekend in Lisbon: sticky notes, a link card for Belém Tower, a sunset photo and a hand-drawn arrow.",
+};
+
+const ABILITIES = [
   {
-    icon: MultiCanvasIcon,
-    title: "Multi-canvas",
-    description: `Create up to ${LAUNCH_LIMITS.canvasesPerUser} canvases to organize projects, ideas, and workflows.`,
+    title: "Put it all in one place",
+    text: "Sticky notes, web links, photos and quick sketches sit side by side. Drag them anywhere and zoom in or out.",
+    picture: {
+      name: "capture",
+      width: 560,
+      height: 350,
+      alt: "A link card, a photo, a drawing and a note on one canvas.",
+    },
   },
   {
-    icon: CanvasIcon,
-    title: "Flexible canvas",
-    description: `Pan, zoom, and arrange up to ${LAUNCH_LIMITS.itemsPerCanvas.toLocaleString("en-US")} active items on each canvas.`,
+    title: "Work on it together",
+    text: "Invite people by email and choose whether they can edit or only look. You see each other's cursors as you work.",
+    picture: {
+      name: "share",
+      width: 560,
+      height: 280,
+      alt: "The share window with an email box and a view or edit choice.",
+    },
   },
   {
-    icon: CollaborationIcon,
-    title: "Real-time collaboration",
-    description:
-      "Work together with your team in real time with presence and live cursors.",
-  },
-  {
-    icon: SecurityIcon,
-    title: "Security first",
-    description:
-      "Argon2 password hashing, request rate limits, private uploads, and a strict content security policy.",
-  },
-  {
-    icon: PerformanceIcon,
-    title: "Visible save state",
-    description:
-      "Autosave feedback, conflict messages, and version history make storage outcomes visible.",
-  },
-  {
-    icon: ExportIcon,
-    title: "Portable downloads",
-    description:
-      "Download a canvas as PNG, PDF, Markdown, or JSON from the canvas menu.",
+    title: "Take it with you",
+    text: "Download any canvas as PNG, PDF, Markdown, or JSON whenever you like.",
+    picture: {
+      name: "export",
+      width: 560,
+      height: 431,
+      alt: "The download window offering PNG, PDF, Markdown and JSON.",
+    },
   },
 ];
+
+type Picture = { name: string; width: number; height: number; alt: string };
+
+function ModePicture({
+  picture,
+  eager = false,
+}: {
+  picture: Picture;
+  eager?: boolean;
+}) {
+  return (
+    <>
+      {(["light", "dark"] as const).map((mode) => (
+        <Box key={mode} sx={mode === "light" ? LIGHT_ONLY : DARK_ONLY}>
+          <Image
+            src={`/home/${picture.name}-${mode}.webp`}
+            width={picture.width}
+            height={picture.height}
+            alt={picture.alt}
+            loading={eager ? "eager" : "lazy"}
+            // Already sized and compressed; served as-is.
+            unoptimized
+          />
+        </Box>
+      ))}
+    </>
+  );
+}
 
 // Keep public-page tokens server-safe: this page must render before the client
 // theme provider exists, so it cannot import the client-only theme module.
 // Solid brand surfaces (IMP-079: colours from the logo, no gradients).
 const PAGE_SURFACES = {
   navy: "#1c2452",
-  brandSoft: "rgba(44,95,201,0.1)",
   hero: "rgba(44,95,201,0.05)",
 };
-const HERO_BORDER_COLOR = "rgba(44,95,201,0.3)";
 // Navy label on the white button: 4.5:1+ at rest and on the hover/focus tint.
 const CTA_LABEL_COLOR = "#1c2452";
-const PREVIEW_SHADOW = "0 24px 64px rgba(28,36,82,0.12)";
+const PICTURE_SHADOW = "0 24px 64px rgba(28,36,82,0.16)";
 
 export default async function Home() {
   const session = await auth();
@@ -88,269 +127,132 @@ export default async function Home() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            // Below ~350px the wordmark and both actions exceed the container.
-            // A Button cannot shrink below its label, so the row would widen
-            // the document past the viewport. Wrapping uses each item's base
-            // size rather than its min-content width, so it is scoped to the
-            // widths that actually overflow; wider phones keep one line.
-            "@media (max-width:359.95px)": {
-              flexWrap: "wrap",
-              rowGap: "12px",
-            },
             py: 2.5,
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <MemoriaLogo size={34} />
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 700,
-              }}
-            >
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Memoria
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1.5}>
-            <Button href="/auth/login" color="inherit">
-              Sign in
-            </Button>
-            <Button href="/auth/register" variant="contained">
-              Get started
-            </Button>
-          </Stack>
+          <Button href="/auth/login" color="inherit">
+            Sign in
+          </Button>
         </Box>
       </Container>
 
       {/* Hero */}
-      <Box sx={{ position: "relative", overflow: "hidden" }}>
-        <Box
-          aria-hidden
-          sx={{
-            position: "absolute",
-            inset: 0,
-            background: PAGE_SURFACES.hero,
-            pointerEvents: "none",
-          }}
-        />
+      <Box sx={{ bgcolor: PAGE_SURFACES.hero }}>
         <Container
-          maxWidth="md"
+          maxWidth="lg"
           sx={{
-            position: "relative",
-            textAlign: "center",
-            py: { xs: 10, md: 14 },
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", md: "5fr 7fr" },
+            gap: { xs: 5, md: 6 },
+            alignItems: "center",
+            py: { xs: 6, md: 10 },
           }}
         >
-          <Typography
-            variant="body2"
-            sx={{
-              display: "inline-block",
-              px: 1.5,
-              py: 0.5,
-              mb: 3,
-              borderRadius: 99,
-              border: "1px solid",
-              borderColor: HERO_BORDER_COLOR,
-              color: "primary.main",
-              fontWeight: 600,
-            }}
-          >
-            Notes • Bookmarks • Images • Rich text
-          </Typography>
-          <Typography
-            variant="h1"
-            sx={{
-              fontSize: { xs: "2.5rem", sm: "3.25rem", md: "4rem" },
-              lineHeight: 1.08,
-              mb: 3,
-            }}
-          >
-            Organize your ideas on an{" "}
-            <Box
-              component="span"
+          <Box sx={{ textAlign: { xs: "center", md: "left" }, minWidth: 0 }}>
+            <Typography
+              variant="h1"
               sx={{
-                color: "primary.main",
-              }}
-            >
-              visual canvas
-            </Box>
-          </Typography>
-          <Typography
-            variant="h6"
-            sx={{
-              color: "text.secondary",
-              fontWeight: 400,
-              lineHeight: 1.6,
-              maxWidth: 560,
-              mx: "auto",
-              mb: 5,
-            }}
-          >
-            Memoria is a collaborative canvas for notes, bookmarks, images, and
-            rich text, with live presence and explicit save feedback.
-          </Typography>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={2}
-            sx={{
-              justifyContent: "center",
-            }}
-          >
-            <Button href="/auth/register" variant="contained" size="large">
-              Create account
-            </Button>
-            <Button href="/auth/login" variant="outlined" size="large">
-              Sign in
-            </Button>
-          </Stack>
-          <Typography
-            variant="body2"
-            sx={{
-              color: "text.secondary",
-              mt: 2.5,
-            }}
-          >
-            Launch limits: {LAUNCH_LIMITS.canvasesPerUser} canvases per account
-            • {LAUNCH_LIMITS.itemsPerCanvas.toLocaleString("en-US")} active
-            items per canvas
-          </Typography>
-
-          {/* Preview card */}
-          <Box
-            sx={{
-              mt: 8,
-              mx: "auto",
-              maxWidth: 480,
-              p: 4,
-              borderRadius: 4,
-              border: "1px solid",
-              borderColor: "divider",
-              bgcolor: "background.paper",
-              boxShadow: PREVIEW_SHADOW,
-              animation: "fadeIn 0.8s ease-out 0.2s both",
-            }}
-          >
-            <Stack
-              direction="row"
-              spacing={2}
-              sx={{
-                justifyContent: "center",
+                fontSize: { xs: "2.25rem", sm: "3rem", md: "3.5rem" },
+                lineHeight: 1.08,
                 mb: 2.5,
               }}
             >
-              {[CanvasIcon, BookmarkIcon].map((Icon, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 3,
-                    background: PAGE_SURFACES.brandSoft,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    animation: `float 4s ease-in-out ${i * 0.5}s infinite`,
-                  }}
-                >
-                  <Icon sx={{ fontSize: 30, color: "primary.main" }} />
-                </Box>
-              ))}
-            </Stack>
+              Your notes, links and pictures on one{" "}
+              <Box component="span" sx={{ color: "primary.main" }}>
+                big canvas
+              </Box>
+            </Typography>
             <Typography
               variant="h6"
-              sx={{
-                fontWeight: 600,
-              }}
-            >
-              Everything in one place
-            </Typography>
-            <Typography
-              variant="body2"
+              component="p"
               sx={{
                 color: "text.secondary",
+                fontWeight: 400,
+                lineHeight: 1.6,
+                maxWidth: 480,
+                mx: { xs: "auto", md: 0 },
+                mb: 4,
               }}
             >
-              Sticky notes, bookmarks, images, and rich text — arranged your
-              way.
+              Lay out your ideas the way you think about them, then share the
+              canvas with the people you plan with.
             </Typography>
+            <Button href="/auth/register" variant="contained" size="large">
+              Create account
+            </Button>
+            <Typography variant="body2" sx={{ color: "text.secondary", mt: 2 }}>
+              Already have an account?{" "}
+              <Link href="/auth/login" sx={{ fontWeight: 600 }}>
+                Sign in
+              </Link>
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              minWidth: 0,
+              borderRadius: 3,
+              overflow: "hidden",
+              border: "1px solid",
+              borderColor: "divider",
+              boxShadow: PICTURE_SHADOW,
+            }}
+          >
+            <ModePicture picture={HERO_PICTURE} eager />
           </Box>
         </Container>
       </Box>
 
-      {/* Features */}
+      {/* What you can do */}
       <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
-        <Box sx={{ textAlign: "center", mb: 7 }}>
-          <Typography
-            variant="h2"
-            sx={{ fontSize: { xs: "2rem", md: "2.75rem" }, mb: 1.5 }}
-          >
-            Everything you need
-          </Typography>
-          <Typography
-            variant="h6"
-            sx={{
-              color: "text.secondary",
-              fontWeight: 400,
-              maxWidth: 600,
-              mx: "auto",
-            }}
-          >
-            Powerful features to capture, organize, and collaborate on your
-            ideas
-          </Typography>
-        </Box>
-
+        <Typography
+          variant="h2"
+          sx={{
+            fontSize: { xs: "2rem", md: "2.5rem" },
+            textAlign: "center",
+            mb: 6,
+          }}
+        >
+          What you can do
+        </Typography>
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: {
-              xs: "1fr",
-              sm: "repeat(2, 1fr)",
-              md: "repeat(3, 1fr)",
-            },
-            gap: 3,
+            gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" },
+            gap: { xs: 5, md: 4 },
           }}
         >
-          {FEATURES.map((feature, index) => (
-            <Card
-              key={feature.title}
-              sx={{ animation: `fadeIn 0.5s ease-out ${index * 0.08}s both` }}
-            >
-              <CardContent sx={{ p: 3.5 }}>
-                <Box
-                  sx={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 2.5,
-                    background: PAGE_SURFACES.brandSoft,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    mb: 2.5,
-                  }}
-                >
-                  <feature.icon sx={{ fontSize: 26, color: "primary.main" }} />
-                </Box>
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{
-                    fontWeight: 600,
-                  }}
-                >
-                  {feature.title}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: "text.secondary",
-                    lineHeight: 1.7,
-                  }}
-                >
-                  {feature.description}
-                </Typography>
-              </CardContent>
-            </Card>
+          {ABILITIES.map((ability) => (
+            <Box key={ability.title} sx={{ minWidth: 0 }}>
+              <Box
+                sx={{
+                  aspectRatio: "8 / 5",
+                  overflow: "hidden",
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "background.paper",
+                  mb: 2.5,
+                }}
+              >
+                <ModePicture picture={ability.picture} />
+              </Box>
+              <Typography variant="h5" component="h3" gutterBottom>
+                {ability.title}
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ color: "text.secondary", lineHeight: 1.7 }}
+              >
+                {ability.text}
+              </Typography>
+            </Box>
           ))}
         </Box>
       </Container>
@@ -364,7 +266,7 @@ export default async function Home() {
             py: { xs: 6, md: 8 },
             borderRadius: 5,
             background: PAGE_SURFACES.navy,
-            color: "#fff",
+            color: "common.white",
           }}
         >
           <Typography
@@ -372,11 +274,10 @@ export default async function Home() {
             gutterBottom
             sx={{ fontSize: { xs: "1.75rem", md: "2.25rem" } }}
           >
-            Ready to get organized?
+            Start your first canvas
           </Typography>
           <Typography sx={{ opacity: 0.9, maxWidth: 480, mx: "auto", mb: 4 }}>
-            Create an account to capture ideas, arrange visual context, and
-            collaborate through invitations and live presence.
+            Make an account, open a canvas and drop in your first note.
           </Typography>
           <Button
             href="/auth/register"
@@ -396,6 +297,12 @@ export default async function Home() {
           >
             Create account
           </Button>
+          <Typography variant="body2" sx={{ opacity: 0.85, mt: 3 }}>
+            You can have up to {LAUNCH_LIMITS.canvasesPerUser} canvases per
+            account, with up to{" "}
+            {LAUNCH_LIMITS.itemsPerCanvas.toLocaleString("en-US")} active items
+            per canvas.
+          </Typography>
         </Box>
       </Container>
 
@@ -427,7 +334,7 @@ export default async function Home() {
                 color: "text.secondary",
               }}
             >
-              A modern, secure, and fast note-taking application.
+              A visual canvas for your notes, links and pictures.
             </Typography>
           </Box>
           <Stack
