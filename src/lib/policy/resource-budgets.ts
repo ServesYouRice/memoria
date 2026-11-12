@@ -27,4 +27,9 @@ export const RESOURCE_BUDGETS = {
   collaboration: {
     regressionClients: 50,
   },
+  /** Saved page text (IMP-094): what one link and one account may keep. */
+  pageCopy: {
+    maxBytesPerLink: 256 * 1024,
+    maxBytesPerAccount: 64 * 1024 * 1024,
+  },
 } as const;

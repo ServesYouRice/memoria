@@ -17,6 +17,7 @@ import {
   FileCopy as DuplicateIcon,
   Comment as CommentIcon,
   OpenInNew as OpenLinkIcon,
+  ChromeReaderMode as SavedCopyIcon,
   Check as CheckIcon,
 } from "@mui/icons-material";
 import {
@@ -33,6 +34,7 @@ import {
   NOTE_PALETTE,
 } from "@/features/canvas/lib/note-colors";
 import { useThemeMode } from "@/lib/theme-context";
+import { SavedCopyDialog } from "./SavedCopyDialog";
 
 export interface ContextMenuPosition {
   x: number;
@@ -135,6 +137,10 @@ export function CanvasContextMenu({
   onNoteColor,
 }: CanvasContextMenuProps) {
   const open = Boolean(position);
+  // IMP-094: the saved page text of a link, read after the menu closes.
+  const [savedCopyItemId, setSavedCopyItemId] = React.useState<string | null>(
+    null,
+  );
   const isFrame = item?.type === ItemType.FRAME;
   // Ask about AI only once a frame's menu opens for someone who can edit.
   const pile = usePileTransform(
@@ -160,71 +166,88 @@ export function CanvasContextMenu({
   };
 
   return (
-    <Menu
-      open={open}
-      onClose={onClose}
-      anchorReference="anchorPosition"
-      anchorPosition={
-        position ? { top: position.y, left: position.x } : undefined
-      }
-    >
-      {showNoteColors && item && (
-        <NoteColorRow
-          current={noteColorOf(item.content)}
-          onPick={(color) => handleAction(() => onNoteColor!(color))}
-        />
-      )}
-      {showNoteColors && <Divider />}
-      {linkUrl && item && (
-        <MenuItem
-          onClick={() =>
-            handleAction(() => openSavedLink({ id: item.id, url: linkUrl }))
-          }
-        >
-          <ListItemIcon>
-            <OpenLinkIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Open link</ListItemText>
-        </MenuItem>
-      )}
-      {capabilities.canCopyItems && (
-        <MenuItem onClick={() => handleAction(onCopy)}>
-          <ListItemIcon>
-            <CopyIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Copy</ListItemText>
-        </MenuItem>
-      )}
-      {capabilities.canCreateItems && (
-        <MenuItem onClick={() => handleAction(onDuplicate)}>
-          <ListItemIcon>
-            <DuplicateIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Duplicate</ListItemText>
-        </MenuItem>
-      )}
-      {capabilities.canComment && (
-        <MenuItem onClick={() => handleAction(onComments)}>
-          <ListItemIcon>
-            <CommentIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Comments</ListItemText>
-        </MenuItem>
-      )}
-      {showPileActions &&
-        pileTransformMenuItems({
-          pending: pile.pending,
-          onSelect: (kind) => handleAction(() => void pile.run(frameId!, kind)),
-        })}
-      {capabilities.canDeleteItems && [
-        <Divider key="delete-divider" />,
-        <MenuItem key="delete" onClick={() => handleAction(onDelete)}>
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" color="error" />
-          </ListItemIcon>
-          <ListItemText sx={{ color: "error.main" }}>Delete</ListItemText>
-        </MenuItem>,
-      ]}
-    </Menu>
+    <>
+      <Menu
+        open={open}
+        onClose={onClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          position ? { top: position.y, left: position.x } : undefined
+        }
+      >
+        {showNoteColors && item && (
+          <NoteColorRow
+            current={noteColorOf(item.content)}
+            onPick={(color) => handleAction(() => onNoteColor!(color))}
+          />
+        )}
+        {showNoteColors && <Divider />}
+        {linkUrl && item && (
+          <MenuItem
+            onClick={() =>
+              handleAction(() => openSavedLink({ id: item.id, url: linkUrl }))
+            }
+          >
+            <ListItemIcon>
+              <OpenLinkIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Open link</ListItemText>
+          </MenuItem>
+        )}
+        {linkUrl && item && (
+          <MenuItem
+            onClick={() => handleAction(() => setSavedCopyItemId(item.id))}
+          >
+            <ListItemIcon>
+              <SavedCopyIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Read saved copy</ListItemText>
+          </MenuItem>
+        )}
+        {capabilities.canCopyItems && (
+          <MenuItem onClick={() => handleAction(onCopy)}>
+            <ListItemIcon>
+              <CopyIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Copy</ListItemText>
+          </MenuItem>
+        )}
+        {capabilities.canCreateItems && (
+          <MenuItem onClick={() => handleAction(onDuplicate)}>
+            <ListItemIcon>
+              <DuplicateIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Duplicate</ListItemText>
+          </MenuItem>
+        )}
+        {capabilities.canComment && (
+          <MenuItem onClick={() => handleAction(onComments)}>
+            <ListItemIcon>
+              <CommentIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Comments</ListItemText>
+          </MenuItem>
+        )}
+        {showPileActions &&
+          pileTransformMenuItems({
+            pending: pile.pending,
+            onSelect: (kind) =>
+              handleAction(() => void pile.run(frameId!, kind)),
+          })}
+        {capabilities.canDeleteItems && [
+          <Divider key="delete-divider" />,
+          <MenuItem key="delete" onClick={() => handleAction(onDelete)}>
+            <ListItemIcon>
+              <DeleteIcon fontSize="small" color="error" />
+            </ListItemIcon>
+            <ListItemText sx={{ color: "error.main" }}>Delete</ListItemText>
+          </MenuItem>,
+        ]}
+      </Menu>
+      <SavedCopyDialog
+        itemId={savedCopyItemId}
+        onClose={() => setSavedCopyItemId(null)}
+      />
+    </>
   );
 }

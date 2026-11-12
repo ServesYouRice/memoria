@@ -18,6 +18,7 @@ silently truncated.
 | Collaboration regression | 50 concurrent clients | transport/admission tests exercise the bounded message path |
 | Account export | 384 MiB uncompressed input, 256 MiB compressed archive | streaming meter fails closed; output is private and checksummed; see [account-exports.md](account-exports.md) |
 | Export retention | 24 hours | durable delete job removes the private object |
+| Saved page text | 256 KiB per link, 64 MiB per account (UTF-8) | `storePageCopy` cuts a page at the link budget and keeps no text once the account budget is full; `RESOURCE_BUDGETS.pageCopy` |
 
 The deterministic regression suite is `tests/unit/resource-budgets.test.ts`.
 It serializes representative geometry at every advertised canvas size, checks
@@ -26,6 +27,13 @@ timing and heap measurements are deliberately recorded in a real browser
 profile rather than asserted against a noisy Node test runner; a release is
 not considered scale-verified until those traces stay under the frame,
 event-loop, and heap targets above.
+
+Saved page text (IMP-094) is kept for every saved link while the person
+keeps link reading on. At the launch scale (200 canvases of 2,000 items) an
+account could otherwise hold gigabytes of web text, so the account budget
+caps it at 64 MiB; that also keeps it well inside the account export's input
+budget. Links saved after the budget is full keep their title and summary
+but no page text.
 
 AI has separate per-user token, cost, prompt-byte, and concurrency ceilings.
 Those limits are configured with the `AI_*` environment variables and exposed

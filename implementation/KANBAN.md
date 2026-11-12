@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-094](tasks/IMP-094.md) | Keep the text of saved pages | |
 | [IMP-095](tasks/IMP-095.md) | Arrows work as real links between items | |
 | [IMP-096](tasks/IMP-096.md) | Open canvas files in and out (`.canvas`, `.excalidraw`) | |
 | [IMP-097](tasks/IMP-097.md) | "Remind me" and "Something old" | |

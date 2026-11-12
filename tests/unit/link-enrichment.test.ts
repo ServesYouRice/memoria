@@ -272,9 +272,15 @@ type Row = EnrichmentBase & {
   similarItemIds?: string[];
 };
 
-function fakeDb(options: { autoEnrichLinks?: boolean } = {}) {
+function fakeDb(
+  options: { autoEnrichLinks?: boolean; webArchiveLookup?: boolean } = {},
+) {
   const state = {
-    user: { autoEnrichLinks: options.autoEnrichLinks ?? true },
+    user: {
+      autoEnrichLinks: options.autoEnrichLinks ?? true,
+      webArchiveLookup: options.webArchiveLookup ?? false,
+    },
+    pageCopy: null as Record<string, unknown> | null,
     row: {
       itemId: "item-1",
       userId: "u1",
@@ -320,6 +326,13 @@ function fakeDb(options: { autoEnrichLinks?: boolean } = {}) {
           return { count: data.length };
         },
       ),
+    },
+    itemPageCopy: {
+      aggregate: vi.fn(async () => ({ _sum: { textBytes: 0 } })),
+      upsert: vi.fn(async ({ create }: { create: Record<string, unknown> }) => {
+        state.pageCopy = { ...create };
+        return state.pageCopy;
+      }),
     },
     itemEmbedding: {
       upsert: vi.fn(async () => ({})),
@@ -677,7 +690,9 @@ describe("link enrichment outbox job", () => {
       })),
     })(job());
 
-    expect(events).toEqual(["scan", "lock"]);
+    // The canvas lock, then the page-copy budget lock (IMP-094), both after
+    // the scan.
+    expect(events).toEqual(["scan", "lock", "lock"]);
     expect(db.state.row).toMatchObject({
       status: "DONE",
       similarItemIds: ["live"],
@@ -723,5 +738,53 @@ describe("link enrichment outbox job", () => {
         dedupeKey: "link.enrich:item-1:v2",
       }),
     ]);
+  });
+
+  // IMP-094: the page text the job reads is kept as the link's saved copy.
+  it("keeps the page's readable text with the time it was read", async () => {
+    const db = fakeDb();
+    await createLinkEnrichmentHandler(db.client, {
+      fetchPage: vi.fn().mockResolvedValue(page),
+      suggest: vi.fn().mockResolvedValue(ai),
+      embed: noEmbedding,
+    })(job());
+    expect(db.state.pageCopy).toMatchObject({
+      itemId: "item-1",
+      userId: "u1",
+      url: URL_,
+      text: "Recipe body",
+      textBytes: 11,
+      readAt: expect.any(Date),
+    });
+    expect(db.state.outbox).toEqual([]);
+  });
+
+  it("hands the link to the archive lookup only when the person and deployment allow it", async () => {
+    vi.stubEnv("WEB_ARCHIVE_LOOKUP", "true");
+    try {
+      const off = fakeDb();
+      await createLinkEnrichmentHandler(off.client, {
+        fetchPage: vi.fn().mockResolvedValue(page),
+        suggest: vi.fn().mockResolvedValue(ai),
+        embed: noEmbedding,
+      })(job());
+      expect(off.state.outbox).toEqual([]);
+
+      const on = fakeDb({ webArchiveLookup: true });
+      await createLinkEnrichmentHandler(on.client, {
+        fetchPage: vi.fn().mockResolvedValue(page),
+        suggest: vi.fn().mockResolvedValue(ai),
+        embed: noEmbedding,
+      })(job());
+      expect(on.state.outbox).toEqual([
+        expect.objectContaining({
+          type: "link.page-copy",
+          payload: { itemId: "item-1" },
+          dedupeKey: "link.page-copy:item-1",
+        }),
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

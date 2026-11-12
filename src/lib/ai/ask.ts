@@ -12,6 +12,7 @@ import { generateText } from "@/lib/ai/service";
 import {
   ASK_BOARD_LIMIT,
   ASK_MAX_OUTPUT_TOKENS,
+  ASK_PAGE_EXCERPT_CHARS,
   ASK_RETRIEVAL_LIMIT,
   ASK_SYSTEM_PROMPT,
   buildAskContext,
@@ -23,6 +24,7 @@ import {
   type AskRetrievedItem,
 } from "@/lib/ai/ask-schema";
 import { proposeAskCommand } from "@/lib/ai/ask-commands";
+import { pageCopyExcerpts } from "@/lib/services/page-copy";
 
 const logger = createLogger("ai-ask");
 const EMBEDDING_SCAN_LIMIT = 2_000;
@@ -110,9 +112,14 @@ export async function searchOwnedItems(
   // Terms are letters and digits only (extractSearchTerms), so OR-joining
   // them is a valid tsquery.
   const tsQuery = Prisma.sql`to_tsquery('english', ${terms.join(" | ")})`;
-  const ftsMatch = useFts
-    ? Prisma.sql`OR i."searchVector" @@ ${tsQuery}`
-    : Prisma.empty;
+  // Words found only in a link's saved page text count too (IMP-094).
+  const ftsMatch = Prisma.sql`
+    ${useFts ? Prisma.sql`OR i."searchVector" @@ ${tsQuery}` : Prisma.empty}
+    OR EXISTS (
+      SELECT 1 FROM "ItemPageCopy" p
+      WHERE p."itemId" = i."id" AND p."searchVector" @@ ${tsQuery}
+    )
+  `;
   const ftsRank = useFts
     ? Prisma.sql`+ ts_rank(COALESCE(i."searchVector", ''::tsvector), ${tsQuery})`
     : Prisma.empty;
@@ -253,7 +260,19 @@ export async function retrieveOwnedItems(
       }
     }
   }
-  return merged.map(toRetrieved);
+  const retrieved = merged.map(toRetrieved);
+  // A short excerpt of each link's saved page, around the question's words.
+  const excerpts = await pageCopyExcerpts(
+    prisma,
+    merged.filter((row) => row.type === "BOOKMARK").map((row) => row.id),
+    extractSearchTerms(question),
+    { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
+  );
+  for (const item of retrieved) {
+    const excerpt = excerpts.get(item.id);
+    if (excerpt) item.pageText = excerpt;
+  }
+  return retrieved;
 }
 
 export async function listOwnedBoards(userId: string): Promise<AskBoard[]> {

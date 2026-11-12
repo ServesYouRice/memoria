@@ -24,6 +24,9 @@ model User {
   twoFactorEnabled Boolean   @default(false)
   /// Saved links get a title, tags and summary in the background (IMP-064).
   autoEnrichLinks  Boolean   @default(true)
+  /// Look saved links up in a public web archive (IMP-094). Off by default;
+  /// sends the link address to a third party.
+  webArchiveLookup Boolean   @default(false)
   /// Inbox items move to a suggested board on their own when it is a confident match (IMP-066).
   autoFileItems    Boolean   @default(false)
   /// The weekly recap also arrives by email; in-app only by default (IMP-070).
@@ -324,6 +327,7 @@ model CanvasItem {
   embeddings          ItemEmbedding[]
   clipBatchItems      ClipBatchItem[]
   enrichment          ItemEnrichment?
+  pageCopy            ItemPageCopy?
   homeBoardSuggestion HomeBoardSuggestion?
 
   @@index([canvasId, deletedAt])
@@ -1323,6 +1327,31 @@ model ItemEnrichment {
 
   @@index([userId, status])
   @@index([userId, completedAt])
+}
+
+/// The readable text of a saved link's page (IMP-094), kept so the link stays
+/// useful after the site changes. Untrusted web content: shown as plain text
+/// only and marked as data wherever AI reads it. Deleted with its item.
+model ItemPageCopy {
+  itemId           String                   @id
+  item             CanvasItem               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the canvas, whose storage budget the copy counts against.
+  userId           String
+  /// The address that was read.
+  url              String
+  text             String
+  /// UTF-8 size of `text`, summed for the per-account budget.
+  textBytes        Int                      @default(0)
+  readAt           DateTime?
+  /// An existing public web-archive copy, when the lookup is on.
+  archiveUrl       String?
+  archiveCheckedAt DateTime?
+  searchVector     Unsupported("tsvector")?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([userId])
+  @@index([searchVector], type: Gin, map: "idx_item_page_copy_fts")
 }
 
 enum HomeBoardSuggestionStatus {

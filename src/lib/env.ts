@@ -107,6 +107,8 @@ const envSchema = z
     CSP_REPORT_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
+    /** Allow people to look saved links up on archive.org (IMP-094). */
+    WEB_ARCHIVE_LOOKUP: z.enum(["true", "false"]).optional(),
     BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,
     // DEC-013: the AR canvas layer stays off until the real-device matrix
     // passes. Deployments opt in explicitly.

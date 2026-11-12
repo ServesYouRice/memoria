@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger";
 import { parsePagination } from "@/lib/api/pagination";
 import { BadRequestError } from "@/lib/errors";
 import { withAuth } from "@/lib/api/route-handler";
+import { pageCopyExcerpts } from "@/lib/services/page-copy";
 
 interface SearchResult {
   itemId: string;
@@ -128,6 +129,14 @@ export const GET = withAuth(async (request, session) => {
   // Use FTS with plainto_tsquery for proper word stemming and ranking
   // This is much faster than ILIKE and provides relevance ranking
   // FTS filter - uses the generated searchVector column when available
+  // A saved link also matches words that appear only in its saved page
+  // text (IMP-094); that table always has its own indexed search vector.
+  const pageCopyMatch = Prisma.sql`
+    OR EXISTS (
+      SELECT 1 FROM "ItemPageCopy" p
+      WHERE p."itemId" = i."id" AND p."searchVector" @@ ${tsQuery}
+    )
+  `;
   const searchFilter = useFts
     ? Prisma.sql`
         AND (
@@ -136,6 +145,7 @@ export const GET = withAuth(async (request, session) => {
           OR i."content"->>'title' ILIKE ${searchTerm} ESCAPE '\\'
           OR i."content"->>'description' ILIKE ${searchTerm} ESCAPE '\\'
           OR i."content"->>'url' ILIKE ${searchTerm} ESCAPE '\\'
+          ${pageCopyMatch}
         )
       `
     : Prisma.sql`
@@ -144,6 +154,7 @@ export const GET = withAuth(async (request, session) => {
           OR i."content"->>'title' ILIKE ${searchTerm} ESCAPE '\\'
           OR i."content"->>'description' ILIKE ${searchTerm} ESCAPE '\\'
           OR i."content"->>'url' ILIKE ${searchTerm} ESCAPE '\\'
+          ${pageCopyMatch}
         )
       `;
 
@@ -236,6 +247,12 @@ export const GET = withAuth(async (request, session) => {
       LIMIT ${limit} OFFSET ${offset};
     `;
 
+  const pageExcerpts = await pageCopyExcerpts(
+    prisma,
+    items.filter((item) => item.type === "BOOKMARK").map((item) => item.id),
+    [query],
+  );
+
   // Create results with snippets
   const queryLower = query.toLowerCase();
   const results: SearchResult[] = items.map((item) => {
@@ -259,7 +276,14 @@ export const GET = withAuth(async (request, session) => {
         snippet = plainText.substring(0, 100) + "...";
       }
     } else if (item.type === "BOOKMARK") {
-      snippet = (content.title as string) || (content.url as string) || "";
+      const label = (content.title as string) || (content.url as string) || "";
+      const excerpt = pageExcerpts.get(item.id);
+      // When only the saved page text matched, show where (IMP-094). The
+      // excerpt is untrusted web text; the client renders it as plain text.
+      snippet =
+        excerpt && !label.toLowerCase().includes(queryLower)
+          ? `${label} — …${excerpt}…`
+          : label;
     } else if (item.type === "IMAGE") {
       snippet =
         (content.alt as string) || (content.filename as string) || "Image";
