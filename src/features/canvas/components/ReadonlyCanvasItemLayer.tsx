@@ -30,7 +30,8 @@ import {
 } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { useThemeMode } from "@/lib/theme-context";
-import { READONLY_NOTE_COLORS } from "@/features/canvas/lib/note-colors";
+import { DotOverlay } from "@/features/canvas/components/GridOverlay";
+import { NOTE_STYLE, noteColorsFor } from "@/features/canvas/lib/note-colors";
 import {
   CANVAS_PALETTE,
   useCanvasPalette,
@@ -210,8 +211,9 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
 }
 
 function ReadonlyNoteItem({ item }: { item: CanvasItem }) {
-  const colors = READONLY_NOTE_COLORS[useThemeMode().mode];
+  const mode = useThemeMode().mode;
   if (!isNoteContent(item.content)) return null;
+  const colors = noteColorsFor(item.content, mode);
   return (
     <Group x={item.positionX} y={item.positionY}>
       <Rect
@@ -219,20 +221,28 @@ function ReadonlyNoteItem({ item }: { item: CanvasItem }) {
         height={item.height}
         fill={colors.fill}
         stroke={colors.stroke}
-        strokeWidth={2}
-        cornerRadius={4}
-        shadowBlur={4}
-        shadowOpacity={0.15}
+        strokeWidth={NOTE_STYLE.strokeWidth}
+        cornerRadius={NOTE_STYLE.cornerRadius}
+        shadowColor="black"
+        shadowBlur={NOTE_STYLE.shadowBlur}
+        shadowOpacity={NOTE_STYLE.shadowOpacity[mode]}
+        shadowOffset={NOTE_STYLE.shadowOffset}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
       />
       <Text
-        x={10}
-        y={10}
-        width={item.width - 20}
-        height={item.height - 20}
-        text={stripHtmlTags(item.content.text)}
-        fontSize={14}
+        x={NOTE_STYLE.padding}
+        y={NOTE_STYLE.padding}
+        width={item.width - NOTE_STYLE.padding * 2}
+        height={item.height - NOTE_STYLE.padding * 2}
+        text={item.content.plainText ?? stripHtmlTags(item.content.text)}
+        fontSize={NOTE_STYLE.fontSize}
+        lineHeight={NOTE_STYLE.lineHeight}
+        fontFamily={NOTE_STYLE.fontFamily}
         fill={colors.text}
         wrap="word"
+        ellipsis
+        perfectDrawEnabled={false}
       />
     </Group>
   );
@@ -536,5 +546,31 @@ export function ReadonlyCanvasItemLayer({
         <ReadonlyCanvasItem key={item.id} item={item} />
       ))}
     </Layer>
+  );
+}
+
+/** IMP-085: the same faint dotted background as the editor. */
+export function ReadonlyCanvasBackground({
+  width,
+  height,
+  zoom,
+  position,
+}: {
+  width: number;
+  height: number;
+  zoom: number;
+  position: { x: number; y: number };
+}) {
+  const palette = useCanvasPalette();
+  return (
+    <DotOverlay
+      width={width}
+      height={height}
+      zoom={zoom}
+      gridSize={20}
+      offset={{ x: -position.x / zoom, y: -position.y / zoom }}
+      visible
+      stroke={palette.dot}
+    />
   );
 }

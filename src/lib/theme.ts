@@ -116,6 +116,8 @@ export const appColorTokens = {
     disabledButtonText: "#64748b",
     canvasBackground: "#f0f2f5",
     canvasGrid: "#e0e0e0",
+    /** IMP-085: the faint dots of the default canvas background. */
+    canvasDot: "#c5cbd6",
     focusRing: brand.primary.main,
   },
   dark: {
@@ -132,6 +134,7 @@ export const appColorTokens = {
     disabledButtonText: "#94a3b8",
     canvasBackground: "#0d1526",
     canvasGrid: "#1e293b",
+    canvasDot: "#2b3a55",
     focusRing: brand.primary.light,
   },
 } as const;

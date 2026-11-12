@@ -16,6 +16,7 @@
 
 "use client";
 
+import { fonts } from "@/lib/theme";
 import React, { useRef, useState, useEffect } from "react";
 import { Group, Rect, Text, Circle, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
@@ -237,7 +238,7 @@ function BookmarkItemComponent({
               text={content.title}
               fontSize={15}
               fontWeight="bold"
-              fontFamily="Arial"
+              fontFamily={fonts.body}
               fill={palette.bookmark.text}
               wrap="none"
               ellipsis={true}
@@ -253,7 +254,7 @@ function BookmarkItemComponent({
               height={localSize.height - 65}
               text={blurb}
               fontSize={12}
-              fontFamily="Arial"
+              fontFamily={fonts.body}
               fill={palette.textMuted}
               wrap="word"
             />
@@ -266,7 +267,7 @@ function BookmarkItemComponent({
             width={localSize.width - 20}
             text={content.siteName || displayUrl}
             fontSize={10}
-            fontFamily="Arial"
+            fontFamily={fonts.body}
             fill={palette.textFaint}
             wrap="none"
             ellipsis={true}
@@ -291,7 +292,7 @@ function BookmarkItemComponent({
             width={localSize.width - 60}
             text={displayUrl}
             fontSize={14}
-            fontFamily="Arial"
+            fontFamily={fonts.body}
             fill={palette.bookmark.link}
             textDecoration="underline"
             wrap="none"
@@ -305,7 +306,7 @@ function BookmarkItemComponent({
             width={localSize.width - 20}
             text="Bookmark"
             fontSize={11}
-            fontFamily="Arial"
+            fontFamily={fonts.body}
             fill={palette.textMuted}
           />
         </>

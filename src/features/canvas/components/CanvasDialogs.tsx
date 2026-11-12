@@ -13,6 +13,9 @@ import { TagFilterPanel } from "@/features/canvas/components/TagFilterPanel";
 import { SerendipityDialog } from "@/features/canvas/components/SerendipityDialog";
 import { WhisperMode } from "@/features/canvas/components/WhisperMode";
 import { ARCanvasLayer } from "@/features/canvas/components/ARCanvasLayer";
+import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import type { NoteColorName } from "@/lib/note-colors";
+import { toast } from "sonner";
 
 const EditNoteDialog = dynamic(
   () =>
@@ -208,6 +211,34 @@ export function CanvasDialogs({
   arOpen,
   setAROpen,
 }: CanvasDialogsProps) {
+  const updateItem = useUpdateCanvasItem();
+  const menuItem = contextMenuPosition?.itemId
+    ? items.find((item) => item.id === contextMenuPosition.itemId)
+    : undefined;
+
+  // IMP-085: the colour travels with the note's content, so it is saved,
+  // validated and shared like any other content change.
+  const recolorNote = (color: NoteColorName) => {
+    if (!menuItem) return;
+    updateItem.mutate(
+      {
+        itemId: menuItem.id,
+        data: {
+          version: menuItem.version,
+          content: { ...menuItem.content, color } as CanvasItem["content"],
+        },
+      },
+      {
+        onError: (error) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Could not change the note colour",
+          ),
+      },
+    );
+  };
+
   return (
     <>
       {capabilities.canCreateItems && (
@@ -298,11 +329,8 @@ export function CanvasDialogs({
         onComments={onOpenComments}
         capabilities={capabilities}
         canvasId={canvasId}
-        item={
-          contextMenuPosition?.itemId
-            ? items.find((item) => item.id === contextMenuPosition.itemId)
-            : undefined
-        }
+        item={menuItem}
+        onNoteColor={recolorNote}
       />
 
       {capabilities.canComment && commentsItemId && (

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   NOTE_COLORS,
-  READONLY_NOTE_COLORS,
+  NOTE_PALETTE,
+  noteColorsFor,
 } from "@/features/canvas/lib/note-colors";
+import { NOTE_COLOR_NAMES } from "@/lib/note-colors";
 
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => {
@@ -20,16 +22,33 @@ function contrast(a: string, b: string): number {
 }
 
 describe("note colours", () => {
-  it("keep the daytime yellow in light mode", () => {
-    expect(NOTE_COLORS.light.fill).toBe("#FFFACD");
-    expect(READONLY_NOTE_COLORS.light.fill).toBe("#fffacd");
+  it("draw a note without a colour in yellow", () => {
+    expect(noteColorsFor({ text: "hi" }, "light")).toBe(NOTE_COLORS.light);
+    expect(noteColorsFor({ text: "hi", color: "nope" }, "dark")).toBe(
+      NOTE_COLORS.dark,
+    );
+    expect(noteColorsFor({ text: "hi", color: "blue" }, "light")).toBe(
+      NOTE_PALETTE.light.blue,
+    );
   });
 
-  it.each([
-    ["editor", NOTE_COLORS.dark],
-    ["read-only view", READONLY_NOTE_COLORS.dark],
-  ])("use a soft dark fill with 4.5:1+ text in the %s", (_name, colors) => {
-    expect(luminance(colors.fill)).toBeLessThan(0.1);
+  it.each(
+    (["light", "dark"] as const).flatMap((mode) =>
+      NOTE_COLOR_NAMES.map((name) => [mode, name] as const),
+    ),
+  )("%s %s keeps 4.5:1+ text on its fill", (mode, name) => {
+    const colors = NOTE_PALETTE[mode][name];
     expect(contrast(colors.text, colors.fill)).toBeGreaterThanOrEqual(4.5);
+    if (mode === "dark") expect(luminance(colors.fill)).toBeLessThan(0.1);
+    else expect(luminance(colors.fill)).toBeGreaterThan(0.6);
+  });
+
+  it("gives every colour its own fill", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const fills = NOTE_COLOR_NAMES.map(
+        (name) => NOTE_PALETTE[mode][name].fill,
+      );
+      expect(new Set(fills).size).toBe(fills.length);
+    }
   });
 });

@@ -41,6 +41,8 @@ export interface CanvasPalette {
   scrimText: string;
   shadow: string;
   grid: string;
+  /** Faint background dots (IMP-085). */
+  dot: string;
 }
 
 export const CANVAS_PALETTE: Record<PaletteMode, CanvasPalette> = {
@@ -72,6 +74,7 @@ export const CANVAS_PALETTE: Record<PaletteMode, CanvasPalette> = {
     scrimText: "#ffffff",
     shadow: "rgba(0, 0, 0, 0.35)",
     grid: appColorTokens.light.canvasGrid,
+    dot: appColorTokens.light.canvasDot,
   },
   dark: {
     selection: brand.primary.light,
@@ -101,6 +104,7 @@ export const CANVAS_PALETTE: Record<PaletteMode, CanvasPalette> = {
     scrimText: "#ffffff",
     shadow: "rgba(0, 0, 0, 0.6)",
     grid: appColorTokens.dark.canvasGrid,
+    dot: appColorTokens.dark.canvasDot,
   },
 };
 

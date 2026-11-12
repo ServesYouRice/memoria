@@ -15,8 +15,10 @@ import { ItemType } from "@/types/canvas";
 import {
   DOCUMENT_ITEMS_KEY,
   ITEM_GEOMETRY_KEYS,
+  NOTE_COLOR_KEY,
   NOTE_TEXT_KEY,
 } from "./protocol";
+import { DEFAULT_NOTE_COLOR, isNoteColorName } from "@/lib/note-colors";
 import {
   canonicalNoteDocument,
   noteDocumentFromContent,
@@ -113,8 +115,14 @@ export function readItemState(
   if (type === ItemType.NOTE) {
     const fragment = map.get(NOTE_TEXT_KEY);
     if (!isNoteTextFragment(fragment)) return null;
+    // The browser draws an unknown colour as the default rather than
+    // dropping the note.
+    const color = map.get(NOTE_COLOR_KEY);
     try {
-      content = readNoteFragment(fragment);
+      content = readNoteFragment(
+        fragment,
+        isNoteColorName(color) ? color : undefined,
+      );
     } catch {
       return null;
     }
@@ -153,11 +161,16 @@ function fillItemMap(map: ItemMap, state: CanvasItemState, fresh: boolean) {
 
   if (state.type !== ItemType.NOTE) {
     if (map.has(NOTE_TEXT_KEY)) map.delete(NOTE_TEXT_KEY);
+    if (map.has(NOTE_COLOR_KEY)) map.delete(NOTE_COLOR_KEY);
     set("content", state.content);
     return;
   }
 
   if (map.has("content")) map.delete("content");
+  const color = (state.content as { color?: unknown } | null)?.color;
+  if (isNoteColorName(color) && color !== DEFAULT_NOTE_COLOR)
+    set(NOTE_COLOR_KEY, color);
+  else if (map.has(NOTE_COLOR_KEY)) map.delete(NOTE_COLOR_KEY);
   const normalized = noteDocumentFromContent(state.content);
   let fragment = map.get(NOTE_TEXT_KEY);
   if (!normalized) {

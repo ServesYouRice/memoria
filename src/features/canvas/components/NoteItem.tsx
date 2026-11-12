@@ -1,8 +1,9 @@
 /**
  * NoteItem Konva Component
  *
- * Minimal Note component for reference
- * (Full implementation would be part of Slice 4)
+ * A sticky note: rounded, softly shadowed, in one of the note colours
+ * (IMP-085). The shadow is switched off while the note is dragged so a canvas
+ * full of notes stays smooth.
  */
 
 "use client";
@@ -19,7 +20,7 @@ import { isNoteContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { normalizeNoteContent } from "@/lib/rich-text/note-format";
 import { useThemeMode } from "@/lib/theme-context";
-import { NOTE_COLORS } from "@/features/canvas/lib/note-colors";
+import { NOTE_STYLE, noteColorsFor } from "@/features/canvas/lib/note-colors";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type NoteItemProps = CanvasItemAdapterProps;
@@ -39,7 +40,9 @@ export function NoteItem({
 }: NoteItemProps) {
   const palette = useCanvasPalette();
   const groupRef = useRef<Konva.Group>(null);
-  const noteColors = NOTE_COLORS[useThemeMode().mode];
+  const mode = useThemeMode().mode;
+  const noteColors = noteColorsFor(item.content, mode);
+  const [isDragging, setIsDragging] = useState(false);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
     y: item.positionY,
@@ -132,8 +135,14 @@ export function NoteItem({
       x={localPosition.x}
       y={localPosition.y}
       draggable={capabilities.canMoveItems}
+      onDragStart={(e) => {
+        if (e.target === e.currentTarget) setIsDragging(true);
+      }}
       onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
+      onDragEnd={(e) => {
+        if (e.target === e.currentTarget) setIsDragging(false);
+        handleDragEnd(e);
+      }}
       onClick={onSelect}
       onTap={onSelect}
       onDblClick={onActivate}
@@ -145,24 +154,33 @@ export function NoteItem({
         height={localSize.height}
         fill={noteColors.fill}
         stroke={isSelected ? palette.selection : noteColors.stroke}
-        strokeWidth={isSelected ? 3 : 2}
+        strokeWidth={
+          isSelected ? NOTE_STYLE.selectedStrokeWidth : NOTE_STYLE.strokeWidth
+        }
+        cornerRadius={NOTE_STYLE.cornerRadius}
+        shadowEnabled={!isDragging}
         shadowColor="black"
-        shadowBlur={5}
-        shadowOpacity={0.2}
-        shadowOffset={{ x: 2, y: 2 }}
-        cornerRadius={4}
+        shadowBlur={NOTE_STYLE.shadowBlur}
+        shadowOpacity={NOTE_STYLE.shadowOpacity[mode]}
+        shadowOffset={NOTE_STYLE.shadowOffset}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
       />
 
       <Text
-        x={10}
-        y={10}
-        width={localSize.width - 20}
-        height={localSize.height - 20}
+        x={NOTE_STYLE.padding}
+        y={NOTE_STYLE.padding}
+        width={localSize.width - NOTE_STYLE.padding * 2}
+        height={localSize.height - NOTE_STYLE.padding * 2}
         text={readableText}
-        fontSize={14}
-        fontFamily="Arial"
+        fontSize={NOTE_STYLE.fontSize}
+        lineHeight={NOTE_STYLE.lineHeight}
+        fontFamily={NOTE_STYLE.fontFamily}
         fill={noteColors.text}
         wrap="word"
+        ellipsis
+        listening={false}
+        perfectDrawEnabled={false}
       />
 
       {isSelected && capabilities.canResizeItems && (

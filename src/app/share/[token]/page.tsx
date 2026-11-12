@@ -22,7 +22,10 @@ import { Stage } from "react-konva";
 import Link from "next/link";
 import { type CanvasItem } from "@/types/canvas";
 import type Konva from "konva";
-import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
+import {
+  ReadonlyCanvasBackground,
+  ReadonlyCanvasItemLayer,
+} from "@/features/canvas/components/ReadonlyCanvasItemLayer";
 import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
 import { NO_CANVAS_CAPABILITIES } from "@/types/canvas";
 import {
@@ -376,6 +379,12 @@ export default function SharePage({ params }: SharePageProps) {
             }
             onWheel={handleWheel}
           >
+            <ReadonlyCanvasBackground
+              width={stageSize.width}
+              height={stageSize.height}
+              zoom={zoom}
+              position={position}
+            />
             <ReadonlyCanvasItemLayer items={items} />
           </Stage>
         )}

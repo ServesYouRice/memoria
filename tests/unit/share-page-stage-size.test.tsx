@@ -16,6 +16,7 @@ vi.mock("react-konva", () => ({
 }));
 vi.mock("@/features/canvas/components/ReadonlyCanvasItemLayer", () => ({
   ReadonlyCanvasItemLayer: () => null,
+  ReadonlyCanvasBackground: () => null,
 }));
 vi.mock("@/features/canvas/components/CanvasAccessiblePanel", () => ({
   CanvasAccessiblePanel: () => null,

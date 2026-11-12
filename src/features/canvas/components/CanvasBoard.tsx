@@ -84,7 +84,10 @@ import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccess
 import type { ContextMenuPosition } from "@/features/canvas/components/CanvasContextMenu";
 import { DrawingToolbar } from "@/features/canvas/components/DrawingToolbar";
 import { CanvasHeader } from "@/features/canvas/components/CanvasHeader";
-import { GridOverlay } from "@/features/canvas/components/GridOverlay";
+import {
+  DotOverlay,
+  GridOverlay,
+} from "@/features/canvas/components/GridOverlay";
 import { DrawingPreview } from "@/features/canvas/components/DrawingPreview";
 import { CursorChat } from "@/features/canvas/components/CursorChat";
 import { ReactionSelector } from "@/features/canvas/components/ReactionSelector";
@@ -1515,6 +1518,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             ref={stageRef}
             onContextMenu={(e) => e.evt.preventDefault()}
           >
+            <DotOverlay
+              width={stageSize.width}
+              height={stageSize.height}
+              zoom={zoom}
+              gridSize={20}
+              offset={{ x: -position.x / zoom, y: -position.y / zoom }}
+              visible={!gridVisible}
+              stroke={CANVAS_PALETTE[themeMode].dot}
+            />
             <GridOverlay
               width={stageSize.width}
               height={stageSize.height}

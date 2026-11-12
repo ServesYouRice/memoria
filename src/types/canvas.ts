@@ -117,6 +117,8 @@ export interface NoteContent {
   formatVersion?: 1;
   document?: Record<string, unknown>;
   plainText?: string;
+  /** IMP-085: one of `NOTE_COLOR_NAMES`; absent means yellow. */
+  color?: string;
 }
 
 /**
