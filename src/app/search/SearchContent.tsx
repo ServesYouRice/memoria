@@ -30,6 +30,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import Link from "next/link";
 
 interface SearchResult {
   itemId: string;
@@ -216,7 +217,14 @@ export function SearchContent() {
           description={
             typeFilter
               ? "Choose All to see every result, or load more."
-              : "Try different keywords, or check the spelling."
+              : "Try other words or check the spelling. New saves land in your Inbox."
+          }
+          action={
+            typeFilter ? undefined : (
+              <Button component={Link} href="/inbox" variant="outlined">
+                Open the Inbox
+              </Button>
+            )
           }
         />
       )}

@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-089](tasks/IMP-089.md) | Empty pages offer a next step | |
 | [IMP-088](tasks/IMP-088.md) | The app says "canvas" everywhere, never "board" | |
 | [IMP-080](tasks/IMP-080.md) | Screens use theme colours instead of hand-typed ones | |
 | [IMP-081](tasks/IMP-081.md) | Home page shows the product | |

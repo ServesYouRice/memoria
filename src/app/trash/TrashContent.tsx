@@ -19,6 +19,8 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import Link from "next/link";
 
 type TrashItem = {
   id: string;
@@ -91,7 +93,12 @@ export function TrashContent() {
         <EmptyState
           icon={DeleteOutlined}
           title="Trash is empty"
-          description="Deleted canvas items will appear here."
+          description={`Items you delete from a canvas wait here for ${LAUNCH_LIMITS.trashRetentionDays} days, so you can restore them before they are removed for good.`}
+          action={
+            <Button component={Link} href="/dashboard" variant="contained">
+              Back to the dashboard
+            </Button>
+          }
         />
       )}
       {items.length > 0 && (

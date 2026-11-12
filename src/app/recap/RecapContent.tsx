@@ -25,6 +25,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import NextLink from "next/link";
 import { useRevertChangeSet } from "@/lib/hooks/use-agent-control";
 import { openSavedLink } from "@/lib/bookmarks/open-link";
 
@@ -150,7 +151,16 @@ export function RecapContent() {
         <EmptyState
           icon={RecapIcon}
           title="No recap yet"
-          description="Your first weekly recap arrives at the start of next week."
+          description="Your first weekly recap arrives at the start of next week, in the app. You can also have it sent by email."
+          action={
+            <Button
+              component={NextLink}
+              href="/settings#weekly-recap"
+              variant="outlined"
+            >
+              Recap settings
+            </Button>
+          }
         />
       )}
       {recap && (

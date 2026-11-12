@@ -143,8 +143,12 @@ export function InfoSection({
   title: string;
   children: React.ReactNode;
 }) {
+  const id = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
   return (
-    <Box component="section">
+    <Box component="section" id={id} sx={{ scrollMarginTop: 80 }}>
       <Typography
         component="h2"
         variant="h5"

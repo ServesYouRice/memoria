@@ -88,11 +88,13 @@ const keyboardShortcuts = [
 ];
 
 function SettingsSection({
+  id,
   icon,
   title,
   children,
   danger = false,
 }: {
+  id?: string;
   icon: React.ReactNode;
   title: string;
   children: React.ReactNode;
@@ -100,8 +102,10 @@ function SettingsSection({
 }) {
   return (
     <Paper
+      id={id}
       variant="outlined"
       sx={{
+        scrollMarginTop: 80,
         p: { xs: 2.5, sm: 3.5 },
         borderRadius: 3,
         ...(danger && { borderColor: "error.main" }),
@@ -528,6 +532,7 @@ export function SettingsContent({ user }: SettingsContentProps) {
         </SettingsSection>
 
         <SettingsSection
+          id="notifications"
           icon={<NotificationsIcon color="primary" />}
           title="Notifications"
         >
