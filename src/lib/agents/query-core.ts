@@ -1,3 +1,4 @@
+import { loadItemLinks } from "@/lib/canvas/arrow-links";
 import {
   ChangeSetStatus,
   Prisma,
@@ -268,15 +269,21 @@ export async function getScopedItemDetail(actor: ScopedActor, itemId: string) {
     },
   });
 
+  // Links share the item's canvas, so they are in the same scope (IMP-095).
+  const links = await loadItemLinks(prisma, [item.id], AGENT_ITEM_LINKS);
+
   return {
     item: {
       ...item,
       title: getItemTitle(item),
       url: getItemUrl(item),
       text: getItemPlainText(item),
+      links: links.get(item.id) ?? [],
     },
   };
 }
+
+const AGENT_ITEM_LINKS = 25;
 
 const KNOWLEDGE_ENDPOINT_SELECT = {
   id: true,

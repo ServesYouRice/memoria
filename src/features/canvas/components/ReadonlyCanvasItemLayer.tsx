@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { arrowEnds } from "@/features/canvas/lib/arrow-attachment";
 import {
   Arrow,
   Circle,
@@ -248,7 +249,13 @@ function ReadonlyNoteItem({ item }: { item: CanvasItem }) {
   );
 }
 
-function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
+function ReadonlyCanvasItem({
+  item,
+  itemsById,
+}: {
+  item: CanvasItem;
+  itemsById: ReadonlyMap<string, CanvasItem>;
+}) {
   const palette = useCanvasPalette();
   if (item.type === ItemType.NOTE && isNoteContent(item.content)) {
     return <ReadonlyNoteItem item={item} />;
@@ -414,8 +421,25 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
   }
 
   if (item.type === ItemType.ARROW && isArrowItemContent(item.content)) {
-    const start = item.content.startPoint || { x: 0, y: 0 };
-    const end = item.content.endPoint || { x: item.width, y: item.height };
+    // Attached ends follow their items, as in the editor (IMP-095).
+    const ends = arrowEnds(
+      {
+        ...item,
+        content: {
+          ...item.content,
+          endPoint: item.content.endPoint || { x: item.width, y: item.height },
+        },
+      },
+      itemsById,
+    );
+    const start = {
+      x: ends.start.x - item.positionX,
+      y: ends.start.y - item.positionY,
+    };
+    const end = {
+      x: ends.end.x - item.positionX,
+      y: ends.end.y - item.positionY,
+    };
 
     return (
       <Group x={item.positionX} y={item.positionY}>
@@ -426,6 +450,13 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           fill={item.content.stroke || palette.ink}
           pointerLength={10}
           pointerWidth={10}
+          dash={
+            item.content.lineStyle === "DASHED"
+              ? [10, 6]
+              : item.content.lineStyle === "DOTTED"
+                ? [2, 6]
+                : undefined
+          }
         />
         {item.content.label ? (
           <Text
@@ -540,10 +571,14 @@ interface ReadonlyCanvasItemLayerProps {
 export function ReadonlyCanvasItemLayer({
   items,
 }: ReadonlyCanvasItemLayerProps) {
+  const itemsById = React.useMemo(
+    () => new Map(items.map((item) => [item.id, item])),
+    [items],
+  );
   return (
     <Layer>
       {items.map((item) => (
-        <ReadonlyCanvasItem key={item.id} item={item} />
+        <ReadonlyCanvasItem key={item.id} item={item} itemsById={itemsById} />
       ))}
     </Layer>
   );

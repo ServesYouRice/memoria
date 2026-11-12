@@ -27,6 +27,11 @@ import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { ItemType } from "@/types/canvas";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import {
+  LinkEndpointError,
+  arrowsForLink,
+  createLinkArrow,
+} from "@/lib/canvas/arrow-links";
+import {
   recordCanvasItemEvent,
   recordCanvasItemEventsBatch,
 } from "@/lib/collaboration/committed-events";
@@ -1694,6 +1699,25 @@ async function applyRevertOperation(
         createdAt: new Date(snapshot.createdAt),
       },
     });
+    // Arrows are the one record of a link (IMP-095): a line with no arrow on
+    // the board gets one, and the row keeps its id, label and style.
+    if ((await arrowsForLink(tx, snapshot)).length === 0) {
+      try {
+        await createLinkArrow(tx, {
+          canvasId: snapshot.canvasId,
+          actorId: userId,
+          fromId: snapshot.fromId,
+          toId: snapshot.toId,
+          label: snapshot.label,
+          style: snapshot.style,
+        });
+      } catch (error) {
+        if (!(error instanceof LinkEndpointError)) throw error;
+        // An end is trashed or is an arrow: the line cannot be drawn.
+        await tx.itemConnection.delete({ where: { id: restored.id } });
+        return;
+      }
+    }
     await tx.changeRecord.create({
       data: {
         changeSetId: rollbackChangeSetId,

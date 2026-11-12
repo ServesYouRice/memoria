@@ -28,6 +28,7 @@ vi.mock("@/lib/db", () => ({
       create: mocks.writes.canvasItemCreate,
     },
     itemEmbedding: { findMany: mocks.itemEmbeddingFindMany },
+    itemConnection: { findMany: async () => [] },
     suggestion: { create: mocks.writes.suggestionCreate },
   },
 }));

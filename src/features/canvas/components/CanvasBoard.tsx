@@ -60,10 +60,12 @@ import {
 } from "@/lib/export/export-utils";
 
 import type {
+  ArrowContent,
   CanvasAccessLevel,
   CanvasItem,
   ItemGeometryCommit,
 } from "@/types/canvas";
+import type { UpdateCanvasItemInput } from "@/lib/validation/canvas-item";
 import {
   ItemType,
   isNoteContent,
@@ -98,6 +100,12 @@ import { appColor, appColorTokens } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 import { thumbnailDataUrl } from "@/features/canvas/lib/thumbnail";
+import {
+  isLinkArrow,
+  moveArrowEnd,
+} from "@/features/canvas/lib/arrow-attachment";
+import { ArrowLabelDialog } from "@/features/canvas/components/ArrowLabelDialog";
+import { LinkedItemsPanel } from "@/features/canvas/components/LinkedItemsPanel";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -313,6 +321,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // zoom out so the piles (placed beside existing items) are in view.
   const [fitAfterSortFrom, setFitAfterSortFrom] = useState<string | null>(null);
   const [whisperOpen, setWhisperOpen] = useState(false);
+  const [labelArrow, setLabelArrow] = useState<CanvasItem | null>(null);
   const [pendingAutopilotActions, setPendingAutopilotActions] = useState<
     AutopilotAction[]
   >([]);
@@ -813,7 +822,48 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
     if (item.type === ItemType.IMAGE) {
       handleImageDoubleClick(item);
+      return;
     }
+    if (item.type === ItemType.ARROW) setLabelArrow(item);
+  };
+
+  /** Arrow content edits (IMP-095): ends, label and line. One write each. */
+  const saveArrow = (
+    arrow: CanvasItem,
+    data: Omit<UpdateCanvasItemInput, "version">,
+  ) => {
+    if (!capabilities.canEditItems) return;
+    updateItemMutation.mutate(
+      { itemId: arrow.id, data: { ...data, version: arrow.version } },
+      {
+        onError: (error) =>
+          toast.error(
+            error instanceof Error ? error.message : "Could not save the arrow",
+          ),
+      },
+    );
+  };
+
+  const handleMoveArrowEnd = (
+    arrow: CanvasItem,
+    which: "start" | "end",
+    point: { x: number; y: number },
+  ) => {
+    const next = moveArrowEnd(arrow, which, point, items);
+    saveArrow(arrow, {
+      ...next,
+      content: next.content as CanvasItem["content"],
+    });
+  };
+
+  /** Select an item and bring it to the middle of the screen. */
+  const jumpToItem = (item: CanvasItem) => {
+    setSelectedItemId(item.id);
+    setSelectedItemIds(new Set([item.id]));
+    setPosition({
+      x: stageSize.width / 2 - (item.positionX + item.width / 2) * zoom,
+      y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
+    });
   };
 
   /** Keyboard nudge from the accessible item list, on the same commit path. */
@@ -1112,6 +1162,16 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       padding: 500,
     },
   );
+
+  // Linking arrows follow their items, so they are drawn wherever their
+  // stored box is (IMP-095).
+  const visibleItems = React.useMemo(() => {
+    const shown = new Set(renderedItems.map((item) => item.id));
+    const extra = items.filter(
+      (item) => !shown.has(item.id) && isLinkArrow(item),
+    );
+    return extra.length === 0 ? renderedItems : [...renderedItems, ...extra];
+  }, [items, renderedItems]);
 
   const [isPresentationMode, setPresentationMode] = useState(false);
 
@@ -1514,7 +1574,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               stroke={gridStroke}
             />
             <CanvasItemLayer
-              items={exportItems ?? renderedItems}
+              items={exportItems ?? visibleItems}
+              allItems={exportItems ?? items}
+              onMoveArrowEnd={exportItems ? undefined : handleMoveArrowEnd}
               selectedItemIds={exportItems ? NO_SELECTION : selectedItemIds}
               isSelecting={exportItems ? false : isSelecting}
               selectionBox={exportItems ? null : selectionBox}
@@ -1633,6 +1695,20 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             );
           })}
 
+          {selectedItemId &&
+            selectedItemIds.size === 1 &&
+            !isPresentationMode && (
+              <Box
+                sx={{ position: "absolute", top: 80, right: 16, zIndex: 10 }}
+              >
+                <LinkedItemsPanel
+                  itemId={selectedItemId}
+                  items={items}
+                  onJump={jumpToItem}
+                />
+              </Box>
+            )}
+
           {selectedItemIds.size > 1 && (
             <Box
               sx={{
@@ -1669,6 +1745,19 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           )}
         </Box>
       )}
+
+      <ArrowLabelDialog
+        content={(labelArrow?.content as ArrowContent | undefined) ?? null}
+        onClose={() => setLabelArrow(null)}
+        onSave={(content) => {
+          if (labelArrow) {
+            saveArrow(labelArrow, {
+              content: content as CanvasItem["content"],
+            });
+          }
+          setLabelArrow(null);
+        }}
+      />
 
       <CanvasDialogs
         // Every opener of an item dialog reads the preview capabilities;

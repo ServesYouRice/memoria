@@ -46,6 +46,10 @@ import {
   createLinkEnrichmentHandler,
 } from "../src/lib/services/link-enrichment";
 import {
+  CANVAS_LINKS_BACKFILL_JOB,
+  createCanvasLinksBackfillHandler,
+} from "../src/lib/canvas/arrow-links";
+import {
   PAGE_COPY_BACKFILL_JOB,
   PAGE_COPY_BACKFILL_TIMEOUT_MS,
   PAGE_COPY_JOB,
@@ -107,6 +111,7 @@ await runOutboxWorker({
     [HOME_BOARD_JOB]: createHomeBoardProposalHandler(prisma),
     [PAGE_COPY_JOB]: createPageCopyHandler(prisma),
     [PAGE_COPY_BACKFILL_JOB]: createPageCopyBackfillHandler(prisma),
+    [CANVAS_LINKS_BACKFILL_JOB]: createCanvasLinksBackfillHandler(prisma),
     [BOOKMARK_IMPORT_JOB]: createBookmarkImportHandler(prisma),
     [RECAP_SWEEP_JOB]: createWeeklyRecapSweepHandler(prisma),
     [RECAP_USER_JOB]: createWeeklyRecapHandler(prisma),
@@ -121,6 +126,7 @@ await runOutboxWorker({
     [LINK_ENRICH_JOB]: LINK_ENRICH_TIMEOUT_MS,
     [PAGE_COPY_JOB]: PAGE_COPY_TIMEOUT_MS,
     [PAGE_COPY_BACKFILL_JOB]: PAGE_COPY_BACKFILL_TIMEOUT_MS,
+    [CANVAS_LINKS_BACKFILL_JOB]: 120_000,
     [BOOKMARK_IMPORT_JOB]: BOOKMARK_IMPORT_TIMEOUT_MS,
     [RECAP_USER_JOB]: RECAP_USER_TIMEOUT_MS,
   },

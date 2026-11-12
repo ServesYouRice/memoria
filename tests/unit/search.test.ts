@@ -31,6 +31,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/db", () => ({
   prisma: {
     $queryRaw: vi.fn(),
+    itemConnection: { findMany: vi.fn(async () => []) },
   },
 }));
 

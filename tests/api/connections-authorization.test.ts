@@ -1,6 +1,8 @@
+import type * as ArrowLinksModule from "@/lib/canvas/arrow-links";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type NextRequest } from "next/server";
 import { ForbiddenError } from "@/lib/errors";
+import { LinkEndpointError } from "@/lib/canvas/arrow-links";
 
 const authMocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
@@ -12,13 +14,42 @@ const prismaMocks = vi.hoisted(() => ({
     findMany: vi.fn(),
     count: vi.fn(),
     findFirst: vi.fn(),
+    findUnique: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     delete: vi.fn(),
+    deleteMany: vi.fn(),
   },
   canvasItem: {
     findFirst: vi.fn(),
+    update: vi.fn(),
   },
+}));
+
+const linkMocks = vi.hoisted(() => ({
+  createLinkArrow: vi.fn(),
+  arrowsForLink: vi.fn(),
+  lock: vi.fn(),
+  record: vi.fn(),
+}));
+
+vi.mock("@/lib/canvas/arrow-links", async (importOriginal) => ({
+  ...((await importOriginal()) as typeof ArrowLinksModule),
+  createLinkArrow: linkMocks.createLinkArrow,
+  arrowsForLink: linkMocks.arrowsForLink,
+}));
+vi.mock("@/lib/canvas/mutation-lock", () => ({
+  lockCanvasForMutation: linkMocks.lock,
+}));
+vi.mock("@/lib/collaboration/committed-events", () => ({
+  recordCanvasItemEvent: linkMocks.record,
+}));
+vi.mock("@/lib/policy/capacity", () => ({
+  assertCanvasItemCapacity: vi.fn(),
+}));
+vi.mock("@/lib/cache/canvas-cache", () => ({
+  invalidateCanvasCache: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -30,6 +61,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     itemConnection: prismaMocks.itemConnection,
     canvasItem: prismaMocks.canvasItem,
+    $transaction: (fn: (tx: unknown) => unknown) => fn(prismaMocks),
   },
 }));
 
@@ -204,11 +236,7 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
     it("rejects when an endpoint item is not found, soft-deleted, or belongs to another canvas", async () => {
       authMocks.requireAuth.mockResolvedValue(editShareUser);
       authMocks.requireCanvasAccess.mockResolvedValue("EDIT");
-
-      // fromItem found on canvas, toItem NOT found on canvas
-      prismaMocks.canvasItem.findFirst
-        .mockResolvedValueOnce({ id: fromItemId, canvasId, deletedAt: null })
-        .mockResolvedValueOnce(null);
+      linkMocks.createLinkArrow.mockRejectedValue(new LinkEndpointError());
 
       const req = createNextRequest(
         `http://localhost/api/v1/canvases/${canvasId}/connections`,
@@ -222,24 +250,21 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error).toMatch(/One or both items not found in this canvas/i);
-
-      // Verify both lookups explicitly retained path canvasId and deletedAt: null
-      expect(prismaMocks.canvasItem.findFirst).toHaveBeenCalledWith({
-        where: { id: fromItemId, canvasId, deletedAt: null },
-      });
-      expect(prismaMocks.canvasItem.findFirst).toHaveBeenCalledWith({
-        where: { id: toItemId, canvasId, deletedAt: null },
-      });
+      // The arrow is drawn on the path canvas only.
+      expect(linkMocks.createLinkArrow).toHaveBeenCalledWith(
+        prismaMocks,
+        expect.objectContaining({
+          canvasId,
+          fromId: fromItemId,
+          toId: toItemId,
+        }),
+      );
       expect(prismaMocks.itemConnection.create).not.toHaveBeenCalled();
     });
 
     it("creates connection under path canvas when user has EDIT capability and both endpoints exist on canvas", async () => {
       authMocks.requireAuth.mockResolvedValue(editShareUser);
       authMocks.requireCanvasAccess.mockResolvedValue("EDIT");
-
-      prismaMocks.canvasItem.findFirst
-        .mockResolvedValueOnce({ id: fromItemId, canvasId, deletedAt: null })
-        .mockResolvedValueOnce({ id: toItemId, canvasId, deletedAt: null });
 
       const mockCreated = {
         id: connectionId,
@@ -250,7 +275,10 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
         style: "DASHED",
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
       };
-      prismaMocks.itemConnection.create.mockResolvedValue(mockCreated);
+      linkMocks.createLinkArrow.mockResolvedValue({
+        arrow: { id: "arrow-1" },
+        link: mockCreated,
+      });
 
       const req = createNextRequest(
         `http://localhost/api/v1/canvases/${canvasId}/connections`,
@@ -271,15 +299,14 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
       expect(json.id).toBe(connectionId);
       expect(json.label).toBe("relates to");
       expect(json.style).toBe("DASHED");
-
-      expect(prismaMocks.itemConnection.create).toHaveBeenCalledWith({
-        data: {
-          canvasId,
-          fromId: fromItemId,
-          toId: toItemId,
-          label: "relates to",
-          style: "DASHED",
-        },
+      expect(linkMocks.lock).toHaveBeenCalledWith(prismaMocks, canvasId);
+      expect(linkMocks.createLinkArrow).toHaveBeenCalledWith(prismaMocks, {
+        canvasId,
+        actorId: editShareUser.userId,
+        fromId: fromItemId,
+        toId: toItemId,
+        label: "relates to",
+        style: "DASHED",
       });
     });
   });
@@ -331,27 +358,36 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
       expect(prismaMocks.itemConnection.findFirst).toHaveBeenCalledWith({
         where: { id: connectionId, canvasId },
       });
-      expect(prismaMocks.itemConnection.update).not.toHaveBeenCalled();
+      expect(prismaMocks.canvasItem.update).not.toHaveBeenCalled();
+      expect(prismaMocks.itemConnection.updateMany).not.toHaveBeenCalled();
     });
 
     it("updates connection when EDIT user targets connection matching path canvasId", async () => {
       authMocks.requireAuth.mockResolvedValue(editShareUser);
       authMocks.requireCanvasAccess.mockResolvedValue("EDIT");
-      prismaMocks.itemConnection.findFirst.mockResolvedValue({
-        id: connectionId,
-        canvasId,
-      });
-
-      const mockUpdated = {
+      const existing = {
         id: connectionId,
         canvasId,
         fromId: fromItemId,
         toId: toItemId,
+      };
+      prismaMocks.itemConnection.findFirst.mockResolvedValue(existing);
+      linkMocks.arrowsForLink.mockResolvedValue([
+        {
+          id: "arrow-1",
+          content: { startItemId: fromItemId, endItemId: toItemId },
+        },
+      ]);
+      prismaMocks.canvasItem.update.mockResolvedValue({
+        id: "arrow-1",
+        version: 2,
+      });
+      prismaMocks.itemConnection.findUnique.mockResolvedValue({
+        ...existing,
         label: "updated label",
         style: "DOTTED",
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      };
-      prismaMocks.itemConnection.update.mockResolvedValue(mockUpdated);
+      });
 
       const req = createNextRequest(
         `http://localhost/api/v1/canvases/${canvasId}/connections/${connectionId}`,
@@ -363,10 +399,28 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
       const res = await connectionItemPatch(req, { params });
 
       expect(res.status).toBe(200);
-      expect(prismaMocks.itemConnection.update).toHaveBeenCalledWith({
-        where: { id: connectionId },
-        data: { label: "updated label", style: "DOTTED" },
-      });
+      expect((await res.json()).style).toBe("DOTTED");
+      expect(linkMocks.arrowsForLink).toHaveBeenCalledWith(
+        prismaMocks,
+        existing,
+      );
+      expect(prismaMocks.canvasItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "arrow-1" },
+          data: expect.objectContaining({
+            content: {
+              startItemId: fromItemId,
+              endItemId: toItemId,
+              label: "updated label",
+              lineStyle: "DOTTED",
+            },
+          }),
+        }),
+      );
+      expect(linkMocks.record).toHaveBeenCalledWith(
+        prismaMocks,
+        expect.objectContaining({ itemId: "arrow-1", operation: "updated" }),
+      );
     });
   });
 
@@ -415,7 +469,8 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
       expect(prismaMocks.itemConnection.findFirst).toHaveBeenCalledWith({
         where: { id: connectionId, canvasId },
       });
-      expect(prismaMocks.itemConnection.delete).not.toHaveBeenCalled();
+      expect(prismaMocks.canvasItem.update).not.toHaveBeenCalled();
+      expect(prismaMocks.itemConnection.deleteMany).not.toHaveBeenCalled();
     });
 
     it("deletes connection when authorized user targets connection matching path canvasId", async () => {
@@ -425,7 +480,11 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
         id: connectionId,
         canvasId,
       });
-      prismaMocks.itemConnection.delete.mockResolvedValue({});
+      linkMocks.arrowsForLink.mockResolvedValue([{ id: "arrow-1" }]);
+      prismaMocks.canvasItem.update.mockResolvedValue({
+        id: "arrow-1",
+        version: 3,
+      });
 
       const req = createNextRequest(
         `http://localhost/api/v1/canvases/${canvasId}/connections/${connectionId}`,
@@ -437,7 +496,16 @@ describe("Connection Authorization and Canvas Binding (IMP-066)", () => {
 
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ success: true });
-      expect(prismaMocks.itemConnection.delete).toHaveBeenCalledWith({
+      // The arrow goes to the trash (restorable); the link row follows.
+      expect(prismaMocks.canvasItem.update).toHaveBeenCalledWith({
+        where: { id: "arrow-1" },
+        data: expect.objectContaining({ deletedById: ownerUser.userId }),
+      });
+      expect(linkMocks.record).toHaveBeenCalledWith(
+        prismaMocks,
+        expect.objectContaining({ itemId: "arrow-1", operation: "deleted" }),
+      );
+      expect(prismaMocks.itemConnection.deleteMany).toHaveBeenCalledWith({
         where: { id: connectionId },
       });
     });

@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import type Konva from "konva";
 import { useCanvasStore } from "@/stores/canvasStore";
-import { ItemType, type DrawingPath } from "@/types/canvas";
+import { ItemType, type CanvasItem, type DrawingPath } from "@/types/canvas";
+import { drawnArrow } from "@/features/canvas/lib/arrow-attachment";
 import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
 
 /** Arrows shorter than this (in canvas units) are treated as a stray click. */
@@ -9,35 +10,20 @@ const MIN_ARROW_LENGTH = 5;
 
 type Point = { x: number; y: number };
 
-/**
- * An arrow item from a drag: positioned at the top-left of its bounding box,
- * with start and end points relative to it, so the head lands where the drag
- * was released whatever its direction. A straight horizontal or vertical
- * arrow keeps a 1-unit box so it passes the positive-size validation.
- */
-export function buildArrowCreation(start: Point, end: Point) {
-  const positionX = Math.min(start.x, end.x);
-  const positionY = Math.min(start.y, end.y);
-  return {
-    positionX,
-    positionY,
-    width: Math.max(Math.abs(end.x - start.x), 1),
-    height: Math.max(Math.abs(end.y - start.y), 1),
-    startPoint: { x: start.x - positionX, y: start.y - positionY },
-    endPoint: { x: end.x - positionX, y: end.y - positionY },
-    length: Math.hypot(end.x - start.x, end.y - start.y),
-  };
-}
-
 interface UseDrawingInteractionProps {
   canvasId: string;
   /** IMP-008: without it, no stroke or shape is started or created. */
   canCreateItems: boolean;
+  /** Items an arrow's ends can attach to (IMP-095). */
+  items?: readonly CanvasItem[];
 }
+
+const NO_ITEMS: readonly CanvasItem[] = [];
 
 export function useDrawingInteraction({
   canvasId,
   canCreateItems,
+  items = NO_ITEMS,
 }: UseDrawingInteractionProps) {
   const { activeTool: storedTool, drawingState } = useCanvasStore();
   // The persisted tool may come from a canvas this user could edit.
@@ -181,9 +167,11 @@ export function useDrawingInteraction({
       currentCreation
     ) {
       if (activeTool === "arrow") {
-        const arrow = buildArrowCreation(
+        // An end released on an item attaches to it, linking the two.
+        const arrow = drawnArrow(
           creationStart,
           creationEndRef.current ?? creationStart,
+          items,
         );
         if (arrow.length > MIN_ARROW_LENGTH) {
           createItem({
@@ -193,9 +181,10 @@ export function useDrawingInteraction({
             positionY: arrow.positionY,
             width: arrow.width,
             height: arrow.height,
-            zIndex: 10,
+            zIndex: arrow.zIndex ?? 10,
             tags: [],
             content: {
+              ...arrow.content,
               arrowHeadStart: "none",
               arrowHeadEnd: "arrow",
               stroke: "#000000",
@@ -234,6 +223,7 @@ export function useDrawingInteraction({
     currentCreation,
     canvasId,
     createItem,
+    items,
   ]);
 
   return {

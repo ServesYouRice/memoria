@@ -16,6 +16,9 @@ import { parsePagination } from "@/lib/api/pagination";
 import { BadRequestError } from "@/lib/errors";
 import { withAuth } from "@/lib/api/route-handler";
 import { pageCopyExcerpts } from "@/lib/services/page-copy";
+import { loadItemLinks, type ItemLinkSummary } from "@/lib/canvas/arrow-links";
+
+const SEARCH_LINKS_PER_ITEM = 5;
 
 interface SearchResult {
   itemId: string;
@@ -25,6 +28,8 @@ interface SearchResult {
   content: unknown;
   tags: string[];
   snippet: string;
+  /** Items joined to this one by an arrow (IMP-095). */
+  links: ItemLinkSummary[];
   createdAt: string;
   updatedAt: string;
 }
@@ -253,6 +258,12 @@ export const GET = withAuth(async (request, session) => {
     [query],
   );
 
+  const links = await loadItemLinks(
+    prisma,
+    items.map((item) => item.id),
+    SEARCH_LINKS_PER_ITEM,
+  );
+
   // Create results with snippets
   const queryLower = query.toLowerCase();
   const results: SearchResult[] = items.map((item) => {
@@ -302,6 +313,7 @@ export const GET = withAuth(async (request, session) => {
       content: item.content,
       tags: item.tags || [],
       snippet,
+      links: links.get(item.id) ?? [],
       createdAt: new Date(item.createdAt).toISOString(),
       updatedAt: new Date(item.updatedAt).toISOString(),
     };

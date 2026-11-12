@@ -11,6 +11,7 @@ import { runBudgetedAi, type AiUsageSnapshot } from "@/lib/ai/budget";
 import { generateText } from "@/lib/ai/service";
 import {
   ASK_BOARD_LIMIT,
+  ASK_LINKS_PER_ITEM,
   ASK_MAX_OUTPUT_TOKENS,
   ASK_PAGE_EXCERPT_CHARS,
   ASK_RETRIEVAL_LIMIT,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/ai/ask-schema";
 import { proposeAskCommand } from "@/lib/ai/ask-commands";
 import { pageCopyExcerpts } from "@/lib/services/page-copy";
+import { loadItemLinks } from "@/lib/canvas/arrow-links";
 
 const logger = createLogger("ai-ask");
 const EMBEDDING_SCAN_LIMIT = 2_000;
@@ -268,9 +270,17 @@ export async function retrieveOwnedItems(
     extractSearchTerms(question),
     { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
   );
+  // What each item is linked to (IMP-095): "what is connected to this?".
+  const links = await loadItemLinks(
+    prisma,
+    retrieved.map((item) => item.id),
+    ASK_LINKS_PER_ITEM,
+  );
   for (const item of retrieved) {
     const excerpt = excerpts.get(item.id);
     if (excerpt) item.pageText = excerpt;
+    const itemLinks = links.get(item.id);
+    if (itemLinks) item.links = itemLinks;
   }
   return retrieved;
 }

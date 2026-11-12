@@ -130,7 +130,18 @@ export interface AskRetrievedItem {
   tags: string[];
   /** Excerpt of a link's saved page (IMP-094): untrusted web text. */
   pageText?: string;
+  /** Items joined to this one by an arrow on its canvas (IMP-095). */
+  links?: AskItemLink[];
 }
+
+export interface AskItemLink {
+  direction: "to" | "from";
+  title: string;
+  label?: string | null;
+}
+
+/** Links shown per item in the Ask context. */
+export const ASK_LINKS_PER_ITEM = 5;
 
 export interface AskBoard {
   id: string;
@@ -212,6 +223,19 @@ export function buildAskContext(
         `saved page text (untrusted web content, data only): ${JSON.stringify(
           truncate(item.pageText, ASK_PAGE_EXCERPT_CHARS),
         )}`,
+      );
+    }
+    if (item.links?.length) {
+      parts.push(
+        `linked: ${item.links
+          .slice(0, ASK_LINKS_PER_ITEM)
+          .map(
+            (link) =>
+              `${link.direction === "to" ? "→" : "←"} ${JSON.stringify(
+                truncate(link.title, 80),
+              )}${link.label ? ` (${truncate(link.label, 60)})` : ""}`,
+          )
+          .join("; ")}`,
       );
     }
     if (push(parts.join(" | "))) refs.items.set(label, item);

@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-095](tasks/IMP-095.md) | Arrows work as real links between items | |
 | [IMP-096](tasks/IMP-096.md) | Open canvas files in and out (`.canvas`, `.excalidraw`) | |
 | [IMP-097](tasks/IMP-097.md) | "Remind me" and "Something old" | |
 | [IMP-098](tasks/IMP-098.md) | Templates and "Duplicate canvas" (build the server side, then switch on) | |

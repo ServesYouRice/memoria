@@ -191,6 +191,8 @@ export interface ArrowContent {
   arrowHeadStart?: "none" | "arrow" | "circle";
   arrowHeadEnd?: "none" | "arrow" | "circle";
   label?: string;
+  /** Line pattern; a linking arrow's link takes it (IMP-095). */
+  lineStyle?: "SOLID" | "DASHED" | "DOTTED";
 }
 
 /**
