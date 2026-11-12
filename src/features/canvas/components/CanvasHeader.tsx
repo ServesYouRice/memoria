@@ -10,12 +10,10 @@ import {
   Typography,
   TextField,
   Button,
-  ButtonGroup,
   Tooltip,
   Menu,
   MenuItem,
   ToggleButton,
-  ToggleButtonGroup,
   Avatar,
   AvatarGroup,
   Chip,
@@ -58,15 +56,12 @@ import { ShareDialog } from "./ShareDialog";
 import type { AutosaveStatus } from "@/lib/autosave/serialized-delta-queue";
 import { describeSaveStatus } from "@/features/canvas/save-status";
 
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { useThemeMode } from "@/lib/theme-context";
 import { MeetingTimer } from "./MeetingTimer";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { PresentToAll } from "@mui/icons-material";
-import {
-  CanvasSecondaryActions,
-  type CanvasSecondaryAction,
-} from "@/features/canvas/components/CanvasSecondaryActions";
+import { zoomedIn, zoomedOut } from "./CanvasViewControls";
+import { type CanvasSecondaryAction } from "@/features/canvas/components/CanvasSecondaryActions";
 
 export interface CollaboratorInfo {
   userId: string;
@@ -128,9 +123,21 @@ export interface CanvasHeaderProps {
   deviceCopyFailed?: boolean;
 }
 
-const ZOOM_STEP = 0.1;
-const MIN_ZOOM = 0.1;
-const MAX_ZOOM = 5;
+/**
+ * IMP-084: plain names for the two views, with what each one does. The saved
+ * values stay "manual" and "organizer".
+ */
+export const VIEW_MODES = {
+  manual: {
+    label: "Free layout",
+    tooltip: "Place notes, links and pictures anywhere on the canvas",
+  },
+  organizer: {
+    label: "Organised list",
+    tooltip:
+      "See every item as a list you can sort, filter and use by keyboard",
+  },
+} as const;
 
 export function CanvasHeader({
   canvasId,
@@ -215,15 +222,8 @@ export function CanvasHeader({
     }
   };
 
-  const handleZoomIn = () => {
-    const newZoom = Math.min(zoom + ZOOM_STEP, MAX_ZOOM);
-    onZoomChange(Math.round(newZoom * 100) / 100);
-  };
-
-  const handleZoomOut = () => {
-    const newZoom = Math.max(zoom - ZOOM_STEP, MIN_ZOOM);
-    onZoomChange(Math.round(newZoom * 100) / 100);
-  };
+  const handleZoomIn = () => onZoomChange(zoomedIn(zoom));
+  const handleZoomOut = () => onZoomChange(zoomedOut(zoom));
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -428,8 +428,8 @@ export function CanvasHeader({
         key: "view-mode",
         label:
           viewMode === "manual"
-            ? "Switch to Organizer view"
-            : "Switch to Manual view",
+            ? `Switch to ${VIEW_MODES.organizer.label}`
+            : `Switch to ${VIEW_MODES.manual.label}`,
         icon:
           viewMode === "manual" ? (
             <OrganizerIcon fontSize="small" />
@@ -649,29 +649,85 @@ export function CanvasHeader({
     );
   }
 
+  // IMP-084: wide screens keep the title and the view switch on the left;
+  // people present, Share and one labelled "More" menu sit on the right.
+  // Zoom, fit, grid and snap live in the canvas corner (CanvasViewControls).
+  const saveDisplay = saveStatus
+    ? describeSaveStatus(saveStatus, { offlineChanges, deviceCopyFailed })
+    : null;
+  type MoreEntry = {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    selected?: boolean;
+  };
+  const moreEntries: MoreEntry[] = [
+    ...secondaryActions.map((action) => ({
+      key: action.key,
+      label: action.badgeCount
+        ? `${action.label} (${action.badgeCount})`
+        : action.label,
+      icon: action.icon,
+      onClick: action.onClick,
+    })),
+    {
+      key: "timer",
+      label: "Personal meeting timer",
+      icon: <TimerIcon fontSize="small" />,
+      onClick: () => setTimerAnchor(moreButtonRef.current),
+    },
+    onPresentationMode && {
+      key: "presentation",
+      label: isPresentationMode ? "Exit presentation" : "Present",
+      icon: <PresentToAll fontSize="small" />,
+      onClick: onPresentationMode,
+    },
+    {
+      key: "theme",
+      label: themeMode === "light" ? "Dark mode" : "Light mode",
+      icon:
+        themeMode === "light" ? (
+          <DarkModeIcon fontSize="small" />
+        ) : (
+          <LightModeIcon fontSize="small" />
+        ),
+      onClick: toggleTheme,
+    },
+    onExport && {
+      key: "export",
+      label: "Export canvas",
+      icon: <ExportIcon fontSize="small" />,
+      onClick: onExport,
+    },
+    onVersionHistory && {
+      key: "versions",
+      label: "Version history",
+      icon: <VersionHistoryIcon fontSize="small" />,
+      onClick: onVersionHistory,
+    },
+  ].filter(Boolean) as MoreEntry[];
+
   return (
     <AppBar position="static" color="default" elevation={1}>
-      <Toolbar sx={{ overflowX: "auto", minHeight: 64 }}>
-        {/* Back Button */}
-        <Tooltip title="Back to Dashboard">
+      <Toolbar sx={{ minHeight: 64, gap: 1 }}>
+        <Tooltip title="Back to dashboard">
           <IconButton
             aria-label="Back to dashboard"
             edge="start"
             onClick={handleBackClick}
-            sx={{ mr: 2 }}
           >
             <ArrowBack />
           </IconButton>
         </Tooltip>
 
-        {/* Canvas Name */}
         <Box
           sx={{
             flexGrow: 1,
             minWidth: 0,
             display: "flex",
             alignItems: "center",
-            gap: 2,
+            gap: 1.5,
           }}
         >
           {showSearch && onSearchChange ? (
@@ -679,110 +735,94 @@ export function CanvasHeader({
           ) : isEditingName ? (
             nameEditor
           ) : (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1.5,
-                flexWrap: "wrap",
-              }}
-            >
+            <>
               <Typography
                 variant="h6"
                 component="h1"
                 noWrap
-                sx={{
-                  cursor: "default",
-                }}
+                title={canvasName}
+                sx={{ cursor: "default", minWidth: 0 }}
               >
                 {canvasName}
               </Typography>
               {canManageCanvas && (
-                <IconButton
-                  size="small"
-                  aria-label={`Rename canvas ${canvasName}`}
-                  onClick={handleNameClick}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
+                <Tooltip title="Rename canvas">
+                  <IconButton
+                    size="small"
+                    aria-label={`Rename canvas ${canvasName}`}
+                    onClick={handleNameClick}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               )}
               {onViewModeChange && (
-                <ToggleButtonGroup
-                  exclusive
-                  size="small"
-                  value={viewMode}
-                  onChange={(_event, nextMode) => {
-                    if (nextMode) {
-                      onViewModeChange(nextMode);
-                    }
+                <Box
+                  role="group"
+                  aria-label="Canvas view"
+                  sx={{
+                    display: "flex",
+                    flexShrink: 0,
+                    "& .MuiToggleButton-root": {
+                      textTransform: "none",
+                      px: 1.5,
+                      py: 0.5,
+                    },
+                    "& > :first-of-type": {
+                      borderTopRightRadius: 0,
+                      borderBottomRightRadius: 0,
+                    },
+                    "& > :last-of-type": {
+                      borderTopLeftRadius: 0,
+                      borderBottomLeftRadius: 0,
+                      ml: "-1px",
+                    },
                   }}
                 >
-                  <ToggleButton value="manual">Manual</ToggleButton>
-                  <ToggleButton value="organizer">Organizer</ToggleButton>
-                </ToggleButtonGroup>
+                  {(["manual", "organizer"] as const).map((value) => (
+                    <Tooltip key={value} title={VIEW_MODES[value].tooltip}>
+                      <ToggleButton
+                        value={value}
+                        size="small"
+                        selected={viewMode === value}
+                        aria-pressed={viewMode === value}
+                        onChange={() => {
+                          if (viewMode !== value) onViewModeChange(value);
+                        }}
+                      >
+                        {VIEW_MODES[value].label}
+                      </ToggleButton>
+                    </Tooltip>
+                  ))}
+                </Box>
               )}
-            </Box>
+            </>
           )}
         </Box>
 
-        {/* Share Button */}
-        {canManageCanvas && (
-          <Tooltip title="Share Canvas">
-            <IconButton
-              aria-label="Share canvas"
-              onClick={() => setShareDialogOpen(true)}
-              sx={{ mr: 1 }}
-            >
-              <ShareIcon />
-            </IconButton>
+        {saveDisplay && saveStatus && (
+          <Tooltip title={saveError || saveDisplay.tooltip}>
+            <Chip
+              label={saveDisplay.label}
+              size="small"
+              color={
+                saveStatus === "saved"
+                  ? "success"
+                  : saveStatus === "saving"
+                    ? "info"
+                    : saveStatus === "offline/retrying"
+                      ? "warning"
+                      : "error"
+              }
+              variant={saveStatus === "saved" ? "outlined" : "filled"}
+              aria-label="Save status"
+              sx={{ height: 24, fontSize: 11 }}
+            />
           </Tooltip>
         )}
 
-        {/* Collaboration Indicator */}
         {(collaborators.length > 0 || showStatus) && (
-          <Box sx={{ display: "flex", alignItems: "center", mr: 2, gap: 1 }}>
-            {collaborators.length > 0 && (
-              <AvatarGroup
-                max={5}
-                sx={{
-                  "& .MuiAvatar-root": { width: 32, height: 32, fontSize: 14 },
-                }}
-              >
-                {collaborators.map((collaborator) => (
-                  <Tooltip
-                    key={collaborator.userId}
-                    title={`${collaborator.name || collaborator.email} ${onFollowUser ? "(Click to follow)" : "(viewing)"}`}
-                  >
-                    <Avatar
-                      sx={{
-                        bgcolor: collaborator.color,
-                        width: 32,
-                        height: 32,
-                        fontSize: 14,
-                        fontWeight: "bold",
-                        cursor: onFollowUser ? "pointer" : "default",
-                        border:
-                          followingUserId === collaborator.userId
-                            ? "2px solid"
-                            : "1px solid",
-                        borderColor:
-                          followingUserId === collaborator.userId
-                            ? "info.main"
-                            : "background.paper",
-                        boxSizing: "border-box",
-                      }}
-                      onClick={() =>
-                        onFollowUser && onFollowUser(collaborator.userId)
-                      }
-                    >
-                      {(collaborator.name || collaborator.email)
-                        .charAt(0)
-                        .toUpperCase()}
-                    </Avatar>
-                  </Tooltip>
-                ))}
-              </AvatarGroup>
-            )}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {showStatus && (
               <Tooltip title={statusDisplay.tooltip}>
                 <Chip
@@ -801,142 +841,88 @@ export function CanvasHeader({
                     height: 24,
                     fontSize: 11,
                     color: "text.primary",
-                    "& .MuiChip-icon": {
-                      marginLeft: 0.5,
-                    },
+                    "& .MuiChip-icon": { marginLeft: 0.5 },
                   }}
                 />
               </Tooltip>
             )}
+            {collaborators.length > 0 && (
+              <AvatarGroup
+                max={5}
+                sx={{
+                  "& .MuiAvatar-root": { width: 32, height: 32, fontSize: 14 },
+                }}
+              >
+                {collaborators.map((collaborator) => {
+                  const who = collaborator.name || collaborator.email;
+                  const following = followingUserId === collaborator.userId;
+                  return (
+                    <Tooltip
+                      key={collaborator.userId}
+                      title={
+                        onFollowUser
+                          ? following
+                            ? `Following ${who} (click to stop)`
+                            : `${who} is here (click to follow)`
+                          : `${who} is here`
+                      }
+                    >
+                      <Avatar
+                        component={onFollowUser ? "button" : "div"}
+                        aria-label={
+                          onFollowUser
+                            ? following
+                              ? `Stop following ${who}`
+                              : `Follow ${who}`
+                            : who
+                        }
+                        aria-pressed={onFollowUser ? following : undefined}
+                        sx={{
+                          bgcolor: collaborator.color,
+                          width: 32,
+                          height: 32,
+                          p: 0,
+                          fontSize: 14,
+                          fontWeight: "bold",
+                          cursor: onFollowUser ? "pointer" : "default",
+                          border: following ? "2px solid" : "1px solid",
+                          borderColor: following
+                            ? "info.main"
+                            : "background.paper",
+                          boxSizing: "border-box",
+                        }}
+                        onClick={() =>
+                          onFollowUser && onFollowUser(collaborator.userId)
+                        }
+                      >
+                        {who.charAt(0).toUpperCase()}
+                      </Avatar>
+                    </Tooltip>
+                  );
+                })}
+              </AvatarGroup>
+            )}
           </Box>
         )}
 
-        {saveStatus && (
-          <Tooltip
-            title={
-              saveError ||
-              describeSaveStatus(saveStatus, {
-                offlineChanges,
-                deviceCopyFailed,
-              }).tooltip
-            }
+        {canManageCanvas && (
+          <Button
+            variant="outlined"
+            startIcon={<ShareIcon />}
+            aria-label="Share canvas"
+            onClick={() => setShareDialogOpen(true)}
+            sx={{ flexShrink: 0 }}
           >
-            <Chip
-              label={
-                describeSaveStatus(saveStatus, {
-                  offlineChanges,
-                  deviceCopyFailed,
-                }).label
-              }
-              size="small"
-              color={
-                saveStatus === "saved"
-                  ? "success"
-                  : saveStatus === "saving"
-                    ? "info"
-                    : saveStatus === "offline/retrying"
-                      ? "warning"
-                      : "error"
-              }
-              variant={saveStatus === "saved" ? "outlined" : "filled"}
-              aria-label="Save status"
-              sx={{ mr: 1, height: 24, fontSize: 11 }}
-            />
-          </Tooltip>
-        )}
-
-        {/* Meeting Timer */}
-        <Box sx={{ mr: 1 }}>
-          <MeetingTimer />
-        </Box>
-
-        {/* Presentation Mode */}
-        {onPresentationMode && (
-          <Tooltip
-            title={
-              isPresentationMode ? "Exit Presentation" : "Presentation Mode"
-            }
-          >
-            <IconButton
-              aria-label={
-                isPresentationMode ? "Exit presentation" : "Enter presentation"
-              }
-              onClick={onPresentationMode}
-              color={isPresentationMode ? "secondary" : "default"}
-              sx={{ mr: 1 }}
-            >
-              <PresentToAll />
-            </IconButton>
-          </Tooltip>
-        )}
-
-        {/* Theme Toggle */}
-        <Box sx={{ mr: 1 }}>
-          <ThemeToggle />
-        </Box>
-
-        {/* Secondary actions: inline on wide viewports, collapsed into
-            one overflow menu below md so 320-768px stays usable. */}
-        <CanvasSecondaryActions actions={secondaryActions} />
-
-        {/* Zoom Controls */}
-        <ButtonGroup size="small" sx={{ mr: 2 }}>
-          <Tooltip title="Zoom Out">
-            <Button onClick={handleZoomOut}>
-              <ZoomOut fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Button onClick={onFitToScreen} sx={{ minWidth: "60px" }}>
-            {Math.round(zoom * 100)}%
+            Share
           </Button>
-          <Tooltip title="Zoom In">
-            <Button onClick={handleZoomIn}>
-              <ZoomIn fontSize="small" />
-            </Button>
-          </Tooltip>
-        </ButtonGroup>
+        )}
 
-        {/* Grid and Snap Toggles */}
-        <Box sx={{ display: "flex", mr: 2 }}>
-          {onGridToggle && (
-            <Tooltip title={gridVisible ? "Hide Grid" : "Show Grid"}>
-              <ToggleButton
-                value="grid"
-                selected={gridVisible}
-                onChange={onGridToggle}
-                size="small"
-                sx={{ mr: 0.5 }}
-              >
-                {gridVisible ? (
-                  <GridOnIcon fontSize="small" />
-                ) : (
-                  <GridOffIcon fontSize="small" />
-                )}
-              </ToggleButton>
-            </Tooltip>
-          )}
-          {onSnapToggle && (
-            <Tooltip
-              title={
-                snapEnabled ? "Disable Snap to Grid" : "Enable Snap to Grid"
-              }
-            >
-              <ToggleButton
-                value="snap"
-                selected={snapEnabled}
-                onChange={onSnapToggle}
-                size="small"
-              >
-                <FitScreen fontSize="small" />
-              </ToggleButton>
-            </Tooltip>
-          )}
-        </Box>
-
-        {/* More Menu */}
         <Tooltip title="More options">
           <IconButton
+            ref={moreButtonRef}
             aria-label="More canvas options"
+            aria-haspopup="menu"
+            aria-expanded={Boolean(anchorEl)}
             edge="end"
             onClick={handleMenuOpen}
           >
@@ -947,28 +933,27 @@ export function CanvasHeader({
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
           onClose={handleMenuClose}
+          slotProps={{ list: { "aria-label": "More canvas options" } }}
         >
-          {onExport && (
+          {moreEntries.map((entry) => (
             <MenuItem
+              key={entry.key}
+              selected={entry.selected}
               onClick={() => {
-                onExport();
                 handleMenuClose();
+                entry.onClick();
               }}
             >
-              Export Canvas
+              <ListItemIcon>{entry.icon}</ListItemIcon>
+              <ListItemText>{entry.label}</ListItemText>
             </MenuItem>
-          )}
-          {onVersionHistory && (
-            <MenuItem
-              onClick={() => {
-                onVersionHistory();
-                handleMenuClose();
-              }}
-            >
-              Version History
-            </MenuItem>
-          )}
+          ))}
         </Menu>
+        <MeetingTimer
+          hideTrigger
+          externalAnchor={timerAnchor}
+          onExternalClose={() => setTimerAnchor(null)}
+        />
       </Toolbar>
 
       {canManageCanvas && (

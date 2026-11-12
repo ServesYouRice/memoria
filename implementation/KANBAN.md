@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-084](tasks/IMP-084.md) | Canvas: clearer top bar and add bar | |
 | [IMP-090](tasks/IMP-090.md) | Canvas cards are real links; buttons are finger-sized | |
 | [IMP-091](tasks/IMP-091.md) | Import bookmarks from a browser, Pocket or Raindrop | |
 | [IMP-092](tasks/IMP-092.md) | Saving from an iPhone is easy to set up | |

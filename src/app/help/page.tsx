@@ -18,7 +18,7 @@ export default function HelpPage() {
     >
       <InfoSection title="Canvas navigation">
         Hold Space and drag to pan, use the wheel or trackpad to zoom, and
-        switch to Organizer view for a keyboard- and screen-reader-friendly item
+        switch to Organised list for a keyboard- and screen-reader-friendly item
         list. Press ? inside the application to open the current
         keyboard-shortcut reference.
       </InfoSection>

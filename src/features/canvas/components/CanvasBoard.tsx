@@ -3,15 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Stage } from "react-konva";
 import { useCanvasStore } from "@/stores/canvasStore";
-import {
-  Alert,
-  Box,
-  Button,
-  SpeedDial,
-  SpeedDialAction,
-  SpeedDialIcon,
-} from "@mui/material";
-import { NoteAdd, Bookmark, Image as ImageIcon } from "@mui/icons-material";
+import { Alert, Box, Button } from "@mui/material";
 import { useSession } from "@/lib/auth-client";
 import { useSearchParams } from "next/navigation";
 import {
@@ -95,7 +87,8 @@ import { RemoteCursorChat } from "@/features/canvas/components/RemoteCursorChat"
 import { RemoteCursor } from "@/features/canvas/components/RemoteCursor";
 import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
-import { MainToolbar } from "@/features/canvas/components/MainToolbar";
+import { CanvasAddBar } from "@/features/canvas/components/CanvasAddBar";
+import { CanvasViewControls } from "@/features/canvas/components/CanvasViewControls";
 import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
@@ -1358,9 +1351,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         canvasName={canvasName}
       />
 
-      {viewMode === "manual" && !isPresentationMode && canEdit && (
-        <MainToolbar />
-      )}
       {viewMode === "manual" &&
         !isPresentationMode &&
         canEdit &&
@@ -1407,40 +1397,27 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               {totalItemCount} remain indexed for navigation and accessibility.
             </Box>
           )}
-          {!isDrawing && !isPresentationMode && canEdit && (
-            <SpeedDial
-              ariaLabel="Add Item"
-              sx={{ position: "absolute", bottom: 16, right: 16 }}
-              icon={<SpeedDialIcon />}
-            >
-              <SpeedDialAction
-                icon={<NoteAdd />}
-                onClick={() => setNoteDialogOpen(true)}
-                slotProps={{
-                  tooltip: {
-                    title: "Note",
-                  },
-                }}
-              />
-              <SpeedDialAction
-                icon={<Bookmark />}
-                onClick={() => setBookmarkDialogOpen(true)}
-                slotProps={{
-                  tooltip: {
-                    title: "Bookmark",
-                  },
-                }}
-              />
-              <SpeedDialAction
-                icon={<ImageIcon />}
-                onClick={() => setImageDialogOpen(true)}
-                slotProps={{
-                  tooltip: {
-                    title: "Image",
-                  },
-                }}
-              />
-            </SpeedDial>
+          {!isPresentationMode && canEdit && (
+            <CanvasAddBar
+              onAddNote={() => setNoteDialogOpen(true)}
+              onAddLink={() => setBookmarkDialogOpen(true)}
+              onAddImage={() => setImageDialogOpen(true)}
+            />
+          )}
+          {!isPresentationMode && (
+            <CanvasViewControls
+              zoom={zoom}
+              onZoomChange={setZoom}
+              onFitToScreen={fitToScreen}
+              gridVisible={gridVisible}
+              onGridToggle={() => setGridVisible(!gridVisible)}
+              snapEnabled={snapToGridEnabled}
+              onSnapToggle={
+                canEdit
+                  ? () => setSnapToGridEnabled(!snapToGridEnabled)
+                  : undefined
+              }
+            />
           )}
           {isOwner &&
             isInboxBoardName(canvasName) &&

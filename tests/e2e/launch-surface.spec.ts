@@ -185,7 +185,8 @@ test.describe("truthful and accessible launch surface", () => {
     await expect(itemRegion).toHaveCount(1);
     await expect(itemRegion).toContainText("Alpha roadmap");
     await expect(itemRegion).toContainText("Beta context");
-    await page.getByRole("button", { name: "Search canvas" }).click();
+    await page.getByRole("button", { name: "More canvas options" }).click();
+    await page.getByRole("menuitem", { name: "Search canvas" }).click();
     await page.getByPlaceholder("Search notes and bookmarks...").fill("Alpha");
     await expect(itemRegion).toContainText(
       "1 search match. All 2 items remain listed as canvas context.",
