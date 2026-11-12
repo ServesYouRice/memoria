@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AppBar,
@@ -19,6 +19,10 @@ import {
   Avatar,
   AvatarGroup,
   Chip,
+  ListItemIcon,
+  ListItemText,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import {
   ArrowBack,
@@ -41,12 +45,21 @@ import {
   EditNote as WhisperIcon,
   ViewInAr as ARIcon,
   ViewQuilt as PilesIcon,
+  Timer as TimerIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
+  FileDownload as ExportIcon,
+  Restore as VersionHistoryIcon,
+  ViewModule as OrganizerIcon,
+  PanTool as ManualIcon,
+  Person as FollowIcon,
 } from "@mui/icons-material";
 import { ShareDialog } from "./ShareDialog";
 import type { AutosaveStatus } from "@/lib/autosave/serialized-delta-queue";
 import { describeSaveStatus } from "@/features/canvas/save-status";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useThemeMode } from "@/lib/theme-context";
 import { MeetingTimer } from "./MeetingTimer";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { PresentToAll } from "@mui/icons-material";
@@ -166,6 +179,13 @@ export function CanvasHeader({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [timerAnchor, setTimerAnchor] = useState<HTMLElement | null>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const theme = useTheme();
+  // IMP-078: phones get a short bar (back, title, share, "More") with every
+  // other action in one labelled menu. Wider screens keep the full bar.
+  const compact = useMediaQuery(theme.breakpoints.down("sm"));
+  const { mode: themeMode, toggleTheme } = useThemeMode();
 
   const handleBackClick = () => {
     router.push("/dashboard");
@@ -324,6 +344,311 @@ export function CanvasHeader({
       },
   ].filter(Boolean) as CanvasSecondaryAction[];
 
+  const searchField = (
+    <TextField
+      value={searchQuery}
+      onChange={(e) => onSearchChange?.(e.target.value)}
+      placeholder="Search notes and bookmarks..."
+      size="small"
+      autoFocus
+      sx={{
+        minWidth: { xs: 0, sm: 300 },
+        width: { xs: "100%", sm: "auto" },
+        maxWidth: 500,
+      }}
+      slotProps={{
+        input: {
+          startAdornment: <SearchIcon sx={{ mr: 1, color: "action.active" }} />,
+          endAdornment: searchQuery ? (
+            <IconButton
+              aria-label="Clear canvas search"
+              size="small"
+              onClick={() => {
+                onSearchChange?.("");
+                setShowSearch(false);
+              }}
+            >
+              <ClearIcon fontSize="small" />
+            </IconButton>
+          ) : null,
+        },
+      }}
+    />
+  );
+
+  const nameEditor = (
+    <TextField
+      value={editedName}
+      onChange={(e) => setEditedName(e.target.value)}
+      onBlur={handleNameSave}
+      onKeyDown={handleNameKeyPress}
+      autoFocus
+      size="small"
+      variant="outlined"
+      sx={{
+        minWidth: { xs: 0, sm: 200 },
+        width: { xs: "100%", sm: "auto" },
+        maxWidth: 400,
+      }}
+    />
+  );
+
+  if (compact) {
+    const tap = { minWidth: 44, minHeight: 44 };
+    const saveDisplay = saveStatus
+      ? describeSaveStatus(saveStatus, { offlineChanges, deviceCopyFailed })
+      : null;
+    const saveDotColor =
+      saveStatus === "saved"
+        ? "success.main"
+        : saveStatus === "saving"
+          ? "info.main"
+          : saveStatus === "offline/retrying"
+            ? "warning.main"
+            : "error.main";
+    const run = (action: () => void) => () => {
+      handleMenuClose();
+      action();
+    };
+    type MenuEntry = {
+      key: string;
+      label: string;
+      icon: React.ReactNode;
+      onClick: () => void;
+      selected?: boolean;
+    };
+    const entries: MenuEntry[] = [
+      canManageCanvas && {
+        key: "rename",
+        label: "Rename canvas",
+        icon: <EditIcon fontSize="small" />,
+        onClick: handleNameClick,
+      },
+      onViewModeChange && {
+        key: "view-mode",
+        label:
+          viewMode === "manual"
+            ? "Switch to Organizer view"
+            : "Switch to Manual view",
+        icon:
+          viewMode === "manual" ? (
+            <OrganizerIcon fontSize="small" />
+          ) : (
+            <ManualIcon fontSize="small" />
+          ),
+        onClick: () =>
+          onViewModeChange(viewMode === "manual" ? "organizer" : "manual"),
+      },
+      ...secondaryActions.map((action) => ({
+        key: action.key,
+        label: action.badgeCount
+          ? `${action.label} (${action.badgeCount})`
+          : action.label,
+        icon: action.icon,
+        onClick: action.onClick,
+      })),
+      {
+        key: "zoom-in",
+        label: "Zoom in",
+        icon: <ZoomIn fontSize="small" />,
+        onClick: handleZoomIn,
+      },
+      {
+        key: "zoom-out",
+        label: "Zoom out",
+        icon: <ZoomOut fontSize="small" />,
+        onClick: handleZoomOut,
+      },
+      {
+        key: "fit",
+        label: `Fit to screen (now ${Math.round(zoom * 100)}%)`,
+        icon: <FitScreen fontSize="small" />,
+        onClick: onFitToScreen,
+      },
+      onGridToggle && {
+        key: "grid",
+        label: gridVisible ? "Hide grid" : "Show grid",
+        icon: gridVisible ? (
+          <GridOffIcon fontSize="small" />
+        ) : (
+          <GridOnIcon fontSize="small" />
+        ),
+        onClick: onGridToggle,
+      },
+      onSnapToggle && {
+        key: "snap",
+        label: snapEnabled ? "Disable snap to grid" : "Enable snap to grid",
+        icon: <FitScreen fontSize="small" />,
+        onClick: onSnapToggle,
+      },
+      {
+        key: "timer",
+        label: "Personal meeting timer",
+        icon: <TimerIcon fontSize="small" />,
+        onClick: () => setTimerAnchor(moreButtonRef.current),
+      },
+      onPresentationMode && {
+        key: "presentation",
+        label: isPresentationMode ? "Exit presentation" : "Enter presentation",
+        icon: <PresentToAll fontSize="small" />,
+        onClick: onPresentationMode,
+      },
+      {
+        key: "theme",
+        label: themeMode === "light" ? "Dark mode" : "Light mode",
+        icon:
+          themeMode === "light" ? (
+            <DarkModeIcon fontSize="small" />
+          ) : (
+            <LightModeIcon fontSize="small" />
+          ),
+        onClick: toggleTheme,
+      },
+      ...(onFollowUser
+        ? collaborators.map((collaborator) => ({
+            key: `follow-${collaborator.userId}`,
+            label: `Follow ${collaborator.name || collaborator.email}`,
+            icon: <FollowIcon fontSize="small" />,
+            onClick: () => onFollowUser(collaborator.userId),
+            selected: followingUserId === collaborator.userId,
+          }))
+        : []),
+      onExport && {
+        key: "export",
+        label: "Export canvas",
+        icon: <ExportIcon fontSize="small" />,
+        onClick: onExport,
+      },
+      onVersionHistory && {
+        key: "versions",
+        label: "Version history",
+        icon: <VersionHistoryIcon fontSize="small" />,
+        onClick: onVersionHistory,
+      },
+    ].filter(Boolean) as MenuEntry[];
+
+    return (
+      <AppBar position="static" color="default" elevation={1}>
+        <Toolbar
+          disableGutters
+          sx={{ minHeight: 56, px: 0.5, gap: 0.5, overflow: "hidden" }}
+        >
+          <IconButton
+            aria-label="Back to dashboard"
+            onClick={handleBackClick}
+            sx={tap}
+          >
+            <ArrowBack />
+          </IconButton>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+            }}
+          >
+            {showSearch && onSearchChange ? (
+              searchField
+            ) : isEditingName ? (
+              nameEditor
+            ) : (
+              <Typography
+                variant="subtitle1"
+                component="h1"
+                noWrap
+                title={canvasName}
+                sx={{ fontWeight: 700, minWidth: 0 }}
+              >
+                {canvasName}
+              </Typography>
+            )}
+            {saveDisplay && !showSearch && !isEditingName && (
+              <Tooltip title={saveError || saveDisplay.tooltip}>
+                <Box
+                  role="status"
+                  aria-label={`Save status: ${saveDisplay.label}`}
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    flexShrink: 0,
+                    borderRadius: "50%",
+                    bgcolor: saveDotColor,
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Box>
+          {canManageCanvas && (
+            <IconButton
+              aria-label="Share canvas"
+              onClick={() => setShareDialogOpen(true)}
+              sx={tap}
+            >
+              <ShareIcon />
+            </IconButton>
+          )}
+          <IconButton
+            ref={moreButtonRef}
+            aria-label="More canvas options"
+            aria-haspopup="menu"
+            aria-expanded={Boolean(anchorEl)}
+            onClick={handleMenuOpen}
+            sx={tap}
+          >
+            <MoreVert />
+          </IconButton>
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleMenuClose}
+            slotProps={{ list: { "aria-label": "More canvas options" } }}
+          >
+            {showStatus && (
+              <MenuItem disabled key="status" sx={{ opacity: "1 !important" }}>
+                <ListItemIcon>
+                  <OnlineIcon
+                    fontSize="small"
+                    sx={{ color: statusDisplay.iconColor }}
+                  />
+                </ListItemIcon>
+                <ListItemText
+                  primary={`Collaboration: ${statusDisplay.label}`}
+                  secondary={saveDisplay?.label}
+                />
+              </MenuItem>
+            )}
+            {entries.map((entry) => (
+              <MenuItem
+                key={entry.key}
+                selected={entry.selected}
+                onClick={run(entry.onClick)}
+              >
+                <ListItemIcon>{entry.icon}</ListItemIcon>
+                <ListItemText>{entry.label}</ListItemText>
+              </MenuItem>
+            ))}
+          </Menu>
+          <MeetingTimer
+            hideTrigger
+            externalAnchor={timerAnchor}
+            onExternalClose={() => setTimerAnchor(null)}
+          />
+        </Toolbar>
+
+        {canManageCanvas && (
+          <ShareDialog
+            open={shareDialogOpen}
+            onClose={() => setShareDialogOpen(false)}
+            canvasId={canvasId}
+            canvasName={canvasName}
+          />
+        )}
+      </AppBar>
+    );
+  }
+
   return (
     <AppBar position="static" color="default" elevation={1}>
       <Toolbar sx={{ overflowX: "auto", minHeight: 64 }}>
@@ -350,44 +675,9 @@ export function CanvasHeader({
           }}
         >
           {showSearch && onSearchChange ? (
-            <TextField
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search notes and bookmarks..."
-              size="small"
-              autoFocus
-              sx={{ minWidth: { xs: 180, sm: 300 }, maxWidth: 500 }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <SearchIcon sx={{ mr: 1, color: "action.active" }} />
-                  ),
-                  endAdornment: searchQuery ? (
-                    <IconButton
-                      aria-label="Clear canvas search"
-                      size="small"
-                      onClick={() => {
-                        onSearchChange("");
-                        setShowSearch(false);
-                      }}
-                    >
-                      <ClearIcon fontSize="small" />
-                    </IconButton>
-                  ) : null,
-                },
-              }}
-            />
+            searchField
           ) : isEditingName ? (
-            <TextField
-              value={editedName}
-              onChange={(e) => setEditedName(e.target.value)}
-              onBlur={handleNameSave}
-              onKeyDown={handleNameKeyPress}
-              autoFocus
-              size="small"
-              variant="outlined"
-              sx={{ minWidth: 200, maxWidth: 400 }}
-            />
+            nameEditor
           ) : (
             <Box
               sx={{
