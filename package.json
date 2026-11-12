@@ -18,6 +18,7 @@
     "setup:selfhost": "node scripts/setup.mjs selfhost",
     "doctor": "node scripts/doctor.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "extension:build": "node scripts/build-browser-extension.mjs",
     "stack:up": "node scripts/stack.mjs up",
     "stack:down": "node scripts/stack.mjs down",
     "stack:logs": "node scripts/stack.mjs logs",

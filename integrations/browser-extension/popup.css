@@ -65,6 +65,7 @@ label.inline {
 
 input[type="text"],
 input[type="password"],
+select,
 textarea {
   display: block;
   width: 100%;
@@ -195,4 +196,36 @@ button.link {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.page-title {
+  margin: 4px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.page-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  margin-top: 8px;
+}
+
+.switch {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+header span {
+  display: flex;
+  gap: 12px;
+}
+
+#page .hint {
+  margin-top: 6px;
 }

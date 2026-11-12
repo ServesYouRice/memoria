@@ -43,6 +43,13 @@ vi.mock("@/lib/db", () => {
       $queryRaw: vi.fn(async () => mocks.existing),
       canvas: {
         findFirst: vi.fn(async () => ({ id: "inbox-1", name: "Inbox" })),
+        findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+          where.id === MINE
+            ? { id: MINE, userId: "u1" }
+            : where.id === THEIRS
+              ? { id: THEIRS, userId: "u2" }
+              : null,
+        ),
       },
       canvasItem: {
         findUnique: vi.fn(async ({ where }: { where: { id: string } }) => ({
@@ -56,6 +63,9 @@ vi.mock("@/lib/db", () => {
     },
   };
 });
+
+const MINE = "ctrip000000000000000000b";
+const THEIRS = "cother00000000000000000c";
 
 import { POST } from "@/app/api/v1/extensions/clip/route";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
@@ -195,5 +205,24 @@ describe("POST /api/v1/extensions/clip", () => {
     const content = mocks.created[0]!.content as { url: string; title: string };
     expect(content.url).toBe(url);
     expect(content.title).toBe(url.slice(0, 500));
+  });
+
+  // The browser button's canvas picker (IMP-093).
+  it("saves to a chosen canvas the key owner owns", async () => {
+    const response = await clip({
+      url: "https://example.com/picked",
+      canvasId: MINE,
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.created[0]!.canvasId).toBe(MINE);
+  });
+
+  it("refuses a canvas that belongs to someone else", async () => {
+    const response = await clip({
+      url: "https://example.com/picked",
+      canvasId: THEIRS,
+    });
+    expect(response.status).toBe(404);
+    expect(mocks.created).toHaveLength(0);
   });
 });
