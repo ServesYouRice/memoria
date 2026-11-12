@@ -68,6 +68,8 @@ const PAGE_GRADIENTS = {
   hero: "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(99,102,241,0.25), transparent), radial-gradient(ellipse 60% 50% at 80% 40%, rgba(139,92,246,0.15), transparent)",
 };
 const HERO_BORDER_COLOR = "rgba(99,102,241,0.3)";
+// Dark brand shade: 4.5:1+ on white and on the hover/focus tint.
+const CTA_LABEL_COLOR = "#4f46e5";
 const PREVIEW_SHADOW = "0 24px 64px rgba(99,102,241,0.12)";
 
 export default async function Home() {
@@ -384,9 +386,15 @@ export default async function Home() {
             size="large"
             variant="contained"
             sx={{
-              bgcolor: "#fff",
-              color: "primary.main",
-              "&:hover": { bgcolor: "#fff", filter: "brightness(0.95)" },
+              // `background` (not `bgcolor`) so the theme's gradient is
+              // replaced; the dark brand shade keeps the label above 4.5:1.
+              background: "#fff",
+              color: CTA_LABEL_COLOR,
+              "&:hover, &:focus-visible": {
+                background: "#f1f5f9",
+                color: CTA_LABEL_COLOR,
+                filter: "none",
+              },
             }}
           >
             Create account

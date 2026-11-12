@@ -84,6 +84,10 @@ export const transitions = {
 
 export function createAppTheme(mode: PaletteMode) {
   const isLight = mode === "light";
+  // Flat, muted disabled fill with a label that keeps at least 3:1 contrast.
+  const disabledButton = isLight
+    ? { background: "#e2e8f0", color: "#64748b" }
+    : { background: "#1e293b", color: "#94a3b8" };
 
   return createTheme({
     palette: {
@@ -206,6 +210,14 @@ export function createAppTheme(mode: PaletteMode) {
                 background: gradients.brand,
                 filter: "brightness(1.08)",
                 boxShadow: `0 4px 16px ${alpha(brand.primary.main, 0.35)}`,
+              },
+              // The gradient `background` would otherwise survive the disabled
+              // state and leave MUI's faded label unreadable on purple.
+              "&.Mui-disabled": {
+                background: disabledButton.background,
+                color: disabledButton.color,
+                filter: "none",
+                boxShadow: "none",
               },
             },
           },

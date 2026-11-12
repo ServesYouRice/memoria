@@ -25,8 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-075](tasks/IMP-075.md) | Buttons stay readable: greyed-out buttons and the home page's bottom sign-up button | |
-| [IMP-076](tasks/IMP-076.md) | Bell shows no red "0" when nothing is new | |
 | [IMP-077](tasks/IMP-077.md) | Dark mode: the activity box and canvas notes follow the theme | |
 | [IMP-078](tasks/IMP-078.md) | Canvas top bar fits on a phone | |
 | [IMP-087](tasks/IMP-087.md) | Same page width and top bar on every page | |
