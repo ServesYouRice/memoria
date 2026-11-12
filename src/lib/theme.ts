@@ -82,43 +82,112 @@ export const transitions = {
   slow: "350ms cubic-bezier(0.4, 0, 0.2, 1)",
 };
 
-export function createAppTheme(mode: PaletteMode) {
+/**
+ * Mode-specific values that are not part of the MUI palette. They are emitted
+ * as CSS custom properties per colour scheme, so component styles stay the
+ * same in both modes and the `data-theme` attribute (stamped before first
+ * paint) picks the colours. Rendering never depends on the mode, so markup
+ * from the server always matches the first client render.
+ */
+export const appColorTokens = {
+  light: {
+    border: "rgba(15, 23, 42, 0.08)",
+    scrollbarThumb: "#cbd5e1",
+    scrollbarTrack: "#f1f5f9",
+    tooltipBackground: "#0f172a",
+    tooltipText: "#f1f5f9",
+    appBarBackground: glassStyles.light.background,
+    appBarBorder: glassStyles.light.border,
+    menuShadow: "0 10px 32px rgba(15, 23, 42, 0.12)",
+    cardHoverShadow: `0 8px 24px ${alpha(brand.primary.main, 0.08)}`,
+    // Flat, muted disabled fill with a label that keeps at least 3:1 contrast.
+    disabledButtonBackground: "#e2e8f0",
+    disabledButtonText: "#64748b",
+    canvasBackground: "#f0f2f5",
+    canvasGrid: "#e0e0e0",
+  },
+  dark: {
+    border: "rgba(241, 245, 249, 0.08)",
+    scrollbarThumb: "#475569",
+    scrollbarTrack: "#111a2e",
+    tooltipBackground: "#f1f5f9",
+    tooltipText: "#0f172a",
+    appBarBackground: glassStyles.dark.background,
+    appBarBorder: glassStyles.dark.border,
+    menuShadow: "0 10px 32px rgba(0, 0, 0, 0.5)",
+    cardHoverShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+    disabledButtonBackground: "#1e293b",
+    disabledButtonText: "#94a3b8",
+    canvasBackground: "#0d1526",
+    canvasGrid: "#1e293b",
+  },
+} as const;
+
+export type AppColorToken = keyof (typeof appColorTokens)["light"];
+
+function kebab(name: string): string {
+  return name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+}
+
+/** CSS `var()` reference for an app colour token. */
+export function appColor(token: AppColorToken): string {
+  return `var(--app-${kebab(token)})`;
+}
+
+function tokenDeclarations(mode: PaletteMode): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(appColorTokens[mode]).map(([name, value]) => [
+      `--app-${kebab(name)}`,
+      value,
+    ]),
+  );
+}
+
+/** Attribute selector MUI and the pre-paint script both use for dark mode. */
+export const DARK_SCHEME_SELECTOR = '[data-theme="dark"]';
+
+function paletteFor(mode: PaletteMode) {
   const isLight = mode === "light";
-  // Flat, muted disabled fill with a label that keeps at least 3:1 contrast.
-  const disabledButton = isLight
-    ? { background: "#e2e8f0", color: "#64748b" }
-    : { background: "#1e293b", color: "#94a3b8" };
+  return {
+    mode,
+    primary: {
+      light: brand.primary.light,
+      // The launch UI uses primary.main for normal-size links and outlined
+      // controls, so the light palette needs the AA-safe brand shade.
+      main: isLight ? brand.primary.dark : brand.primary.light,
+      dark: brand.primary.dark,
+      contrastText: brand.primary.contrastText,
+    },
+    secondary: {
+      light: brand.secondary.light,
+      main: isLight ? brand.secondary.main : brand.secondary.light,
+      dark: brand.secondary.dark,
+      contrastText: brand.secondary.contrastText,
+    },
+    success: brand.success,
+    warning: brand.warning,
+    error: brand.error,
+    info: brand.info,
+    background: {
+      default: isLight ? "#f8fafc" : "#0b1120",
+      paper: isLight ? "#ffffff" : "#111a2e",
+    },
+    text: {
+      primary: isLight ? "#0f172a" : "#f1f5f9",
+      secondary: isLight ? "#64748b" : "#94a3b8",
+    },
+    divider: appColorTokens[mode].border,
+  };
+}
+
+export function createAppTheme() {
+  const border = appColor("border");
 
   return createTheme({
-    palette: {
-      mode,
-      primary: {
-        light: brand.primary.light,
-        // The launch UI uses primary.main for normal-size links and outlined
-        // controls, so the light palette needs the AA-safe brand shade.
-        main: isLight ? brand.primary.dark : brand.primary.light,
-        dark: brand.primary.dark,
-        contrastText: brand.primary.contrastText,
-      },
-      secondary: {
-        light: brand.secondary.light,
-        main: isLight ? brand.secondary.main : brand.secondary.light,
-        dark: brand.secondary.dark,
-        contrastText: brand.secondary.contrastText,
-      },
-      success: brand.success,
-      warning: brand.warning,
-      error: brand.error,
-      info: brand.info,
-      background: {
-        default: isLight ? "#f8fafc" : "#0b1120",
-        paper: isLight ? "#ffffff" : "#111a2e",
-      },
-      text: {
-        primary: isLight ? "#0f172a" : "#f1f5f9",
-        secondary: isLight ? "#64748b" : "#94a3b8",
-      },
-      divider: isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)",
+    cssVariables: { colorSchemeSelector: "data-theme" },
+    colorSchemes: {
+      light: { palette: paletteFor("light") },
+      dark: { palette: paletteFor("dark") },
     },
     typography: {
       fontFamily:
@@ -141,7 +210,7 @@ export function createAppTheme(mode: PaletteMode) {
           html: {
             scrollBehavior: "smooth",
             scrollbarWidth: "thin",
-            scrollbarColor: `${isLight ? "#cbd5e1" : "#475569"} ${isLight ? "#f1f5f9" : "#111a2e"}`,
+            scrollbarColor: `${appColor("scrollbarThumb")} ${appColor("scrollbarTrack")}`,
             scrollbarGutter: "stable",
             "& *:focus-visible": {
               outline: `2px solid ${brand.primary.main}`,
@@ -151,6 +220,8 @@ export function createAppTheme(mode: PaletteMode) {
           body: {
             minBlockSize: "100dvh",
           },
+          ":root": tokenDeclarations("light"),
+          [DARK_SCHEME_SELECTOR]: tokenDeclarations("dark"),
           "@media (prefers-reduced-motion: reduce)": {
             html: { scrollBehavior: "auto" },
             "*, *::before, *::after": {
@@ -214,8 +285,8 @@ export function createAppTheme(mode: PaletteMode) {
               // The gradient `background` would otherwise survive the disabled
               // state and leave MUI's faded label unreadable on purple.
               "&.Mui-disabled": {
-                background: disabledButton.background,
-                color: disabledButton.color,
+                background: appColor("disabledButtonBackground"),
+                color: appColor("disabledButtonText"),
                 filter: "none",
                 boxShadow: "none",
               },
@@ -229,13 +300,11 @@ export function createAppTheme(mode: PaletteMode) {
             borderRadius: 16,
             backgroundImage: "none",
             boxShadow: "none",
-            border: `1px solid ${isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)"}`,
+            border: `1px solid ${border}`,
             transition: `border-color ${transitions.fast}, box-shadow ${transitions.fast}, transform ${transitions.fast}`,
             "&:hover": {
               borderColor: alpha(brand.primary.main, 0.4),
-              boxShadow: isLight
-                ? `0 8px 24px ${alpha(brand.primary.main, 0.08)}`
-                : "0 8px 24px rgba(0, 0, 0, 0.4)",
+              boxShadow: appColor("cardHoverShadow"),
             },
           },
         },
@@ -246,9 +315,7 @@ export function createAppTheme(mode: PaletteMode) {
             backgroundImage: "none",
           },
           outlined: {
-            borderColor: isLight
-              ? "rgba(15, 23, 42, 0.08)"
-              : "rgba(241, 245, 249, 0.08)",
+            borderColor: border,
           },
         },
       },
@@ -265,7 +332,7 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           paper: {
             borderRadius: 16,
-            border: `1px solid ${isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)"}`,
+            border: `1px solid ${border}`,
           },
         },
       },
@@ -284,8 +351,8 @@ export function createAppTheme(mode: PaletteMode) {
             fontSize: "0.75rem",
             fontWeight: 500,
             padding: "6px 10px",
-            backgroundColor: isLight ? "#0f172a" : "#f1f5f9",
-            color: isLight ? "#f1f5f9" : "#0f172a",
+            backgroundColor: appColor("tooltipBackground"),
+            color: appColor("tooltipText"),
           },
         },
       },
@@ -295,7 +362,9 @@ export function createAppTheme(mode: PaletteMode) {
         },
         styleOverrides: {
           root: {
-            ...(isLight ? glassStyles.light : glassStyles.dark),
+            background: appColor("appBarBackground"),
+            backdropFilter: glassStyles.light.backdropFilter,
+            border: appColor("appBarBorder"),
             color: "inherit",
             boxShadow: "none",
             borderLeft: "none",
@@ -307,9 +376,7 @@ export function createAppTheme(mode: PaletteMode) {
       MuiDrawer: {
         styleOverrides: {
           paper: {
-            borderRight: isLight
-              ? "1px solid rgba(15, 23, 42, 0.08)"
-              : "1px solid rgba(241, 245, 249, 0.08)",
+            borderRight: `1px solid ${border}`,
           },
         },
       },
@@ -318,10 +385,8 @@ export function createAppTheme(mode: PaletteMode) {
           paper: {
             borderRadius: 12,
             marginTop: 8,
-            border: `1px solid ${isLight ? "rgba(15, 23, 42, 0.08)" : "rgba(241, 245, 249, 0.08)"}`,
-            boxShadow: isLight
-              ? "0 10px 32px rgba(15, 23, 42, 0.12)"
-              : "0 10px 32px rgba(0, 0, 0, 0.5)",
+            border: `1px solid ${border}`,
+            boxShadow: appColor("menuShadow"),
           },
         },
       },
@@ -368,5 +433,5 @@ export function createAppTheme(mode: PaletteMode) {
   });
 }
 
-// Default light theme for backwards compatibility
-export const theme = createAppTheme("light");
+// Default theme instance (light and dark schemes, switched by `data-theme`).
+export const theme = createAppTheme();

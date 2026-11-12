@@ -4,33 +4,23 @@
  * ENHANCED: Issue #42 - Dark mode support
  *
  * Provides theme mode state and toggle functionality.
- * Persists user preference in localStorage.
+ * Persists user preference in localStorage (via MUI's colour-scheme storage).
  *
- * The provider always renders its children — including during server rendering
- * and the first client pass — so pages keep meaningful HTML without JavaScript.
- * The stored preference is reconciled in a layout effect (before paint) rather
- * than by withholding the tree.
+ * Colours come from CSS variables selected by `data-theme`, which an inline
+ * script stamps before first paint, so the server markup is correct in both
+ * modes and nothing has to re-render to change colour.
  */
 
 "use client";
 
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { createContext, useCallback, useContext, useMemo } from "react";
 import { type PaletteMode } from "@mui/material";
 import {
-  DEFAULT_THEME_MODE,
-  THEME_STORAGE_KEY,
-  applyThemeModeToDocument,
-  readStoredThemeMode,
-  resolvePreferredThemeMode,
-} from "./theme-preference";
+  ThemeProvider as MuiThemeProvider,
+  useColorScheme,
+} from "@mui/material/styles";
+import { createAppTheme } from "./theme";
+import { DEFAULT_THEME_MODE, THEME_STORAGE_KEY } from "./theme-preference";
 
 interface ThemeContextType {
   mode: PaletteMode;
@@ -50,55 +40,45 @@ export function useThemeMode() {
   return context;
 }
 
-// useLayoutEffect warns during server rendering; useEffect is the server-safe
-// equivalent there because effects never run on the server anyway.
-const useIsomorphicLayoutEffect =
-  typeof window === "undefined" ? useEffect : useLayoutEffect;
-
 interface ThemeModeProviderProps {
   children: React.ReactNode;
 }
 
+/**
+ * Must sit inside MUI's `ThemeProvider` (CSS-variables theme). MUI owns the
+ * mode state, its storage and the `data-theme` attribute; this provider only
+ * exposes the resolved light/dark mode and a toggle that stores an explicit
+ * choice. Without a stored choice the system preference is followed.
+ */
 export function ThemeModeProvider({ children }: ThemeModeProviderProps) {
-  // Deterministic on the server; reconciled below before the browser paints.
-  const [mode, setMode] = useState<PaletteMode>(DEFAULT_THEME_MODE);
-
-  useIsomorphicLayoutEffect(() => {
-    const preferred = resolvePreferredThemeMode();
-    setMode(preferred);
-    applyThemeModeToDocument(preferred);
-  }, []);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = (event: MediaQueryListEvent) => {
-      // Only follow the system when the user has not chosen explicitly.
-      if (readStoredThemeMode() !== null) return;
-      const systemMode = event.matches ? "dark" : "light";
-      setMode(systemMode);
-      applyThemeModeToDocument(systemMode);
-    };
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, []);
+  const { mode: storedMode, systemMode, setMode } = useColorScheme();
+  const mode: PaletteMode =
+    (storedMode === "system" ? systemMode : storedMode) ?? DEFAULT_THEME_MODE;
 
   const toggleTheme = useCallback(() => {
-    setMode((prevMode) => {
-      const newMode = prevMode === "light" ? "dark" : "light";
-      try {
-        window.localStorage.setItem(THEME_STORAGE_KEY, newMode);
-      } catch {
-        // A failed write only costs persistence, not the in-session switch.
-      }
-      applyThemeModeToDocument(newMode);
-      return newMode;
-    });
-  }, []);
+    setMode(mode === "light" ? "dark" : "light");
+  }, [mode, setMode]);
 
   const value = useMemo(() => ({ mode, toggleTheme }), [mode, toggleTheme]);
 
   return (
     <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  );
+}
+
+// Built once: both colour schemes live in CSS variables, so a mode switch
+// changes only the `data-theme` attribute, never the rendered class names.
+const appTheme = createAppTheme();
+
+/** MUI theme (both schemes) plus the app's light/dark mode context. */
+export function AppThemeProvider({ children }: ThemeModeProviderProps) {
+  return (
+    <MuiThemeProvider
+      theme={appTheme}
+      modeStorageKey={THEME_STORAGE_KEY}
+      defaultMode="system"
+    >
+      <ThemeModeProvider>{children}</ThemeModeProvider>
+    </MuiThemeProvider>
   );
 }

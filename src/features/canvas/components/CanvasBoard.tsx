@@ -10,7 +10,6 @@ import {
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
-  useTheme,
 } from "@mui/material";
 import { NoteAdd, Bookmark, Image as ImageIcon } from "@mui/icons-material";
 import { useSession } from "@/lib/auth-client";
@@ -99,6 +98,8 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { isVersionConflict } from "@/lib/api/fetch-client";
 import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
+import { appColor, appColorTokens } from "@/lib/theme";
+import { useThemeMode } from "@/lib/theme-context";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -173,8 +174,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const searchParams = useSearchParams();
   const focusedItemRef = useRef<string | null>(null);
   const lastThumbnailRevisionRef = useRef<string | null>(null);
-  const theme = useTheme();
-  const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
+  // Konva needs a real colour; the mode comes from the theme context.
+  const gridStroke = appColorTokens[useThemeMode().mode].canvasGrid;
   const { ref: stageContainerRef, size: stageSize } = useObservedStageSize();
 
   // Data Hook (Single source of truth for display)
@@ -1375,8 +1376,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             position: "relative",
             overflow: "hidden",
             cursor: isDrawing ? "crosshair" : "default",
-            bgcolor: (theme) =>
-              theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
+            bgcolor: appColor("canvasBackground"),
           }}
         >
           {totalItemCount > allItems.length && (

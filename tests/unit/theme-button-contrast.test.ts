@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createAppTheme, gradients } from "@/lib/theme";
+import { appColorTokens, createAppTheme, gradients } from "@/lib/theme";
 
 function luminance(hex: string): number {
   const value = hex.replace("#", "");
@@ -28,8 +28,8 @@ function contrast(a: string, b: string): number {
 
 type Style = Record<string, unknown>;
 
-function containedPrimaryStyle(mode: "light" | "dark"): Style {
-  const theme = createAppTheme(mode);
+function containedPrimaryStyle(): Style {
+  const theme = createAppTheme();
   const variants = theme.components?.MuiButton?.variants ?? [];
   const match = variants.find(
     (v) =>
@@ -42,23 +42,22 @@ function containedPrimaryStyle(mode: "light" | "dark"): Style {
 }
 
 describe("contained primary button", () => {
-  it.each(["light", "dark"] as const)(
-    "keeps the gradient when enabled (%s)",
-    (mode) => {
-      expect(containedPrimaryStyle(mode).background).toBe(gradients.brand);
-    },
-  );
+  it("keeps the gradient when enabled", () => {
+    expect(containedPrimaryStyle().background).toBe(gradients.brand);
+  });
 
   it.each(["light", "dark"] as const)(
     "uses a flat, readable disabled style without the gradient (%s)",
     (mode) => {
-      const disabled = containedPrimaryStyle(mode)["&.Mui-disabled"] as Style;
+      const disabled = containedPrimaryStyle()["&.Mui-disabled"] as Style;
       expect(disabled).toBeDefined();
-      const background = String(disabled.background);
+      expect(disabled.background).toBe("var(--app-disabled-button-background)");
+      expect(disabled.color).toBe("var(--app-disabled-button-text)");
+      const background = appColorTokens[mode].disabledButtonBackground;
       expect(background).not.toContain("gradient");
       expect(background).toMatch(/^#[0-9a-f]{6}$/i);
       expect(
-        contrast(String(disabled.color), background),
+        contrast(appColorTokens[mode].disabledButtonText, background),
       ).toBeGreaterThanOrEqual(3);
     },
   );

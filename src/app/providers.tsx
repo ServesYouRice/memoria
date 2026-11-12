@@ -8,8 +8,8 @@
  * Wraps the application with necessary providers:
  * - ErrorBoundary for React error handling
  * - QueryClientProvider for server state
- * - ThemeModeProvider for dark mode state
- * - ThemeProvider for MUI theming (with CSP nonce)
+ * - AppThemeProvider for MUI theming and dark mode state (CSS variables)
+ * - AppRouterCacheProvider for Emotion styles (with CSP nonce)
  * - GlobalShortcutsProvider for keyboard shortcuts
  */
 
@@ -19,11 +19,9 @@ import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
-import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { Toaster } from "sonner";
-import { createAppTheme } from "@/lib/theme";
-import { ThemeModeProvider, useThemeMode } from "@/lib/theme-context";
+import { AppThemeProvider, useThemeMode } from "@/lib/theme-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GlobalShortcutsProvider } from "@/components/GlobalShortcutsProvider";
 import { ConfirmDialogHost } from "@/components/ConfirmDialogHost";
@@ -47,35 +45,19 @@ const queryClient = new QueryClient({
   },
 });
 
-interface ThemedProvidersProps {
-  children: React.ReactNode;
-  nonce?: string;
-}
-
 /**
  * Inner providers that depend on theme context
  */
-function ThemedProviders({ children, nonce }: ThemedProvidersProps) {
+function ThemedProviders({ children }: { children: React.ReactNode }) {
   const { mode } = useThemeMode();
-  const theme = React.useMemo(() => createAppTheme(mode), [mode]);
 
   return (
-    <AppRouterCacheProvider options={{ nonce }}>
-      <MuiThemeProvider theme={theme}>
-        <CssBaseline />
-        <GlobalShortcutsProvider>
-          {children}
-          <ConfirmDialogHost />
-          <Toaster
-            richColors
-            closeButton
-            position="bottom-right"
-            theme={mode}
-          />
-          {process.env.NODE_ENV === "development" && <ReactQueryDevtools />}
-        </GlobalShortcutsProvider>
-      </MuiThemeProvider>
-    </AppRouterCacheProvider>
+    <GlobalShortcutsProvider>
+      {children}
+      <ConfirmDialogHost />
+      <Toaster richColors closeButton position="bottom-right" theme={mode} />
+      {process.env.NODE_ENV === "development" && <ReactQueryDevtools />}
+    </GlobalShortcutsProvider>
   );
 }
 
@@ -91,9 +73,12 @@ export function Providers({ children, nonce }: ProvidersProps) {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <ThemeModeProvider>
-          <ThemedProviders nonce={nonce}>{children}</ThemedProviders>
-        </ThemeModeProvider>
+        <AppRouterCacheProvider options={{ nonce }}>
+          <AppThemeProvider>
+            <CssBaseline />
+            <ThemedProviders>{children}</ThemedProviders>
+          </AppThemeProvider>
+        </AppRouterCacheProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

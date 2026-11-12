@@ -29,6 +29,8 @@ import {
   isTextItemContent,
 } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
+import { useThemeMode } from "@/lib/theme-context";
+import { READONLY_NOTE_COLORS } from "@/features/canvas/lib/note-colors";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import {
   EMBED_PREVIEW_LABEL,
@@ -201,32 +203,38 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
   );
 }
 
+function ReadonlyNoteItem({ item }: { item: CanvasItem }) {
+  const colors = READONLY_NOTE_COLORS[useThemeMode().mode];
+  if (!isNoteContent(item.content)) return null;
+  return (
+    <Group x={item.positionX} y={item.positionY}>
+      <Rect
+        width={item.width}
+        height={item.height}
+        fill={colors.fill}
+        stroke={colors.stroke}
+        strokeWidth={2}
+        cornerRadius={4}
+        shadowBlur={4}
+        shadowOpacity={0.15}
+      />
+      <Text
+        x={10}
+        y={10}
+        width={item.width - 20}
+        height={item.height - 20}
+        text={stripHtmlTags(item.content.text)}
+        fontSize={14}
+        fill={colors.text}
+        wrap="word"
+      />
+    </Group>
+  );
+}
+
 function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
   if (item.type === ItemType.NOTE && isNoteContent(item.content)) {
-    return (
-      <Group x={item.positionX} y={item.positionY}>
-        <Rect
-          width={item.width}
-          height={item.height}
-          fill="#fffacd"
-          stroke="#facc15"
-          strokeWidth={2}
-          cornerRadius={4}
-          shadowBlur={4}
-          shadowOpacity={0.15}
-        />
-        <Text
-          x={10}
-          y={10}
-          width={item.width - 20}
-          height={item.height - 20}
-          text={stripHtmlTags(item.content.text)}
-          fontSize={14}
-          fill="#334155"
-          wrap="word"
-        />
-      </Group>
-    );
+    return <ReadonlyNoteItem item={item} />;
   }
 
   if (item.type === ItemType.BOOKMARK && isBookmarkContent(item.content)) {

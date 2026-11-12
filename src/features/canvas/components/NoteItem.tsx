@@ -18,6 +18,8 @@ import {
 import { isNoteContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { normalizeNoteContent } from "@/lib/rich-text/note-format";
+import { useThemeMode } from "@/lib/theme-context";
+import { NOTE_COLORS } from "@/features/canvas/lib/note-colors";
 
 type NoteItemProps = CanvasItemAdapterProps;
 
@@ -35,6 +37,7 @@ export function NoteItem({
   onCommitGeometry,
 }: NoteItemProps) {
   const groupRef = useRef<Konva.Group>(null);
+  const noteColors = NOTE_COLORS[useThemeMode().mode];
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
     y: item.positionY,
@@ -138,8 +141,8 @@ export function NoteItem({
       <Rect
         width={localSize.width}
         height={localSize.height}
-        fill="#FFFACD"
-        stroke={isSelected ? "#2196F3" : "#FFD700"}
+        fill={noteColors.fill}
+        stroke={isSelected ? "#2196F3" : noteColors.stroke}
         strokeWidth={isSelected ? 3 : 2}
         shadowColor="black"
         shadowBlur={5}
@@ -156,7 +159,7 @@ export function NoteItem({
         text={readableText}
         fontSize={14}
         fontFamily="Arial"
-        fill="#333"
+        fill={noteColors.text}
         wrap="word"
       />
 

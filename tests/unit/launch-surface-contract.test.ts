@@ -66,7 +66,7 @@ describe("canvas route composition", () => {
 
 describe("selected app theme owns non-MUI CSS", () => {
   it("uses a contrast-safe light interactive primary", () => {
-    expect(createAppTheme("light").palette.primary.main).toBe(
+    expect(createAppTheme().colorSchemes.light?.palette.primary.main).toBe(
       brand.primary.dark,
     );
   });
