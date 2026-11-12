@@ -133,6 +133,16 @@ const envSchema = z
     MODEL_CREDENTIAL_ENCRYPTION_KEY: optionalString,
     UPLOAD_STORAGE: z.enum(["local", "s3"]).default("local"),
     UPLOADS_PUBLIC_URL: optionalUrl,
+    // IMP-092: a ready-made Apple Shortcut shared from iCloud, if any.
+    IOS_SHORTCUT_URL: emptyToUndefined(
+      z
+        .string()
+        .url()
+        .refine(
+          (value) => value.startsWith("https://www.icloud.com/shortcuts/"),
+          "IOS_SHORTCUT_URL must be an https://www.icloud.com/shortcuts/ link",
+        ),
+    ),
     UPLOAD_SCAN_URL: optionalUrl,
     UPLOAD_SCAN_REQUIRED: z.enum(["true", "false"]).default("false"),
     UPLOAD_SCAN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),

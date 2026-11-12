@@ -42,7 +42,9 @@ afterEach(() => {
 });
 
 function openDialogAndFill(date: string) {
-  fireEvent.click(screen.getAllByRole("button", { name: /create/i })[0]!);
+  fireEvent.click(
+    screen.getAllByRole("button", { name: /^create api key$/i })[0]!,
+  );
   fireEvent.change(screen.getByLabelText("Key name"), {
     target: { value: "Extension" },
   });
@@ -73,7 +75,7 @@ describe("API key expiry date", () => {
   it("sends the end of the chosen local day and limits the input to today onward", async () => {
     process.env.TZ = "America/Los_Angeles";
     mutateAsync.mockResolvedValue({ plaintextKey: "mk_test" });
-    render(<ApiKeysContent />);
+    render(<ApiKeysContent serverAddress="https://memoria.example" />);
     const dateInput = openDialogAndFill("2026-11-12");
     expect(dateInput.min).toBe(localDateInputValue(new Date()));
 
@@ -93,7 +95,7 @@ describe("API key expiry date", () => {
     mutateAsync.mockRejectedValue(
       new ApiError(400, "expiresAt must be in the future"),
     );
-    render(<ApiKeysContent />);
+    render(<ApiKeysContent serverAddress="https://memoria.example" />);
     openDialogAndFill("2026-11-12");
     const createButtons = screen.getAllByRole("button", { name: /^create$/i });
     await act(async () => {
@@ -113,7 +115,7 @@ describe("API key expiry date", () => {
         code: "recent_sign_in_required",
       }),
     );
-    render(<ApiKeysContent />);
+    render(<ApiKeysContent serverAddress="https://memoria.example" />);
     openDialogAndFill("2026-11-12");
     const createButtons = screen.getAllByRole("button", { name: /^create$/i });
     await act(async () => {

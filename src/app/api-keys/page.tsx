@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/AppShell";
 import { ApiKeysContent } from "./ApiKeysContent";
+import { iosShortcutUrl, memoriaAddress } from "@/lib/guides/phone-sharing";
 
 export const metadata = {
   title: "API Keys",
@@ -17,7 +18,10 @@ export default async function ApiKeysPage() {
 
   return (
     <AppShell readingWidth="md">
-      <ApiKeysContent />
+      <ApiKeysContent
+        serverAddress={memoriaAddress()}
+        shortcutUrl={iosShortcutUrl()}
+      />
     </AppShell>
   );
 }

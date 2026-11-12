@@ -53,6 +53,8 @@ COPY --from=build --chown=memoria:memoria /app/node_modules ./node_modules
 COPY --from=build --chown=memoria:memoria /app/.next ./.next
 COPY --from=build --chown=memoria:memoria /app/dist ./dist
 COPY --from=build --chown=memoria:memoria /app/public ./public
+# Help shows the phone guide from this file, its single source (IMP-092).
+COPY --from=build --chown=memoria:memoria /app/docs/integrations ./docs/integrations
 COPY --from=build --chown=memoria:memoria /app/prisma ./prisma
 # Prisma 7 reads the migrate datasource URL from prisma.config.ts, so the
 # `migrate` service needs it inside the runtime image.

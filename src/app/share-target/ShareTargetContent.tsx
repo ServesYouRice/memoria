@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Alert,
@@ -34,6 +34,22 @@ async function problemDetail(response: Response, fallback: string) {
   }
 }
 
+/** iPhone, iPod or iPad (iPadOS reports itself as a Mac with touch). */
+export function isAppleMobile(userAgent: string, maxTouchPoints: number) {
+  return (
+    /iPhone|iPad|iPod/.test(userAgent) ||
+    (/Macintosh/.test(userAgent) && maxTouchPoints > 1)
+  );
+}
+
+function useIsAppleMobile() {
+  const [apple, setApple] = useState(false);
+  useEffect(() => {
+    setApple(isAppleMobile(navigator.userAgent, navigator.maxTouchPoints));
+  }, []);
+  return apple;
+}
+
 function hostnameOf(url: string) {
   try {
     return new URL(url).hostname;
@@ -59,6 +75,7 @@ export function ShareTargetContent({
   >("idle");
   const started = useRef(false);
   const [saving, setSaving] = useState(false);
+  const isApple = useIsAppleMobile();
 
   // Runs only from the Save button: this page opens from a plain GET that
   // any site can link to, so arriving here must not save anything by itself.
@@ -105,6 +122,33 @@ export function ShareTargetContent({
       setNoteState("error");
     }
   };
+
+  if (!link && isApple) {
+    // IMP-092: iOS never lists web apps in the Share menu, so explain the
+    // Shortcut instead of an empty "nothing to save".
+    return (
+      <>
+        <PageHeader title="Save from your iPhone or iPad" />
+        <Alert severity="info" sx={{ mb: 3 }}>
+          On an iPhone or iPad, Memoria cannot appear in the Share menu by
+          itself. Add the Memoria Shortcut once, then pick{" "}
+          <strong>Save to Memoria</strong> when you share a link.
+        </Alert>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+          <Button
+            component={Link}
+            href="/help#save-from-your-phone"
+            variant="contained"
+          >
+            Show me how
+          </Button>
+          <Button component={Link} href="/api-keys" variant="outlined">
+            Create a key for my iPhone
+          </Button>
+        </Stack>
+      </>
+    );
+  }
 
   if (!link) {
     return (
