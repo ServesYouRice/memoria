@@ -39,3 +39,25 @@ AI has separate per-user token, cost, prompt-byte, and concurrency ceilings.
 Those limits are configured with the `AI_*` environment variables and exposed
 through the usage endpoint and settings page. See
 `docs/operations/observability.md#ai-budget` for the operator response.
+
+## Small set-up memory (IMP-100)
+
+Measured on 2026-11-12 with `docker stats`, Docker 29 on Linux x86-64, the
+image built from this repository, a fresh database and one owner account.
+"At rest" is two minutes after `pnpm setup:small` finished, with no one
+signed in.
+
+| Part | At rest | After sign-in and one upload |
+| --- | ---: | ---: |
+| app | 180 MiB | 179 MiB |
+| sync | 189 MiB | 257 MiB |
+| outbox-worker | 185 MiB | 176 MiB |
+| scheduler | 18 MiB | 18 MiB |
+| PostgreSQL | 81-88 MiB | 87 MiB |
+| Redis | 7 MiB | 7 MiB |
+| **Total** | **about 670 MiB** | **about 725 MiB** |
+
+A 1 GiB server runs it with little room to spare; 2 GiB leaves room for
+editing sessions and imports. The full set-up adds the Caddy gateway, the
+object store and the two backup services on top of these.
+

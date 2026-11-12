@@ -59,6 +59,7 @@ const envSchema = z
     SENDGRID_API_URL: optionalUrl,
     RESEND_API_KEY: optionalString,
     UPLOAD_STORAGE: z.enum(['local', 's3']).default('local'),
+    UPLOAD_LOCAL_DIR: optionalString,
     S3_BUCKET: optionalString,
     S3_REGION: optionalString,
     S3_ENDPOINT: optionalUrl,
@@ -86,11 +87,13 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && data.UPLOAD_STORAGE !== 's3') {
+    // IMP-100: the small set-up keeps uploads on a named disk folder.
+    if (validateProductionRuntime && data.UPLOAD_STORAGE !== 's3' && !data.UPLOAD_LOCAL_DIR) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['UPLOAD_STORAGE'],
-        message: 'UPLOAD_STORAGE must be s3 in production.',
+        message:
+          'UPLOAD_STORAGE must be s3 in production, or local with UPLOAD_LOCAL_DIR set to a mounted folder (small set-up).',
       });
     }
 
@@ -165,12 +168,15 @@ const envSchema = z
           message: 'EMAIL_DELIVERY_PROBE_TO is required in production.',
         });
       }
+      // The small set-up (uploads on a disk folder, IMP-100) runs no backup
+      // service; the owner backs up the database and the uploads volume.
+      const smallSetup = data.UPLOAD_STORAGE === 'local' && Boolean(data.UPLOAD_LOCAL_DIR);
       for (const field of [
         'BACKUP_BUCKET',
         'BACKUP_S3_ACCESS_KEY_ID',
         'BACKUP_S3_SECRET_ACCESS_KEY',
       ]) {
-        if (!data[field]) {
+        if (!smallSetup && !data[field]) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [field],

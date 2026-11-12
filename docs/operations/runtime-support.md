@@ -32,6 +32,15 @@ request appears to come from the proxy.
   gateway is attached to it, so no other peer can be trusted by accident. `app`,
   `sync` and `outbox-worker` receive the value. `pnpm doctor` warns when the
   app is behind a proxy and the value is empty.
+- **Small set-up (IMP-100):** `pnpm setup:small` writes
+  `TRUSTED_PROXY_CIDRS=172.29.48.1/32`, the gateway of the network pinned in
+  `docker-compose.small.yml`. The app port is published on 127.0.0.1 only,
+  so the owner's own TLS proxy on the same machine reaches the app from that
+  address and nothing else can. The app forwards live connections to `sync`
+  itself, so setup also writes a `COLLABORATION_PROXY_SECRET`. Uploads live in
+  the `uploads_data` volume (`UPLOAD_LOCAL_DIR=/data/uploads`), shared by
+  `app` and `outbox-worker`; that is why this set-up runs exactly one app
+  replica. Use the full set-up to run more.
 - **k3s (note for the `infra` repo):** set `TRUSTED_PROXY_CIDRS` on the app,
   sync and worker Deployments to the CIDR the ingress controller pods connect
   from: the pod CIDR of the ingress namespace (k3s default `10.42.0.0/16`;

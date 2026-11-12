@@ -10,9 +10,12 @@ import {
   readEnvFile,
   run,
   selfHostEnvFile,
+  smallEnvFile,
   waitForPort,
 } from './lib/runtime.mjs';
 import { runSmokeChecks } from './lib/smoke.mjs';
+import { probeLiveConnection } from './lib/live-connection.mjs';
+import { setupFix } from '../src/lib/operations/setup-fixes.mjs';
 
 const { flags } = parseArgs(process.argv.slice(2));
 const asJson = flags.has('--json');
@@ -20,11 +23,17 @@ const envFile = process.env.MEMORIA_ENV_FILE
   ? resolve(projectRoot, process.env.MEMORIA_ENV_FILE)
   : flags.has('--selfhost')
     ? selfHostEnvFile
-    : defaultEnvFile;
+    : flags.has('--small')
+      ? smallEnvFile
+      : defaultEnvFile;
 const results = [];
+// IMP-100: the small set-up keeps PostgreSQL and Redis inside its own
+// network, so the database, Redis, tables and uploads are checked through
+// the running app's readiness instead of from this machine.
+const small = flags.has('--small');
 
-function addCheck(name, status, detail) {
-  results.push({ name, status, detail });
+function addCheck(name, status, detail, fix) {
+  results.push(status !== 'pass' && fix ? { name, status, detail, fix } : { name, status, detail });
 }
 
 function redactedConnectionTarget(value, fallbackPort) {
@@ -48,6 +57,7 @@ const authUrl = envValues.get('AUTH_URL') || envValues.get('NEXTAUTH_URL');
 // the gateway's address for rate limits, lockout and connection caps.
 const behindProxy =
   flags.has('--selfhost') ||
+  flags.has('--small') ||
   authUrl?.startsWith('https://') ||
   envValues.get('NODE_ENV') === 'production';
 if (behindProxy && !envValues.get('TRUSTED_PROXY_CIDRS')?.trim()) {
@@ -78,7 +88,12 @@ if (emailProvider === 'smtp') {
       `smtp (${smtpHost}:${smtpPort}, ${smtpSecure ? 'implicit TLS' : 'STARTTLS required in production'})`
     );
     try {
-      await waitForPort({ host: smtpHost, port: smtpPort, label: 'SMTP', timeoutMs: 5000 });
+      await waitForPort({
+        host: smtpHost,
+        port: smtpPort,
+        label: 'SMTP',
+        timeoutMs: 5000,
+      });
       addCheck('smtp-server', 'pass', `${smtpHost}:${smtpPort}`);
     } catch (error) {
       addCheck('smtp-server', 'fail', error instanceof Error ? error.message : 'Unreachable');
@@ -123,16 +138,21 @@ if ((envValues.get('NODE_ENV') || 'development') === 'production') {
   );
 }
 
-if (envValues.get('REDIS_URL')) {
+if (envValues.get('REDIS_URL') && !small) {
   try {
     await waitForPort({ ...parseConnectionTarget(envValues.get('REDIS_URL'), 6379), label: 'Redis', timeoutMs: 5000 });
     addCheck('redis', 'pass', redactedConnectionTarget(envValues.get('REDIS_URL'), 6379));
   } catch (error) {
-    addCheck('redis', 'fail', error instanceof Error ? error.message : 'Unreachable');
+    addCheck(
+      'redis',
+      'fail',
+      error instanceof Error ? error.message : 'Unreachable',
+      setupFix('redis'),
+    );
   }
 }
 
-if (envValues.get('DATABASE_URL')) {
+if (envValues.get('DATABASE_URL') && !small) {
   try {
     await waitForPort({
       ...parseConnectionTarget(envValues.get('DATABASE_URL'), 5432),
@@ -141,7 +161,12 @@ if (envValues.get('DATABASE_URL')) {
     });
     addCheck('database', 'pass', redactedConnectionTarget(envValues.get('DATABASE_URL'), 5432));
   } catch (error) {
-    addCheck('database', 'fail', error instanceof Error ? error.message : 'Unreachable');
+    addCheck(
+      'database',
+      'fail',
+      error instanceof Error ? error.message : 'Unreachable',
+      setupFix('database'),
+    );
   }
 }
 
@@ -157,8 +182,24 @@ if (envValues.get('UPLOAD_STORAGE') === 's3') {
     });
     addCheck('object-storage', 'pass', envValues.get('S3_BUCKET'));
   } catch (error) {
-    addCheck('object-storage', 'fail', error instanceof Error ? error.message : 'Unreachable');
+    addCheck(
+      'object-storage',
+      'fail',
+      error instanceof Error ? error.message : 'Unreachable',
+      setupFix('storage'),
+    );
   }
+} else if (envValues.get('NODE_ENV') === 'production') {
+  // IMP-100 small set-up: uploads on a mounted folder inside the app
+  // container; the app's own readiness check writes a probe file there.
+  addCheck(
+    'object-storage',
+    envValues.get('UPLOAD_LOCAL_DIR') ? 'pass' : 'fail',
+    envValues.get('UPLOAD_LOCAL_DIR')
+      ? `Uploads on disk at ${envValues.get('UPLOAD_LOCAL_DIR')} (checked by the app's readiness)`
+      : 'UPLOAD_STORAGE=local needs UPLOAD_LOCAL_DIR in production',
+    setupFix('storage'),
+  );
 }
 
 const authUrlValue =
@@ -169,14 +210,28 @@ if (flags.has('--smoke') || authUrlValue) {
   // default 5s budget: a cold route or a remote host routinely needs more than
   // a second. Without it we are only probing an app that is probably not
   // running, and a short timeout keeps `pnpm doctor` responsive.
-  smokeReport = await runSmokeChecks({
-    baseUrl: authUrlValue || 'http://localhost:3000',
-    operationsBaseUrl:
-      envValues.get('OPERATIONS_BASE_URL') || authUrlValue || 'http://localhost:3000',
-    requireRunningApp: flags.has('--smoke'),
-    operationsToken: envValues.get('INTERNAL_OPERATIONS_TOKEN'),
-    ...(flags.has('--smoke') ? {} : { timeoutMs: 1000 }),
-  });
+  try {
+    smokeReport = await runSmokeChecks({
+      baseUrl: authUrlValue || 'http://localhost:3000',
+      operationsBaseUrl:
+        envValues.get('OPERATIONS_BASE_URL') || authUrlValue || 'http://localhost:3000',
+      requireRunningApp: flags.has('--smoke'),
+      operationsToken: envValues.get('INTERNAL_OPERATIONS_TOKEN'),
+      ...(flags.has('--smoke') ? {} : { timeoutMs: 1000 }),
+    });
+  } catch (error) {
+    // A half-reachable app (e.g. the operations address is wrong) is a
+    // finding, not a crash of the check itself.
+    smokeReport = {
+      results: [
+        {
+          name: 'app',
+          status: flags.has('--smoke') ? 'fail' : 'warn',
+          detail: `Smoke checks stopped: ${error?.cause?.message || error?.message || error}. Check that the app is running and OPERATIONS_BASE_URL points at its loopback port.`,
+        },
+      ],
+    };
+  }
 } else {
   smokeReport = {
     results: [
@@ -193,7 +248,59 @@ for (const result of smokeReport.results) {
   addCheck(`smoke:${result.name}`, result.status, result.detail);
 }
 
-if (envValues.get('DATABASE_URL')) {
+// IMP-100: open a live collaboration connection the way a browser does,
+// through the public address, so a proxy that drops WebSockets shows here.
+if (authUrlValue) {
+  const live = await probeLiveConnection(authUrlValue, {
+    timeoutMs: flags.has('--smoke') ? 6000 : 3000,
+  });
+  addCheck(
+    'live-connection',
+    live.ok ? 'pass' : flags.has('--smoke') ? 'fail' : 'warn',
+    live.ok ? `Opened ${live.url}` : `${live.url}: ${live.reason}`,
+    // 502-504: the proxy or app passed the connection on, but the sync
+    // server behind it did not answer.
+    /HTTP 50[234]/.test(live.reason ?? '') ? setupFix('sync-server') : setupFix('live-connection'),
+  );
+}
+
+if (small) {
+  const operationsBase =
+    envValues.get('OPERATIONS_BASE_URL') ||
+    `http://127.0.0.1:${envValues.get('APP_HOST_PORT') || '3000'}`;
+  const names = {
+    database: ['database', 'database'],
+    migrations: ['migrations', 'migrations'],
+    redis: ['redis', 'redis'],
+    'upload-storage': ['upload-storage', 'storage'],
+  };
+  try {
+    const response = await fetch(new URL('/api/ready', operationsBase), {
+      headers: {
+        Authorization: `Bearer ${envValues.get('INTERNAL_OPERATIONS_TOKEN')}`,
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    const snapshot = await response.json().catch(() => null);
+    if (!snapshot?.checks) throw new Error(`readiness answered HTTP ${response.status}`);
+    for (const check of snapshot.checks) {
+      const [name, fixName] = names[check.name] ?? [check.name, null];
+      addCheck(
+        name,
+        check.status === 'ok' ? 'pass' : 'fail',
+        check.status === 'ok' ? 'Working (checked by the app)' : 'Not working (checked by the app)',
+        fixName ? setupFix(fixName) : undefined,
+      );
+    }
+  } catch (error) {
+    addCheck(
+      'app-readiness',
+      'fail',
+      error?.cause?.message || error?.message || 'Unreachable',
+      `The app is not answering on ${operationsBase}. Start the small set-up (docker compose -f docker-compose.small.yml --env-file .env.small up -d) and look at the app logs.`,
+    );
+  }
+} else if (envValues.get('DATABASE_URL')) {
   const pnpm = getPnpmCommand();
   try {
     await run(
@@ -209,7 +316,8 @@ if (envValues.get('DATABASE_URL')) {
     addCheck(
       'migrations',
       'fail',
-      error instanceof Error ? error.message : 'Migration status failed'
+      error instanceof Error ? error.message : 'Migration status failed',
+      setupFix('migrations'),
     );
   }
 } else {
@@ -241,6 +349,7 @@ if (asJson) {
     const prefix =
       result.status === 'pass' ? 'PASS' : result.status === 'warn' ? 'WARN' : 'FAIL';
     console.log(`${prefix} ${result.name}: ${result.detail}`);
+    if (result.fix) console.log(`     Fix: ${result.fix}`);
   }
 }
 

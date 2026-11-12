@@ -16,6 +16,8 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 export const projectRoot = resolve(currentDir, '..', '..');
 export const defaultEnvFile = resolve(projectRoot, '.env');
 export const selfHostEnvFile = resolve(projectRoot, '.env.selfhost');
+// IMP-100: the small set-up (docker-compose.small.yml) keeps its own file.
+export const smallEnvFile = resolve(projectRoot, '.env.small');
 export const envTemplateFile = resolve(projectRoot, '.env.example');
 
 export function getPnpmCommand() {

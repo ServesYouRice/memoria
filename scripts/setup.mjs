@@ -12,11 +12,13 @@ import {
   readEnvFile,
   run,
   selfHostEnvFile,
+  smallEnvFile,
   upsertEnvValue,
   waitForPort,
   writeEnvFile,
 } from './lib/runtime.mjs';
 import { runSmokeChecks } from './lib/smoke.mjs';
+import { probeLiveConnection } from './lib/live-connection.mjs';
 
 const pnpm = getPnpmCommand();
 const docker = getDockerCommand();
@@ -29,11 +31,18 @@ function usableSecret(value, minLength = 24) {
   return (
     typeof value === 'string' &&
     value.length >= minLength &&
-    !/replace-me|devpassword|minioadmin/i.test(value)
+    !/replace-me|replace-with|devpassword|minioadmin/i.test(value)
   );
 }
 
-function getSelfHostChoices() {
+/**
+ * The small set-up's own address range (docker-compose.small.yml pins it).
+ * Its gateway is where the host's own TLS proxy appears to the app through
+ * the loopback-only published port.
+ */
+const SMALL_NETWORK_GATEWAY_CIDR = '172.29.48.1/32';
+
+function getSelfHostChoices({ small = false } = {}) {
   const publicUrl = process.env.MEMORIA_PUBLIC_URL;
   const emailProvider = process.env.EMAIL_PROVIDER;
   const emailFrom = process.env.EMAIL_FROM;
@@ -42,8 +51,15 @@ function getSelfHostChoices() {
   const backupEndpoint = process.env.BACKUP_S3_ENDPOINT;
   const backupAccessKeyId = process.env.BACKUP_S3_ACCESS_KEY_ID;
   const backupSecretAccessKey = process.env.BACKUP_S3_SECRET_ACCESS_KEY;
-  if (!publicUrl || !/^https:\/\//i.test(publicUrl)) {
-    throw new Error('Set MEMORIA_PUBLIC_URL to the public HTTPS origin before self-host setup.');
+  // The small set-up may be tried on this machine first (http://localhost).
+  const localTrial =
+    small && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(publicUrl || '');
+  if (!publicUrl || (!/^https:\/\//i.test(publicUrl) && !localTrial)) {
+    throw new Error(
+      small
+        ? 'Set MEMORIA_PUBLIC_URL to the public HTTPS address (or http://localhost:3000 to try it on this machine) before small setup.'
+        : 'Set MEMORIA_PUBLIC_URL to the public HTTPS origin before self-host setup.',
+    );
   }
   if (emailProvider !== 'sendgrid' && emailProvider !== 'resend' && emailProvider !== 'smtp') {
     throw new Error('Set EMAIL_PROVIDER to sendgrid, resend, or smtp before self-host setup.');
@@ -80,8 +96,10 @@ function getSelfHostChoices() {
   if (!emailDeliveryProbeTo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDeliveryProbeTo)) {
     throw new Error('Set EMAIL_DELIVERY_PROBE_TO to an operator-controlled mailbox before self-host setup.');
   }
-  if (!backupBucket || !backupAccessKeyId || !backupSecretAccessKey) {
-    throw new Error('Set BACKUP_BUCKET and dedicated BACKUP_S3_ACCESS_KEY_ID/BACKUP_S3_SECRET_ACCESS_KEY credentials before self-host setup.');
+  if (!small && (!backupBucket || !backupAccessKeyId || !backupSecretAccessKey)) {
+    throw new Error(
+      'Set BACKUP_BUCKET and dedicated BACKUP_S3_ACCESS_KEY_ID/BACKUP_S3_SECRET_ACCESS_KEY credentials before self-host setup.',
+    );
   }
   if (backupEndpoint && /(^|\/\/)(minio|localhost|127\.0\.0\.1)(:|\/|$)/i.test(backupEndpoint)) {
     throw new Error('BACKUP_S3_ENDPOINT must be an off-host destination, not the application MinIO service.');
@@ -140,7 +158,8 @@ const EDGE_NETWORK_CIDR = '172.29.47.0/28';
 function prepareEnv(targetPath, targetMode, selfHostChoices) {
   let raw = ensureEnvFile(targetPath, { force });
   const currentValues = readEnvFile(targetPath).values;
-  const isProduction = targetMode === 'selfhost';
+  const isProduction = targetMode === 'selfhost' || targetMode === 'small';
+  const inContainers = isProduction;
   const existingDatabasePassword = currentValues.get('DATABASE_PASSWORD');
   const existingAuthSecret = currentValues.get('AUTH_SECRET') || currentValues.get('NEXTAUTH_SECRET');
   const existingBootstrapToken = currentValues.get('APP_BOOTSTRAP_TOKEN');
@@ -178,7 +197,7 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(
     raw,
     'DATABASE_URL',
-    targetMode === 'selfhost'
+    inContainers
       ? `postgresql://memoria:${databasePassword}@postgres:5432/memoria`
       : `postgresql://memoria:${databasePassword}@localhost:5432/memoria`
   );
@@ -186,7 +205,7 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(
     raw,
     'REDIS_URL',
-    targetMode === 'selfhost'
+    inContainers
       ? `redis://:${redisPassword}@redis:6379`
       : `redis://:${redisPassword}@localhost:6379`
   );
@@ -200,8 +219,26 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   raw = upsertEnvValue(
     raw,
     'TRUSTED_PROXY_CIDRS',
-    currentValues.get('TRUSTED_PROXY_CIDRS') || (isProduction ? EDGE_NETWORK_CIDR : '')
+    currentValues.get('TRUSTED_PROXY_CIDRS') ||
+      (targetMode === 'small' ? SMALL_NETWORK_GATEWAY_CIDR : isProduction ? EDGE_NETWORK_CIDR : ''),
   );
+  if (targetMode === 'small') {
+    // No gateway: operations routes are on the app's own loopback port.
+    raw = upsertEnvValue(
+      raw,
+      'OPERATIONS_BASE_URL',
+      `http://127.0.0.1:${currentValues.get('APP_HOST_PORT') || '3000'}`,
+    );
+    // The app forwards live connections to sync itself and signs who sent
+    // them, so per-person limits still hold without a gateway.
+    raw = upsertEnvValue(
+      raw,
+      'COLLABORATION_PROXY_SECRET',
+      usableSecret(currentValues.get('COLLABORATION_PROXY_SECRET'), 32)
+        ? currentValues.get('COLLABORATION_PROXY_SECRET')
+        : randomSecret(48),
+    );
+  }
   raw = upsertEnvValue(raw, 'REGISTRATION_MODE', currentValues.get('REGISTRATION_MODE') || 'open');
   raw = upsertEnvValue(raw, 'AUTH_RATE_LIMIT_MAX_REQUESTS', currentValues.get('AUTH_RATE_LIMIT_MAX_REQUESTS') || '5');
   raw = upsertEnvValue(raw, 'EMAIL_PROVIDER', selfHostChoices?.emailProvider || 'console');
@@ -216,7 +253,8 @@ function prepareEnv(targetPath, targetMode, selfHostChoices) {
   }
   raw = upsertEnvValue(raw, 'MODEL_CREDENTIAL_ENCRYPTION_KEY', modelCredentialKey);
   raw = upsertEnvValue(raw, 'CRON_SECRET', cronSecret);
-  raw = upsertEnvValue(raw, 'UPLOAD_STORAGE', 's3');
+  raw = upsertEnvValue(raw, 'UPLOAD_STORAGE', targetMode === 'small' ? 'local' : 's3');
+  raw = upsertEnvValue(raw, 'UPLOAD_LOCAL_DIR', targetMode === 'small' ? '/data/uploads' : '');
   raw = upsertEnvValue(raw, 'S3_BUCKET', bucket);
   raw = upsertEnvValue(raw, 'S3_REGION', 'us-east-1');
   raw = upsertEnvValue(raw, 'S3_ENDPOINT', targetMode === 'selfhost' ? 'http://minio:9000' : 'http://localhost:9000');
@@ -263,17 +301,60 @@ async function waitForInfrastructure(envValues, fromHost = false) {
   await waitForPort({ host: '127.0.0.1', port: 9000, label: 'MinIO API' });
 }
 
-if (!['dev', 'selfhost'].includes(mode)) {
-  throw new Error('Usage: node scripts/setup.mjs <dev|selfhost> [--seed] [--force]');
+if (!['dev', 'selfhost', 'small'].includes(mode)) {
+  throw new Error(
+    'Usage: node scripts/setup.mjs <dev|selfhost|small> [--seed] [--force] [--no-build]',
+  );
 }
 
-const envPath = mode === 'selfhost' ? selfHostEnvFile : defaultEnvFile;
-const selfHostChoices = mode === 'selfhost' ? getSelfHostChoices() : null;
+const envPath =
+  mode === 'selfhost' ? selfHostEnvFile : mode === 'small' ? smallEnvFile : defaultEnvFile;
+const selfHostChoices = mode === 'dev' ? null : getSelfHostChoices({ small: mode === 'small' });
 const { bootstrapToken, operationsToken, bucket } = prepareEnv(envPath, mode, selfHostChoices);
 const envValues = readEnvFile(envPath).values;
-const composeArgs = ['compose', '--env-file', envPath, '-f', 'docker-compose.yml'];
+const composeFile = mode === 'small' ? 'docker-compose.small.yml' : 'docker-compose.yml';
+const composeArgs = ['compose', '--env-file', envPath, '-f', composeFile];
 
-if (mode === 'dev') {
+if (mode === 'small') {
+  const appPort = Number(envValues.get('APP_HOST_PORT') || 3000);
+  const localUrl = `http://127.0.0.1:${appPort}`;
+  // `--no-build` starts an image built or pulled beforehand (MEMORIA_IMAGE).
+  const build = flags.has('--no-build') ? [] : ['--build'];
+  await run(docker, [...composeArgs, 'up', '-d', ...build, '--wait'], {
+    cwd: projectRoot,
+  });
+  const smokeReport = await runSmokeChecks({
+    baseUrl: localUrl,
+    operationsBaseUrl: localUrl,
+    requireRunningApp: true,
+    operationsToken,
+  });
+  // The app forwards live connections to the sync server; check that path.
+  const live = await probeLiveConnection(localUrl, {
+    timeoutMs: 6000,
+    origin: selfHostChoices.publicUrl,
+  });
+  const failures = smokeReport.results
+    .filter((result) => result.status === 'fail')
+    .map((result) => `${result.name}: ${result.detail}`);
+  if (!live.ok) failures.push(`live-connection: ${live.reason}`);
+  if (failures.length > 0) {
+    throw new Error(
+      `Small setup checks failed: ${failures.join('; ')}. Run pnpm doctor:small for fixes.`,
+    );
+  }
+
+  printSection('Small Setup Complete', [
+    `Environment file: ${envPath}`,
+    `Running on this machine at: ${localUrl}`,
+    `Public address: ${selfHostChoices.publicUrl}`,
+    'Point your TLS proxy at the address above, passing WebSockets for /api/collaboration/.',
+    'First account: open /setup on your public address (it runs the set-up check first).',
+    `Bootstrap token (store securely; shown once): ${bootstrapToken}`,
+    'Uploads: the uploads_data volume. Back it up with the database (no backup service runs).',
+    'Check again any time: pnpm doctor:small',
+  ]);
+} else if (mode === 'dev') {
   await run(docker, [...composeArgs, 'up', '-d', 'postgres', 'redis', 'minio'], { cwd: projectRoot });
   await waitForInfrastructure(envValues, true);
   await ensureS3Bucket({
@@ -318,7 +399,9 @@ if (mode === 'dev') {
     createIfMissing: false,
     requireVersioning: true,
   });
-  await run(docker, [...composeArgs, 'up', '-d', '--build'], { cwd: projectRoot });
+  await run(docker, [...composeArgs, 'up', '-d', '--build'], {
+    cwd: projectRoot,
+  });
   await waitForInfrastructure(envValues, true);
   await waitForPort({ host: '127.0.0.1', port: 3000, label: 'App' });
   await ensureS3Bucket({

@@ -140,6 +140,16 @@ const envSchema = z
     RESEND_API_KEY: optionalString,
     MODEL_CREDENTIAL_ENCRYPTION_KEY: optionalString,
     UPLOAD_STORAGE: z.enum(["local", "s3"]).default("local"),
+    // IMP-100: where local uploads live. Setting it is what allows local
+    // uploads in production (the small set-up, one app replica).
+    UPLOAD_LOCAL_DIR: emptyToUndefined(
+      z
+        .string()
+        .refine(
+          (value) => value.startsWith("/"),
+          "UPLOAD_LOCAL_DIR must be an absolute path",
+        ),
+    ),
     UPLOADS_PUBLIC_URL: optionalUrl,
     // IMP-092: a ready-made Apple Shortcut shared from iCloud, if any.
     IOS_SHORTCUT_URL: emptyToUndefined(
@@ -272,11 +282,16 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && data.UPLOAD_STORAGE !== "s3") {
+    if (
+      validateProductionRuntime &&
+      data.UPLOAD_STORAGE !== "s3" &&
+      !data.UPLOAD_LOCAL_DIR
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["UPLOAD_STORAGE"],
-        message: "UPLOAD_STORAGE must be set to s3 in production.",
+        message:
+          "UPLOAD_STORAGE must be set to s3 in production, or to local with UPLOAD_LOCAL_DIR naming a mounted folder (small set-up).",
       });
     }
 

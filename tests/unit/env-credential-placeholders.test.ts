@@ -119,3 +119,21 @@ describe("single sign-on settings (IMP-099)", () => {
     expect(result.output).not.toContain("a-long-random");
   });
 });
+
+describe("uploads on disk in production (IMP-100)", () => {
+  it("needs a named folder", async () => {
+    const without = await loadEnv({ UPLOAD_STORAGE: "local" });
+    expect(without.ok).toBe(false);
+    expect(without.output).toContain("UPLOAD_LOCAL_DIR");
+    const relative = await loadEnv({
+      UPLOAD_STORAGE: "local",
+      UPLOAD_LOCAL_DIR: "data/uploads",
+    });
+    expect(relative.ok).toBe(false);
+    const named = await loadEnv({
+      UPLOAD_STORAGE: "local",
+      UPLOAD_LOCAL_DIR: "/data/uploads",
+    });
+    expect(named.ok).toBe(true);
+  });
+});
