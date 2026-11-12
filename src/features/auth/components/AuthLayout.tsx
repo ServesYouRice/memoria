@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Box, Button, Container, Stack, Typography } from "@mui/material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
-import { gradients } from "@/lib/theme";
+import { surfaces } from "@/lib/theme";
 
 export interface AuthLayoutProps {
   children: React.ReactNode;
@@ -30,7 +30,7 @@ export function AuthLayout({
         sx={{
           display: { xs: "none", md: "flex" },
           flex: 1,
-          background: gradients.brand,
+          background: surfaces.navy,
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "center",

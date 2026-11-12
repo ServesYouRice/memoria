@@ -25,11 +25,16 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-079](tasks/IMP-079.md) | Brand colours and font taken from the logo, no gradients | |
 | [IMP-078](tasks/IMP-078.md) | Canvas top bar fits on a phone | |
 | [IMP-087](tasks/IMP-087.md) | Same page width and top bar on every page | |
 | [IMP-089](tasks/IMP-089.md) | Empty pages offer a next step | |
 | [IMP-088](tasks/IMP-088.md) | The app says "canvas" everywhere, never "board" | |
+| [IMP-080](tasks/IMP-080.md) | Screens use theme colours instead of hand-typed ones | |
+| [IMP-081](tasks/IMP-081.md) | Home page shows the product | |
+| [IMP-082](tasks/IMP-082.md) | Sign-in and sign-up pages give the form the room | |
+| [IMP-083](tasks/IMP-083.md) | Dashboard: canvas previews, starter row, visible search | |
+| [IMP-085](tasks/IMP-085.md) | Canvas notes and background look finished | |
+| [IMP-086](tasks/IMP-086.md) | Settings: a side menu instead of one long page | |
 | [IMP-091](tasks/IMP-091.md) | Import bookmarks from a browser, Pocket or Raindrop | |
 | [IMP-092](tasks/IMP-092.md) | Saving from an iPhone is easy to set up | |
 | [IMP-093](tasks/IMP-093.md) | Browser button saves the page you are on | |
@@ -56,13 +61,7 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster (draft: ServesYouRice/Infra#4) | DEC-004 |
-| [IMP-080](tasks/IMP-080.md) | Screens use theme colours instead of hand-typed ones | IMP-079 |
-| [IMP-081](tasks/IMP-081.md) | Home page shows the product | IMP-079 |
-| [IMP-082](tasks/IMP-082.md) | Sign-in and sign-up pages give the form the room | IMP-079 |
-| [IMP-083](tasks/IMP-083.md) | Dashboard: canvas previews, starter row, visible search | IMP-079 |
-| [IMP-084](tasks/IMP-084.md) | Canvas: clearer top bar and add bar | IMP-078, IMP-079 |
-| [IMP-085](tasks/IMP-085.md) | Canvas notes and background look finished | IMP-079 |
-| [IMP-086](tasks/IMP-086.md) | Settings: a side menu instead of one long page | IMP-079 |
+| [IMP-084](tasks/IMP-084.md) | Canvas: clearer top bar and add bar | IMP-078 |
 | [IMP-090](tasks/IMP-090.md) | Canvas cards are real links; buttons are finger-sized | IMP-083 |
 | [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | IMP-094 |
 | [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | IMP-081 |

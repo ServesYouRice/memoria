@@ -65,11 +65,48 @@ describe("canvas route composition", () => {
 });
 
 describe("selected app theme owns non-MUI CSS", () => {
-  it("uses a contrast-safe light interactive primary", () => {
+  function luminance(hex: string): number {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const channel = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return channel <= 0.03928
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrast(a: string, b: string): number {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  it("uses the solid brand blue as the light interactive primary", () => {
     expect(createAppTheme().colorSchemes.light?.palette.primary.main).toBe(
-      brand.primary.dark,
+      brand.primary.main,
     );
   });
+
+  it.each(["light", "dark"] as const)(
+    "keeps links, labels and filled controls at 4.5:1 in %s mode",
+    (mode) => {
+      const palette = createAppTheme().colorSchemes[mode]!.palette;
+      const { primary, secondary, error, text, background } = palette;
+      for (const surface of [background.paper, background.default]) {
+        expect(contrast(primary.main, surface)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text.primary, surface)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text.secondary, surface)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(error.main, surface)).toBeGreaterThanOrEqual(4.5);
+      }
+      for (const color of [primary, secondary]) {
+        expect(contrast(color.contrastText, color.main)).toBeGreaterThanOrEqual(
+          4.5,
+        );
+        expect(contrast(color.contrastText, color.dark)).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      }
+    },
+  );
 
   it.each(["src/app/tiptap.css", "src/components/command-palette.css"])(
     "uses data-theme selectors in %s",

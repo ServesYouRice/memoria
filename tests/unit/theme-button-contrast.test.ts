@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { appColorTokens, createAppTheme, gradients } from "@/lib/theme";
+import { appColorTokens, createAppTheme } from "@/lib/theme";
 
 function luminance(hex: string): number {
   const value = hex.replace("#", "");
@@ -42,8 +42,10 @@ function containedPrimaryStyle(): Style {
 }
 
 describe("contained primary button", () => {
-  it("keeps the gradient when enabled", () => {
-    expect(containedPrimaryStyle().background).toBe(gradients.brand);
+  it("uses a solid fill, never a gradient, when enabled", () => {
+    const style = containedPrimaryStyle();
+    expect(JSON.stringify(style)).not.toContain("gradient");
+    expect(style.background).toBeUndefined();
   });
 
   it.each(["light", "dark"] as const)(

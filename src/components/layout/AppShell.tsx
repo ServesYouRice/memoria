@@ -42,7 +42,6 @@ import {
 } from "@mui/icons-material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { gradients } from "@/lib/theme";
 import { useUnreadNotifications } from "@/lib/hooks/use-notifications";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { AskLauncher } from "@/features/command-palette/AskPalette";
@@ -237,8 +236,8 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
                   height: 32,
                   fontSize: 14,
                   fontWeight: 700,
-                  background: gradients.brand,
-                  color: "#fff",
+                  bgcolor: "primary.main",
+                  color: "primary.contrastText",
                 }}
               >
                 {getInitials(user?.name, user?.email)}

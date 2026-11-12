@@ -46,7 +46,6 @@ import {
 import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { gradients } from "@/lib/theme";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { NotificationPreferences } from "./NotificationPreferences";
 import { AiProviderSettings } from "./AiProviderSettings";
@@ -368,8 +367,8 @@ export function SettingsContent({ user }: SettingsContentProps) {
                 height: 64,
                 fontSize: 26,
                 fontWeight: 700,
-                background: gradients.brand,
-                color: "#fff",
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
               }}
               src={toImageProxyUrl(user.image)}
             >

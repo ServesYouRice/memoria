@@ -11,7 +11,7 @@ import {
   alpha,
 } from "@mui/material";
 import { BrushOutlined as CanvasIcon } from "@mui/icons-material";
-import { gradients } from "@/lib/theme";
+import { surfaces } from "@/lib/theme";
 
 export interface CanvasCardProps {
   name: string;
@@ -78,7 +78,7 @@ export function CanvasCard({
             alignItems: "center",
             justifyContent: "center",
             overflow: "hidden",
-            background: gradients.brandSoft,
+            background: surfaces.brandSoft,
           }}
         >
           {thumbnail && !imageError ? (

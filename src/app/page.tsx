@@ -61,16 +61,16 @@ const FEATURES = [
 
 // Keep public-page tokens server-safe: this page must render before the client
 // theme provider exists, so it cannot import the client-only theme module.
-const PAGE_GRADIENTS = {
-  brand: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-  brandSoft:
-    "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.12) 100%)",
-  hero: "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(99,102,241,0.25), transparent), radial-gradient(ellipse 60% 50% at 80% 40%, rgba(139,92,246,0.15), transparent)",
+// Solid brand surfaces (IMP-079: colours from the logo, no gradients).
+const PAGE_SURFACES = {
+  navy: "#1c2452",
+  brandSoft: "rgba(44,95,201,0.1)",
+  hero: "rgba(44,95,201,0.05)",
 };
-const HERO_BORDER_COLOR = "rgba(99,102,241,0.3)";
-// Dark brand shade: 4.5:1+ on white and on the hover/focus tint.
-const CTA_LABEL_COLOR = "#4f46e5";
-const PREVIEW_SHADOW = "0 24px 64px rgba(99,102,241,0.12)";
+const HERO_BORDER_COLOR = "rgba(44,95,201,0.3)";
+// Navy label on the white button: 4.5:1+ at rest and on the hover/focus tint.
+const CTA_LABEL_COLOR = "#1c2452";
+const PREVIEW_SHADOW = "0 24px 64px rgba(28,36,82,0.12)";
 
 export default async function Home() {
   const session = await auth();
@@ -129,7 +129,7 @@ export default async function Home() {
           sx={{
             position: "absolute",
             inset: 0,
-            background: PAGE_GRADIENTS.hero,
+            background: PAGE_SURFACES.hero,
             pointerEvents: "none",
           }}
         />
@@ -169,10 +169,7 @@ export default async function Home() {
             <Box
               component="span"
               sx={{
-                background: PAGE_GRADIENTS.brand,
-                backgroundClip: "text",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
+                color: "primary.main",
               }}
             >
               visual canvas
@@ -248,7 +245,7 @@ export default async function Home() {
                     width: 64,
                     height: 64,
                     borderRadius: 3,
-                    background: PAGE_GRADIENTS.brandSoft,
+                    background: PAGE_SURFACES.brandSoft,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -325,7 +322,7 @@ export default async function Home() {
                     width: 52,
                     height: 52,
                     borderRadius: 2.5,
-                    background: PAGE_GRADIENTS.brandSoft,
+                    background: PAGE_SURFACES.brandSoft,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -366,7 +363,7 @@ export default async function Home() {
             px: { xs: 3, md: 8 },
             py: { xs: 6, md: 8 },
             borderRadius: 5,
-            background: PAGE_GRADIENTS.brand,
+            background: PAGE_SURFACES.navy,
             color: "#fff",
           }}
         >
