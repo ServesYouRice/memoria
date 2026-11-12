@@ -87,6 +87,18 @@ export const glassStyles = {
 };
 
 // Animation timing
+/**
+ * IMP-090: the smallest hit area for a control on a touch screen. Mouse
+ * users keep the compact sizes.
+ */
+export const TOUCH_TARGET = 44;
+const touchTarget = {
+  "@media (pointer: coarse)": {
+    minWidth: TOUCH_TARGET,
+    minHeight: TOUCH_TARGET,
+  },
+};
+
 export const transitions = {
   fast: "150ms cubic-bezier(0.4, 0, 0.2, 1)",
   normal: "250ms cubic-bezier(0.4, 0, 0.2, 1)",
@@ -296,6 +308,12 @@ export function createAppTheme() {
             "50%": { transform: "translateY(-10px)" },
           },
         },
+      },
+      MuiIconButton: {
+        styleOverrides: { root: touchTarget },
+      },
+      MuiCheckbox: {
+        styleOverrides: { root: touchTarget },
       },
       MuiButton: {
         defaultProps: {

@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
 import { Alert, Button, Chip } from "@mui/material";
 import {
   PeopleAltOutlined as SharedIcon,
@@ -32,7 +31,6 @@ const ROLE_META = {
 };
 
 export function SharedCanvasesContent() {
-  const router = useRouter();
   const { data: canvases, isLoading, error } = useSharedCanvases();
 
   const items = canvases ?? [];
@@ -89,7 +87,7 @@ export function SharedCanvasesContent() {
                 name={canvas.name}
                 thumbnail={canvasThumbnailUrl(canvas)}
                 index={index}
-                onClick={() => router.push(`/canvas/${canvas.id}`)}
+                href={`/canvas/${canvas.id}`}
                 badge={
                   <Chip
                     size="small"

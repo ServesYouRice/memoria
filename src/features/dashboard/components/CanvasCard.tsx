@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import NextLink from "next/link";
 import {
   Box,
   Card,
@@ -40,6 +41,12 @@ export interface CanvasCardProps {
   /** Overlay control rendered in the top-right corner (menu button, checkbox…). */
   corner?: React.ReactNode;
   selected?: boolean;
+  /**
+   * IMP-090: where the card leads. With it the card is a real link, so
+   * Ctrl/Cmd-click, middle-click and the link menu work. Leave it out while
+   * the card is a selection toggle.
+   */
+  href?: string;
   onClick?: (event: React.MouseEvent) => void;
   index?: number;
 }
@@ -52,6 +59,7 @@ export function CanvasCard({
   badge,
   corner,
   selected = false,
+  href,
   onClick,
   index = 0,
 }: CanvasCardProps) {
@@ -82,6 +90,8 @@ export function CanvasCard({
         </Box>
       )}
       <CardActionArea
+        {...(href ? { component: NextLink, href } : {})}
+        aria-pressed={href ? undefined : onClick ? selected : undefined}
         onClick={onClick}
         sx={{
           height: "100%",

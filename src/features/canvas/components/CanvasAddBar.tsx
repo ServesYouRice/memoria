@@ -21,6 +21,7 @@ import {
   Edit as DrawIcon,
 } from "@mui/icons-material";
 import { useCanvasStore, type CanvasTool } from "@/stores/canvasStore";
+import { TOUCH_TARGET } from "@/lib/theme";
 
 export interface CanvasAddBarProps {
   onAddNote: () => void;
@@ -55,6 +56,7 @@ function BarButton({
           flexDirection: "column",
           gap: 0.25,
           minWidth: { xs: 38, sm: 60 },
+          "@media (pointer: coarse)": { minWidth: TOUCH_TARGET },
           minHeight: 52,
           px: { xs: 0.25, sm: 0.75 },
           borderRadius: 2,

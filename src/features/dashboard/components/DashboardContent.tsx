@@ -136,13 +136,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     });
   };
 
+  // Outside selection mode the card is a link and opens the canvas itself.
   const handleCanvasClick = (canvasId: string, event?: React.MouseEvent) => {
-    if (selectionMode) {
-      event?.stopPropagation();
-      toggleCanvasSelection(canvasId);
-    } else {
-      router.push(`/canvas/${canvasId}`);
-    }
+    event?.stopPropagation();
+    toggleCanvasSelection(canvasId);
   };
 
   const toggleSelectionMode = () => {
@@ -389,7 +386,12 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                     index={index}
                     selected={selectedCanvasIds.has(canvas.id)}
                     meta={`Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}
-                    onClick={(e) => handleCanvasClick(canvas.id, e)}
+                    href={selectionMode ? undefined : `/canvas/${canvas.id}`}
+                    onClick={
+                      selectionMode
+                        ? (e) => handleCanvasClick(canvas.id, e)
+                        : undefined
+                    }
                     corner={
                       selectionMode ? (
                         <Checkbox
