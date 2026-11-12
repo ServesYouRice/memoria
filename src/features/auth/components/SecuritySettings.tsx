@@ -7,6 +7,7 @@
  * the password where it changes a factor); this UI is not the boundary.
  */
 
+import { DisabledReason } from "@/components/DisabledReason";
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -280,6 +281,7 @@ export function SecuritySettings({
                 variant="contained"
                 onClick={confirmEnrolment}
                 disabled={busy || !code}
+                aria-describedby={!code ? "totp-code-reason" : undefined}
               >
                 Turn on two-factor
               </Button>
@@ -292,6 +294,9 @@ export function SecuritySettings({
               >
                 Cancel
               </Button>
+              <DisabledReason id="totp-code-reason" show={!busy && !code}>
+                Enter the code from your app first.
+              </DisabledReason>
             </Stack>
           </Stack>
         ) : (
@@ -316,6 +321,9 @@ export function SecuritySettings({
                     color="error"
                     onClick={disableTwoFactor}
                     disabled={busy || !password}
+                    aria-describedby={
+                      !password ? "two-factor-password-reason" : undefined
+                    }
                   >
                     Turn off two-factor
                   </Button>
@@ -323,6 +331,9 @@ export function SecuritySettings({
                     variant="outlined"
                     onClick={regenerateBackupCodes}
                     disabled={busy || !password}
+                    aria-describedby={
+                      !password ? "two-factor-password-reason" : undefined
+                    }
                   >
                     New backup codes
                   </Button>
@@ -332,10 +343,19 @@ export function SecuritySettings({
                   variant="contained"
                   onClick={startEnrolment}
                   disabled={busy || !password}
+                  aria-describedby={
+                    !password ? "two-factor-password-reason" : undefined
+                  }
                 >
                   Set up two-factor
                 </Button>
               )}
+              <DisabledReason
+                id="two-factor-password-reason"
+                show={!busy && !password}
+              >
+                Enter your password first.
+              </DisabledReason>
             </Stack>
           </Stack>
         )}

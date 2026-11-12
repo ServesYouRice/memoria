@@ -655,7 +655,7 @@ export function CanvasOrganizerView({
           </Box>
           <Button
             component="a"
-            href="/settings#agent-console"
+            href="/settings/ai#agent-console"
             variant="contained"
             color="secondary"
             sx={{

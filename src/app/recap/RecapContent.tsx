@@ -155,7 +155,7 @@ export function RecapContent() {
           action={
             <Button
               component={NextLink}
-              href="/settings#weekly-recap"
+              href="/settings/notifications#weekly-recap"
               variant="outlined"
             >
               Recap settings

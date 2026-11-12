@@ -255,7 +255,7 @@ test.describe("truthful and accessible launch surface", () => {
     const recipientEmail = uniqueEmail("launch-recipient");
     await registerAndVerify(recipientPage, recipientEmail);
 
-    await recipientPage.goto("/settings");
+    await recipientPage.goto("/settings/notifications");
     const inAppPreference = recipientPage.getByRole("switch", {
       name: "Canvas invitations in-app notifications",
     });

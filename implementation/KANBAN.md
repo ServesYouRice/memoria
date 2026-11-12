@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-086](tasks/IMP-086.md) | Settings: a side menu instead of one long page | |
 | [IMP-084](tasks/IMP-084.md) | Canvas: clearer top bar and add bar | |
 | [IMP-090](tasks/IMP-090.md) | Canvas cards are real links; buttons are finger-sized | |
 | [IMP-091](tasks/IMP-091.md) | Import bookmarks from a browser, Pocket or Raindrop | |

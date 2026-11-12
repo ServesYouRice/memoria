@@ -1,5 +1,6 @@
 "use client";
 
+import { DisabledReason } from "@/components/DisabledReason";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -88,6 +89,16 @@ export function AiProviderSettings() {
   );
   const providerChanged = !!data?.current && data.current.provider !== provider;
   const keyRequired = !data?.current || providerChanged;
+  // IMP-086: what is still missing before the provider can be saved.
+  const missing = !provider
+    ? "Choose a provider first."
+    : !model.trim()
+      ? "Enter a model name first."
+      : keyRequired && !apiKey.trim()
+        ? "Paste your API key first."
+        : option?.requiresBaseUrl && !baseUrl.trim()
+          ? "Enter the server address first."
+          : null;
 
   const handleProviderChange = (next: ModelProvider) => {
     setProvider(next);
@@ -254,17 +265,12 @@ export function AiProviderSettings() {
         fullWidth
       />
 
-      <Stack direction="row" spacing={1}>
+      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
         <Button
           variant="contained"
           onClick={handleSave}
-          disabled={
-            saving ||
-            !provider ||
-            !model.trim() ||
-            (keyRequired && !apiKey.trim()) ||
-            (!!option?.requiresBaseUrl && !baseUrl.trim())
-          }
+          disabled={saving || missing !== null}
+          aria-describedby={missing ? "ai-provider-save-reason" : undefined}
         >
           {saving ? "Saving…" : "Save AI provider"}
         </Button>
@@ -273,6 +279,12 @@ export function AiProviderSettings() {
             Remove key
           </Button>
         )}
+        <DisabledReason
+          id="ai-provider-save-reason"
+          show={!saving && !!missing}
+        >
+          {missing}
+        </DisabledReason>
       </Stack>
     </Stack>
   );

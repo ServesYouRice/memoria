@@ -100,7 +100,7 @@ export function NotificationsContent() {
           action={
             <Button
               component={Link}
-              href="/settings#notifications"
+              href="/settings/notifications"
               variant="outlined"
             >
               Notification settings

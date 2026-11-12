@@ -71,7 +71,12 @@ afterEach(() => {
 });
 
 async function submitPasswordChange() {
-  render(<SettingsContent user={{ id: "u1", name: "Ada", email: "a@x.io" }} />);
+  render(
+    <SettingsContent
+      user={{ id: "u1", name: "Ada", email: "a@x.io" }}
+      section="security"
+    />,
+  );
   fireEvent.change(screen.getByLabelText("Current password"), {
     target: { value: "old-password-123" },
   });
