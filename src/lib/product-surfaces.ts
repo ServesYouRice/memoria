@@ -36,8 +36,8 @@ export const MEETING_TIMER_DISCLOSURE =
  * item write, unlike whole-canvas duplication.
  */
 export const LAUNCH_CAPABILITIES = Object.freeze({
-  templates: false,
-  canvasDuplication: false,
+  templates: true,
+  canvasDuplication: true,
   polls: false,
 });
 

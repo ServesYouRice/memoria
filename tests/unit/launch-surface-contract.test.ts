@@ -17,23 +17,24 @@ function occurrences(value: string, pattern: RegExp): number {
 
 describe("launch capability registry", () => {
   it("declares every deliberately gated launch surface in one client-safe registry", () => {
+    // IMP-098 built the template and duplication routes, then switched them on.
     expect(LAUNCH_CAPABILITIES).toEqual({
-      templates: false,
-      canvasDuplication: false,
+      templates: true,
+      canvasDuplication: true,
       polls: false,
     });
-    expect(isLaunchCapabilityEnabled("templates")).toBe(false);
-    expect(isLaunchCapabilityEnabled("canvasDuplication")).toBe(false);
+    expect(isLaunchCapabilityEnabled("templates")).toBe(true);
+    expect(isLaunchCapabilityEnabled("canvasDuplication")).toBe(true);
     expect(isLaunchCapabilityEnabled("polls")).toBe(false);
   });
 
-  it("does not expose whole-canvas duplication from the dashboard", () => {
+  it("offers duplication and templates from the dashboard through their hooks", () => {
     const dashboard = source(
       "src/features/dashboard/components/DashboardContent.tsx",
     );
-    expect(dashboard).not.toMatch(
-      /useDuplicateCanvas|DuplicateIcon|>Duplicate</,
-    );
+    expect(dashboard).toContain("useDuplicateCanvas");
+    expect(dashboard).toContain("<TemplatePicker");
+    // Routes stay behind the hooks, never called from the component.
     expect(dashboard).not.toContain("/duplicate");
   });
 });

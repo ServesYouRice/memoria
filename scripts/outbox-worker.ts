@@ -77,6 +77,11 @@ import {
   createWeeklyRecapSweepHandler,
 } from "../src/lib/recap/weekly-recap";
 import {
+  UPLOAD_COPY_JOB,
+  UPLOAD_COPY_TIMEOUT_MS,
+  createUploadCopyHandler,
+} from "../src/lib/uploads/copy-upload";
+import {
   REMINDER_EMAIL_JOB,
   REMINDER_FIRE_JOB,
   REMINDER_SWEEP_JOB,
@@ -93,6 +98,7 @@ await runOutboxWorker({
   prisma,
   handlers: {
     "upload.delete": createUploadDeleteHandler(prisma),
+    [UPLOAD_COPY_JOB]: createUploadCopyHandler(prisma),
     "email.delivery-probe": createDeliveryProbeEmailHandler(),
     "email.verification": createVerificationEmailHandler(prisma),
     "email.share-invitation": createShareInvitationEmailHandler(prisma),
@@ -140,6 +146,7 @@ await runOutboxWorker({
     [CANVAS_LINKS_BACKFILL_JOB]: 120_000,
     [BOOKMARK_IMPORT_JOB]: BOOKMARK_IMPORT_TIMEOUT_MS,
     [RECAP_USER_JOB]: RECAP_USER_TIMEOUT_MS,
+    [UPLOAD_COPY_JOB]: UPLOAD_COPY_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

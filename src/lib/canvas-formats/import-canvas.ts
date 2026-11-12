@@ -31,7 +31,7 @@ import {
 } from "./types";
 
 /** A cuid-shaped id, so arrow content can name an item before it exists. */
-function newItemId() {
+export function newItemId() {
   const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
   const bytes = randomBytes(24);
   let id = "c";
@@ -77,7 +77,7 @@ export function planCanvasFile(text: string, fileName: string) {
   }
 }
 
-interface Row {
+export interface ResolvedRow {
   planned: PlannedItem;
   id: string;
   content: Record<string, unknown>;
@@ -89,7 +89,7 @@ interface Row {
  */
 export function resolvePlan(plan: ImportPlan) {
   const leftOut = { ...plan.leftOut };
-  const rows: Row[] = [];
+  const rows: ResolvedRow[] = [];
   const idByKey = new Map<string, string>();
   const boxes = new Map<string, CanvasItem>();
   const ordered = [
@@ -190,30 +190,37 @@ const BROUGHT_KIND: Partial<Record<ItemType, string>> = {
 };
 
 /** File order, with linking arrows under everything. */
-function zIndexOf(row: Row, index: number) {
+function zIndexOf(row: ResolvedRow, index: number) {
   return row.planned.type === ItemType.ARROW &&
     (row.content.startItemId || row.content.endItemId)
     ? 0
     : index + 1;
 }
 
-export async function importCanvasFile(
+/**
+ * Creates a canvas holding the resolved rows, in one transaction within the
+ * canvas limit. Shared by opened files (IMP-096) and templates (IMP-098).
+ */
+export async function createCanvasWithRows(
   prisma: PrismaClient,
-  input: { userId: string; name: string; text: string; fileName: string },
+  input: {
+    userId: string;
+    name: string;
+    rows: ResolvedRow[];
+    workspaceId?: string | null;
+  },
 ) {
-  const { format, plan } = planCanvasFile(input.text, input.fileName);
-  const { rows, brought, leftOut } = resolvePlan(plan);
-  if (rows.length === 0) {
-    throw new ValidationError("This file has nothing Memoria can bring in.");
-  }
-
-  const canvas = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await assertCanvasCapacity(tx, input.userId);
     const created = await tx.canvas.create({
-      data: { name: input.name, userId: input.userId },
+      data: {
+        name: input.name,
+        userId: input.userId,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      },
     });
     const items = await tx.canvasItem.createManyAndReturn({
-      data: rows.map((row, index): Prisma.CanvasItemCreateManyInput => ({
+      data: input.rows.map((row, index): Prisma.CanvasItemCreateManyInput => ({
         id: row.id,
         canvasId: created.id,
         type: row.planned.type,
@@ -239,6 +246,23 @@ export async function importCanvasFile(
       })),
     );
     return created;
+  });
+}
+
+export async function importCanvasFile(
+  prisma: PrismaClient,
+  input: { userId: string; name: string; text: string; fileName: string },
+) {
+  const { format, plan } = planCanvasFile(input.text, input.fileName);
+  const { rows, brought, leftOut } = resolvePlan(plan);
+  if (rows.length === 0) {
+    throw new ValidationError("This file has nothing Memoria can bring in.");
+  }
+
+  const canvas = await createCanvasWithRows(prisma, {
+    userId: input.userId,
+    name: input.name,
+    rows,
   });
 
   return {

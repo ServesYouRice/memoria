@@ -13,8 +13,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Paper,
   TextField,
+  Tooltip,
   Typography,
   Alert,
   alpha,
@@ -27,11 +29,13 @@ import {
   BrushOutlined as CanvasIcon,
   FolderOutlined as WorkspaceIcon,
   UploadFile,
+  FileCopyOutlined as DuplicateIcon,
 } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import {
   useCanvases,
   useCreateCanvas,
+  useDuplicateCanvas,
   canvasKeys,
 } from "@/lib/hooks/use-canvases";
 import { useWorkspace } from "@/lib/hooks/use-workspaces";
@@ -39,6 +43,8 @@ import { ActivityFeed } from "./ActivityFeed";
 import { StarterRow } from "./StarterRow";
 import { ImportCanvasDialog } from "./ImportCanvasDialog";
 import { SomethingOldCard } from "./SomethingOldCard";
+import { BLANK_TEMPLATE, TemplatePicker } from "./TemplatePicker";
+import { useCreateFromTemplate, useTemplates } from "@/lib/hooks/use-templates";
 import { CanvasCard, CanvasCardSkeleton, CardGrid } from "./CanvasCard";
 import { GlobalSearchDialog } from "@/components/GlobalSearchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -80,6 +86,30 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     isFetchingNextPage,
   } = useCanvases(workspaceId || undefined);
   const createCanvas = useCreateCanvas();
+  // IMP-098: "New canvas" can start from a built-in template.
+  const [startFrom, setStartFrom] = useState(BLANK_TEMPLATE);
+  const templates = useTemplates(createDialogOpen);
+  const createFromTemplate = useCreateFromTemplate();
+  const creating = createCanvas.isPending || createFromTemplate.isPending;
+  // IMP-098: a private copy of one of the person's canvases.
+  const duplicateCanvas = useDuplicateCanvas();
+  const handleDuplicate = async (canvasId: string) => {
+    try {
+      const copy = await duplicateCanvas.mutateAsync(canvasId);
+      toast.success(`Made “${copy.name}”`, {
+        action: {
+          label: "Open",
+          onClick: () => router.push(`/canvas/${copy.id}`),
+        },
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message
+          ? error.message
+          : "The canvas could not be copied.",
+      );
+    }
+  };
   const { mode, toggleTheme } = useThemeMode();
 
   const canvases = useMemo(() => {
@@ -104,15 +134,28 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     if (createInFlightRef.current) return;
     createInFlightRef.current = true;
     try {
-      const canvas = await createCanvas.mutateAsync({
+      const input = {
         name: newCanvasName || undefined,
         workspaceId: workspaceId || undefined,
-      });
+      };
+      const canvas =
+        startFrom === BLANK_TEMPLATE
+          ? await createCanvas.mutateAsync(input)
+          : await createFromTemplate.mutateAsync({
+              ...input,
+              templateId: startFrom,
+            });
       setCreateDialogOpen(false);
       setNewCanvasName("");
+      setStartFrom(BLANK_TEMPLATE);
       router.push(`/canvas/${canvas.id}`);
-    } catch {
-      toast.error("Failed to create canvas");
+    } catch (error) {
+      // The server says why, e.g. the canvas limit was reached.
+      toast.error(
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to create canvas",
+      );
     } finally {
       createInFlightRef.current = false;
     }
@@ -417,7 +460,22 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                             p: 0.25,
                           }}
                         />
-                      ) : undefined
+                      ) : (
+                        <Tooltip title="Duplicate">
+                          <IconButton
+                            size="small"
+                            aria-label={`Duplicate ${canvas.name}`}
+                            disabled={duplicateCanvas.isPending}
+                            onClick={() => void handleDuplicate(canvas.id)}
+                            sx={{
+                              bgcolor: "background.paper",
+                              "&:hover": { bgcolor: "background.paper" },
+                            }}
+                          >
+                            <DuplicateIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )
                     }
                   />
                 ))}
@@ -459,11 +517,11 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       <Dialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
       >
         <DialogTitle sx={{ fontWeight: 600 }}>Create new canvas</DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ display: "grid", gap: 2 }}>
           <TextField
             autoFocus
             margin="dense"
@@ -473,7 +531,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             variant="outlined"
             value={newCanvasName}
             onChange={(e) => setNewCanvasName(e.target.value)}
-            placeholder="Untitled Canvas"
+            placeholder={
+              templates.data?.templates.find((t) => t.id === startFrom)?.name ??
+              "Untitled Canvas"
+            }
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -481,15 +542,22 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
               }
             }}
           />
+          <Typography variant="subtitle2">Start from</Typography>
+          <TemplatePicker
+            templates={templates.data?.templates}
+            loading={templates.isLoading}
+            value={startFrom}
+            onChange={setStartFrom}
+          />
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
           <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
           <Button
             onClick={handleCreateCanvas}
             variant="contained"
-            disabled={createCanvas.isPending}
+            disabled={creating}
           >
-            {createCanvas.isPending ? "Creating…" : "Create"}
+            {creating ? "Creating…" : "Create"}
           </Button>
         </DialogActions>
       </Dialog>

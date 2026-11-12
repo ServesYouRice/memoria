@@ -1,77 +1,73 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(),
   requireAuth: vi.fn(),
-  canvasCount: vi.fn(),
-  canvasFindMany: vi.fn(),
+  enabled: vi.fn(() => true),
 }));
 
-vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
-vi.mock("@/lib/api/auth", () => ({ requireAuth: mocks.requireAuth }));
-vi.mock("@/lib/db", () => ({
-  prisma: {
-    canvas: {
-      count: mocks.canvasCount,
-      findMany: mocks.canvasFindMany,
-    },
-  },
+vi.mock("@/lib/api/auth", () => ({
+  requireAuth: mocks.requireAuth,
+  requireCanvasAccess: vi.fn(),
+}));
+vi.mock("@/lib/db", () => ({ prisma: {} }));
+vi.mock("@/lib/product-surfaces", () => ({
+  isLaunchCapabilityEnabled: mocks.enabled,
 }));
 
-import {
-  GET as templatesGet,
-  POST as templatesPost,
-} from "@/app/api/v1/templates/route";
+import { GET as templatesGet } from "@/app/api/v1/templates/route";
+import { POST as usePost } from "@/app/api/v1/templates/[templateId]/use/route";
 import { POST as duplicatePost } from "@/app/api/v1/canvases/[canvasId]/duplicate/route";
+import { UnauthorizedError } from "@/lib/errors";
 
-describe("launch template gates (IMP-062)", () => {
-  beforeEach(() => vi.clearAllMocks());
+describe("template and duplication switches (IMP-098)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireAuth.mockResolvedValue({ userId: "u1", email: "u@x.com" });
+    mocks.enabled.mockReturnValue(true);
+  });
 
-  const templateHandlers = [
-    {
-      method: "GET",
-      handler: () =>
-        templatesGet(
-          new Request("https://memoria.example/api/v1/templates") as never,
-        ),
-    },
-    {
-      method: "POST",
-      handler: () =>
-        templatesPost(
-          new Request("https://memoria.example/api/v1/templates", {
-            method: "POST",
-          }) as never,
-        ),
-    },
-  ];
+  it("lists 10 to 20 built-in templates, each with a preview", async () => {
+    const response = await templatesGet(
+      new Request("https://memoria.example/api/v1/templates") as never,
+      {} as never,
+    );
+    expect(response.status).toBe(200);
+    const { templates } = await response.json();
+    expect(templates.length).toBeGreaterThanOrEqual(10);
+    expect(templates.length).toBeLessThanOrEqual(20);
+    for (const template of templates) {
+      expect(template.name).toBeTruthy();
+      expect(template.preview.length).toBeGreaterThan(0);
+    }
+  });
 
-  it.each(templateHandlers)(
-    "authenticates, then returns an explicit disabled problem on $method",
-    async ({ handler }) => {
-      const response = await handler();
-      expect(response.status).toBe(404);
-      expect(await response.json()).toMatchObject({
-        type: "https://memoria.local/errors/feature-disabled",
-        title: "Feature Disabled",
-      });
-      expect(mocks.auth).not.toHaveBeenCalled();
-      expect(mocks.requireAuth).toHaveBeenCalledTimes(1);
-      expect(mocks.canvasFindMany).not.toHaveBeenCalled();
-      expect(mocks.canvasCount).not.toHaveBeenCalled();
-    },
-  );
+  it("asks for a session first", async () => {
+    mocks.requireAuth.mockRejectedValue(new UnauthorizedError());
+    const response = await templatesGet(
+      new Request("https://memoria.example/api/v1/templates") as never,
+      {} as never,
+    );
+    expect(response.status).toBe(401);
+  });
 
-  it("authenticates before returning the canvas duplication gate", async () => {
-    const response = await duplicatePost(
-      new Request("https://memoria.example/api/v1/canvases/source/duplicate", {
+  it("answers 404 while a switch is off", async () => {
+    mocks.enabled.mockReturnValue(false);
+    const use = await usePost(
+      new Request("https://memoria.example/api/v1/templates/todo-list/use", {
         method: "POST",
       }) as never,
+      { params: Promise.resolve({ templateId: "todo-list" }) },
     );
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({
+    expect(use.status).toBe(404);
+    const duplicate = await duplicatePost(
+      new Request("https://memoria.example/api/v1/canvases/c1/duplicate", {
+        method: "POST",
+      }) as never,
+      { params: Promise.resolve({ canvasId: "c1" }) },
+    );
+    expect(duplicate.status).toBe(404);
+    expect(await duplicate.json()).toMatchObject({
       type: "https://memoria.local/errors/feature-disabled",
     });
-    expect(mocks.requireAuth).toHaveBeenCalledTimes(1);
   });
 });

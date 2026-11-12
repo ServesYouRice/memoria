@@ -9,21 +9,17 @@ type TemplateCapability = Extract<
   "templates" | "canvasDuplication"
 >;
 
+/** Throws 404 while the launch switch for templates or duplication is off. */
 export function requireTemplatesEnabled(
   capability: TemplateCapability = "templates",
-): never {
-  if (isLaunchCapabilityEnabled(capability)) {
-    throw new ApiError(
-      500,
-      "https://memoria.local/errors/feature-route-unavailable",
-      "Feature Route Unavailable",
-      "The capability was enabled without installing its authenticated route implementation.",
-    );
-  }
+): void {
+  if (isLaunchCapabilityEnabled(capability)) return;
   throw new ApiError(
     404,
     "https://memoria.local/errors/feature-disabled",
     "Feature Disabled",
-    "Templates and canvas duplication are disabled for this release.",
+    capability === "templates"
+      ? "Templates are switched off on this server."
+      : "Duplicating canvases is switched off on this server.",
   );
 }
