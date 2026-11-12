@@ -57,9 +57,17 @@ async function ask(text: string) {
 describe("AskPalette suggestion settling (TASK-117)", () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
-    mocks.apiFetch
-      .mockResolvedValueOnce(askResponse("sugg-a", "Move A"))
-      .mockResolvedValueOnce(askResponse("sugg-b", "Move B"));
+    const answers = [
+      askResponse("sugg-a", "Move A"),
+      askResponse("sugg-b", "Move B"),
+    ];
+    // GET loads the scope choices (IMP-101); each POST is one question.
+    mocks.apiFetch.mockImplementation(
+      async (_url: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? answers.shift()
+          : { ok: true, json: async () => ({ canvases: [], tags: [] }) },
+    );
     mocks.approve.mockResolvedValue({});
   });
   afterEach(cleanup);
@@ -94,7 +102,9 @@ describe("AskPalette suggestion settling (TASK-117)", () => {
       expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Dismiss" })).toBeTruthy();
     }
-    expect(mocks.apiFetch).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.apiFetch.mock.calls.filter(([, init]) => init?.method === "POST"),
+    ).toHaveLength(1);
     expect(screen.getByText("Done.")).toBeTruthy();
 
     // Once A is applied, B can be asked and keeps its controls.

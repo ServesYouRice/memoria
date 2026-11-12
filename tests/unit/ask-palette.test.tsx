@@ -87,7 +87,10 @@ describe("Ask palette (IMP-068)", () => {
       "/api/v1/ai/ask",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ question: "what was that knife site?" }),
+        body: JSON.stringify({
+          question: "what was that knife site?",
+          scope: { kind: "all" },
+        }),
       }),
     );
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
