@@ -35,7 +35,7 @@ export function AuthLayout({
           justifyContent: "center",
           alignItems: "center",
           p: 6,
-          color: "#fff",
+          color: "common.white",
           position: "relative",
           overflow: "hidden",
         }}
@@ -47,8 +47,7 @@ export function AuthLayout({
             width: 420,
             height: 420,
             borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(255,255,255,0.16) 0%, transparent 70%)",
+            background: surfaces.glow,
             top: -140,
             right: -80,
             animation: "float 7s ease-in-out infinite",
@@ -61,8 +60,7 @@ export function AuthLayout({
             width: 280,
             height: 280,
             borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%)",
+            background: surfaces.glowSoft,
             bottom: -80,
             left: "8%",
             animation: "float 9s ease-in-out 1s infinite",

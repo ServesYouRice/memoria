@@ -2,6 +2,7 @@ import React from "react";
 import { Group, Line, Rect } from "react-konva";
 import { isDrawingContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type DrawingItemProps = CanvasItemAdapterProps;
 
@@ -13,6 +14,7 @@ export const DrawingItem: React.FC<DrawingItemProps> = ({
   onContextMenu,
   onCommitGeometry,
 }) => {
+  const palette = useCanvasPalette();
   if (!isDrawingContent(item.content)) {
     return null;
   }
@@ -45,7 +47,6 @@ export const DrawingItem: React.FC<DrawingItemProps> = ({
         width={width}
         height={height}
         fill="transparent"
-        // stroke={isSelected ? '#0096ff' : 'transparent'}
         // strokeWidth={1}
       />
 
@@ -67,7 +68,7 @@ export const DrawingItem: React.FC<DrawingItemProps> = ({
         <Rect
           width={width}
           height={height}
-          stroke="#2196f3"
+          stroke={palette.selection}
           strokeWidth={1}
           dash={[5, 5]}
           listening={false}

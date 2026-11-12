@@ -7,8 +7,8 @@
 import React from "react";
 import { Arrow, Layer, Line, Rect } from "react-konva";
 import type { DrawingPath } from "@/types/canvas";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 
-const PREVIEW_STROKE = "#000000";
 const PREVIEW_STROKE_WIDTH = 2;
 
 export interface DrawingPreviewProps {
@@ -21,12 +21,15 @@ export interface DrawingPreviewProps {
     height: number;
   } | null;
   zoom: number;
+  /** Outline colour for shape and arrow drags; follows light/dark mode. */
+  previewStroke?: string;
 }
 
 export function DrawingPreview({
   currentPath,
   currentCreation,
   zoom,
+  previewStroke = CANVAS_PALETTE.light.ink,
 }: DrawingPreviewProps) {
   if (currentPath) {
     return (
@@ -55,7 +58,7 @@ export function DrawingPreview({
             y={y}
             width={width}
             height={height}
-            stroke={PREVIEW_STROKE}
+            stroke={previewStroke}
             strokeWidth={PREVIEW_STROKE_WIDTH}
             dash={[6 / zoom, 4 / zoom]}
             listening={false}
@@ -63,8 +66,8 @@ export function DrawingPreview({
         ) : (
           <Arrow
             points={[x, y, x + width, y + height]}
-            stroke={PREVIEW_STROKE}
-            fill={PREVIEW_STROKE}
+            stroke={previewStroke}
+            fill={previewStroke}
             strokeWidth={PREVIEW_STROKE_WIDTH}
             listening={false}
           />

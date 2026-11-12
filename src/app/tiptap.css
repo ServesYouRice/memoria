@@ -58,17 +58,17 @@
 
   /* Blockquote */
   blockquote {
-    border-left: 3px solid #cbd5e0;
+    border-left: 3px solid var(--mui-palette-divider);
     padding-left: 1em;
     margin: 1em 0;
     font-style: italic;
-    color: #4a5568;
+    color: var(--mui-palette-text-secondary);
   }
 
   /* Code */
   code {
-    background-color: rgba(97, 97, 97, 0.1);
-    color: #1a202c;
+    background-color: var(--mui-palette-action-selected);
+    color: var(--mui-palette-text-primary);
     padding: 0.2em 0.4em;
     border-radius: 3px;
     font-size: 0.9em;
@@ -77,8 +77,8 @@
   }
 
   pre {
-    background-color: #2d3748;
-    color: #f7fafc;
+    background-color: var(--mui-palette-grey-900);
+    color: var(--mui-palette-grey-50);
     border-radius: 5px;
     padding: 0.75em 1em;
     overflow-x: auto;
@@ -94,13 +94,13 @@
 
   /* Links */
   a {
-    color: #3182ce;
+    color: var(--mui-palette-primary-main);
     text-decoration: underline;
     cursor: pointer;
     transition: color 0.2s;
 
     &:hover {
-      color: #2c5282;
+      color: var(--mui-palette-primary-dark);
     }
   }
 
@@ -121,7 +121,7 @@
   /* Horizontal rule */
   hr {
     border: none;
-    border-top: 2px solid #e2e8f0;
+    border-top: 2px solid var(--mui-palette-divider);
     margin: 2em 0;
   }
 
@@ -129,7 +129,7 @@
   p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     float: left;
-    color: #adb5bd;
+    color: var(--mui-palette-text-disabled);
     pointer-events: none;
     height: 0;
   }
@@ -137,35 +137,5 @@
   /* Focus state */
   &:focus {
     outline: none;
-  }
-}
-
-/* Follow the app's explicit selection, not the operating-system preference. */
-:root[data-theme="dark"] .ProseMirror {
-  blockquote {
-    border-left-color: #4a5568;
-    color: #cbd5e0;
-  }
-
-  code {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: #e2e8f0;
-  }
-
-  pre {
-    background-color: #1a202c;
-    color: #f7fafc;
-  }
-
-  a {
-    color: #63b3ed;
-
-    &:hover {
-      color: #90cdf4;
-    }
-  }
-
-  p.is-editor-empty:first-child::before {
-    color: #718096;
   }
 }

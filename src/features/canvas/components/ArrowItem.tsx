@@ -2,6 +2,7 @@ import React from "react";
 import { Group, Arrow } from "react-konva";
 import { type ArrowContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type ArrowItemProps = CanvasItemAdapterProps;
 
@@ -13,6 +14,7 @@ export const ArrowItem: React.FC<ArrowItemProps> = ({
   onContextMenu,
   onCommitGeometry,
 }) => {
+  const palette = useCanvasPalette();
   const content = item.content as ArrowContent;
 
   // Default points if not specified (should be validated upstream but fallback here)
@@ -48,9 +50,9 @@ export const ArrowItem: React.FC<ArrowItemProps> = ({
     >
       <Arrow
         points={points}
-        stroke={content.stroke || "#000000"}
+        stroke={content.stroke || palette.ink}
         strokeWidth={content.strokeWidth || 2}
-        fill={content.stroke || "#000000"}
+        fill={content.stroke || palette.ink}
         pointerLength={10}
         pointerWidth={10}
         opacity={1}
@@ -61,7 +63,7 @@ export const ArrowItem: React.FC<ArrowItemProps> = ({
       {isSelected && (
         <Arrow
           points={points}
-          stroke="#0096fd"
+          stroke={palette.selection}
           strokeWidth={1}
           opacity={0.5}
           dash={[5, 5]}

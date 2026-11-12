@@ -14,7 +14,7 @@ export default async function SetupPage() {
         minHeight: "100vh",
         px: 3,
         py: 8,
-        background: "linear-gradient(180deg, #f4efe2 0%, #ffffff 100%)",
+        bgcolor: "background.default",
       }}
     >
       {!bootstrapAvailable ? (

@@ -238,37 +238,37 @@ export function CanvasHeader({
       label: "Live",
       color: "success",
       tooltip: "Real-time collaboration active",
-      iconColor: "#4caf50",
+      iconColor: "success.main",
     },
     connecting: {
       label: "Connecting",
       color: "info",
       tooltip: "Connecting to collaboration server",
-      iconColor: "#29b6f6",
+      iconColor: "info.main",
     },
     reconnecting: {
       label: "Reconnecting",
       color: "warning",
       tooltip: "Reconnecting to collaboration server",
-      iconColor: "#ffb74d",
+      iconColor: "warning.main",
     },
     disconnected: {
       label: "Offline",
       color: "default",
       tooltip: "Collaboration offline",
-      iconColor: "#9e9e9e",
+      iconColor: "text.disabled",
     },
     error: {
       label: "Offline",
       color: "error",
       tooltip: "Collaboration error",
-      iconColor: "#f44336",
+      iconColor: "error.main",
     },
     idle: {
       label: "Offline",
       color: "default",
       tooltip: "Collaboration idle",
-      iconColor: "#9e9e9e",
+      iconColor: "text.disabled",
     },
   } as const;
 
@@ -763,8 +763,12 @@ export function CanvasHeader({
                         cursor: onFollowUser ? "pointer" : "default",
                         border:
                           followingUserId === collaborator.userId
-                            ? "2px solid #29b6f6"
-                            : "1px solid #fff",
+                            ? "2px solid"
+                            : "1px solid",
+                        borderColor:
+                          followingUserId === collaborator.userId
+                            ? "info.main"
+                            : "background.paper",
                         boxSizing: "border-box",
                       }}
                       onClick={() =>

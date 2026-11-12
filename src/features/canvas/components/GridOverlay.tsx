@@ -6,6 +6,7 @@
 import React from "react";
 import { Layer, Line } from "react-konva";
 import { EXPORT_EXCLUDE_NAME } from "@/lib/export/export-utils";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 
 export interface GridOverlayProps {
   width: number;
@@ -45,7 +46,7 @@ export function GridOverlay({
   visible,
   offset = { x: 0, y: 0 },
   zoom = 1,
-  stroke = "#e0e0e0",
+  stroke = CANVAS_PALETTE.light.grid,
 }: GridOverlayProps) {
   if (!visible) return null;
 

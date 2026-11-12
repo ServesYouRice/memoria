@@ -67,6 +67,9 @@ export const surfaces = {
   brandSoft: alpha(brand.primary.main, 0.1),
   /** Very faint tint for page backdrops. */
   hero: alpha(brand.primary.main, 0.05),
+  /** Soft white glows drawn over the navy panel. */
+  glow: `radial-gradient(circle, ${alpha("#ffffff", 0.16)} 0%, transparent 70%)`,
+  glowSoft: `radial-gradient(circle, ${alpha("#ffffff", 0.12)} 0%, transparent 70%)`,
 };
 
 // Glassmorphism styles (used by AppBar / dialogs)

@@ -31,6 +31,10 @@ import {
 import { stripHtmlTags } from "@/lib/utils/html";
 import { useThemeMode } from "@/lib/theme-context";
 import { READONLY_NOTE_COLORS } from "@/features/canvas/lib/note-colors";
+import {
+  CANVAS_PALETTE,
+  useCanvasPalette,
+} from "@/features/canvas/lib/canvas-palette";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import {
   EMBED_PREVIEW_LABEL,
@@ -60,6 +64,7 @@ function ReadonlyBookmarkImage({
 }
 
 function ReadonlyImageItem({ item }: { item: CanvasItem }) {
+  const palette = useCanvasPalette();
   const imageContent = isImageContent(item.content) ? item.content : null;
   const [image] = useImage(
     toImageProxyUrl(imageContent?.url) ?? "",
@@ -75,8 +80,8 @@ function ReadonlyImageItem({ item }: { item: CanvasItem }) {
       <Rect
         width={item.width}
         height={item.height}
-        fill="#ffffff"
-        stroke="#d7dee7"
+        fill={palette.surface}
+        stroke={palette.border}
         strokeWidth={1}
         cornerRadius={6}
       />
@@ -94,7 +99,7 @@ function ReadonlyImageItem({ item }: { item: CanvasItem }) {
           width={item.width - 20}
           text={imageContent.filename || "Image"}
           fontSize={14}
-          fill="#64748b"
+          fill={palette.textMuted}
           align="center"
         />
       )}
@@ -103,6 +108,7 @@ function ReadonlyImageItem({ item }: { item: CanvasItem }) {
 }
 
 function ReadonlyPollItem({ item }: { item: CanvasItem }) {
+  const palette = useCanvasPalette();
   if (!isPollContent(item.content)) {
     return null;
   }
@@ -126,8 +132,8 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
       <Rect
         width={width}
         height={height}
-        fill="#ffffff"
-        stroke="#d9e2ec"
+        fill={palette.surface}
+        stroke={palette.border}
         strokeWidth={1}
         cornerRadius={12}
       />
@@ -138,7 +144,7 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
         text={item.content.question}
         fontSize={18}
         fontStyle="bold"
-        fill="#1e293b"
+        fill={palette.text}
         wrap="word"
       />
 
@@ -154,8 +160,8 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
             <Rect
               width={width - padding * 2}
               height={optionHeight}
-              fill="#f8fafc"
-              stroke="#cbd5e1"
+              fill={palette.surfaceSubtle}
+              stroke={palette.borderStrong}
               strokeWidth={1}
               cornerRadius={8}
             />
@@ -163,7 +169,7 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
               <Rect
                 width={(width - padding * 2) * (percent / 100)}
                 height={optionHeight}
-                fill="#dbeafe"
+                fill={palette.accentSoft}
                 cornerRadius={8}
                 opacity={0.7}
               />
@@ -174,7 +180,7 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
               width={width - padding * 2 - 70}
               text={option.text}
               fontSize={14}
-              fill="#334155"
+              fill={palette.textBody}
               ellipsis
             />
             <Text
@@ -183,7 +189,7 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
               width={45}
               text={`${percent}%`}
               fontSize={12}
-              fill="#64748b"
+              fill={palette.textMuted}
               align="right"
             />
           </Group>
@@ -196,7 +202,7 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
         width={width - padding * 2}
         text={`${totalVotes} votes | ${item.content.multipleChoice ? "Multiple Choice" : "Single Choice"} | Voting unavailable at launch`}
         fontSize={10}
-        fill="#94a3b8"
+        fill={palette.textFaint}
         align="center"
       />
     </Group>
@@ -233,6 +239,7 @@ function ReadonlyNoteItem({ item }: { item: CanvasItem }) {
 }
 
 function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
+  const palette = useCanvasPalette();
   if (item.type === ItemType.NOTE && isNoteContent(item.content)) {
     return <ReadonlyNoteItem item={item} />;
   }
@@ -248,8 +255,8 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
         <Rect
           width={item.width}
           height={item.height}
-          fill="#fff9e6"
-          stroke="#fdba74"
+          fill={palette.bookmark.fill}
+          stroke={palette.bookmark.stroke}
           strokeWidth={2}
           cornerRadius={8}
         />
@@ -267,7 +274,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
             y={10}
             width={20}
             height={20}
-            fill="#fdba74"
+            fill={palette.bookmark.stroke}
             cornerRadius={4}
           />
         )}
@@ -278,7 +285,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           text={item.content.title || item.content.siteName || displayUrl}
           fontSize={15}
           fontStyle="bold"
-          fill="#1f2937"
+          fill={palette.bookmark.text}
           ellipsis
         />
         <Text
@@ -288,7 +295,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           height={item.height - 65}
           text={item.content.description || displayUrl}
           fontSize={12}
-          fill="#64748b"
+          fill={palette.textMuted}
           wrap="word"
         />
         <Text
@@ -297,7 +304,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           width={item.width - 20}
           text={displayUrl}
           fontSize={10}
-          fill="#94a3b8"
+          fill={palette.textFaint}
           ellipsis
         />
       </Group>
@@ -330,7 +337,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
 
   if (item.type === ItemType.SHAPE && isShapeContent(item.content)) {
     const commonProps = {
-      stroke: item.content.stroke || "#0f172a",
+      stroke: item.content.stroke || palette.ink,
       fill: item.content.fill || "transparent",
       strokeWidth: item.content.strokeWidth || 2,
     };
@@ -389,7 +396,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
             pointerWidth={20}
             stroke={commonProps.stroke}
             strokeWidth={commonProps.strokeWidth}
-            fill={item.content.stroke || "#0f172a"}
+            fill={item.content.stroke || palette.ink}
           />
         )}
       </Group>
@@ -404,9 +411,9 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
       <Group x={item.positionX} y={item.positionY}>
         <Arrow
           points={[start.x, start.y, end.x, end.y]}
-          stroke={item.content.stroke || "#0f172a"}
+          stroke={item.content.stroke || palette.ink}
           strokeWidth={item.content.strokeWidth || 2}
-          fill={item.content.stroke || "#0f172a"}
+          fill={item.content.stroke || palette.ink}
           pointerLength={10}
           pointerWidth={10}
         />
@@ -416,7 +423,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
             y={Math.min(start.y, end.y) - 18}
             text={item.content.label}
             fontSize={12}
-            fill="#334155"
+            fill={palette.textBody}
           />
         ) : null}
       </Group>
@@ -430,7 +437,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           text={item.content.text}
           fontSize={item.content.fontSize || 16}
           fontFamily={item.content.fontFamily || "sans-serif"}
-          fill={item.content.color || "#111827"}
+          fill={item.content.color || palette.ink}
           align={item.content.align || "left"}
           width={item.width}
         />
@@ -444,8 +451,8 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
         <Rect
           width={item.width}
           height={30}
-          fill={item.content.backgroundColor || "#f1f5f9"}
-          stroke="#cbd5e1"
+          fill={item.content.backgroundColor || palette.frameFill}
+          stroke={palette.borderStrong}
           strokeWidth={1}
           cornerRadius={[4, 4, 0, 0]}
         />
@@ -454,7 +461,11 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           y={8}
           text={item.content.title || "Frame"}
           fontSize={14}
-          fill="#334155"
+          fill={
+            item.content.backgroundColor
+              ? CANVAS_PALETTE.light.textBody
+              : palette.textBody
+          }
         />
         <Rect
           x={0}
@@ -462,7 +473,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           width={item.width}
           height={item.height - 30}
           fill="transparent"
-          stroke="#cbd5e1"
+          stroke={palette.borderStrong}
           strokeWidth={1}
           dash={[6, 4]}
           cornerRadius={[0, 0, 4, 4]}
@@ -477,8 +488,8 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
         <Rect
           width={item.width}
           height={item.height}
-          fill="#f8fafc"
-          stroke="#cbd5e1"
+          fill={palette.surfaceSubtle}
+          stroke={palette.borderStrong}
           strokeWidth={1}
           cornerRadius={8}
         />
@@ -489,7 +500,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           text={`${EMBED_PREVIEW_LABEL} · ${describeEmbedTarget(item.content.url)}`}
           align="center"
           fontSize={16}
-          fill="#475569"
+          fill={palette.textMuted}
         />
         <Text
           x={10}
@@ -498,7 +509,7 @@ function ReadonlyCanvasItem({ item }: { item: CanvasItem }) {
           text="Opens as a link; no live content is loaded in the canvas."
           align="center"
           fontSize={10}
-          fill="#94a3b8"
+          fill={palette.textFaint}
           ellipsis
         />
       </Group>

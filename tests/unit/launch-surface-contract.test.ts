@@ -109,10 +109,13 @@ describe("selected app theme owns non-MUI CSS", () => {
   );
 
   it.each(["src/app/tiptap.css", "src/components/command-palette.css"])(
-    "uses data-theme selectors in %s",
+    "follows the selected theme in %s",
     (path) => {
+      // Colours come from the MUI theme variables, which switch with the
+      // app's data-theme selection (IMP-080), never from the OS preference.
       const css = source(path);
-      expect(css).toMatch(/data-theme=["']dark["']/);
+      expect(css).toContain("var(--mui-palette-");
+      expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
       expect(css).not.toContain("prefers-color-scheme");
     },
   );

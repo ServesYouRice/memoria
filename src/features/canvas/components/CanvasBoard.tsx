@@ -100,6 +100,7 @@ import { isVersionConflict } from "@/lib/api/fetch-client";
 import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
 import { appColor, appColorTokens } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -175,7 +176,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const focusedItemRef = useRef<string | null>(null);
   const lastThumbnailRevisionRef = useRef<string | null>(null);
   // Konva needs a real colour; the mode comes from the theme context.
-  const gridStroke = appColorTokens[useThemeMode().mode].canvasGrid;
+  const themeMode = useThemeMode().mode;
+  const gridStroke = appColorTokens[themeMode].canvasGrid;
   const { ref: stageContainerRef, size: stageSize } = useObservedStageSize();
 
   // Data Hook (Single source of truth for display)
@@ -1538,6 +1540,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               currentPath={currentPath}
               currentCreation={currentCreation}
               zoom={zoom}
+              previewStroke={CANVAS_PALETTE[themeMode].ink}
             />
           </Stage>
 

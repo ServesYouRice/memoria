@@ -11,7 +11,7 @@
   display: flex;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid var(--mui-palette-divider);
 }
 
 .command-input {
@@ -36,7 +36,7 @@
   justify-content: center;
   height: 100px;
   font-size: 14px;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--mui-palette-text-secondary);
 }
 
 .command-group {
@@ -46,7 +46,7 @@
 .command-group [cmdk-group-heading] {
   font-size: 12px;
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--mui-palette-text-secondary);
   padding: 8px 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -64,17 +64,21 @@
 }
 
 .command-item[data-selected="true"] {
-  background-color: rgba(25, 118, 210, 0.12);
-  color: #1976d2;
+  background-color: color-mix(
+    in srgb,
+    var(--mui-palette-primary-main) 14%,
+    transparent
+  );
+  color: var(--mui-palette-primary-main);
 }
 
 .command-item:hover {
-  background-color: rgba(0, 0, 0, 0.04);
+  background-color: var(--mui-palette-action-hover);
 }
 
 .command-separator {
   height: 1px;
-  background-color: rgba(0, 0, 0, 0.08);
+  background-color: var(--mui-palette-divider);
   margin: 8px 0;
 }
 
@@ -83,49 +87,17 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  border-top: 1px solid var(--mui-palette-divider);
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--mui-palette-text-secondary);
 }
 
 .command-kbd {
   display: inline-block;
   padding: 2px 6px;
-  background-color: rgba(0, 0, 0, 0.08);
+  background-color: var(--mui-palette-divider);
   border-radius: 4px;
   font-family: monospace;
   font-size: 11px;
   font-weight: 500;
-}
-
-/* Follow the app's explicit selection, not the operating-system preference. */
-:root[data-theme="dark"] .command-input-wrapper {
-  border-bottom-color: rgba(255, 255, 255, 0.12);
-}
-
-:root[data-theme="dark"] .command-empty,
-:root[data-theme="dark"] .command-group [cmdk-group-heading] {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-:root[data-theme="dark"] .command-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-:root[data-theme="dark"] .command-item[data-selected="true"] {
-  background-color: rgba(144, 202, 249, 0.16);
-  color: #90caf9;
-}
-
-:root[data-theme="dark"] .command-separator {
-  background-color: rgba(255, 255, 255, 0.12);
-}
-
-:root[data-theme="dark"] .command-footer {
-  border-top-color: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.6);
-}
-
-:root[data-theme="dark"] .command-kbd {
-  background-color: rgba(255, 255, 255, 0.12);
 }

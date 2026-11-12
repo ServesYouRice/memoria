@@ -134,7 +134,7 @@ export function EditImageDialog({ open, onClose, item }: EditImageDialogProps) {
                 sx={{
                   maxHeight: 300,
                   objectFit: "contain",
-                  bgcolor: "#f5f5f5",
+                  bgcolor: "action.hover",
                 }}
               />
               <Box sx={{ p: 1 }}>

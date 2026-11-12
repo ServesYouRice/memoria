@@ -20,6 +20,7 @@ import { stripHtmlTags } from "@/lib/utils/html";
 import { normalizeNoteContent } from "@/lib/rich-text/note-format";
 import { useThemeMode } from "@/lib/theme-context";
 import { NOTE_COLORS } from "@/features/canvas/lib/note-colors";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type NoteItemProps = CanvasItemAdapterProps;
 
@@ -36,6 +37,7 @@ export function NoteItem({
   onContextMenu,
   onCommitGeometry,
 }: NoteItemProps) {
+  const palette = useCanvasPalette();
   const groupRef = useRef<Konva.Group>(null);
   const noteColors = NOTE_COLORS[useThemeMode().mode];
   const [localPosition, setLocalPosition] = useState({
@@ -142,7 +144,7 @@ export function NoteItem({
         width={localSize.width}
         height={localSize.height}
         fill={noteColors.fill}
-        stroke={isSelected ? "#2196F3" : noteColors.stroke}
+        stroke={isSelected ? palette.selection : noteColors.stroke}
         strokeWidth={isSelected ? 3 : 2}
         shadowColor="black"
         shadowBlur={5}
@@ -170,7 +172,7 @@ export function NoteItem({
             x={localSize.width}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("se", e)}
             onDragEnd={(e) => handleResizeEnd("se", e)}
@@ -188,7 +190,7 @@ export function NoteItem({
             x={0}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={(e) => handleResizeEnd("sw", e)}
@@ -206,7 +208,7 @@ export function NoteItem({
             x={localSize.width}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={(e) => handleResizeEnd("ne", e)}
@@ -224,7 +226,7 @@ export function NoteItem({
             x={0}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={(e) => handleResizeEnd("nw", e)}

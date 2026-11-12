@@ -21,6 +21,7 @@ import { Group, Rect, Text, Circle, Image as KonvaImage } from "react-konva";
 import type Konva from "konva";
 import { isBookmarkContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type BookmarkItemProps = CanvasItemAdapterProps;
 
@@ -70,6 +71,7 @@ function BookmarkItemComponent({
   onContextMenu,
   onCommitGeometry,
 }: BookmarkItemProps) {
+  const palette = useCanvasPalette();
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -208,8 +210,8 @@ function BookmarkItemComponent({
       <Rect
         width={localSize.width}
         height={localSize.height}
-        fill="#FFF9E6"
-        stroke={isSelected ? "#2196F3" : "#FFB74D"}
+        fill={palette.bookmark.fill}
+        stroke={isSelected ? palette.selection : palette.bookmark.stroke}
         strokeWidth={isSelected ? 3 : 2}
         shadowColor="black"
         shadowBlur={5}
@@ -236,7 +238,7 @@ function BookmarkItemComponent({
               fontSize={15}
               fontWeight="bold"
               fontFamily="Arial"
-              fill="#333"
+              fill={palette.bookmark.text}
               wrap="none"
               ellipsis={true}
             />
@@ -252,7 +254,7 @@ function BookmarkItemComponent({
               text={blurb}
               fontSize={12}
               fontFamily="Arial"
-              fill="#666"
+              fill={palette.textMuted}
               wrap="word"
             />
           )}
@@ -265,7 +267,7 @@ function BookmarkItemComponent({
             text={content.siteName || displayUrl}
             fontSize={10}
             fontFamily="Arial"
-            fill="#999"
+            fill={palette.textFaint}
             wrap="none"
             ellipsis={true}
           />
@@ -278,7 +280,7 @@ function BookmarkItemComponent({
             y={10}
             width={30}
             height={30}
-            fill="#FFB74D"
+            fill={palette.bookmark.stroke}
             cornerRadius={4}
           />
 
@@ -290,7 +292,7 @@ function BookmarkItemComponent({
             text={displayUrl}
             fontSize={14}
             fontFamily="Arial"
-            fill="#1976D2"
+            fill={palette.bookmark.link}
             textDecoration="underline"
             wrap="none"
             ellipsis={true}
@@ -304,7 +306,7 @@ function BookmarkItemComponent({
             text="Bookmark"
             fontSize={11}
             fontFamily="Arial"
-            fill="#666"
+            fill={palette.textMuted}
           />
         </>
       )}
@@ -317,7 +319,7 @@ function BookmarkItemComponent({
             x={localSize.width}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             {...resizeHandleEvents("se")}
             onMouseEnter={(e) => {
@@ -335,7 +337,7 @@ function BookmarkItemComponent({
             x={0}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             {...resizeHandleEvents("sw")}
             onMouseEnter={(e) => {
@@ -353,7 +355,7 @@ function BookmarkItemComponent({
             x={localSize.width}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             {...resizeHandleEvents("ne")}
             onMouseEnter={(e) => {
@@ -371,7 +373,7 @@ function BookmarkItemComponent({
             x={0}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             {...resizeHandleEvents("nw")}
             onMouseEnter={(e) => {

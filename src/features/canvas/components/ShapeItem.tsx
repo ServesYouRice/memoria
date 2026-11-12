@@ -9,6 +9,7 @@ import {
 } from "react-konva";
 import { isShapeContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type ShapeItemProps = CanvasItemAdapterProps;
 
@@ -22,6 +23,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(
     onContextMenu,
     onCommitGeometry,
   }) => {
+    const palette = useCanvasPalette();
     if (!isShapeContent(item.content)) {
       return null;
     }
@@ -31,7 +33,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(
 
     const {
       shapeType,
-      stroke = "#000000",
+      stroke = palette.ink,
       fill = "transparent",
       strokeWidth = 2,
       radius = 0,
@@ -43,7 +45,7 @@ export const ShapeItem: React.FC<ShapeItemProps> = React.memo(
       stroke,
       fill,
       strokeWidth,
-      shadowColor: isSelected ? "#3b82f6" : "transparent",
+      shadowColor: isSelected ? palette.selection : "transparent",
       shadowBlur: isSelected ? 10 : 0,
       shadowOpacity: 0.5,
     };

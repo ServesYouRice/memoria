@@ -16,6 +16,7 @@ import {
 } from "@/features/canvas/lib/geometry-adapter";
 import { isImageContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type ImageItemProps = CanvasItemAdapterProps;
 
@@ -32,6 +33,7 @@ export function ImageItem({
   onContextMenu,
   onCommitGeometry,
 }: ImageItemProps) {
+  const palette = useCanvasPalette();
   const groupRef = useRef<Konva.Group>(null);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
@@ -163,8 +165,8 @@ export function ImageItem({
       <Rect
         width={localSize.width}
         height={localSize.height}
-        fill="#ffffff"
-        stroke={isSelected ? "#2196F3" : "#e0e0e0"}
+        fill={palette.surface}
+        stroke={isSelected ? palette.selection : palette.border}
         strokeWidth={isSelected ? 3 : 1}
         shadowColor="black"
         shadowBlur={5}
@@ -198,7 +200,7 @@ export function ImageItem({
           }
           fontSize={14}
           fontFamily="Arial"
-          fill={imageFailed ? "#b3261e" : "#999"}
+          fill={imageFailed ? palette.imageError : palette.textFaint}
           align="center"
           onClick={
             imageFailed
@@ -226,7 +228,7 @@ export function ImageItem({
           y={localSize.height - 30}
           width={localSize.width}
           height={30}
-          fill="rgba(0, 0, 0, 0.7)"
+          fill={palette.scrim}
           cornerRadius={[0, 0, 4, 4]}
         />
       )}
@@ -238,7 +240,7 @@ export function ImageItem({
           text={content.alt}
           fontSize={12}
           fontFamily="Arial"
-          fill="#ffffff"
+          fill={palette.scrimText}
           wrap="none"
           ellipsis={true}
         />
@@ -252,7 +254,7 @@ export function ImageItem({
             x={localSize.width}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("se", e)}
             onDragEnd={(e) => handleResizeEnd("se", e)}
@@ -270,7 +272,7 @@ export function ImageItem({
             x={0}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={(e) => handleResizeEnd("sw", e)}
@@ -288,7 +290,7 @@ export function ImageItem({
             x={localSize.width}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={(e) => handleResizeEnd("ne", e)}
@@ -306,7 +308,7 @@ export function ImageItem({
             x={0}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill="#2196F3"
+            fill={palette.selection}
             draggable
             onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={(e) => handleResizeEnd("nw", e)}
