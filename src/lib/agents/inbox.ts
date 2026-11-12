@@ -109,7 +109,7 @@ export async function saveToInbox(input: {
     throw new NotFoundError(
       data.canvasId
         ? "Canvas not found."
-        : "No Inbox board is shared with this app. Allow it the Inbox board in Memoria.",
+        : "No Inbox canvas is shared with this app. Allow it the Inbox canvas in Memoria.",
     );
   }
   assertCanvasScope(input.agentProfile, inbox.id);

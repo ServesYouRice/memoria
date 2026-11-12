@@ -60,7 +60,7 @@ export interface AskResponse {
 
 const REJECTION_TEXT: Record<string, string> = {
   "not-allowed":
-    "That is not something Ask can do. It can create a board, move items, make a pile or archive.",
+    "That is not something Ask can do. It can create a canvas, move items, make a pile or archive.",
   "unknown-reference":
     "The proposed change named items I could not find, so I left it out.",
   invalid: "The proposed change was not complete, so I left it out.",
@@ -249,7 +249,7 @@ export function AskPalette({
           fullWidth
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask your boards, or tell them what to do"
+          placeholder="Ask your canvases, or tell them what to do"
           inputProps={{ "aria-label": "Ask Memoria", maxLength: 1000 }}
         />
         <IconButton
@@ -268,9 +268,9 @@ export function AskPalette({
       <DialogContent sx={{ minHeight: 120 }}>
         {!result && !error && !asking && (
           <Typography variant="body2" color="text.secondary">
-            Try “what was that knife site I saved?” or “make a Japan board from
-            everything about Japan”. Answers come only from your own boards, and
-            changes wait for your approval.
+            Try “what was that knife site I saved?” or “make a Japan canvas from
+            everything about Japan”. Answers come only from your own canvases,
+            and changes wait for your approval.
           </Typography>
         )}
         {error && (
@@ -403,7 +403,7 @@ export function AskLauncher() {
       >
         <AskIcon fontSize="small" />
         <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
-          Ask your boards…
+          Ask your canvases…
         </Typography>
       </ButtonBase>
       <Tooltip title="Ask Memoria (Ctrl+J)">

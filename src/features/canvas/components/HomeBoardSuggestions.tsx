@@ -60,9 +60,9 @@ interface HomeBoardPayload {
 
 const REASON_TEXT: Record<HomeBoardSuggestionView["reasons"][number], string> =
   {
-    "board-name": "its tags or title match the board name",
-    tags: "the board already holds items with these tags",
-    "similar-items": "it reads like other items on the board",
+    "board-name": "its tags or title match the canvas name",
+    tags: "the canvas already holds items with these tags",
+    "similar-items": "it reads like other items on the canvas",
   };
 
 export function describeReasons(reasons: HomeBoardSuggestionView["reasons"]) {
@@ -247,7 +247,7 @@ export function HomeBoardSuggestions({
             key={suggestion.itemId}
             elevation={2}
             role="group"
-            aria-label={`Suggested board ${suggestion.boardName}`}
+            aria-label={`Suggested canvas ${suggestion.boardName}`}
             data-testid="home-board-suggestion"
             onPointerDown={(event) => event.stopPropagation()}
             sx={{

@@ -98,7 +98,7 @@ export function RecapContent() {
     revert
       .mutateAsync(changeSetId)
       .then(async () => {
-        toast.success("Links are back on their boards");
+        toast.success("Links are back on their canvases");
         await refresh();
       })
       .catch(() => toast.error("That could not be undone"));

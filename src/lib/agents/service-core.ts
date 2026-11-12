@@ -1484,7 +1484,7 @@ async function applyRevertOperation(
       ]);
       if (counts.some((count) => count > 0)) {
         throw new BadRequestError(
-          "This board holds content now (items, including ones in the trash, saved versions, embeds or shares). Undo those first, or delete the board in Memoria.",
+          "This canvas holds content now (items, including ones in the trash, saved versions, embeds or shares). Undo those first, or delete the canvas in Memoria.",
         );
       }
       await tx.canvas.delete({ where: { id: existing.id } });
@@ -1552,7 +1552,7 @@ async function applyRevertOperation(
     });
     if (!source) {
       throw new BadRequestError(
-        "The board this item came from is gone, so it cannot go back.",
+        "The canvas this item came from is gone, so it cannot go back.",
       );
     }
     // Only undo a move the user has not overridden: the item must still be

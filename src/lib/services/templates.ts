@@ -172,7 +172,7 @@ export const BUILT_IN_TEMPLATES: Array<
     ],
   },
   {
-    name: "Research Board",
+    name: "Research Canvas",
     description: "Organize research with notes and bookmarks",
     category: "research",
     isPublic: true,

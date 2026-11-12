@@ -24,7 +24,7 @@ interface ConsentFormProps {
 }
 
 const ALWAYS_ALLOWED = [
-  "Read and search the boards you pick below",
+  "Read and search the canvases you pick below",
   "Save new links and notes to your Inbox",
   "Comment on items",
   "Suggest changes that wait for your approval",
@@ -126,11 +126,11 @@ export function ConsentForm({
       <Divider sx={{ mb: 2 }} />
 
       <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-        Boards it may use
+        Canvases it may use
       </Typography>
       {canvases.length === 0 ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          You have no boards yet. Create one first.
+          You have no canvases yet. Create one first.
         </Alert>
       ) : (
         <FormGroup sx={{ mb: 2, maxHeight: 280, overflowY: "auto" }}>

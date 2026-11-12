@@ -12,7 +12,7 @@ import { ConsentForm } from "./ConsentForm";
 
 export const metadata = {
   title: "Connect an app",
-  description: "Allow an AI app to use your Memoria boards",
+  description: "Allow an AI app to use your Memoria canvases",
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;

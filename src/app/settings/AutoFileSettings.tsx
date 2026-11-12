@@ -64,7 +64,7 @@ export function AutoFileSettings() {
       <ListItem disablePadding sx={{ px: 1, gap: 2 }}>
         <ListItemText
           primary="File new Inbox items automatically"
-          secondary={`When an item's suggested board is a clear match (${Math.round(
+          secondary={`When an item's suggested canvas is a clear match (${Math.round(
             data.confidenceThreshold * 100,
           )}% or more), it moves there on its own. Other suggestions wait for you, and every move can be undone from the Inbox.`}
         />

@@ -157,7 +157,7 @@ export function welcomeEmailTemplate(data: WelcomeEmailData): EmailTemplate {
     text: `
 Hi ${userName},
 
-Welcome to Memoria! We're excited to have you on board.
+Welcome to Memoria! We're glad you're here.
 
 Memoria helps you organize your thoughts, bookmarks, and ideas on an infinite canvas. Here are some things you can do:
 
@@ -187,7 +187,7 @@ The Memoria Team
 
     <p>Hi ${escapeHtml(userName)},</p>
 
-    <p>Welcome to Memoria! We're excited to have you on board.</p>
+    <p>Welcome to Memoria! We're glad you're here.</p>
 
     <p>Memoria helps you organize your thoughts, bookmarks, and ideas on an infinite canvas. Here are some things you can do:</p>
 

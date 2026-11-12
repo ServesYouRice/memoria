@@ -325,7 +325,7 @@ export async function decideConsent(input: {
   if (ownedCanvases.length === 0) {
     throw new OAuthError(
       "invalid_request",
-      "Choose at least one board this app may use.",
+      "Choose at least one canvas this app may use.",
     );
   }
 

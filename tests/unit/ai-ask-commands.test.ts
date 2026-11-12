@@ -157,7 +157,7 @@ describe("proposeAskCommand files suggestions only", () => {
           agentProfileId: "prof-ask",
         }),
         rung: 3,
-        summary: 'Create board "Japan" and move 2 items onto it',
+        summary: 'Create canvas "Japan" and move 2 items onto it',
         payload: {
           kind: ASK_COMMAND_SUGGESTION_KIND,
           command: {

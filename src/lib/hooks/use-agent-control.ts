@@ -347,7 +347,7 @@ const api = {
 
     return parseJson<OrganizeCanvasResponse>(
       response,
-      "Failed to sort the board into piles.",
+      "Failed to sort the canvas into piles.",
     );
   },
 

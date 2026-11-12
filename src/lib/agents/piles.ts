@@ -409,7 +409,7 @@ async function assertItemsOnCanvas(canvasId: string, piles: PileInput[]) {
 
   if (items.length !== itemIds.length) {
     throw new BadRequestError(
-      "Some items are not on this board anymore. Refresh and try again.",
+      "Some items are not on this canvas anymore. Refresh and try again.",
     );
   }
   if (items.some((item) => item.type === ItemType.FRAME)) {
@@ -480,7 +480,7 @@ export async function applyCanvasPiles(input: {
     const pileItems = itemIds.map((itemId) => byId.get(itemId));
     if (pileItems.some((item) => !item)) {
       throw new BadRequestError(
-        "Some items are not on this board anymore. Refresh and try again.",
+        "Some items are not on this canvas anymore. Refresh and try again.",
       );
     }
     if (pileItems.some((item) => item?.type === ItemType.FRAME)) {
