@@ -94,12 +94,40 @@ export interface AiProviderAdapter {
  * failures); `authFailed` marks a rejected key so the caller can flag a saved
  * credential instead of retrying it on every request.
  */
+/**
+ * What a provider's error body says, reduced to a word (IMP-102). The body
+ * itself is never kept: it can echo prompt content.
+ */
+export type AiUpstreamHint = "credit" | "model";
+
+export function hintFromErrorBody(
+  body: Buffer | null,
+): AiUpstreamHint | undefined {
+  if (!body || body.byteLength === 0) return undefined;
+  const text = body.subarray(0, 4096).toString("utf8").toLowerCase();
+  if (
+    /insufficient_quota|credit balance|credits?\b|billing|payment|quota|exceeded your current/.test(
+      text,
+    )
+  )
+    return "credit";
+  if (
+    /model/.test(text) &&
+    /not[ _]found|does not exist|not available|unavailable|invalid|unknown|no access|not supported|decommissioned/.test(
+      text,
+    )
+  )
+    return "model";
+  return undefined;
+}
+
 export class AiUpstreamError extends Error {
   constructor(
     readonly adapter: AiAdapterId,
     readonly status: number,
     message: string,
     readonly providerRequestId?: string | null,
+    readonly hint?: AiUpstreamHint,
   ) {
     super(message);
     this.name = "AiUpstreamError";
@@ -308,6 +336,7 @@ async function postBody(
       response.status,
       `Provider returned HTTP ${response.status}`,
       requestId,
+      hintFromErrorBody(response.body),
     );
   }
   if (response.body === null) {

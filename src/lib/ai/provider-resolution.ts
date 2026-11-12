@@ -29,10 +29,25 @@ export const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 export const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-5-5";
 
 export const AI_NOT_CONFIGURED_DETAIL =
-  "AI not configured. Save an AI provider key in Settings, or set OPENAI_API_KEY or ANTHROPIC_API_KEY on the server.";
+  "AI not configured. Set it up in Settings → AI with your own key (it takes a few minutes), or set OPENAI_API_KEY or ANTHROPIC_API_KEY on the server.";
 
 export const AI_SAVED_CREDENTIAL_UNUSABLE_DETAIL =
-  "Your saved AI provider key cannot be used. Update it in Settings.";
+  "Your saved AI provider key cannot be used. Update it in Settings → AI.";
+
+/** Where the AI set-up lives; error responses carry it (IMP-102). */
+export const AI_SETUP_PATH = "/settings/ai";
+export const AI_NOT_SET_UP_CODE = "AI_NOT_SET_UP";
+
+/**
+ * "AI is not set up" (or the saved key cannot be used). The response names
+ * the set-up page so the feature that failed can link to it.
+ */
+export class AiNotSetUpError extends ServiceUnavailableError {
+  constructor(detail = AI_NOT_CONFIGURED_DETAIL) {
+    super(detail);
+    this.extensions = { code: AI_NOT_SET_UP_CODE, setupUrl: AI_SETUP_PATH };
+  }
+}
 
 export type AiProviderSource = "user" | "env";
 
@@ -291,7 +306,7 @@ export async function resolveAiProvider(
 ): Promise<ResolvedAiProvider> {
   const { resolved, reason } = await lookupAiProvider(userId);
   if (!resolved) {
-    throw new ServiceUnavailableError(
+    throw new AiNotSetUpError(
       reason === "saved-credential-unusable"
         ? AI_SAVED_CREDENTIAL_UNUSABLE_DETAIL
         : AI_NOT_CONFIGURED_DETAIL,

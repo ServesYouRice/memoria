@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-102](tasks/IMP-102.md) | Setting up your own AI key is easy | |
 | [IMP-103](tasks/IMP-103.md) | The canvas stays smooth when it is full (2,000 items) | |
 | [IMP-104](tasks/IMP-104.md) | Polls with votes counted on the server | |
 | [IMP-105](tasks/IMP-105.md) | A timer everyone on the canvas sees | |

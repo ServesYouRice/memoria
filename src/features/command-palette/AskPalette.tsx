@@ -42,6 +42,11 @@ import {
 } from "@/lib/hooks/use-agent-control";
 import { hasActiveDialog } from "@/lib/keyboard/shortcuts";
 import { isAskShortcut } from "./ask-shortcut";
+import {
+  AI_NOT_SET_UP_MESSAGE,
+  AiSetupLink,
+  isAiNotSetUp,
+} from "@/features/ai/ai-setup";
 
 interface AskSource {
   itemId: string;
@@ -160,6 +165,7 @@ export function AskPalette({
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<AskResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [asking, setAsking] = useState(false);
   const [applying, setApplying] = useState(false);
   // Settled text belongs to the suggestion it was reached for, so finishing
@@ -223,9 +229,11 @@ export function AskPalette({
     setResult(null);
     setSettled(null);
     setApprovedId(null);
+    setNeedsSetup(false);
     try {
       setResult(await postAsk(trimmed, scope));
     } catch (askError) {
+      setNeedsSetup(isAiNotSetUp(askError));
       setError(
         askError instanceof Error ? askError.message : "Ask failed. Try again.",
       );
@@ -417,11 +425,16 @@ export function AskPalette({
             and changes wait for your approval.
           </Typography>
         )}
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
+        {error &&
+          (needsSetup ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              {AI_NOT_SET_UP_MESSAGE} <AiSetupLink onClick={onClose} />
+            </Alert>
+          ) : (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          ))}
         {result && (
           <Stack spacing={2}>
             {result.scope && (

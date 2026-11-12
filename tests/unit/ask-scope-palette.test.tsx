@@ -135,3 +135,28 @@ describe("Ask scope (IMP-101)", () => {
     expect(screen.queryByRole("option", { name: "This canvas" })).toBeNull();
   });
 });
+
+describe("Ask without AI set up (IMP-102)", () => {
+  afterEach(cleanup);
+
+  it("links to the AI set-up", async () => {
+    mocks.apiFetch.mockReset();
+    mocks.apiFetch.mockImplementation(
+      async (_url: string, init?: RequestInit) => {
+        if (init?.method !== "POST")
+          return { ok: true, json: async () => ({ canvases: [], tags: [] }) };
+        // What apiFetch throws for the server's "AI not set up" 503.
+        throw Object.assign(new Error("AI not configured."), {
+          status: 503,
+          code: "AI_NOT_SET_UP",
+        });
+      },
+    );
+    await act(async () => {
+      render(<AskPalette open onClose={() => undefined} />);
+    });
+    await ask("knife site");
+    const link = await screen.findByRole("link", { name: "Set up AI" });
+    expect(link.getAttribute("href")).toBe("/settings/ai");
+  });
+});

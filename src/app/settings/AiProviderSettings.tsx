@@ -8,7 +8,8 @@ import {
   Autocomplete,
   Box,
   Button,
-  Chip,
+  Collapse,
+  Link,
   MenuItem,
   Stack,
   TextField,
@@ -21,7 +22,15 @@ interface ProviderOption {
   label: string;
   defaultBaseUrl: string | null;
   requiresBaseUrl: boolean;
+  keyPageUrl: string | null;
   suggestedModels: string[];
+}
+
+/** The result of the one small request that tests a key (IMP-102). */
+interface KeyCheck {
+  ok: boolean;
+  problem?: string;
+  message: string;
 }
 
 interface ProviderSettingsPayload {
@@ -59,6 +68,8 @@ export function AiProviderSettings() {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [check, setCheck] = useState<KeyCheck | null>(null);
 
   const applyPayload = useCallback((payload: ProviderSettingsPayload) => {
     setData(payload);
@@ -102,6 +113,7 @@ export function AiProviderSettings() {
 
   const handleProviderChange = (next: ModelProvider) => {
     setProvider(next);
+    setCheck(null);
     const nextOption = data?.providers.find((p) => p.provider === next);
     setModel(
       data?.current?.provider === next
@@ -117,6 +129,7 @@ export function AiProviderSettings() {
     if (!provider) return;
     try {
       setSaving(true);
+      setCheck(null);
       const response = await fetch(ENDPOINT, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -132,8 +145,17 @@ export function AiProviderSettings() {
           await readProblem(response, "Failed to save AI provider"),
         );
       }
-      applyPayload((await response.json()) as ProviderSettingsPayload);
-      toast.success("AI provider saved");
+      const saved = (await response.json()) as ProviderSettingsPayload & {
+        check?: KeyCheck | null;
+      };
+      applyPayload(saved);
+      // The page shows the test result in plain words; no toast on top.
+      setCheck(
+        saved.check ?? {
+          ok: true,
+          message: "Saved.",
+        },
+      );
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to save AI provider",
@@ -153,6 +175,7 @@ export function AiProviderSettings() {
         );
       }
       applyPayload((await response.json()) as ProviderSettingsPayload);
+      setCheck(null);
       toast.success("AI provider key removed");
     } catch (error) {
       toast.error(
@@ -182,88 +205,141 @@ export function AiProviderSettings() {
   const activeLabel =
     data.providers.find((p) => p.provider === availability.provider)?.label ??
     availability.provider;
+  const isLocal = option?.requiresBaseUrl ?? false;
 
   return (
     <Stack spacing={2.5}>
-      <Typography variant="body2" color="text.secondary">
-        Tags, summaries, chat and generation use the provider and key you save
-        here. Keys are stored encrypted and are never shown again.
-      </Typography>
+      {/* IMP-102: say plainly whether AI is on and what it does. */}
+      {availability.configured ? (
+        <Alert severity="success" icon={false}>
+          <strong>AI is on</strong>, using {activeLabel} · {availability.model}{" "}
+          ({availability.source === "user" ? "your key" : "the server's key"}).
+          It {AI_USES}.
+        </Alert>
+      ) : (
+        <Alert severity="info" icon={false}>
+          <strong>AI is off.</strong> Nothing you save is sent to an AI
+          provider. Turn it on with your own key in three steps below; it{" "}
+          {AI_USES}.
+        </Alert>
+      )}
+      {data.current?.status === "ERROR" && !check && (
+        <Alert severity="warning">
+          The provider rejected your saved key. Paste a new one below.
+        </Alert>
+      )}
 
-      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-        {availability.configured ? (
-          <Chip
-            color="success"
-            variant="outlined"
-            size="small"
-            label={`In use: ${activeLabel} · ${availability.model} (${availability.source === "user" ? "your key" : "server key"})`}
-          />
+      <Step number={1} title="Pick a provider">
+        <TextField
+          select
+          label="Provider"
+          value={provider}
+          onChange={(event) =>
+            handleProviderChange(event.target.value as ModelProvider)
+          }
+          fullWidth
+        >
+          {data.providers.map((entry) => (
+            <MenuItem key={entry.provider} value={entry.provider}>
+              {entry.label}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Step>
+
+      <Step number={2} title="Get a key">
+        {option?.keyPageUrl ? (
+          <Typography variant="body2">
+            Sign in on{" "}
+            <Link
+              href={option.keyPageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {option.label}&apos;s key page
+            </Link>
+            , create a new key and copy it. Providers charge for use, so the
+            account may need a little credit.
+          </Typography>
         ) : (
-          <Chip variant="outlined" size="small" label="AI not configured" />
+          <Typography variant="body2">
+            Use the key your own AI server expects, and enter its address.
+          </Typography>
         )}
-        {data.current?.status === "ERROR" && (
-          <Chip
-            color="error"
-            variant="outlined"
-            size="small"
-            label="Saved key was rejected"
+        {isLocal && (
+          <TextField
+            label="Server address"
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
+            placeholder="https://host/v1"
+            helperText="Where your AI server answers, for example https://host/v1"
+            fullWidth
           />
         )}
+      </Step>
+
+      <Step number={3} title="Paste it">
+        <TextField
+          label="API key"
+          type="password"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+          autoComplete="off"
+          placeholder={
+            keyRequired ? "" : "Saved — leave empty to keep the current key"
+          }
+          helperText={
+            keyRequired
+              ? "Stored encrypted and never shown again."
+              : "Enter a new key only to replace it."
+          }
+          fullWidth
+        />
+      </Step>
+
+      <Box>
+        <Button
+          size="small"
+          onClick={() => setShowMore((value) => !value)}
+          aria-expanded={showMore}
+        >
+          {showMore ? "Fewer options" : "More options"}
+        </Button>
+        <Collapse in={showMore} unmountOnExit>
+          <Stack spacing={2} sx={{ mt: 1.5 }}>
+            <Autocomplete
+              freeSolo
+              options={option?.suggestedModels ?? []}
+              value={model}
+              onInputChange={(_event, value) => setModel(value)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Model"
+                  helperText="The first one suits most people."
+                  fullWidth
+                />
+              )}
+            />
+            {!isLocal && (
+              <TextField
+                label="Server address (optional)"
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                placeholder={option?.defaultBaseUrl ?? "https://host/v1"}
+                helperText="Leave empty to use the provider's own address."
+                fullWidth
+              />
+            )}
+          </Stack>
+        </Collapse>
       </Box>
 
-      <TextField
-        select
-        label="Provider"
-        value={provider}
-        onChange={(event) =>
-          handleProviderChange(event.target.value as ModelProvider)
-        }
-        fullWidth
-      >
-        {data.providers.map((entry) => (
-          <MenuItem key={entry.provider} value={entry.provider}>
-            {entry.label}
-          </MenuItem>
-        ))}
-      </TextField>
-
-      <Autocomplete
-        freeSolo
-        options={option?.suggestedModels ?? []}
-        value={model}
-        onInputChange={(_event, value) => setModel(value)}
-        renderInput={(params) => (
-          <TextField {...params} label="Model" fullWidth />
-        )}
-      />
-
-      <TextField
-        label={option?.requiresBaseUrl ? "Base URL" : "Base URL (optional)"}
-        value={baseUrl}
-        onChange={(event) => setBaseUrl(event.target.value)}
-        placeholder={option?.defaultBaseUrl ?? "https://host/v1"}
-        helperText={
-          option?.requiresBaseUrl
-            ? "OpenAI-compatible endpoint, for example https://host/v1"
-            : "Leave empty to use the provider's own endpoint"
-        }
-        fullWidth
-      />
-
-      <TextField
-        label="API key"
-        type="password"
-        value={apiKey}
-        onChange={(event) => setApiKey(event.target.value)}
-        autoComplete="off"
-        placeholder={
-          keyRequired ? "" : "Saved — leave empty to keep the current key"
-        }
-        helperText={
-          keyRequired ? "Required" : "Enter a new key only to replace it"
-        }
-        fullWidth
-      />
+      {check && (
+        <Alert severity={check.ok ? "success" : "warning"} role="status">
+          {check.message}
+        </Alert>
+      )}
 
       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
         <Button
@@ -272,7 +348,7 @@ export function AiProviderSettings() {
           disabled={saving || missing !== null}
           aria-describedby={missing ? "ai-provider-save-reason" : undefined}
         >
-          {saving ? "Saving…" : "Save AI provider"}
+          {saving ? "Testing your key…" : "Save and test"}
         </Button>
         {data.current && (
           <Button color="error" onClick={handleRemove} disabled={saving}>
@@ -286,6 +362,33 @@ export function AiProviderSettings() {
           {missing}
         </DisabledReason>
       </Stack>
+    </Stack>
+  );
+}
+
+/** What AI does in Memoria, said once on the page. */
+const AI_USES =
+  "is used for Ask, chat and writing help, tags and summaries for saved links, and sorting new items onto canvases";
+
+function Step({
+  number,
+  title,
+  children,
+}: {
+  number: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Stack
+      spacing={1.25}
+      component="section"
+      aria-label={`Step ${number}: ${title}`}
+    >
+      <Typography variant="subtitle2" component="h3">
+        {number}. {title}
+      </Typography>
+      {children}
     </Stack>
   );
 }

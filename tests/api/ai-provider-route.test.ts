@@ -9,6 +9,7 @@ const prismaMocks = vi.hoisted(() => {
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     delete: vi.fn(),
   };
   return {
@@ -19,6 +20,9 @@ const prismaMocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/auth", () => ({ auth: authMocks.auth }));
+
+const keyCheck = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/ai/key-check", () => ({ checkAiKey: keyCheck }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -63,6 +67,7 @@ describe("/api/v1/ai/provider", () => {
     authMocks.auth.mockResolvedValue({ user: { id: "user-1" } });
     prismaMocks.modelCredential.findMany.mockResolvedValue([]);
     prismaMocks.modelCredential.findFirst.mockResolvedValue(null);
+    keyCheck.mockResolvedValue({ ok: true, message: "Your key works." });
     prismaMocks.transaction.mockImplementation(
       async (run: (tx: unknown) => Promise<unknown>) =>
         run({
@@ -339,5 +344,120 @@ describe("/api/v1/ai/provider", () => {
       where: { id: "cred-1" },
       data: { capabilities: [] },
     });
+  });
+});
+
+describe("saving tests the key (IMP-102)", () => {
+  const anthropicRow = {
+    ...savedRow,
+    secretFingerprint: "fp-old",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    authMocks.auth.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMocks.modelCredential.findFirst.mockResolvedValue(null);
+    prismaMocks.agentProfileCount.mockResolvedValue(0);
+    prismaMocks.transaction.mockImplementation(
+      async (run: (tx: unknown) => Promise<unknown>) =>
+        run({
+          modelCredential: prismaMocks.modelCredential,
+          agentProfile: { count: prismaMocks.agentProfileCount },
+        }),
+    );
+  });
+
+  it("tests a new key once, marks it working, and never returns the key", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([anthropicRow]);
+    keyCheck.mockResolvedValue({
+      ok: true,
+      message: "Your key works. AI is on.",
+    });
+
+    const res = await PUT(
+      createRequest("PUT", {
+        provider: "ANTHROPIC",
+        model: "claude-haiku-5-5",
+        apiKey: "sk-ant-new-key",
+      }),
+      {} as never,
+    );
+    const text = await res.text();
+    expect(res.status).toBe(200);
+    expect(text).not.toContain("sk-ant-new-key");
+    expect(JSON.parse(text).check).toEqual({
+      ok: true,
+      message: "Your key works. AI is on.",
+    });
+    expect(keyCheck).toHaveBeenCalledTimes(1);
+    expect(keyCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-1", apiKey: "sk-ant-new-key" }),
+    );
+    expect(prismaMocks.modelCredential.updateMany).toHaveBeenCalledWith({
+      where: { id: "cred-1", secretFingerprint: "fp-old" },
+      data: { status: "ACTIVE", lastVerifiedAt: expect.any(Date) },
+    });
+  });
+
+  it("marks a rejected key and says what is wrong in plain words", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([anthropicRow]);
+    keyCheck.mockResolvedValue({
+      ok: false,
+      problem: "wrong-key",
+      message: "The provider did not accept this key.",
+    });
+    const res = await PUT(
+      createRequest("PUT", {
+        provider: "ANTHROPIC",
+        model: "claude-haiku-5-5",
+        apiKey: "sk-ant-bad",
+      }),
+      {} as never,
+    );
+    const body = await res.json();
+    expect(body.check.problem).toBe("wrong-key");
+    expect(prismaMocks.modelCredential.updateMany).toHaveBeenCalledWith({
+      where: { id: "cred-1", secretFingerprint: "fp-old" },
+      data: { status: "ERROR", lastVerifiedAt: null },
+    });
+  });
+
+  it("leaves the status alone when the key could not be judged", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([anthropicRow]);
+    keyCheck.mockResolvedValue({
+      ok: false,
+      problem: "busy",
+      message: "The provider is busy.",
+    });
+    const res = await PUT(
+      createRequest("PUT", {
+        provider: "ANTHROPIC",
+        model: "claude-haiku-5-5",
+        apiKey: "sk-ant-x",
+      }),
+      {} as never,
+    );
+    expect((await res.json()).check.problem).toBe("busy");
+    expect(prismaMocks.modelCredential.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("offers each provider's own key page", async () => {
+    prismaMocks.modelCredential.findMany.mockResolvedValue([]);
+    const body = await (await GET(createRequest("GET"), {} as never)).json();
+    const byProvider = Object.fromEntries(
+      body.providers.map(
+        (p: { provider: string; keyPageUrl: string | null }) => [
+          p.provider,
+          p.keyPageUrl,
+        ],
+      ),
+    );
+    expect(byProvider.OPENAI).toBe("https://platform.openai.com/api-keys");
+    expect(byProvider.ANTHROPIC).toMatch(
+      /^https:\/\/console\.anthropic\.com\//,
+    );
+    expect(byProvider.OPENAI_COMPAT).toBeNull();
   });
 });

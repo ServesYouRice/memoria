@@ -57,10 +57,19 @@ vi.mock("@/lib/ai/service", () => ({
   AI_SUMMARY_CONTENT_BYTES: 200,
   generateText: mocks.generateText,
 }));
-vi.mock("@/lib/ai/provider-resolution", () => ({
-  AI_NOT_CONFIGURED_DETAIL: "AI not configured.",
-  getAiAvailability: mocks.getAiAvailability,
-}));
+vi.mock("@/lib/ai/provider-resolution", async () => {
+  const { ServiceUnavailableError } = await import("@/lib/errors");
+  return {
+    AI_NOT_CONFIGURED_DETAIL: "AI not configured.",
+    AiNotSetUpError: class extends ServiceUnavailableError {
+      constructor(detail: string) {
+        super(detail);
+        this.extensions = { code: "AI_NOT_SET_UP", setupUrl: "/settings/ai" };
+      }
+    },
+    getAiAvailability: mocks.getAiAvailability,
+  };
+});
 
 import { POST } from "@/app/api/v1/ai/summarize/pile/route";
 import { resetAiBudgetForTests } from "@/lib/ai/budget";

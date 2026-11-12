@@ -14,11 +14,7 @@ import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { ActivityType, logActivity } from "@/lib/activity";
 import { MAX_ZINDEX } from "@/lib/constants";
-import {
-  notFoundError,
-  ServiceUnavailableError,
-  UnprocessableEntityError,
-} from "@/lib/errors";
+import { notFoundError, UnprocessableEntityError } from "@/lib/errors";
 import { stripHtml } from "@/lib/sanitization";
 import type { TiptapNode } from "@/lib/rich-text/note-format";
 import {
@@ -29,6 +25,7 @@ import { runBudgetedAi, type AiUsageSnapshot } from "./budget";
 import { AiProviderError } from "./errors";
 import {
   AI_NOT_CONFIGURED_DETAIL,
+  AiNotSetUpError,
   getAiAvailability,
 } from "./provider-resolution";
 import {
@@ -373,7 +370,7 @@ export async function transformPileIntoNote(input: {
   // Check before reserving budget so an unconfigured provider costs nothing.
   const availability = await getAiAvailability(userId);
   if (!availability.configured) {
-    throw new ServiceUnavailableError(AI_NOT_CONFIGURED_DETAIL);
+    throw new AiNotSetUpError(AI_NOT_CONFIGURED_DETAIL);
   }
 
   const title = str(asRecord(frame.content).title);

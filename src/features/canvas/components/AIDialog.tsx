@@ -28,6 +28,11 @@ import {
 import { PERSONAS, type PersonaKey } from "@/lib/ai/personas";
 import { boundChatHistory } from "@/lib/ai/chat-history";
 import { boundChatContext } from "@/lib/validation/ai";
+import {
+  AI_NOT_SET_UP_MESSAGE,
+  AiSetupLink,
+  aiSetupNeeded,
+} from "@/features/ai/ai-setup";
 
 interface AIDialogProps {
   open: boolean;
@@ -57,6 +62,8 @@ export function AIDialog({
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // IMP-102: the failure was "AI is not set up", so the message links there.
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [adding, setAdding] = useState(false);
 
   // Chat State
@@ -68,6 +75,7 @@ export function AIDialog({
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
+    setNeedsSetup(false);
     try {
       const response = await fetch("/api/v1/ai/generate", {
         method: "POST",
@@ -75,7 +83,10 @@ export function AIDialog({
         body: JSON.stringify({ prompt }),
       });
 
-      if (!response.ok) throw new Error("Generation failed");
+      if (!response.ok) {
+        if (await aiSetupNeeded(response)) setNeedsSetup(true);
+        throw new Error("Generation failed");
+      }
       const data = await response.json();
       setResult(data.result);
     } catch {
@@ -88,6 +99,7 @@ export function AIDialog({
   const handleSummarize = async () => {
     setLoading(true);
     setError(null);
+    setNeedsSetup(false);
     try {
       const response = await fetch("/api/v1/ai/summarize", {
         method: "POST",
@@ -95,7 +107,10 @@ export function AIDialog({
         body: JSON.stringify({ canvasId }),
       });
 
-      if (!response.ok) throw new Error("Summarization failed");
+      if (!response.ok) {
+        if (await aiSetupNeeded(response)) setNeedsSetup(true);
+        throw new Error("Summarization failed");
+      }
       const data = await response.json();
       setResult(data.summary);
     } catch {
@@ -152,7 +167,21 @@ export function AIDialog({
         ]);
         return;
       }
-      if (!response.ok) throw new Error("Chat failed");
+      if (!response.ok) {
+        if (await aiSetupNeeded(response)) {
+          setNeedsSetup(true);
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `${AI_NOT_SET_UP_MESSAGE} Set it up in Settings → AI.`,
+              failed: true,
+            },
+          ]);
+          return;
+        }
+        throw new Error("Chat failed");
+      }
       const data = await response.json();
       setChatMessages((prev) => [
         ...prev,
@@ -330,10 +359,16 @@ export function AIDialog({
             </Box>
           )}
 
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
+          {needsSetup ? (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              {AI_NOT_SET_UP_MESSAGE} <AiSetupLink onClick={onClose} />
             </Alert>
+          ) : (
+            error && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {error}
+              </Alert>
+            )
           )}
 
           {loading ? (
