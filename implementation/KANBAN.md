@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-097](tasks/IMP-097.md) | "Remind me" and "Something old" | |
 | [IMP-098](tasks/IMP-098.md) | Templates and "Duplicate canvas" (build the server side, then switch on) | |
 | [IMP-099](tasks/IMP-099.md) | Sign in with an existing login system | |
 | [IMP-100](tasks/IMP-100.md) | Lighter install and set-up checks | |

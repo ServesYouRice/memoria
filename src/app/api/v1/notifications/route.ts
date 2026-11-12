@@ -5,6 +5,7 @@ import { withApiHandler } from "@/lib/api/route-handler";
 import { parsePagination } from "@/lib/api/pagination";
 import { prisma } from "@/lib/db";
 import { decryptSecret } from "@/lib/agents/crypto";
+import { reminderUrl } from "@/lib/reminders/item-reminders";
 
 const markReadSchema = z.union([
   z.object({ ids: z.array(z.string().cuid()).min(1).max(100) }).strict(),
@@ -74,12 +75,19 @@ export const GET = withApiHandler(async (request: Request) => {
       ? { href: invitationHref, label: "Review invitation" }
       : notification.type === "WEEKLY_RECAP"
         ? { href: "/recap", label: "Open recap" }
-        : notification.canvasId && notification.type !== "CANVAS_SHARED"
+        : notification.type === "ITEM_REMINDER" &&
+            notification.canvasId &&
+            notification.itemId
           ? {
-              href: `/canvas/${notification.canvasId}`,
-              label: "Open canvas",
+              href: reminderUrl(notification.canvasId, notification.itemId),
+              label: "Open item",
             }
-          : null;
+          : notification.canvasId && notification.type !== "CANVAS_SHARED"
+            ? {
+                href: `/canvas/${notification.canvasId}`,
+                label: "Open canvas",
+              }
+            : null;
     return { ...notification, action };
   });
 

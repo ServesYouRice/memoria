@@ -337,3 +337,27 @@ export function weeklyRecapTemplate(data: {
 
   return { subject: "Your week in Memoria", text, html };
 }
+
+/** IMP-097: the item a person asked to be reminded of. */
+export function itemReminderTemplate(data: {
+  userName: string;
+  itemTitle: string;
+  canvasName: string;
+  itemUrl: string;
+  settingsUrl: string;
+}): EmailTemplate {
+  const text = [
+    `Hi ${data.userName},`,
+    "",
+    `You asked Memoria to remind you of "${data.itemTitle}" on ${data.canvasName}.`,
+    "",
+    `Open it: ${data.itemUrl}`,
+    "",
+    `Turn reminder emails off in Settings: ${data.settingsUrl}`,
+  ].join("\n");
+  return {
+    subject: `Reminder: ${data.itemTitle}`,
+    text,
+    html: `<p>Hi ${escapeHtml(data.userName)},</p><p>You asked Memoria to remind you of <strong>${escapeHtml(data.itemTitle)}</strong> on ${escapeHtml(data.canvasName)}.</p><p><a href="${escapeHtml(data.itemUrl)}">Open it</a></p><p><a href="${escapeHtml(data.settingsUrl)}">Turn reminder emails off in Settings</a></p>`,
+  };
+}

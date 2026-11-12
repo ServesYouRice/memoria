@@ -19,6 +19,7 @@ import {
   OpenInNew as OpenLinkIcon,
   ChromeReaderMode as SavedCopyIcon,
   Check as CheckIcon,
+  NotificationsActive as ReminderIcon,
 } from "@mui/icons-material";
 import {
   ItemType,
@@ -35,6 +36,7 @@ import {
 } from "@/features/canvas/lib/note-colors";
 import { useThemeMode } from "@/lib/theme-context";
 import { SavedCopyDialog } from "./SavedCopyDialog";
+import { ReminderDialog } from "./ReminderDialog";
 
 export interface ContextMenuPosition {
   x: number;
@@ -141,6 +143,14 @@ export function CanvasContextMenu({
   const [savedCopyItemId, setSavedCopyItemId] = React.useState<string | null>(
     null,
   );
+  // IMP-097: "Remind me" on this item, chosen after the menu closes.
+  const [reminderItemId, setReminderItemId] = React.useState<string | null>(
+    null,
+  );
+  const canRemind =
+    item !== undefined &&
+    item.type !== ItemType.ARROW &&
+    item.type !== ItemType.DRAWING;
   const isFrame = item?.type === ItemType.FRAME;
   // Ask about AI only once a frame's menu opens for someone who can edit.
   const pile = usePileTransform(
@@ -220,6 +230,16 @@ export function CanvasContextMenu({
             <ListItemText>Duplicate</ListItemText>
           </MenuItem>
         )}
+        {canRemind && item && (
+          <MenuItem
+            onClick={() => handleAction(() => setReminderItemId(item.id))}
+          >
+            <ListItemIcon>
+              <ReminderIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Remind me…</ListItemText>
+          </MenuItem>
+        )}
         {capabilities.canComment && (
           <MenuItem onClick={() => handleAction(onComments)}>
             <ListItemIcon>
@@ -244,6 +264,10 @@ export function CanvasContextMenu({
           </MenuItem>,
         ]}
       </Menu>
+      <ReminderDialog
+        itemId={reminderItemId}
+        onClose={() => setReminderItemId(null)}
+      />
       <SavedCopyDialog
         itemId={savedCopyItemId}
         onClose={() => setSavedCopyItemId(null)}

@@ -38,6 +38,7 @@ import { useWorkspace } from "@/lib/hooks/use-workspaces";
 import { ActivityFeed } from "./ActivityFeed";
 import { StarterRow } from "./StarterRow";
 import { ImportCanvasDialog } from "./ImportCanvasDialog";
+import { SomethingOldCard } from "./SomethingOldCard";
 import { CanvasCard, CanvasCardSkeleton, CardGrid } from "./CanvasCard";
 import { GlobalSearchDialog } from "@/components/GlobalSearchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -270,6 +271,8 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       {!workspaceId && !selectionMode && (
         <StarterRow onBlankCanvas={() => setCreateDialogOpen(true)} />
       )}
+
+      {!workspaceId && !selectionMode && <SomethingOldCard />}
 
       <Box
         sx={{

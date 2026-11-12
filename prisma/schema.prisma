@@ -74,6 +74,7 @@ model User {
   bookmarkImports         BookmarkImport[]
   clipBatches             ClipBatch[]
   weeklyRecaps            WeeklyRecap[]
+  itemReminders           ItemReminder[]
 }
 
 enum AccountExportStatus {
@@ -329,6 +330,8 @@ model CanvasItem {
   enrichment          ItemEnrichment?
   pageCopy            ItemPageCopy?
   homeBoardSuggestion HomeBoardSuggestion?
+  reminders           ItemReminder[]
+  notifications       Notification[]
 
   @@index([canvasId, deletedAt])
   @@index([normalizedUrl])
@@ -437,6 +440,7 @@ enum NotificationType {
   SHARE_INVITATION_DECLINED
   CANVAS_SHARED
   WEEKLY_RECAP
+  ITEM_REMINDER
 }
 
 model Notification {
@@ -447,12 +451,34 @@ model Notification {
   actor       User             @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
   canvasId    String?
   canvas      Canvas?          @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  /// The item a reminder notification opens (IMP-097).
+  itemId      String?
+  item        CanvasItem?      @relation(fields: [itemId], references: [id], onDelete: SetNull)
   type        NotificationType
   subject     String
   readAt      DateTime?
   createdAt   DateTime         @default(now())
 
   @@index([recipientId, readAt, createdAt])
+}
+
+/// "Remind me" on an item (IMP-097). One per person and item; it belongs to
+/// the person who set it and is checked against their access when it fires.
+model ItemReminder {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  remindAt    DateTime
+  firedAt     DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([userId, itemId])
+  @@index([remindAt])
+  @@index([userId, remindAt])
 }
 
 model NotificationPreference {

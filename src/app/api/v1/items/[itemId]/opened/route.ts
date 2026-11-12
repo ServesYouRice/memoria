@@ -13,7 +13,8 @@ const paramsSchema = z.object({ itemId: z.string().min(1).max(64) });
 
 /**
  * IMP-070 — records that the owner opened a saved link, so the weekly recap
- * does not call it stale. Only the timestamp changes: no version bump, no
+ * does not call it stale. "Something old" (IMP-097) records opens of any of
+ * the owner's items, so it does not offer the same one again. Only the timestamp changes: no version bump, no
  * edit time and no collaboration event, because nothing on the board moved.
  */
 export const POST = withApiHandler(
@@ -25,12 +26,11 @@ export const POST = withApiHandler(
       SET "lastOpenedAt" = NOW()
       FROM "Canvas" AS canvas
       WHERE item."id" = ${itemId}
-        AND item."type" = 'BOOKMARK'
         AND item."deletedAt" IS NULL
         AND canvas."id" = item."canvasId"
         AND canvas."userId" = ${userId}
     `;
-    if (updated === 0) throw new NotFoundError("Link not found.");
+    if (updated === 0) throw new NotFoundError("Item not found.");
     return new NextResponse(null, { status: 204 });
   },
 );

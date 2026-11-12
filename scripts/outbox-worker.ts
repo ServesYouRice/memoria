@@ -76,6 +76,14 @@ import {
   createWeeklyRecapHandler,
   createWeeklyRecapSweepHandler,
 } from "../src/lib/recap/weekly-recap";
+import {
+  REMINDER_EMAIL_JOB,
+  REMINDER_FIRE_JOB,
+  REMINDER_SWEEP_JOB,
+  createReminderEmailHandler,
+  createReminderFireHandler,
+  createReminderSweepHandler,
+} from "../src/lib/reminders/item-reminders";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -116,6 +124,9 @@ await runOutboxWorker({
     [RECAP_SWEEP_JOB]: createWeeklyRecapSweepHandler(prisma),
     [RECAP_USER_JOB]: createWeeklyRecapHandler(prisma),
     [RECAP_EMAIL_JOB]: createWeeklyRecapEmailHandler(prisma),
+    [REMINDER_SWEEP_JOB]: createReminderSweepHandler(prisma),
+    [REMINDER_FIRE_JOB]: createReminderFireHandler(prisma),
+    [REMINDER_EMAIL_JOB]: createReminderEmailHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),

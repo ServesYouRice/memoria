@@ -13,6 +13,7 @@ export const NOTIFICATION_TYPES = [
   "CANVAS_SHARED",
   "SHARE_INVITATION_ACCEPTED",
   "SHARE_INVITATION_DECLINED",
+  "ITEM_REMINDER",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -21,6 +22,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   CANVAS_SHARED: "Canvas invitations",
   SHARE_INVITATION_ACCEPTED: "Accepted invitations",
   SHARE_INVITATION_DECLINED: "Declined invitations",
+  ITEM_REMINDER: "Reminders",
 };
 
 export interface NotificationAction {

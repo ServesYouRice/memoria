@@ -21,6 +21,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
   useSearchParams: () => new URLSearchParams(),
 }));
+// "Something old" (IMP-097) has its own tests.
+vi.mock("@/features/dashboard/components/SomethingOldCard", () => ({
+  SomethingOldCard: () => null,
+}));
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));

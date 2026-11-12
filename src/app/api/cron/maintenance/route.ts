@@ -4,6 +4,7 @@ import { withApiHandler } from "@/lib/api/route-handler";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import { InternalServerError, UnauthorizedError } from "@/lib/errors";
 import { enqueueWeeklyRecapSweep } from "@/lib/recap/weekly-recap";
+import { enqueueReminderSweep } from "@/lib/reminders/item-reminders";
 
 export const GET = withApiHandler(async (request: NextRequest) => {
   const secret = process.env.CRON_SECRET?.trim();
@@ -26,6 +27,8 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     }
     // IMP-070: the first maintenance run of each ISO week queues the recap.
     await enqueueWeeklyRecapSweep(tx);
+    // IMP-097: each run fires the reminders that came due.
+    await enqueueReminderSweep(tx);
   });
   return NextResponse.json({ queued: true, day });
 });
