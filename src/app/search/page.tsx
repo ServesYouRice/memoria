@@ -17,7 +17,7 @@ export default async function SearchPage() {
   }
 
   return (
-    <AppShell maxWidth="md">
+    <AppShell readingWidth="md">
       <Suspense fallback={<p>Loading search…</p>}>
         <SearchContent />
       </Suspense>

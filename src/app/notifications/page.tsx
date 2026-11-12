@@ -16,7 +16,7 @@ export default async function NotificationsPage() {
   }
 
   return (
-    <AppShell maxWidth="md">
+    <AppShell readingWidth="md">
       <NotificationsContent />
     </AppShell>
   );

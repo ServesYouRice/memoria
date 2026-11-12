@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const navigationMocks = vi.hoisted(() => ({
   push: vi.fn(),
   unread: 3,
+  signedIn: true,
 }));
 
 vi.mock("next/link", () => ({
@@ -28,7 +29,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
-    data: { user: { name: "Ada", email: "ada@example.com", image: null } },
+    data: navigationMocks.signedIn
+      ? { user: { name: "Ada", email: "ada@example.com", image: null } }
+      : null,
+    isPending: false,
   }),
   signOutAndRedirect: vi.fn(),
 }));
@@ -42,10 +46,12 @@ vi.mock("@/components/ThemeToggle", () => ({
 }));
 
 import { AppShell } from "@/components/layout/AppShell";
+import { PublicInfoPage } from "@/components/layout/PublicInfoPage";
 
 afterEach(() => {
   cleanup();
   navigationMocks.unread = 3;
+  navigationMocks.signedIn = true;
 });
 
 describe("authenticated application shell", () => {
@@ -100,5 +106,54 @@ describe("authenticated application shell", () => {
       name: "Notifications, 150 unread",
     });
     expect(bell.querySelector(".MuiBadge-badge")?.textContent).toBe("99+");
+  });
+
+  it("keeps the shared outer width and narrows only an inner column", () => {
+    render(
+      <AppShell readingWidth="md">
+        <h1>Settings</h1>
+      </AppShell>,
+    );
+
+    const main = screen.getByRole("main");
+    expect(main.className).toContain("MuiContainer-maxWidthLg");
+    const column = within(main).getByTestId("reading-column");
+    expect(
+      within(column).getByRole("heading", { name: "Settings" }),
+    ).toBeTruthy();
+  });
+});
+
+describe("public information pages", () => {
+  it("show the normal app top bar to signed-in users", () => {
+    render(
+      <PublicInfoPage title="Help" description="Guidance">
+        <p>Body</p>
+      </PublicInfoPage>,
+    );
+
+    expect(
+      screen.getByRole("navigation", { name: "Primary navigation" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Help" }),
+    ).toBeTruthy();
+  });
+
+  it("show the logo and Sign in to visitors without requiring a session", () => {
+    navigationMocks.signedIn = false;
+    render(
+      <PublicInfoPage title="Help" description="Guidance">
+        <p>Body</p>
+      </PublicInfoPage>,
+    );
+
+    expect(
+      screen.queryByRole("navigation", { name: "Primary navigation" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
+    ).toBe("/auth/login");
+    expect(screen.getByRole("main").textContent).toContain("Body");
   });
 });

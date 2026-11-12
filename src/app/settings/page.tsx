@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   }
 
   return (
-    <AppShell maxWidth="md">
+    <AppShell readingWidth="md">
       <SettingsContent user={session.user} />
     </AppShell>
   );

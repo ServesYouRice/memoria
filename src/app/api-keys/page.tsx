@@ -16,7 +16,7 @@ export default async function ApiKeysPage() {
   }
 
   return (
-    <AppShell maxWidth="md">
+    <AppShell readingWidth="md">
       <ApiKeysContent />
     </AppShell>
   );

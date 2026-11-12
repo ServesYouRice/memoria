@@ -39,7 +39,7 @@ export default async function ShareTargetPage({
   }
 
   return (
-    <AppShell maxWidth="sm">
+    <AppShell readingWidth="sm">
       <ShareTargetContent
         link={link}
         shareId={params.sid ?? null}
