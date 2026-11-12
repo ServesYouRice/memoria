@@ -208,14 +208,19 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
                 color: isActive("/notifications") ? "primary.main" : undefined,
               }}
             >
-              <Badge
-                badgeContent={unreadNotifications}
-                color="error"
-                max={99}
-                invisible={unreadNotifications === 0}
-              >
+              {/* Render no badge at zero: MUI's hidden-badge transform can
+                  compute to `none` after a full load and leave a red "0". */}
+              {unreadNotifications > 0 ? (
+                <Badge
+                  badgeContent={unreadNotifications}
+                  color="error"
+                  max={99}
+                >
+                  <NotificationsIcon />
+                </Badge>
+              ) : (
                 <NotificationsIcon />
-              </Badge>
+              )}
             </IconButton>
           </Tooltip>
           <ThemeToggle />

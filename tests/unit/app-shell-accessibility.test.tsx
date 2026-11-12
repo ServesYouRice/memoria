@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const navigationMocks = vi.hoisted(() => ({
   push: vi.fn(),
+  unread: 3,
 }));
 
 vi.mock("next/link", () => ({
@@ -33,7 +34,7 @@ vi.mock("@/lib/auth-client", () => ({
 }));
 
 vi.mock("@/lib/hooks/use-notifications", () => ({
-  useUnreadNotifications: () => ({ data: 3 }),
+  useUnreadNotifications: () => ({ data: navigationMocks.unread }),
 }));
 
 vi.mock("@/components/ThemeToggle", () => ({
@@ -42,7 +43,10 @@ vi.mock("@/components/ThemeToggle", () => ({
 
 import { AppShell } from "@/components/layout/AppShell";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  navigationMocks.unread = 3;
+});
 
 describe("authenticated application shell", () => {
   it("exposes skip navigation, current-page state, and notification count", () => {
@@ -69,5 +73,32 @@ describe("authenticated application shell", () => {
     expect(
       screen.getByRole("link", { name: "Notifications, 3 unread" }),
     ).toBeTruthy();
+  });
+
+  it("renders no badge when nothing is unread", () => {
+    navigationMocks.unread = 0;
+    const { container } = render(
+      <AppShell>
+        <h1>Dashboard content</h1>
+      </AppShell>,
+    );
+
+    const bell = screen.getByRole("link", { name: "Notifications" });
+    expect(bell.querySelector(".MuiBadge-badge")).toBeNull();
+    expect(container.textContent).not.toMatch(/\b0\b/);
+  });
+
+  it("caps a large unread count at 99+", () => {
+    navigationMocks.unread = 150;
+    render(
+      <AppShell>
+        <h1>Dashboard content</h1>
+      </AppShell>,
+    );
+
+    const bell = screen.getByRole("link", {
+      name: "Notifications, 150 unread",
+    });
+    expect(bell.querySelector(".MuiBadge-badge")?.textContent).toBe("99+");
   });
 });
