@@ -70,6 +70,20 @@ describe("thumbnail outbox handler", () => {
     );
   });
 
+  it("installs a first preview even at revision 0", async () => {
+    const { client, canvasUpdate } = fakePrisma(4n);
+    await createThumbnailStoreHandler(client)({
+      payload: { candidateId: "clzzzzzzzzzzzzzzzzzzzzzzz" },
+    } as never);
+    expect(canvasUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([{ thumbnailKey: null }]),
+        }),
+      }),
+    );
+  });
+
   it("drops a stale candidate without writing an object", async () => {
     const { client, candidateDelete } = fakePrisma(5n);
     await createThumbnailStoreHandler(client)({

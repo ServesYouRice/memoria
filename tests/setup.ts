@@ -50,12 +50,15 @@ if (typeof HTMLCanvasElement !== "undefined") {
 }
 
 // Mock IntersectionObserver
-global.IntersectionObserver = vi.fn(() => ({
-  disconnect: vi.fn(),
-  observe: vi.fn(),
-  takeRecords: vi.fn(),
-  unobserve: vi.fn(),
-})) as any;
+// A plain function, not an arrow: callers (next/link prefetching) use `new`.
+global.IntersectionObserver = vi.fn(function IntersectionObserverMock() {
+  return {
+    disconnect: vi.fn(),
+    observe: vi.fn(),
+    takeRecords: vi.fn(),
+    unobserve: vi.fn(),
+  };
+}) as any;
 
 afterAll(async () => {
   // Cleanup

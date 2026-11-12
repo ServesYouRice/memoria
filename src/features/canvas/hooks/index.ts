@@ -36,4 +36,3 @@ export {
 // AI & Collaboration (NEW)
 export { useCanvasAIHandlers } from "./use-canvas-ai-handlers";
 export { useCanvasCollaborationUI } from "./use-canvas-collaboration-ui";
-export { useCanvasThumbnail } from "./use-canvas-thumbnail";

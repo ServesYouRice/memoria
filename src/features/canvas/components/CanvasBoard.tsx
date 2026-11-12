@@ -101,6 +101,7 @@ import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
 import { appColor, appColorTokens } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
+import { thumbnailDataUrl } from "@/features/canvas/lib/thumbnail";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -842,18 +843,17 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     (expectedRevision: string) => {
       if (!stageRef.current || !isOwner) return;
       try {
-        const thumbnail = stageRef.current.toDataURL({
-          pixelRatio: 0.3,
-          mimeType: "image/jpeg",
-          quality: 0.6,
-        });
+        const thumbnail = thumbnailDataUrl(
+          stageRef.current,
+          appColorTokens[themeMode].canvasBackground,
+        );
         updateThumbnail.mutate({ canvasId, thumbnail, expectedRevision });
         lastThumbnailRevisionRef.current = expectedRevision;
       } catch {
         // A thumbnail is a best-effort derivative and must not interrupt editing.
       }
     },
-    [canvasId, isOwner, updateThumbnail],
+    [canvasId, isOwner, themeMode, updateThumbnail],
   );
 
   useEffect(() => {
@@ -864,7 +864,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     if (
       !isOwner ||
       totalItemCount === 0 ||
-      canvasRevision === "0" ||
+      // Revision "0" still needs a preview: seeded canvases have items but
+      // no change history yet (IMP-083).
       lastThumbnailRevisionRef.current === canvasRevision
     ) {
       return;

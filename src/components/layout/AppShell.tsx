@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import {
   Badge,
   Box,
   Button,
+  ButtonBase,
   Container,
   Divider,
   Drawer,
@@ -94,6 +95,26 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
     (href !== "/dashboard" && pathname?.startsWith(`${href}/`));
 
   const closeAccountMenu = () => setAccountAnchor(null);
+
+  // "⌘ K" on Apple keyboards; set after mount so server HTML matches.
+  const [shortcutLabel, setShortcutLabel] = useState("Ctrl K");
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/.test(navigator.platform)) setShortcutLabel("⌘ K");
+  }, []);
+
+  // Ctrl/Cmd+K opens search, unless the page already used it (the
+  // dashboard opens its command palette, which also offers search).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        router.push("/search");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [router]);
 
   return (
     <Box
@@ -198,11 +219,62 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
             <Box sx={{ flexGrow: { xs: 1, md: 0 } }} />
             {user && <AskLauncher />}
 
-            {/* Actions */}
+            {/* Actions. Wide screens get a visible search field (IMP-083);
+                narrower ones keep the icon. */}
+            <ButtonBase
+              aria-label="Search"
+              aria-keyshortcuts="Control+K Meta+K"
+              onClick={() => router.push("/search")}
+              sx={{
+                display: { xs: "none", lg: "flex" },
+                alignItems: "center",
+                gap: 1,
+                width: 240,
+                height: 40,
+                px: 1.5,
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "action.hover",
+                color: "text.secondary",
+                justifyContent: "flex-start",
+                "&:hover": { borderColor: "text.secondary" },
+                "&.Mui-focusVisible": {
+                  outline: "2px solid",
+                  outlineColor: "primary.main",
+                  outlineOffset: 2,
+                },
+              }}
+            >
+              <SearchIcon fontSize="small" />
+              <Typography
+                variant="body2"
+                component="span"
+                sx={{ flexGrow: 1, textAlign: "left" }}
+              >
+                Search…
+              </Typography>
+              <Box
+                component="kbd"
+                sx={{
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  px: 0.75,
+                  py: 0.25,
+                  borderRadius: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "background.paper",
+                }}
+              >
+                {shortcutLabel}
+              </Box>
+            </ButtonBase>
             <Tooltip title="Search">
               <IconButton
                 aria-label="Search"
                 onClick={() => router.push("/search")}
+                sx={{ display: { lg: "none" } }}
               >
                 <SearchIcon />
               </IconButton>

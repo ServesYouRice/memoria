@@ -8,10 +8,27 @@ import {
   CardContent,
   Skeleton,
   Typography,
-  alpha,
 } from "@mui/material";
-import { BrushOutlined as CanvasIcon } from "@mui/icons-material";
-import { surfaces } from "@/lib/theme";
+
+/** Placeholder colours for cards without a preview, picked by name. */
+const PLACEHOLDER_COLORS = [
+  "primary",
+  "secondary",
+  "info",
+  "success",
+  "warning",
+  "error",
+] as const;
+
+export function placeholderFor(name: string) {
+  const trimmed = name.trim();
+  let hash = 0;
+  for (const char of trimmed) hash = (hash * 31 + char.codePointAt(0)!) | 0;
+  return {
+    initial: (Array.from(trimmed)[0] ?? "?").toLocaleUpperCase(),
+    color: PLACEHOLDER_COLORS[Math.abs(hash) % PLACEHOLDER_COLORS.length]!,
+  };
+}
 
 export interface CanvasCardProps {
   name: string;
@@ -39,6 +56,8 @@ export function CanvasCard({
   index = 0,
 }: CanvasCardProps) {
   const [imageError, setImageError] = useState(false);
+  const placeholder = placeholderFor(name);
+  const showPreview = Boolean(thumbnail) && !imageError;
 
   return (
     <Card
@@ -78,24 +97,36 @@ export function CanvasCard({
             alignItems: "center",
             justifyContent: "center",
             overflow: "hidden",
-            background: surfaces.brandSoft,
+            bgcolor: showPreview
+              ? "action.hover"
+              : (theme) =>
+                  // color-mix works with the CSS-variable theme in both modes.
+                  `color-mix(in srgb, ${
+                    (theme.vars ?? theme).palette[placeholder.color].main
+                  } 14%, transparent)`,
           }}
         >
-          {thumbnail && !imageError ? (
+          {showPreview ? (
             <Box
               component="img"
-              src={thumbnail}
+              src={thumbnail ?? undefined}
               alt=""
               onError={() => setImageError(true)}
               sx={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
           ) : (
-            <CanvasIcon
+            <Typography
+              aria-hidden
+              data-testid="canvas-card-placeholder"
               sx={{
-                fontSize: 48,
-                color: (theme) => alpha(theme.palette.primary.main, 0.4),
+                fontSize: 56,
+                fontWeight: 700,
+                lineHeight: 1,
+                color: `${placeholder.color}.main`,
               }}
-            />
+            >
+              {placeholder.initial}
+            </Typography>
           )}
         </Box>
         <CardContent sx={{ flexGrow: 1, width: "100%", py: 1.5 }}>

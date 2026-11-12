@@ -35,6 +35,7 @@ import {
 } from "@/lib/hooks/use-canvases";
 import { useWorkspace } from "@/lib/hooks/use-workspaces";
 import { ActivityFeed } from "./ActivityFeed";
+import { StarterRow } from "./StarterRow";
 import { CanvasCard, CanvasCardSkeleton, CardGrid } from "./CanvasCard";
 import { GlobalSearchDialog } from "@/components/GlobalSearchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -54,6 +55,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const { data: workspaceData } = useWorkspace(workspaceId || undefined);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [showActivity, setShowActivity] = useState(true);
   const [newCanvasName, setNewCanvasName] = useState("");
   const createInFlightRef = useRef(false);
   const [selectedCanvasIds, setSelectedCanvasIds] = useState<Set<string>>(
@@ -258,10 +260,17 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
         }
       />
 
+      {!workspaceId && !selectionMode && (
+        <StarterRow onBlankCanvas={() => setCreateDialogOpen(true)} />
+      )}
+
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) 320px" },
+          gridTemplateColumns: {
+            xs: "1fr",
+            md: showActivity ? "minmax(0, 1fr) 320px" : "1fr",
+          },
           gap: 3,
           alignItems: "start",
         }}
@@ -412,19 +421,23 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           )}
         </Box>
 
-        {/* Activity feed: stacked below the canvases on small screens */}
-        <Paper
-          variant="outlined"
-          data-testid="activity-feed-panel"
-          sx={{
-            p: 2.5,
-            position: { xs: "static", md: "sticky" },
-            top: 80,
-            borderRadius: 3,
-          }}
-        >
-          <ActivityFeed limit={15} />
-        </Paper>
+        {/* Activity feed: stacked below the canvases on small screens and
+            left out when there is nothing to show, so the cards use the
+            width (IMP-083). */}
+        {showActivity && (
+          <Paper
+            variant="outlined"
+            data-testid="activity-feed-panel"
+            sx={{
+              p: 2.5,
+              position: { xs: "static", md: "sticky" },
+              top: 80,
+              borderRadius: 3,
+            }}
+          >
+            <ActivityFeed limit={15} onHasActivity={setShowActivity} />
+          </Paper>
+        )}
       </Box>
 
       {/* Create canvas dialog */}

@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 
 import React from "react";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const navigationMocks = vi.hoisted(() => ({
@@ -50,6 +56,7 @@ import { PublicInfoPage } from "@/components/layout/PublicInfoPage";
 
 afterEach(() => {
   cleanup();
+  navigationMocks.push.mockReset();
   navigationMocks.unread = 3;
   navigationMocks.signedIn = true;
 });
@@ -155,5 +162,43 @@ describe("public information pages", () => {
       screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
     ).toBe("/auth/login");
     expect(screen.getByRole("main").textContent).toContain("Body");
+  });
+});
+
+describe("top bar search (IMP-083)", () => {
+  it("shows a search field with its shortcut that opens search", () => {
+    render(
+      <AppShell>
+        <h1>Dashboard content</h1>
+      </AppShell>,
+    );
+    const field = document.querySelector<HTMLElement>(
+      '[aria-keyshortcuts="Control+K Meta+K"]',
+    )!;
+    expect(field.getAttribute("aria-label")).toBe("Search");
+    expect(field.textContent).toMatch(/Search…/);
+    expect(field.textContent).toMatch(/(Ctrl|⌘) K/);
+    fireEvent.click(field);
+    expect(navigationMocks.push).toHaveBeenCalledWith("/search");
+  });
+
+  it("opens search on Ctrl+K unless the page already handled it", () => {
+    render(
+      <AppShell>
+        <h1>Dashboard content</h1>
+      </AppShell>,
+    );
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(navigationMocks.push).toHaveBeenCalledWith("/search");
+
+    navigationMocks.push.mockReset();
+    const handled = new KeyboardEvent("keydown", {
+      key: "k",
+      ctrlKey: true,
+      cancelable: true,
+    });
+    handled.preventDefault();
+    window.dispatchEvent(handled);
+    expect(navigationMocks.push).not.toHaveBeenCalled();
   });
 });
