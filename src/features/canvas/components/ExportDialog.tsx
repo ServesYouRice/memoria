@@ -15,7 +15,13 @@ import {
   CircularProgress,
   Alert,
 } from "@mui/material";
-import { Download, Description, Code, PictureAsPdf } from "@mui/icons-material";
+import {
+  AccountTree,
+  Download,
+  Description,
+  Code,
+  PictureAsPdf,
+} from "@mui/icons-material";
 import { type CanvasItem } from "@/types/canvas";
 import {
   BoardExportCaptureContext,
@@ -27,10 +33,12 @@ import {
   exportToPDF,
   fetchAllCanvasItems,
 } from "@/lib/export/export-utils";
+import { toJsonCanvas } from "@/lib/canvas-formats/json-canvas";
+import { describeCounts } from "@/lib/canvas-formats/describe";
 
 const EXPORT_PADDING = 40;
 
-export type ExportFormat = "json" | "markdown" | "pdf" | "png";
+export type ExportFormat = "json" | "markdown" | "pdf" | "png" | "canvas";
 
 export interface ExportOptions {
   includeBackground: boolean;
@@ -58,6 +66,12 @@ export function ExportDialog({
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const boardCapture = useContext(BoardExportCaptureContext);
+  // What JSON Canvas cannot hold, shown before the download (IMP-096).
+  const canvasLeftOut = React.useMemo(
+    () =>
+      format === "canvas" ? describeCounts(toJsonCanvas(items).leftOut) : "",
+    [format, items],
+  );
 
   /** PNG data URL of the whole board; null without a stage to capture. */
   const captureBoard = async (): Promise<string | null> => {
@@ -90,6 +104,14 @@ export function ExportDialog({
         const allItems = await fetchAllCanvasItems(canvasId, items);
         const json = await exportToJSON(canvasId, canvasName, allItems);
         downloadFile(json, `${filename}.json`, "application/json");
+      } else if (format === "canvas") {
+        const allItems = await fetchAllCanvasItems(canvasId, items);
+        const { file } = toJsonCanvas(allItems);
+        downloadFile(
+          JSON.stringify(file, null, 2),
+          `${filename}.canvas`,
+          "application/json",
+        );
       } else if (format === "markdown") {
         const allItems = await fetchAllCanvasItems(canvasId, items);
         const md = await exportToMarkdown(canvasId, canvasName, allItems);
@@ -180,6 +202,16 @@ export function ExportDialog({
               }
             />
             <FormControlLabel
+              value="canvas"
+              control={<Radio />}
+              label={
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <AccountTree fontSize="small" />
+                  <Typography>JSON Canvas (.canvas, Obsidian)</Typography>
+                </Box>
+              }
+            />
+            <FormControlLabel
               value="json"
               control={<Radio />}
               label={
@@ -191,6 +223,13 @@ export function ExportDialog({
             />
           </RadioGroup>
         </FormControl>
+        {format === "canvas" && (
+          <Alert severity={canvasLeftOut ? "info" : "success"} sx={{ mt: 1 }}>
+            {canvasLeftOut
+              ? `Notes, text, links, frames and arrows between items are kept. The format cannot hold: ${canvasLeftOut}.`
+              : "Everything on this canvas fits in the file."}
+          </Alert>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={isExporting}>

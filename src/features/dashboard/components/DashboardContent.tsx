@@ -26,6 +26,7 @@ import {
   Close as CloseIcon,
   BrushOutlined as CanvasIcon,
   FolderOutlined as WorkspaceIcon,
+  UploadFile,
 } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -36,6 +37,7 @@ import {
 import { useWorkspace } from "@/lib/hooks/use-workspaces";
 import { ActivityFeed } from "./ActivityFeed";
 import { StarterRow } from "./StarterRow";
+import { ImportCanvasDialog } from "./ImportCanvasDialog";
 import { CanvasCard, CanvasCardSkeleton, CardGrid } from "./CanvasCard";
 import { GlobalSearchDialog } from "@/components/GlobalSearchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -66,6 +68,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   const {
     data: canvasesData,
@@ -246,6 +249,13 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                 {selectionMode ? "Cancel" : "Select"}
               </Button>
             )}
+            <Button
+              variant="outlined"
+              startIcon={<UploadFile />}
+              onClick={() => setImportDialogOpen(true)}
+            >
+              Open file
+            </Button>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -480,6 +490,12 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ImportCanvasDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        onOpenCanvas={(canvasId) => router.push(`/canvas/${canvasId}`)}
+      />
 
       {/* Delete confirmation dialog */}
       <Dialog

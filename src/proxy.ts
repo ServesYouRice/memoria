@@ -35,8 +35,11 @@ export function isUploadWriteRequest(
 ): boolean {
   return (
     method === "POST" &&
-    // Bookmark file imports (IMP-091) are uploads too.
-    (pathname === "/api/v1/upload" || pathname.startsWith("/api/v1/imports"))
+    // Bookmark file imports (IMP-091) and canvas files (IMP-096) are
+    // uploads too.
+    (pathname === "/api/v1/upload" ||
+      pathname.startsWith("/api/v1/imports") ||
+      pathname === "/api/v1/canvases/import")
   );
 }
 
