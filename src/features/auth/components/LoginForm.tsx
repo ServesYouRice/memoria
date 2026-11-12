@@ -17,7 +17,12 @@ import {
   IconButton,
   InputAdornment,
 } from "@mui/material";
-import { Fingerprint, Visibility, VisibilityOff } from "@mui/icons-material";
+import {
+  Fingerprint,
+  Login as LoginIcon,
+  Visibility,
+  VisibilityOff,
+} from "@mui/icons-material";
 import { authClient } from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -28,9 +33,12 @@ import { AuthLayout } from "./AuthLayout";
 import { VerificationResendForm } from "./VerificationResendForm";
 import { toSafeCallbackPath } from "@/lib/auth/redirect";
 import type { RegistrationMode } from "./RegisterForm";
+import { SSO_PROVIDER_ID, ssoErrorMessage } from "@/lib/auth/sso";
 
 interface LoginFormProps {
   mode?: RegistrationMode;
+  /** IMP-099: the existing login system's name; absent when it is off. */
+  ssoLabel?: string | null;
 }
 
 const loginSchema = z.object({
@@ -106,7 +114,7 @@ export function secondFactorErrorMessage(
   }
 }
 
-export function LoginForm({ mode = "open" }: LoginFormProps) {
+export function LoginForm({ mode = "open", ssoLabel = null }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
@@ -122,6 +130,8 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
   const registered = searchParams.get("registered");
   const verified = searchParams.get("verified");
   const callbackUrl = searchParams.get("callbackUrl");
+  // The login system sends people back here with `?error=<code>`.
+  const ssoError = ssoLabel ? ssoErrorMessage(searchParams.get("error")) : null;
 
   const {
     register,
@@ -241,6 +251,33 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
     }
   };
 
+  const onSsoSignIn = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setUnverified(false);
+      const destination = toSafeCallbackPath(
+        callbackUrl,
+        window.location.origin,
+        "/dashboard",
+      );
+      const result = await authClient.signIn.social({
+        provider: SSO_PROVIDER_ID,
+        callbackURL: destination,
+        errorCallbackURL: "/auth/login",
+      });
+      // On success the browser is already on its way to the login system.
+      if (result?.error) {
+        setError(ssoErrorMessage("unknown"));
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error("Single sign-on error:", err);
+      setError(ssoErrorMessage("unknown"));
+      setIsLoading(false);
+    }
+  };
+
   const onPasskeySignIn = async () => {
     try {
       setIsLoading(true);
@@ -297,6 +334,12 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
       {verified && (
         <Alert severity="success" sx={{ mb: 3 }}>
           Email verified successfully. You can sign in now.
+        </Alert>
+      )}
+
+      {ssoError && !error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {ssoError}
         </Alert>
       )}
 
@@ -389,6 +432,20 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
         </Box>
       ) : (
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
+          {ssoLabel && (
+            <Button
+              type="button"
+              variant="contained"
+              fullWidth
+              size="large"
+              disabled={isLoading}
+              startIcon={<LoginIcon />}
+              onClick={onSsoSignIn}
+              sx={{ mt: 1 }}
+            >
+              Sign in with {ssoLabel}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outlined"

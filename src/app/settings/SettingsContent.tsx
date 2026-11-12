@@ -70,6 +70,8 @@ interface SettingsUser {
   email?: string | null;
   image?: string | null;
   twoFactorEnabled?: boolean;
+  /** False when the person only signs in with a login system (IMP-099). */
+  hasPassword?: boolean;
 }
 
 interface SettingsContentProps {
@@ -492,7 +494,10 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
         icon={<SecurityIcon color="primary" />}
         title="Passkeys, two-step codes and sessions"
       >
-        <SecuritySettings twoFactorEnabled={Boolean(user.twoFactorEnabled)} />
+        <SecuritySettings
+          twoFactorEnabled={Boolean(user.twoFactorEnabled)}
+          hasPassword={user.hasPassword !== false}
+        />
       </SettingsSection>
     </>
   );

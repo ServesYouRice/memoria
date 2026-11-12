@@ -60,8 +60,11 @@ function secretFromUri(totpURI: string): string {
 
 export function SecuritySettings({
   twoFactorEnabled,
+  hasPassword = true,
 }: {
   twoFactorEnabled: boolean;
+  /** False for someone who only signs in with a login system (IMP-099). */
+  hasPassword?: boolean;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(twoFactorEnabled);
@@ -70,6 +73,11 @@ export function SecuritySettings({
   const [code, setCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // Without a password there is nothing to confirm with; the server still
+  // asks anyone who has one (allowPasswordless only skips password-less
+  // accounts).
+  const confirmation = hasPassword ? { password } : {};
+  const needsPassword = hasPassword && !password;
 
   const [passkeys, setPasskeys] = useState<PasskeyRow[]>([]);
   const [passkeyName, setPasskeyName] = useState("");
@@ -90,7 +98,7 @@ export function SecuritySettings({
   const startEnrolment = async () => {
     setBusy(true);
     try {
-      const { data, error } = await authClient.twoFactor.enable({ password });
+      const { data, error } = await authClient.twoFactor.enable(confirmation);
       if (error || !data || !("totpURI" in data) || !data.totpURI) {
         toast.error(failure(error, "Could not start two-factor setup"));
         return;
@@ -134,7 +142,7 @@ export function SecuritySettings({
   const disableTwoFactor = async () => {
     setBusy(true);
     try {
-      const { error } = await authClient.twoFactor.disable({ password });
+      const { error } = await authClient.twoFactor.disable(confirmation);
       if (error) {
         toast.error(failure(error, "Could not turn off two-factor"));
         return;
@@ -152,9 +160,8 @@ export function SecuritySettings({
   const regenerateBackupCodes = async () => {
     setBusy(true);
     try {
-      const { data, error } = await authClient.twoFactor.generateBackupCodes({
-        password,
-      });
+      const { data, error } =
+        await authClient.twoFactor.generateBackupCodes(confirmation);
       if (error || !data) {
         toast.error(failure(error, "Could not create new backup codes"));
         return;
@@ -306,13 +313,15 @@ export function SecuritySettings({
                 ? "Two-factor authentication is on. Sign-in asks for a code from your authenticator app."
                 : "Require a code from an authenticator app when you sign in with your password."}
             </Typography>
-            <TextField
-              label="Password to confirm"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
+            {hasPassword && (
+              <TextField
+                label="Password to confirm"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            )}
             <Stack direction="row" spacing={1}>
               {enabled ? (
                 <>
@@ -320,9 +329,9 @@ export function SecuritySettings({
                     variant="outlined"
                     color="error"
                     onClick={disableTwoFactor}
-                    disabled={busy || !password}
+                    disabled={busy || needsPassword}
                     aria-describedby={
-                      !password ? "two-factor-password-reason" : undefined
+                      needsPassword ? "two-factor-password-reason" : undefined
                     }
                   >
                     Turn off two-factor
@@ -330,9 +339,9 @@ export function SecuritySettings({
                   <Button
                     variant="outlined"
                     onClick={regenerateBackupCodes}
-                    disabled={busy || !password}
+                    disabled={busy || needsPassword}
                     aria-describedby={
-                      !password ? "two-factor-password-reason" : undefined
+                      needsPassword ? "two-factor-password-reason" : undefined
                     }
                   >
                     New backup codes
@@ -342,9 +351,9 @@ export function SecuritySettings({
                 <Button
                   variant="contained"
                   onClick={startEnrolment}
-                  disabled={busy || !password}
+                  disabled={busy || needsPassword}
                   aria-describedby={
-                    !password ? "two-factor-password-reason" : undefined
+                    needsPassword ? "two-factor-password-reason" : undefined
                   }
                 >
                   Set up two-factor
@@ -352,7 +361,7 @@ export function SecuritySettings({
               )}
               <DisabledReason
                 id="two-factor-password-reason"
-                show={!busy && !password}
+                show={!busy && needsPassword}
               >
                 Enter your password first.
               </DisabledReason>

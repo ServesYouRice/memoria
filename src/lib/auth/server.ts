@@ -22,6 +22,7 @@ import {
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins/two-factor";
+import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { passkey } from "@better-auth/passkey";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -33,6 +34,15 @@ import {
   LockoutStoreUnavailableError,
   recordFailedAttempt,
 } from "@/lib/auth/account-lockout";
+import {
+  SSO_CALLBACK_PATH,
+  SSO_PROVIDER_ID,
+  SSO_SIGN_IN_PATH,
+  discoveryUrl,
+  ensureStarterResources,
+  ssoConfigFromEnv,
+  type SsoConfig,
+} from "@/lib/auth/sso";
 
 export const AUTH_BASE_PATH = "/api/auth";
 export const AUTH_COOKIE_PREFIX = "memoria";
@@ -61,8 +71,9 @@ const INVALID_PASSWORD_CODE = "INVALID_PASSWORD";
  * - sign-up, email verification, password reset/change/set, user update,
  *   email change, and user deletion: Memoria's validated `/api/v1` routes own
  *   those flows (admission policy, zxcvbn, durable email, export/cleanup);
- * - social sign-in, OAuth callbacks, account linking, provider tokens: no
- *   social providers are configured;
+ * - social sign-in and its callback, unless an existing login system is
+ *   configured (IMP-099; see `allowedAuthPaths`); account linking by a
+ *   signed-in person and provider tokens stay closed either way;
  * - `/verify-password`: a session-backed password oracle outside lockout;
  * - two-factor email/SMS OTP: not configured, TOTP is the second factor;
  * - `/two-factor/get-totp-uri`: the secret is shown once, at enrolment;
@@ -91,6 +102,12 @@ export const ALLOWED_AUTH_PATHS: ReadonlySet<string> = new Set([
   "/passkey/update-passkey",
   "/passkey/delete-passkey",
 ]);
+
+/** With a login system configured, its sign-in start and return paths too. */
+export function allowedAuthPaths(ssoEnabled: boolean): ReadonlySet<string> {
+  if (!ssoEnabled) return ALLOWED_AUTH_PATHS;
+  return new Set([...ALLOWED_AUTH_PATHS, SSO_SIGN_IN_PATH, SSO_CALLBACK_PATH]);
+}
 
 /** Path below the auth base path, without a trailing slash. */
 export function authEndpointPath(requestUrl: string): string | null {
@@ -121,6 +138,15 @@ export interface MemoriaAuthConfig {
   requireEmailVerification: boolean;
   /** `false` lets PostgreSQL/Prisma assign ids (cuid defaults). */
   generateId?: false | (() => string);
+  /** IMP-099: an existing OpenID Connect login system; off when absent. */
+  sso?: SsoConfig | null;
+  /**
+   * Whether signing in with the login system may create a new account. Only
+   * "open" registration allows it; "invite" and "closed" never do.
+   */
+  ssoSignUp?: boolean;
+  /** Gives a newly created account its starting workspace and Inbox. */
+  onUserCreated?: (userId: string) => Promise<void>;
 }
 
 function bodyEmail(body: unknown): string | null {
@@ -178,18 +204,37 @@ async function runLockoutStep<T>(step: () => Promise<T>): Promise<T> {
  * accounts, so neither existence nor verification state leaks to a caller
  * without the right password.
  */
-function credentialPolicy() {
+function credentialPolicy(ssoEnabled: boolean) {
+  const allowed = allowedAuthPaths(ssoEnabled);
   return {
     id: "memoria-credential-policy",
     onRequest: async (request: Request) => {
       const path = authEndpointPath(request.url);
-      if (path === null || !ALLOWED_AUTH_PATHS.has(path)) {
+      if (path === null || !allowed.has(path)) {
         return { response: new Response("Not Found", { status: 404 }) };
       }
       return undefined;
     },
     hooks: {
       before: [
+        {
+          // Only the configured login system, and only the redirect flow:
+          // an ID token posted straight from the browser is never accepted.
+          matcher: (ctx: { path?: string }) => ctx.path === SSO_SIGN_IN_PATH,
+          handler: createAuthMiddleware(async (ctx) => {
+            const body = (ctx.body ?? {}) as {
+              provider?: unknown;
+              idToken?: unknown;
+            };
+            if (
+              !ssoEnabled ||
+              body.provider !== SSO_PROVIDER_ID ||
+              body.idToken !== undefined
+            ) {
+              throw new APIError("NOT_FOUND", { message: "Not Found" });
+            }
+          }),
+        },
         {
           matcher: (ctx: { path?: string }) => ctx.path === SIGN_IN_EMAIL_PATH,
           handler: createAuthMiddleware(async (ctx) => {
@@ -268,6 +313,8 @@ function credentialPolicy() {
 export function createMemoriaAuth(config: MemoriaAuthConfig) {
   const publicOrigin = new URL(config.publicUrl).origin;
   const rpID = new URL(publicOrigin).hostname;
+  const sso = config.sso ?? null;
+  const onUserCreated = config.onUserCreated;
 
   return betterAuth({
     appName: "Memoria",
@@ -297,8 +344,31 @@ export function createMemoriaAuth(config: MemoriaAuthConfig) {
       cookieCache: { enabled: false },
     },
     account: {
-      accountLinking: { enabled: false },
+      // Only the login system can join an existing account, and only when it
+      // vouches for the email (email_verified) and Memoria has verified the
+      // same address. Nothing else links; signed-in linking stays closed.
+      accountLinking: sso
+        ? {
+            enabled: true,
+            trustedProviders: [],
+            requireLocalEmailVerified: true,
+            allowDifferentEmails: false,
+          }
+        : { enabled: false },
     },
+    ...(onUserCreated
+      ? {
+          databaseHooks: {
+            user: {
+              create: {
+                after: async (user: { id: string }) => {
+                  await onUserCreated(user.id);
+                },
+              },
+            },
+          },
+        }
+      : {}),
     verification: {
       storeIdentifier: "hashed",
     },
@@ -311,10 +381,33 @@ export function createMemoriaAuth(config: MemoriaAuthConfig) {
       },
     },
     plugins: [
-      credentialPolicy(),
+      credentialPolicy(Boolean(sso)),
       twoFactor({
         issuer: "Memoria",
+        // A person who only signs in with the login system has no password
+        // to confirm with; a person with a password must still give it.
+        allowPasswordless: true,
       }),
+      ...(sso
+        ? [
+            genericOAuth({
+              config: [
+                {
+                  providerId: SSO_PROVIDER_ID,
+                  name: sso.label,
+                  discoveryUrl: discoveryUrl(sso.issuer),
+                  clientId: sso.clientId,
+                  clientSecret: sso.clientSecret,
+                  scopes: ["openid", "email", "profile"],
+                  pkce: true,
+                  requireIdTokenVerification: true,
+                  requireEmailVerification: true,
+                  disableSignUp: !config.ssoSignUp,
+                },
+              ],
+            }),
+          ]
+        : []),
       passkey({
         rpID,
         rpName: "Memoria",
@@ -365,6 +458,9 @@ export function getAuthServer(): MemoriaAuth {
     publicUrl: env.AUTH_URL,
     secret: env.AUTH_SECRET,
     requireEmailVerification: process.env.NODE_ENV === "production",
+    sso: ssoConfigFromEnv(env),
+    ssoSignUp: env.REGISTRATION_MODE === "open",
+    onUserCreated: (userId) => ensureStarterResources(prisma, userId),
   });
   return authServer;
 }

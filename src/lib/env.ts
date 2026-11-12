@@ -106,6 +106,12 @@ const envSchema = z
     ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     CSP_REPORT_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
+    // IMP-099: sign in with an existing OpenID Connect login system. Off
+    // unless issuer, client id and secret are all set.
+    OIDC_ISSUER: optionalUrl,
+    OIDC_CLIENT_ID: optionalString,
+    OIDC_CLIENT_SECRET: optionalString,
+    OIDC_BUTTON_LABEL: emptyToUndefined(z.string().max(40)),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
     /** Allow people to look saved links up on archive.org (IMP-094). */
     WEB_ARCHIVE_LOOKUP: z.enum(["true", "false"]).optional(),
@@ -184,6 +190,23 @@ const envSchema = z
     MINIO_ROOT_PASSWORD: optionalString,
   })
   .superRefine((data, ctx) => {
+    // Single sign-on is all or nothing: a half-set login system is a typo.
+    const oidc = [
+      ["OIDC_ISSUER", data.OIDC_ISSUER],
+      ["OIDC_CLIENT_ID", data.OIDC_CLIENT_ID],
+      ["OIDC_CLIENT_SECRET", data.OIDC_CLIENT_SECRET],
+    ] as const;
+    if (oidc.some(([, value]) => value) && !oidc.every(([, value]) => value)) {
+      for (const [name, value] of oidc) {
+        if (!value)
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: `${name} is required when single sign-on is configured (OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET go together).`,
+          });
+      }
+    }
+
     const validateProductionRuntime =
       data.NODE_ENV === "production" &&
       process.env.MEMORIA_BUILD_PHASE !== "true";

@@ -126,6 +126,9 @@ Use `.env.example` as the source template. Important variables:
 - `S3_ENDPOINT`
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
+- `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_BUTTON_LABEL`
+  (optional: "Sign in with" an existing login system; see
+  [docs/operations/single-sign-on.md](docs/operations/single-sign-on.md))
 
 Production rules enforced by the app:
 

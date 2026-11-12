@@ -7,6 +7,7 @@
 import * as argon2 from "argon2";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { createMemoriaAuth } from "@/lib/auth/server";
+import type { SsoConfig } from "@/lib/auth/sso";
 import { callAuth, CookieJar, TEST_ORIGIN } from "./auth-harness";
 
 export const TEST_CLIENT_IP = "203.0.113.10";
@@ -14,7 +15,12 @@ export const TEST_CLIENT_IP = "203.0.113.10";
 export type MemoryDb = Record<string, Record<string, unknown>[]>;
 
 export function buildMemoryAuth(
-  options: { requireEmailVerification?: boolean } = {},
+  options: {
+    requireEmailVerification?: boolean;
+    sso?: SsoConfig | null;
+    ssoSignUp?: boolean;
+    onUserCreated?: (userId: string) => Promise<void>;
+  } = {},
 ) {
   const db: MemoryDb = {
     user: [],
@@ -30,6 +36,9 @@ export function buildMemoryAuth(
     secret: "test-better-auth-secret-0123456789abcdef-0123456789",
     requireEmailVerification: options.requireEmailVerification ?? false,
     generateId: () => crypto.randomUUID(),
+    sso: options.sso ?? null,
+    ssoSignUp: options.ssoSignUp ?? false,
+    onUserCreated: options.onUserCreated,
   });
   return { auth, db };
 }

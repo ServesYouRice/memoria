@@ -96,3 +96,26 @@ describe("production credential placeholders", () => {
     },
   );
 });
+
+describe("single sign-on settings (IMP-099)", () => {
+  it("accepts all three or none", async () => {
+    expect((await loadEnv({})).ok).toBe(true);
+    const all = await loadEnv({
+      OIDC_ISSUER: "https://login.memoria.example/realms/home",
+      OIDC_CLIENT_ID: "memoria",
+      OIDC_CLIENT_SECRET: "a-long-random-client-secret",
+      OIDC_BUTTON_LABEL: "Home Login",
+    });
+    expect(all.ok).toBe(true);
+  });
+
+  it("refuses to start with only some of them, naming what is missing", async () => {
+    const result = await loadEnv({
+      OIDC_ISSUER: "https://login.memoria.example/realms/home",
+      OIDC_CLIENT_ID: "memoria",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("OIDC_CLIENT_SECRET");
+    expect(result.output).not.toContain("a-long-random");
+  });
+});
