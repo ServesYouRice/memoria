@@ -20,6 +20,10 @@ import {
 import { Fingerprint, Visibility, VisibilityOff } from "@mui/icons-material";
 import { authClient } from "@/lib/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  ACCOUNT_LOCKOUT_DURATION_MS,
+  AUTH_RATE_LIMIT_WINDOW_MS,
+} from "@/lib/constants";
 import { AuthLayout } from "./AuthLayout";
 import { VerificationResendForm } from "./VerificationResendForm";
 import { toSafeCallbackPath } from "@/lib/auth/redirect";
@@ -43,15 +47,51 @@ const backupCodeSchema = z
   .min(6, "Enter one of your backup codes")
   .max(64);
 
-const LOCKED_MESSAGE =
-  "Your account is temporarily locked due to too many failed sign-in attempts. Please wait a few minutes and try again.";
-
 type AuthErrorLike = { code?: string; status?: number } | null | undefined;
 
-export function secondFactorErrorMessage(error: AuthErrorLike): string {
+/** "about 2 minutes", "45 seconds", "up to 15 minutes". */
+export function describeWait(
+  retryAfterSeconds: number | null,
+  fallbackMs: number,
+): string {
+  if (retryAfterSeconds !== null && retryAfterSeconds > 0) {
+    if (retryAfterSeconds < 60) {
+      return `${retryAfterSeconds} second${retryAfterSeconds === 1 ? "" : "s"}`;
+    }
+    const minutes = Math.ceil(retryAfterSeconds / 60);
+    return `about ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+  return `up to ${Math.round(fallbackMs / 60_000)} minutes`;
+}
+
+/** The server's Retry-After value in seconds, when the response has one. */
+export function retryAfterSeconds(response?: Response | null): number | null {
+  const value = Number.parseInt(response?.headers.get("retry-after") ?? "", 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function tooManyAttemptsMessage(
+  retryAfter: number | null,
+  what = "sign-in attempts",
+): string {
+  return `Too many ${what}. Please try again in ${describeWait(
+    retryAfter,
+    AUTH_RATE_LIMIT_WINDOW_MS,
+  )}.`;
+}
+
+const LOCKED_MESSAGE = `Your account is temporarily locked after too many failed sign-in attempts. Please try again in ${describeWait(
+  null,
+  ACCOUNT_LOCKOUT_DURATION_MS,
+)}.`;
+
+export function secondFactorErrorMessage(
+  error: AuthErrorLike,
+  retryAfter: number | null = null,
+): string {
   // The proxy rate-limits /api/auth/two-factor/ with a 429 that has no code.
   if (error?.status === 429) {
-    return "Too many attempts. Please wait and try again.";
+    return tooManyAttemptsMessage(retryAfter, "attempts");
   }
   switch (error?.code) {
     case "ACCOUNT_LOCKED":
@@ -105,11 +145,16 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
       setUnverified(false);
       setAttemptedEmail(data.email);
 
+      let retryAfter: number | null = null;
       const { data: result, error: signInError } =
-        await authClient.signIn.email({
-          email: data.email,
-          password: data.password,
-        });
+        await authClient.signIn.email(
+          { email: data.email, password: data.password },
+          {
+            onError: (context: { response?: Response }) => {
+              retryAfter = retryAfterSeconds(context.response);
+            },
+          },
+        );
 
       if (signInError) {
         if (signInError.code === "ACCOUNT_LOCKED") {
@@ -120,7 +165,7 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
             "Your password is correct, but your email is not verified yet. Check your inbox before signing in.",
           );
         } else if (signInError.status === 429) {
-          setError("Too many sign-in attempts. Please wait and try again.");
+          setError(tooManyAttemptsMessage(retryAfter));
         } else if (
           signInError.code === "LOGIN_SAFETY_UNAVAILABLE" ||
           signInError.status === 503
@@ -162,17 +207,23 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
     try {
       setIsLoading(true);
       setError(null);
+      let retryAfter: number | null = null;
+      const fetchOptions = {
+        onError: (context: { response?: Response }) => {
+          retryAfter = retryAfterSeconds(context.response);
+        },
+      };
       const { error: verifyError } = useBackupCode
-        ? await authClient.twoFactor.verifyBackupCode({
-            code: parsed.data,
-            trustDevice,
-          })
-        : await authClient.twoFactor.verifyTotp({
-            code: parsed.data,
-            trustDevice,
-          });
+        ? await authClient.twoFactor.verifyBackupCode(
+            { code: parsed.data, trustDevice },
+            fetchOptions,
+          )
+        : await authClient.twoFactor.verifyTotp(
+            { code: parsed.data, trustDevice },
+            fetchOptions,
+          );
       if (verifyError) {
-        setError(secondFactorErrorMessage(verifyError));
+        setError(secondFactorErrorMessage(verifyError, retryAfter));
         if (
           verifyError.code === "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE" ||
           verifyError.code === "INVALID_TWO_FACTOR_COOKIE"
@@ -213,10 +264,7 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
   };
 
   return (
-    <AuthLayout
-      headline="Welcome back"
-      tagline="Continue your creative journey. Your canvases are waiting for you."
-    >
+    <AuthLayout headline="Welcome back. Your canvases are waiting.">
       <Typography
         variant="h4"
         component="h1"
@@ -341,6 +389,21 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
         </Box>
       ) : (
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
+          <Button
+            type="button"
+            variant="outlined"
+            fullWidth
+            size="large"
+            disabled={isLoading}
+            startIcon={<Fingerprint />}
+            onClick={onPasskeySignIn}
+            sx={{ mt: 1 }}
+          >
+            Use a passkey
+          </Button>
+
+          <Divider sx={{ mt: 3, mb: 1 }}>or use your email</Divider>
+
           <TextField
             {...register("email")}
             label="Email"
@@ -410,20 +473,6 @@ export function LoginForm({ mode = "open" }: LoginFormProps) {
             disabled={isLoading}
           >
             {isLoading ? "Signing in…" : "Sign in"}
-          </Button>
-
-          <Divider sx={{ my: 3 }}>or</Divider>
-
-          <Button
-            type="button"
-            variant="outlined"
-            fullWidth
-            size="large"
-            disabled={isLoading}
-            startIcon={<Fingerprint />}
-            onClick={onPasskeySignIn}
-          >
-            Use a passkey
           </Button>
 
           <Typography

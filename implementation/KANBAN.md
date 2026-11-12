@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-082](tasks/IMP-082.md) | Sign-in and sign-up pages give the form the room | |
 | [IMP-083](tasks/IMP-083.md) | Dashboard: canvas previews, starter row, visible search | |
 | [IMP-085](tasks/IMP-085.md) | Canvas notes and background look finished | |
 | [IMP-086](tasks/IMP-086.md) | Settings: a side menu instead of one long page | |
@@ -51,6 +50,7 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-109](tasks/IMP-109.md) | One item on several canvases | |
 | [IMP-112](tasks/IMP-112.md) | Publish the AGPL-3.0 licence and a "never paywalled" promise | |
 | [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | |
+| [IMP-116](tasks/IMP-116.md) | Shared JavaScript fits its size budget again | |
 
 ## WAITING
 

@@ -54,6 +54,9 @@ export const ITEMS_USER_RATE_LIMIT_MAX_REQUESTS = 400;
  */
 export const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
+/** How long an account stays locked after too many failed sign-ins. */
+export const ACCOUNT_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
 /**
  * Maximum requests allowed in the auth rate limit window
  * Default: 5 requests per 15 minutes (prevents brute force)

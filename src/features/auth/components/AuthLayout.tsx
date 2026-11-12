@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Box, Button, Container, Stack, Typography } from "@mui/material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
@@ -8,20 +9,18 @@ import { surfaces } from "@/lib/theme";
 
 export interface AuthLayoutProps {
   children: React.ReactNode;
-  /** Headline shown on the desktop brand panel. */
+  /** One short line shown under the canvas picture on the desktop panel. */
   headline?: string;
-  /** Supporting copy shown under the headline. */
-  tagline?: string;
 }
 
 /**
- * Shared split-panel layout for authentication pages:
- * brand panel (desktop only) + centered form column.
+ * Shared split layout for authentication pages (IMP-082): on desktop the
+ * form takes at least half the width and the navy panel shows a picture of
+ * a real canvas with one short line; on a phone only the logo remains.
  */
 export function AuthLayout({
   children,
-  headline = "Welcome to Memoria",
-  tagline = "A collaborative canvas for your notes, bookmarks, and ideas.",
+  headline = "Your notes, links and pictures on one canvas.",
 }: AuthLayoutProps) {
   return (
     <Box sx={{ minHeight: "100dvh", display: "flex" }}>
@@ -29,7 +28,8 @@ export function AuthLayout({
       <Box
         sx={{
           display: { xs: "none", md: "flex" },
-          flex: 1,
+          flex: "1 1 0",
+          minWidth: 0,
           background: surfaces.navy,
           flexDirection: "column",
           justifyContent: "center",
@@ -50,41 +50,49 @@ export function AuthLayout({
             background: surfaces.glow,
             top: -140,
             right: -80,
-            animation: "float 7s ease-in-out infinite",
-          }}
-        />
-        <Box
-          aria-hidden
-          sx={{
-            position: "absolute",
-            width: 280,
-            height: 280,
-            borderRadius: "50%",
-            background: surfaces.glowSoft,
-            bottom: -80,
-            left: "8%",
-            animation: "float 9s ease-in-out 1s infinite",
           }}
         />
 
-        <Box sx={{ position: "relative", textAlign: "center", maxWidth: 420 }}>
-          <Box sx={{ width: 88, mx: "auto", mb: 4 }}>
-            <MemoriaLogo size={88} />
-          </Box>
-          <Typography
-            variant="h3"
-            gutterBottom
+        <Box sx={{ position: "relative", width: "100%", maxWidth: 560 }}>
+          <Box
             sx={{
-              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              mb: 4,
             }}
           >
-            {headline}
-          </Typography>
-          <Typography
-            variant="h6"
-            sx={{ opacity: 0.9, lineHeight: 1.7, fontWeight: 400 }}
+            <MemoriaLogo size={40} />
+            <Typography variant="h5" component="p" sx={{ fontWeight: 700 }}>
+              Memoria
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              borderRadius: 3,
+              overflow: "hidden",
+              border: "1px solid",
+              borderColor: "divider",
+              mb: 3,
+              "& img": { display: "block", width: "100%", height: "auto" },
+            }}
           >
-            {tagline}
+            {/* The dark picture suits the navy panel in both colour modes. */}
+            <Image
+              src="/home/canvas-dark.webp"
+              width={1260}
+              height={645}
+              alt=""
+              loading="eager"
+              unoptimized
+            />
+          </Box>
+          <Typography
+            variant="h5"
+            component="p"
+            sx={{ fontWeight: 600, lineHeight: 1.4 }}
+          >
+            {headline}
           </Typography>
         </Box>
       </Box>
@@ -92,7 +100,9 @@ export function AuthLayout({
       {/* Form column */}
       <Box
         sx={{
-          flex: { xs: 1, md: "0 0 520px" },
+          // At least half the width on desktop (IMP-082).
+          flex: { xs: "1 1 0", md: "0 0 50%" },
+          minWidth: 0,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",

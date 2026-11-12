@@ -38,7 +38,7 @@ class StubIntersectionObserver {
   }
 }
 
-const RATE_LIMITED = "Too many attempts. Please wait and try again.";
+const RATE_LIMITED = "Too many attempts. Please try again in up to 15 minutes.";
 
 beforeEach(() => {
   signInEmail.mockReset();
@@ -125,5 +125,8 @@ describe("two-factor step errors", () => {
       "That code is not valid. Check your authenticator app and try again.",
     );
     expect(secondFactorErrorMessage({ status: 429 })).toBe(RATE_LIMITED);
+    expect(secondFactorErrorMessage({ status: 429 }, 90)).toBe(
+      "Too many attempts. Please try again in about 2 minutes.",
+    );
   });
 });
