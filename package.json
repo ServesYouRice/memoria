@@ -34,6 +34,7 @@
     "test:coverage:routes": "vitest run --config vitest.routes-coverage.config.ts --coverage",
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:e2e:playwright": "playwright test",
+    "test:perf": "node scripts/run-e2e.mjs --no-smoke --config=playwright.perf.config.ts",
     "test:integration": "node scripts/test-integration.mjs",
     "test:redis": "node scripts/test-redis.mjs",
     "test:e2e:ui": "playwright test --ui",

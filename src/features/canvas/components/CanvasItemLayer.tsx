@@ -60,7 +60,11 @@ interface CanvasItemLayerProps {
  * Renders every item type through the same adapter contract: capabilities in,
  * one geometry commit out. No item component owns its own durable write.
  */
-export function CanvasItemLayer({
+/**
+ * Memoized (IMP-103): a pan or zoom changes only the Stage transform, so the
+ * items are not re-rendered unless their own inputs change.
+ */
+export const CanvasItemLayer = React.memo(function CanvasItemLayer({
   items,
   selectedItemIds,
   isSelecting,
@@ -160,4 +164,4 @@ export function CanvasItemLayer({
       )}
     </Layer>
   );
-}
+});

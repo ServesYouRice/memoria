@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import { Stage } from "react-konva";
 import { useCanvasStore } from "@/stores/canvasStore";
 import { Alert, Box, Button } from "@mui/material";
@@ -147,11 +153,15 @@ export async function runConfirmAction(
   }
 }
 
+/** Pan distance, in screen pixels, before the drawn item set is recomputed. */
+const VIEWPORT_STEP_PX = 256;
+
 /**
  * IMP-042: the board opens the canvas's collaborative document and edits it
  * live while it is available; item writes fall back to the HTTP API
  * otherwise (see `lib/collaboration/sync/client-session`).
  */
+
 export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const documentSession = useCanvasDocumentSession(canvasId, {
     onRejectedChange: () =>
@@ -1145,22 +1155,102 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   // Virtualization
-  const renderedItems = useVirtualItems(
-    items.map((item) => ({
-      ...item,
-      x: item.positionX,
-      y: item.positionY,
-    })),
-    {
-      viewport: {
-        x: position.x,
-        y: position.y,
-        width: stageSize.width,
-        height: stageSize.height,
-      },
-      zoom,
-      padding: 500,
+  const virtualSource = React.useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        x: item.positionX,
+        y: item.positionY,
+      })),
+    [items],
+  );
+  // IMP-103: the shown set is recomputed only when the view crosses a
+  // VIEWPORT_STEP_PX step, so a pan does not re-render every item on every
+  // pointer move. The window is widened by one step on each side, so it
+  // always covers what is on screen at any zoom.
+  const quantizedX =
+    Math.floor(position.x / VIEWPORT_STEP_PX) * VIEWPORT_STEP_PX +
+    VIEWPORT_STEP_PX;
+  const quantizedY =
+    Math.floor(position.y / VIEWPORT_STEP_PX) * VIEWPORT_STEP_PX +
+    VIEWPORT_STEP_PX;
+  const renderedItems = useVirtualItems(virtualSource, {
+    viewport: {
+      x: quantizedX,
+      y: quantizedY,
+      width: stageSize.width + VIEWPORT_STEP_PX * 2,
+      height: stageSize.height + VIEWPORT_STEP_PX * 2,
     },
+    zoom,
+    padding: 500,
+  });
+
+  // IMP-103: the item layer is memoized; these keep its callbacks the same
+  // between renders while always calling the latest handler.
+  const layerHandlers = useRef({
+    select: handleSelectItem,
+    contextMenu: handleContextMenu,
+    activate: handleActivateItem,
+    commit: handleCommitGeometry,
+    moveArrowEnd: handleMoveArrowEnd,
+  });
+  layerHandlers.current = {
+    select: handleSelectItem,
+    contextMenu: handleContextMenu,
+    activate: handleActivateItem,
+    commit: handleCommitGeometry,
+    moveArrowEnd: handleMoveArrowEnd,
+  };
+  const stableSelectItem = useCallback(
+    (id: string) => layerHandlers.current.select(id, false),
+    [],
+  );
+  const stableContextMenu = useCallback(
+    (...args: Parameters<typeof handleContextMenu>) =>
+      layerHandlers.current.contextMenu(...args),
+    [],
+  );
+  const stableActivateItem = useCallback(
+    (item: CanvasItem) => layerHandlers.current.activate(item),
+    [],
+  );
+  const stableCommitGeometry = useCallback(
+    (item: CanvasItem, geometry: ItemGeometryCommit) =>
+      layerHandlers.current.commit(item, geometry),
+    [],
+  );
+  const stableMoveArrowEnd = useCallback(
+    (...args: Parameters<typeof handleMoveArrowEnd>) =>
+      layerHandlers.current.moveArrowEnd(...args),
+    [],
+  );
+
+  // IMP-103: while the stage is dragged, Konva moves it itself. React's
+  // position follows only when the view crosses a VIEWPORT_STEP_PX step (and
+  // on drag end), so the toolbar and panels do not re-render on every
+  // pointer move; the HTML overlays are shifted to match in between.
+  const panOverlayRef = useRef<HTMLDivElement>(null);
+  const followStagePan = (next: { x: number; y: number }) => {
+    const sameStep =
+      Math.floor(next.x / VIEWPORT_STEP_PX) ===
+        Math.floor(position.x / VIEWPORT_STEP_PX) &&
+      Math.floor(next.y / VIEWPORT_STEP_PX) ===
+        Math.floor(position.y / VIEWPORT_STEP_PX);
+    if (!sameStep) {
+      setPosition(next);
+      return;
+    }
+    const overlay = panOverlayRef.current;
+    if (overlay)
+      overlay.style.transform = `translate(${next.x - position.x}px, ${next.y - position.y}px)`;
+  };
+  useLayoutEffect(() => {
+    if (panOverlayRef.current) panOverlayRef.current.style.transform = "";
+  }, [position]);
+  // The grids cover the same padded window as the drawn items.
+  const gridOffset = React.useMemo(
+    () => ({ x: -quantizedX / zoom, y: -quantizedY / zoom }),
+    [quantizedX, quantizedY, zoom],
   );
 
   // Linking arrows follow their items, so they are drawn wherever their
@@ -1518,7 +1608,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             draggable={!isDrawing && isSpacePressed && !isTimeMachineActive}
             onDragMove={(event) => {
               const next = stageDragPosition(event);
-              if (next) setPosition(next);
+              if (next) followStagePan(next);
             }}
             onDragEnd={(event) => {
               const next = stageDragPosition(event);
@@ -1528,11 +1618,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               event.evt.preventDefault();
               const stage = event.target.getStage();
               const pointer = stage?.getPointerPosition();
-              if (!pointer) return;
+              if (!stage || !pointer) return;
               const factor = event.evt.deltaY > 0 ? 1 / 1.1 : 1.1;
               const nextZoom = Math.min(5, Math.max(0.1, zoom * factor));
-              const worldX = (pointer.x - position.x) / zoom;
-              const worldY = (pointer.y - position.y) / zoom;
+              // The stage's own offset: mid-pan, React's position may lag.
+              const worldX = (pointer.x - stage.x()) / zoom;
+              const worldY = (pointer.y - stage.y()) / zoom;
               setZoom(nextZoom);
               setPosition({
                 x: pointer.x - worldX * nextZoom,
@@ -1542,11 +1633,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             onMouseDown={isSpacePressed ? undefined : handleStageMouseDown}
             onMouseMove={(event) => {
               if (!isSpacePressed) handleStageMouseMove(event);
-              const pointer = event.target.getStage()?.getPointerPosition();
-              if (pointer) {
+              const stage = event.target.getStage();
+              const pointer = stage?.getPointerPosition();
+              if (stage && pointer) {
                 updateCursor(
-                  (pointer.x - position.x) / zoom,
-                  (pointer.y - position.y) / zoom,
+                  (pointer.x - stage.x()) / zoom,
+                  (pointer.y - stage.y()) / zoom,
                 );
               }
             }}
@@ -1556,35 +1648,35 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             onContextMenu={(e) => e.evt.preventDefault()}
           >
             <DotOverlay
-              width={stageSize.width}
-              height={stageSize.height}
+              width={stageSize.width + VIEWPORT_STEP_PX * 2}
+              height={stageSize.height + VIEWPORT_STEP_PX * 2}
               zoom={zoom}
               gridSize={20}
-              offset={{ x: -position.x / zoom, y: -position.y / zoom }}
+              offset={gridOffset}
               visible={!gridVisible}
               stroke={CANVAS_PALETTE[themeMode].dot}
             />
             <GridOverlay
-              width={stageSize.width}
-              height={stageSize.height}
+              width={stageSize.width + VIEWPORT_STEP_PX * 2}
+              height={stageSize.height + VIEWPORT_STEP_PX * 2}
               zoom={zoom}
               gridSize={20}
-              offset={{ x: -position.x / zoom, y: -position.y / zoom }}
+              offset={gridOffset}
               visible={gridVisible}
               stroke={gridStroke}
             />
             <CanvasItemLayer
               items={exportItems ?? visibleItems}
               allItems={exportItems ?? items}
-              onMoveArrowEnd={exportItems ? undefined : handleMoveArrowEnd}
+              onMoveArrowEnd={exportItems ? undefined : stableMoveArrowEnd}
               selectedItemIds={exportItems ? NO_SELECTION : selectedItemIds}
               isSelecting={exportItems ? false : isSelecting}
               selectionBox={exportItems ? null : selectionBox}
               capabilities={capabilities}
-              onSelectItem={(id) => handleSelectItem(id, false)}
-              onContextMenu={handleContextMenu}
-              onActivateItem={handleActivateItem}
-              onCommitGeometry={handleCommitGeometry}
+              onSelectItem={stableSelectItem}
+              onContextMenu={stableContextMenu}
+              onActivateItem={stableActivateItem}
+              onCommitGeometry={stableCommitGeometry}
               searchActive={!exportItems && Boolean(searchQuery.trim())}
               searchMatchIds={searchMatchIds}
             />
@@ -1644,56 +1736,68 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             />
           )}
 
-          {cursors
-            .filter((cursor) => cursor.userId !== session?.user?.id)
-            .map((cursor) => {
-              const collaborator = collaborators.find(
-                (candidate) => candidate.userId === cursor.userId,
-              );
-              const screenX = cursor.position.x * zoom + position.x;
-              const screenY = cursor.position.y * zoom + position.y;
+          {/* IMP-103: shifted by followStagePan while a pan is in flight. */}
+          <Box
+            ref={panOverlayRef}
+            sx={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+            }}
+          >
+            {cursors
+              .filter((cursor) => cursor.userId !== session?.user?.id)
+              .map((cursor) => {
+                const collaborator = collaborators.find(
+                  (candidate) => candidate.userId === cursor.userId,
+                );
+                const screenX = cursor.position.x * zoom + position.x;
+                const screenY = cursor.position.y * zoom + position.y;
+                return (
+                  <RemoteCursor
+                    key={cursor.userId}
+                    userId={cursor.userId}
+                    name={
+                      collaborator?.name ||
+                      collaborator?.email ||
+                      "Collaborator"
+                    }
+                    color={cursor.color}
+                    x={screenX}
+                    y={screenY}
+                  />
+                );
+              })}
+
+            {remoteMessages.map((msg) => {
+              const screenX = msg.x * zoom + position.x;
+              const screenY = msg.y * zoom + position.y;
               return (
-                <RemoteCursor
-                  key={cursor.userId}
-                  userId={cursor.userId}
-                  name={
-                    collaborator?.name || collaborator?.email || "Collaborator"
-                  }
-                  color={cursor.color}
+                <RemoteCursorChat
+                  key={msg.id}
                   x={screenX}
                   y={screenY}
+                  message={msg.content}
+                  senderName={msg.userName}
+                  color={msg.userColor}
                 />
               );
             })}
 
-          {remoteMessages.map((msg) => {
-            const screenX = msg.x * zoom + position.x;
-            const screenY = msg.y * zoom + position.y;
-            return (
-              <RemoteCursorChat
-                key={msg.id}
-                x={screenX}
-                y={screenY}
-                message={msg.content}
-                senderName={msg.userName}
-                color={msg.userColor}
-              />
-            );
-          })}
-
-          {remoteReactions.map((reaction) => {
-            const screenX = reaction.x * zoom + position.x;
-            const screenY = reaction.y * zoom + position.y;
-            return (
-              <RemoteReaction
-                key={reaction.id}
-                x={screenX}
-                y={screenY}
-                emoji={reaction.emoji}
-                senderName={reaction.userName}
-              />
-            );
-          })}
+            {remoteReactions.map((reaction) => {
+              const screenX = reaction.x * zoom + position.x;
+              const screenY = reaction.y * zoom + position.y;
+              return (
+                <RemoteReaction
+                  key={reaction.id}
+                  x={screenX}
+                  y={screenY}
+                  emoji={reaction.emoji}
+                  senderName={reaction.userName}
+                />
+              );
+            })}
+          </Box>
 
           {selectedItemId &&
             selectedItemIds.size === 1 &&
