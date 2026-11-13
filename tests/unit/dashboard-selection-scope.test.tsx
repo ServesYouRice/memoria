@@ -34,8 +34,17 @@ vi.mock("@tanstack/react-query", () => ({
     setQueriesData: vi.fn(),
   }),
 }));
+vi.mock("@/features/dashboard/components/SomethingOldCard", () => ({
+  SomethingOldCard: () => null,
+}));
+// Templates and duplication (IMP-098) have their own tests.
+vi.mock("@/lib/hooks/use-templates", () => ({
+  useTemplates: () => ({ data: undefined, isLoading: false }),
+  useCreateFromTemplate: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 vi.mock("@/lib/hooks/use-canvases", () => ({
   canvasKeys: { all: ["canvases"] },
+  useDuplicateCanvas: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCanvases: (workspaceId?: string) => {
     const canvases = (CANVASES[workspaceId ?? ""] ?? []).map((canvas) => ({
       ...canvas,

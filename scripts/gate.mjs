@@ -117,6 +117,16 @@ export const STAGES = {
       pnpm('test:e2e'), // evidence: playwright-report/, test-results/
     ],
   },
+  perf: {
+    summary:
+      'canvas speed with 2,000 items on the production image: open time and frame times (chromium); needs docker',
+    requireBins: ['docker'],
+    steps: [
+      generate,
+      pnpm('exec', 'playwright', 'install', '--with-deps', 'chromium'),
+      pnpm('test:perf'), // evidence: test-results/perf/
+    ],
+  },
 };
 
 function run({ cmd, args, env }) {

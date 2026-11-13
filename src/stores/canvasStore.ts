@@ -115,7 +115,8 @@ export const useCanvasStore = create<CanvasUIState>()(
         selectedItemId: null,
         isContextMenuOpen: false,
         contextMenuPosition: null,
-        gridVisible: true,
+        // IMP-085: faint dots by default; grid lines are opt-in.
+        gridVisible: false,
         snapToGrid: false,
         drawingState: {
           color: "#000000",
@@ -160,6 +161,17 @@ export const useCanvasStore = create<CanvasUIState>()(
       }),
       {
         name: "canvas-preferences",
+        // v1 (IMP-085): the old default showed grid lines; start everyone on
+        // the dotted background once, then keep their own choice.
+        version: 1,
+        migrate: (persisted, version) => {
+          // Missing fields fall back to the initial state when merged.
+          const state = (persisted ?? {}) as Pick<
+            CanvasUIState,
+            "activeTool" | "gridVisible" | "snapToGrid" | "drawingState"
+          >;
+          return version < 1 ? { ...state, gridVisible: false } : state;
+        },
         // Only persist activeTool and grid preferences, not ephemeral state
         partialize: (state) => ({
           activeTool: state.activeTool,

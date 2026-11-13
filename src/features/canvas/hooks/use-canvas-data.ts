@@ -126,6 +126,9 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
 
   // React Query. Full item payloads follow the padded, tile-stable viewport;
   // the small geometry index remains available for whole-canvas navigation.
+  // IMP-103: the items query reads a deferred viewport, so loading a new
+  // tile keeps the board on screen instead of suspending it to a skeleton.
+  const itemsViewport = useDeferredValue(viewport);
   const {
     data: canvas,
     error: canvasError,
@@ -135,7 +138,7 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     data,
     error: itemsError,
     refetch: refetchItems,
-  } = useCanvasItems(canvasId, undefined, viewport);
+  } = useCanvasItems(canvasId, undefined, itemsViewport);
   // IMP-042: once the collaborative document has synced, it decides which
   // items exist and how they look; the HTTP page supplies row metadata.
   const documentSession = useCanvasDocument();

@@ -16,6 +16,7 @@ import {
   undoHomeBoardMove,
 } from "@/lib/agents/home-board";
 import { revertChangeSet } from "@/lib/agents/service-core";
+import { createLinkArrow } from "@/lib/canvas/arrow-links";
 import {
   ASK_COMMAND_SUGGESTION_KIND,
   executeAskCommandSuggestion,
@@ -95,6 +96,32 @@ async function saveLink(
       createdById: userId,
     },
   });
+}
+
+/** Link two items the way people do: by drawing an arrow (IMP-095). */
+async function drawLink(
+  canvasId: string,
+  actorId: string,
+  fromId: string,
+  toId: string,
+  options: { label?: string; style?: "SOLID" | "DASHED" } = {},
+) {
+  const { link } = await prisma.$transaction((tx) =>
+    createLinkArrow(tx, { canvasId, actorId, fromId, toId, ...options }),
+  );
+  return link!;
+}
+
+function linkShape(link: {
+  canvasId: string;
+  fromId: string;
+  toId: string;
+  label: string | null;
+  style: string;
+}) {
+  return [link.canvasId, link.fromId, link.toId, link.label, link.style].join(
+    "|",
+  );
 }
 
 function jobFor(itemId: string) {
@@ -238,21 +265,12 @@ describe("home board suggestions (PostgreSQL)", () => {
     const before = await saveLink(inbox.id, user.id, "Flights", []);
     const after = await saveLink(inbox.id, user.id, "Hotel", []);
     const unrelated = await saveLink(inbox.id, user.id, "Other", []);
-    const outgoing = await prisma.itemConnection.create({
-      data: {
-        canvasId: inbox.id,
-        fromId: item.id,
-        toId: after.id,
-        label: "then",
-        style: "DASHED",
-      },
+    const outgoing = await drawLink(inbox.id, user.id, item.id, after.id, {
+      label: "then",
+      style: "DASHED",
     });
-    const incoming = await prisma.itemConnection.create({
-      data: { canvasId: inbox.id, fromId: before.id, toId: item.id },
-    });
-    const kept = await prisma.itemConnection.create({
-      data: { canvasId: inbox.id, fromId: before.id, toId: unrelated.id },
-    });
+    const incoming = await drawLink(inbox.id, user.id, before.id, item.id);
+    const kept = await drawLink(inbox.id, user.id, before.id, unrelated.id);
     await createHomeBoardProposalHandler(prisma, noAi)(jobFor(item.id));
     const accepted = await acceptHomeBoardSuggestion({
       userId: user.id,
@@ -294,12 +312,12 @@ describe("home board suggestions (PostgreSQL)", () => {
       (await prisma.canvasItem.findUniqueOrThrow({ where: { id: item.id } }))
         .canvasId,
     ).toBe(inbox.id);
+    // The arrows stayed on the board, so the lines come back with them.
     const restored = await prisma.itemConnection.findMany({
       where: { canvasId: inbox.id },
-      orderBy: { id: "asc" },
     });
-    expect(restored).toEqual(
-      [outgoing, incoming, kept].sort((a, b) => a.id.localeCompare(b.id)),
+    expect(restored.map(linkShape).sort()).toEqual(
+      [outgoing, incoming, kept].map(linkShape).sort(),
     );
   });
 
@@ -307,9 +325,7 @@ describe("home board suggestions (PostgreSQL)", () => {
     const { user, inbox, work } = await setup();
     const first = await saveLink(inbox.id, user.id, "Part one", []);
     const second = await saveLink(inbox.id, user.id, "Part two", []);
-    const line = await prisma.itemConnection.create({
-      data: { canvasId: inbox.id, fromId: first.id, toId: second.id },
-    });
+    const line = await drawLink(inbox.id, user.id, first.id, second.id);
     const profile = await getAskAssistantProfile(user.id);
     const actor = { userId: user.id, agentProfileId: profile.id };
 
@@ -339,9 +355,10 @@ describe("home board suggestions (PostgreSQL)", () => {
         })
       ).map((item) => item.canvasId),
     ).toEqual([inbox.id, inbox.id]);
-    expect(
-      await prisma.itemConnection.findUniqueOrThrow({ where: { id: line.id } }),
-    ).toEqual(line);
+    const back = await prisma.itemConnection.findMany({
+      where: { canvasId: inbox.id },
+    });
+    expect(back.map(linkShape)).toEqual([linkShape(line)]);
   });
 
   it("a dismissed suggestion is not proposed again", async () => {

@@ -23,6 +23,7 @@ import { requirePollsEnabled } from "@/lib/polls/availability";
 import {
   ITEM_GEOMETRY_KEYS,
   ITEM_KEYS,
+  NOTE_COLOR_KEY,
   NOTE_TEXT_KEY,
   isNewCanvasItemId,
   type ItemGeometryKey,
@@ -34,6 +35,7 @@ import {
   jsonEqual,
 } from "./document-items";
 import { readNoteFragment } from "./note-fragment";
+import { DEFAULT_NOTE_COLOR } from "@/lib/note-colors";
 
 export class InvalidDocumentUpdateError extends Error {
   constructor(message: string) {
@@ -173,6 +175,7 @@ function readTags(map: ItemMap): string[] {
  */
 function readContent(map: ItemMap, type: ItemType): unknown {
   if (map.has(NOTE_TEXT_KEY)) reject("Only notes hold rich text.");
+  if (map.has(NOTE_COLOR_KEY)) reject("Only notes have a note colour.");
   const value = map.get("content");
   if (value === undefined || value instanceof Y.AbstractType)
     reject("Item content must be a plain value.");
@@ -190,8 +193,15 @@ function readNoteContent(map: ItemMap): unknown {
   if (map.has("content")) reject("Notes keep their content as rich text.");
   const fragment = map.get(NOTE_TEXT_KEY);
   if (!isNoteTextFragment(fragment)) reject("Notes need rich text.");
+  // Only the stored form: a listed colour other than the default yellow.
+  const color = map.get(NOTE_COLOR_KEY);
+  if (
+    map.has(NOTE_COLOR_KEY) &&
+    (typeof color !== "string" || color === DEFAULT_NOTE_COLOR)
+  )
+    reject("Invalid note colour.");
   try {
-    return readNoteFragment(fragment);
+    return readNoteFragment(fragment, color);
   } catch (error) {
     reject(error instanceof Error ? error.message : "Invalid note text.");
   }

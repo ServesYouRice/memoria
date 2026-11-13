@@ -25,26 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-075](tasks/IMP-075.md) | Buttons stay readable: greyed-out buttons and the home page's bottom sign-up button | |
-| [IMP-076](tasks/IMP-076.md) | Bell shows no red "0" when nothing is new | |
-| [IMP-077](tasks/IMP-077.md) | Dark mode: the activity box and canvas notes follow the theme | |
-| [IMP-078](tasks/IMP-078.md) | Canvas top bar fits on a phone | |
-| [IMP-087](tasks/IMP-087.md) | Same page width and top bar on every page | |
-| [IMP-089](tasks/IMP-089.md) | Empty pages offer a next step | |
-| [IMP-088](tasks/IMP-088.md) | The app says "canvas" everywhere, never "board" | |
-| [IMP-091](tasks/IMP-091.md) | Import bookmarks from a browser, Pocket or Raindrop | |
-| [IMP-092](tasks/IMP-092.md) | Saving from an iPhone is easy to set up | |
-| [IMP-093](tasks/IMP-093.md) | Browser button saves the page you are on | |
-| [IMP-094](tasks/IMP-094.md) | Keep the text of saved pages | |
-| [IMP-095](tasks/IMP-095.md) | Arrows work as real links between items | |
-| [IMP-096](tasks/IMP-096.md) | Open canvas files in and out (`.canvas`, `.excalidraw`) | |
-| [IMP-097](tasks/IMP-097.md) | "Remind me" and "Something old" | |
-| [IMP-098](tasks/IMP-098.md) | Templates and "Duplicate canvas" (build the server side, then switch on) | |
-| [IMP-099](tasks/IMP-099.md) | Sign in with an existing login system | |
-| [IMP-100](tasks/IMP-100.md) | Lighter install and set-up checks | |
-| [IMP-101](tasks/IMP-101.md) | Ask about one canvas or one tag | |
-| [IMP-102](tasks/IMP-102.md) | Setting up your own AI key is easy | |
-| [IMP-103](tasks/IMP-103.md) | The canvas stays smooth when it is full (2,000 items) | |
 | [IMP-104](tasks/IMP-104.md) | Polls with votes counted on the server | |
 | [IMP-105](tasks/IMP-105.md) | A timer everyone on the canvas sees | |
 | [IMP-106](tasks/IMP-106.md) | Your own tagging rules | |
@@ -52,23 +32,15 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-108](tasks/IMP-108.md) | Tables on the canvas | |
 | [IMP-109](tasks/IMP-109.md) | One item on several canvases | |
 | [IMP-112](tasks/IMP-112.md) | Publish the AGPL-3.0 licence and a "never paywalled" promise | |
+| [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | |
+| [IMP-116](tasks/IMP-116.md) | Shared JavaScript fits its size budget again | |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster (draft: ServesYouRice/Infra#4) | DEC-004 |
-| [IMP-079](tasks/IMP-079.md) | Brand colours and font taken from the logo, no gradients | IMP-075 |
-| [IMP-080](tasks/IMP-080.md) | Screens use theme colours instead of hand-typed ones | IMP-079 |
-| [IMP-081](tasks/IMP-081.md) | Home page shows the product | IMP-079 |
-| [IMP-082](tasks/IMP-082.md) | Sign-in and sign-up pages give the form the room | IMP-079 |
-| [IMP-083](tasks/IMP-083.md) | Dashboard: canvas previews, starter row, visible search | IMP-079 |
-| [IMP-084](tasks/IMP-084.md) | Canvas: clearer top bar and add bar | IMP-078, IMP-079 |
-| [IMP-085](tasks/IMP-085.md) | Canvas notes and background look finished | IMP-077, IMP-079 |
-| [IMP-086](tasks/IMP-086.md) | Settings: a side menu instead of one long page | IMP-075, IMP-079 |
-| [IMP-090](tasks/IMP-090.md) | Canvas cards are real links; buttons are finger-sized | IMP-083 |
 | [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | IMP-094 |
-| [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | IMP-081 |
 | [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | IMP-094 |
 | [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | IMP-094 |
 | [IMP-115](tasks/IMP-115.md) | A hosted paid plan people can sign up and pay for | DEC-019 |

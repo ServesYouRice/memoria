@@ -93,7 +93,12 @@ function routeFetch(deleteResult: () => Promise<unknown>) {
 }
 
 async function startExport() {
-  render(<SettingsContent user={{ id: "u1", name: "Ada", email: "a@x.io" }} />);
+  render(
+    <SettingsContent
+      user={{ id: "u1", name: "Ada", email: "a@x.io" }}
+      section="data"
+    />,
+  );
   await act(async () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Download account data" }),

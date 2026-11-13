@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import NextLink from "next/link";
 import { toast } from "sonner";
 import {
   Alert,
@@ -13,6 +14,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Link as MuiLink,
   Skeleton,
   Stack,
   TextField,
@@ -22,6 +24,7 @@ import {
   ContentCopy as CopyIcon,
   Add as AddIcon,
   KeyOutlined as KeyIcon,
+  PhoneIphone as PhoneIcon,
 } from "@mui/icons-material";
 import {
   useApiKeys,
@@ -56,7 +59,48 @@ export function localDateInputValue(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-export function ApiKeysContent() {
+/** The name given to keys made with "Create a key for my iPhone" (IMP-092). */
+export const PHONE_KEY_NAME = "iPhone Shortcut";
+export const PHONE_HELP_HREF = "/help#save-from-your-phone";
+
+function CopyField({ label, value }: { label: string; value: string }) {
+  const copy = async () => {
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label} copied`);
+  };
+  return (
+    <TextField
+      label={label}
+      value={value}
+      fullWidth
+      slotProps={{
+        input: {
+          readOnly: true,
+          sx: { fontFamily: "monospace" },
+          endAdornment: (
+            <Button
+              startIcon={<CopyIcon />}
+              onClick={copy}
+              aria-label={`Copy ${label.toLowerCase()}`}
+            >
+              Copy
+            </Button>
+          ),
+        },
+      }}
+    />
+  );
+}
+
+export function ApiKeysContent({
+  serverAddress,
+  shortcutUrl = null,
+}: {
+  /** This installation's address, for the phone Shortcut. */
+  serverAddress: string;
+  /** A ready-made Apple Shortcut, when the owner configured one. */
+  shortcutUrl?: string | null;
+}) {
   const { data, isLoading, error } = useApiKeys();
   const createApiKey = useCreateApiKey();
   const revokeApiKey = useRevokeApiKey();
@@ -65,23 +109,40 @@ export function ApiKeysContent() {
   const [newKeyName, setNewKeyName] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  // The new key is for the iPhone Shortcut: show the address beside it.
+  const [forPhone, setForPhone] = useState(false);
+  const [phoneIntent, setPhoneIntent] = useState(false);
   // The server's "sign in again" message, kept in the dialog until it closes.
   const [signInAgain, setSignInAgain] = useState<string | null>(null);
 
   const keys = data?.keys ?? [];
 
-  const handleCreate = async () => {
+  const handleCreate = async (phone = false) => {
     try {
-      const expiresAtIso = expiresAt ? localEndOfDayIso(expiresAt) : null;
+      const expiresAtIso =
+        !phone && expiresAt ? localEndOfDayIso(expiresAt) : null;
       const result = await createApiKey.mutateAsync({
-        name: newKeyName.trim(),
+        name: phone ? PHONE_KEY_NAME : newKeyName.trim(),
         expiresAt: expiresAtIso,
       });
+      setForPhone(phone || phoneIntent);
+      setPhoneIntent(false);
       setCreatedKey(result.plaintextKey);
       setNewKeyName("");
       setExpiresAt("");
       setCreateOpen(false);
     } catch (error) {
+      if (
+        phone &&
+        error instanceof ApiError &&
+        error.code === "recent_sign_in_required"
+      ) {
+        // Show the sign-in-again message in the dialog, keeping the iPhone
+        // name and intent for the retry.
+        setNewKeyName(PHONE_KEY_NAME);
+        setPhoneIntent(true);
+        setCreateOpen(true);
+      }
       if (
         error instanceof ApiError &&
         error.code === "recent_sign_in_required"
@@ -99,6 +160,7 @@ export function ApiKeysContent() {
 
   const closeCreate = () => {
     setCreateOpen(false);
+    setPhoneIntent(false);
     setSignInAgain(null);
   };
 
@@ -110,12 +172,6 @@ export function ApiKeysContent() {
         onError: () => toast.error("Failed to revoke API key"),
       },
     );
-  };
-
-  const handleCopy = async () => {
-    if (!createdKey) return;
-    await navigator.clipboard.writeText(createdKey);
-    toast.success("API key copied to clipboard");
   };
 
   const statusForKey = (key: (typeof keys)[number]) => {
@@ -132,15 +188,33 @@ export function ApiKeysContent() {
         title="API Keys"
         subtitle="Create keys for browser extensions and webhooks. Keep them secret."
         actions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateOpen(true)}
-          >
-            Create API key
-          </Button>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<PhoneIcon />}
+              disabled={createApiKey.isPending}
+              onClick={() => void handleCreate(true)}
+            >
+              Create a key for my iPhone
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setCreateOpen(true)}
+            >
+              Create API key
+            </Button>
+          </Stack>
         }
       />
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Want to save links from your phone?{" "}
+        <MuiLink component={NextLink} href={PHONE_HELP_HREF}>
+          See the steps for iPhone and Android
+        </MuiLink>
+        .
+      </Alert>
 
       {error && <Alert severity="error">Failed to load API keys</Alert>}
 
@@ -305,7 +379,7 @@ export function ApiKeysContent() {
           <Button onClick={closeCreate}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={handleCreate}
+            onClick={() => void handleCreate()}
             disabled={!newKeyName.trim() || createApiKey.isPending}
           >
             {createApiKey.isPending ? "Creating…" : "Create"}
@@ -327,21 +401,34 @@ export function ApiKeysContent() {
           <Alert severity="warning">
             Copy this key now — it won’t be shown again.
           </Alert>
-          <TextField
-            value={createdKey ?? ""}
-            fullWidth
-            slotProps={{
-              input: {
-                readOnly: true,
-                sx: { fontFamily: "monospace" },
-                endAdornment: (
-                  <Button startIcon={<CopyIcon />} onClick={handleCopy}>
-                    Copy
+          {forPhone && (
+            <CopyField label="Server address" value={serverAddress} />
+          )}
+          <CopyField label="API key" value={createdKey ?? ""} />
+          {forPhone && (
+            <Stack spacing={1.5}>
+              <Typography variant="body2">
+                {shortcutUrl
+                  ? "On your iPhone or iPad, tap Add the Shortcut and paste the server address and the key when it asks."
+                  : "On your iPhone or iPad, build the Shortcut with these two values. The steps take a couple of minutes."}
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                {shortcutUrl && (
+                  <Button
+                    variant="contained"
+                    href={shortcutUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Add the Shortcut
                   </Button>
-                ),
-              },
-            }}
-          />
+                )}
+                <Button component={NextLink} href={PHONE_HELP_HREF}>
+                  {shortcutUrl ? "See the steps" : "Show the steps"}
+                </Button>
+              </Stack>
+            </Stack>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
           <Button variant="contained" onClick={() => setCreatedKey(null)}>

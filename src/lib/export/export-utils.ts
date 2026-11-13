@@ -1,4 +1,6 @@
 import { createContext } from "react";
+import { canvasLinks } from "@/features/canvas/lib/arrow-attachment";
+import { getItemTitle } from "@/lib/agents/item-text";
 import {
   type CanvasItem,
   ItemType,
@@ -85,6 +87,8 @@ export async function exportToJSON(
       ...item,
       // Strip server-only fields if necessary
     })),
+    // Item pairs joined by an arrow (IMP-095).
+    links: canvasLinks(items),
   };
   return JSON.stringify(exportData, null, 2);
 }
@@ -130,6 +134,18 @@ export async function exportToMarkdown(
         break;
       // Add other types as needed
     }
+  }
+
+  const links = canvasLinks(items);
+  if (links.length > 0) {
+    const byId = new Map(items.map((item) => [item.id, item]));
+    md += "## Links\n\n";
+    for (const link of links) {
+      const from = getItemTitle(byId.get(link.fromId)!);
+      const to = getItemTitle(byId.get(link.toId)!);
+      md += `- ${from} → ${to}${link.label ? ` (${link.label})` : ""}\n`;
+    }
+    md += "\n";
   }
 
   return md;

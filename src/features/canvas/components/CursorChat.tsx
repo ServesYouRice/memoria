@@ -64,8 +64,8 @@ export const CursorChat: React.FC<CursorChatProps> = ({
           alignItems: "center",
           width: 200,
           borderRadius: 4,
-          bgcolor: "#0096fd",
-          color: "white",
+          bgcolor: "primary.main",
+          color: "primary.contrastText",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -74,7 +74,7 @@ export const CursorChat: React.FC<CursorChatProps> = ({
         </Typography>
         <InputBase
           inputRef={inputRef}
-          sx={{ ml: 1, flex: 1, color: "white", fontSize: "14px" }}
+          sx={{ ml: 1, flex: 1, color: "inherit", fontSize: "14px" }}
           placeholder="Say something..."
           value={message}
           onChange={(e) => setMessage(e.target.value)}

@@ -157,7 +157,7 @@ export function welcomeEmailTemplate(data: WelcomeEmailData): EmailTemplate {
     text: `
 Hi ${userName},
 
-Welcome to Memoria! We're excited to have you on board.
+Welcome to Memoria! We're glad you're here.
 
 Memoria helps you organize your thoughts, bookmarks, and ideas on an infinite canvas. Here are some things you can do:
 
@@ -187,7 +187,7 @@ The Memoria Team
 
     <p>Hi ${escapeHtml(userName)},</p>
 
-    <p>Welcome to Memoria! We're excited to have you on board.</p>
+    <p>Welcome to Memoria! We're glad you're here.</p>
 
     <p>Memoria helps you organize your thoughts, bookmarks, and ideas on an infinite canvas. Here are some things you can do:</p>
 
@@ -336,4 +336,28 @@ export function weeklyRecapTemplate(data: {
   `.trim();
 
   return { subject: "Your week in Memoria", text, html };
+}
+
+/** IMP-097: the item a person asked to be reminded of. */
+export function itemReminderTemplate(data: {
+  userName: string;
+  itemTitle: string;
+  canvasName: string;
+  itemUrl: string;
+  settingsUrl: string;
+}): EmailTemplate {
+  const text = [
+    `Hi ${data.userName},`,
+    "",
+    `You asked Memoria to remind you of "${data.itemTitle}" on ${data.canvasName}.`,
+    "",
+    `Open it: ${data.itemUrl}`,
+    "",
+    `Turn reminder emails off in Settings: ${data.settingsUrl}`,
+  ].join("\n");
+  return {
+    subject: `Reminder: ${data.itemTitle}`,
+    text,
+    html: `<p>Hi ${escapeHtml(data.userName)},</p><p>You asked Memoria to remind you of <strong>${escapeHtml(data.itemTitle)}</strong> on ${escapeHtml(data.canvasName)}.</p><p><a href="${escapeHtml(data.itemUrl)}">Open it</a></p><p><a href="${escapeHtml(data.settingsUrl)}">Turn reminder emails off in Settings</a></p>`,
+  };
 }

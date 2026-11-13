@@ -12,7 +12,7 @@ import { ConsentForm } from "./ConsentForm";
 
 export const metadata = {
   title: "Connect an app",
-  description: "Allow an AI app to use your Memoria boards",
+  description: "Allow an AI app to use your Memoria canvases",
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -53,7 +53,7 @@ export default async function OAuthAuthorizePage({
     }
 
     return (
-      <AppShell maxWidth="sm">
+      <AppShell readingWidth="sm">
         <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
             This connection can&apos;t continue
@@ -76,7 +76,7 @@ export default async function OAuthAuthorizePage({
   });
 
   return (
-    <AppShell maxWidth="sm">
+    <AppShell readingWidth="sm">
       <ConsentForm
         ticket={createConsentTicket(validation.request, session.user.id)}
         clientName={validation.request.clientName}

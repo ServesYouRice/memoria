@@ -28,6 +28,8 @@ const SENSITIVE_POST_ROUTES = new Map<string, AuthRateLimitGroup>([
   ["/api/v1/auth/send-verification", "email-verification"],
   ["/api/v1/auth/verify-email", "email-verification"],
   ["/api/auth/sign-in/email", "sign-in"],
+  // IMP-099: starting sign-in with an existing login system.
+  ["/api/auth/sign-in/social", "sign-in"],
   ["/api/auth/passkey/verify-authentication", "passkey"],
   ["/api/auth/passkey/verify-registration", "passkey"],
 ]);

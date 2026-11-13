@@ -35,7 +35,10 @@ export const GET = withApiHandler(async () => {
     preferences: PREFERENCE_TYPES.map((type) => ({
       type,
       inAppEnabled: byType.get(type)?.inAppEnabled ?? true,
-      emailEnabled: byType.get(type)?.emailEnabled ?? true,
+      // Reminder emails are opt-in (IMP-097); the others default on.
+      emailEnabled:
+        byType.get(type)?.emailEnabled ??
+        type !== NotificationType.ITEM_REMINDER,
     })),
   });
 });

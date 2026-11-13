@@ -164,7 +164,10 @@ async function lockBatchKey(
   `;
 }
 
-async function findOrCreateInbox(tx: Prisma.TransactionClient, userId: string) {
+export async function findOrCreateInbox(
+  tx: Prisma.TransactionClient,
+  userId: string,
+) {
   const find = () =>
     tx.canvas.findFirst({
       where: { userId, name: INBOX_CANVAS_NAME },

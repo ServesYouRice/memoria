@@ -96,3 +96,44 @@ describe("production credential placeholders", () => {
     },
   );
 });
+
+describe("single sign-on settings (IMP-099)", () => {
+  it("accepts all three or none", async () => {
+    expect((await loadEnv({})).ok).toBe(true);
+    const all = await loadEnv({
+      OIDC_ISSUER: "https://login.memoria.example/realms/home",
+      OIDC_CLIENT_ID: "memoria",
+      OIDC_CLIENT_SECRET: "a-long-random-client-secret",
+      OIDC_BUTTON_LABEL: "Home Login",
+    });
+    expect(all.ok).toBe(true);
+  });
+
+  it("refuses to start with only some of them, naming what is missing", async () => {
+    const result = await loadEnv({
+      OIDC_ISSUER: "https://login.memoria.example/realms/home",
+      OIDC_CLIENT_ID: "memoria",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("OIDC_CLIENT_SECRET");
+    expect(result.output).not.toContain("a-long-random");
+  });
+});
+
+describe("uploads on disk in production (IMP-100)", () => {
+  it("needs a named folder", async () => {
+    const without = await loadEnv({ UPLOAD_STORAGE: "local" });
+    expect(without.ok).toBe(false);
+    expect(without.output).toContain("UPLOAD_LOCAL_DIR");
+    const relative = await loadEnv({
+      UPLOAD_STORAGE: "local",
+      UPLOAD_LOCAL_DIR: "data/uploads",
+    });
+    expect(relative.ok).toBe(false);
+    const named = await loadEnv({
+      UPLOAD_STORAGE: "local",
+      UPLOAD_LOCAL_DIR: "/data/uploads",
+    });
+    expect(named.ok).toBe(true);
+  });
+});

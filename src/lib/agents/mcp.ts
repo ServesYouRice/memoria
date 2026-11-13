@@ -606,7 +606,7 @@ export async function executeMcpTool(
               })
             )?.id;
       if (!canvasId) {
-        throw new NotFoundError("No Inbox board is shared with this app.");
+        throw new NotFoundError("No Inbox canvas is shared with this app.");
       }
       await requireScopedCanvas(
         { userId: context.userId, agentProfile },

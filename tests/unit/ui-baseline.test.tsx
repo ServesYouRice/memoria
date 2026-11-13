@@ -12,7 +12,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ThemeModeProvider, useThemeMode } from "@/lib/theme-context";
+import {
+  AppThemeProvider as ThemeModeProvider,
+  useThemeMode,
+} from "@/lib/theme-context";
 import {
   DEFAULT_THEME_MODE,
   THEME_INIT_SCRIPT,

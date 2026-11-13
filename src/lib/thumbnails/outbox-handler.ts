@@ -83,7 +83,13 @@ export function createThumbnailStoreHandler(
           ? await tx.canvas.updateMany({
               where: {
                 id: candidate.canvasId,
-                thumbnailRevision: { lt: candidate.revision },
+                // A canvas with no preview takes any current one, including
+                // revision 0: canvases seeded without change history
+                // (IMP-083) never reach a higher revision until edited.
+                OR: [
+                  { thumbnailRevision: { lt: candidate.revision } },
+                  { thumbnailKey: null },
+                ],
               },
               data: {
                 thumbnailKey: storageKey,

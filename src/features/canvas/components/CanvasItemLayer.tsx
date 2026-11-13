@@ -46,13 +46,25 @@ interface CanvasItemLayerProps {
   onCommitGeometry: (item: CanvasItem, geometry: ItemGeometryCommit) => void;
   searchActive?: boolean;
   searchMatchIds?: ReadonlySet<string>;
+  /** Every item on the canvas (not just the visible ones), so arrows follow. */
+  allItems?: readonly CanvasItem[];
+  /** An arrow end was dropped at a canvas point (IMP-095). */
+  onMoveArrowEnd?: (
+    arrow: CanvasItem,
+    which: "start" | "end",
+    point: { x: number; y: number },
+  ) => void;
 }
 
 /**
  * Renders every item type through the same adapter contract: capabilities in,
  * one geometry commit out. No item component owns its own durable write.
  */
-export function CanvasItemLayer({
+/**
+ * Memoized (IMP-103): a pan or zoom changes only the Stage transform, so the
+ * items are not re-rendered unless their own inputs change.
+ */
+export const CanvasItemLayer = React.memo(function CanvasItemLayer({
   items,
   selectedItemIds,
   isSelecting,
@@ -64,7 +76,13 @@ export function CanvasItemLayer({
   onCommitGeometry,
   searchActive = false,
   searchMatchIds,
+  allItems,
+  onMoveArrowEnd,
 }: CanvasItemLayerProps) {
+  const itemsById = React.useMemo(
+    () => new Map((allItems ?? items).map((item) => [item.id, item])),
+    [allItems, items],
+  );
   return (
     <Layer>
       {items.map((item) => {
@@ -96,7 +114,17 @@ export function CanvasItemLayer({
           rendered = <ShapeItem {...adapterProps} />;
         }
         if (item.type === ItemType.ARROW && isArrowItemContent(item.content)) {
-          rendered = <ArrowItem {...adapterProps} />;
+          rendered = (
+            <ArrowItem
+              {...adapterProps}
+              itemsById={itemsById}
+              onMoveEnd={
+                onMoveArrowEnd
+                  ? (which, point) => onMoveArrowEnd(item, which, point)
+                  : undefined
+              }
+            />
+          );
         }
         if (item.type === ItemType.TEXT && isTextItemContent(item.content)) {
           rendered = <TextItem {...adapterProps} />;
@@ -136,4 +164,4 @@ export function CanvasItemLayer({
       )}
     </Layer>
   );
-}
+});

@@ -5,7 +5,7 @@ import {
   Home as HomeIcon,
   ErrorOutlined as NotFoundIcon,
 } from "@mui/icons-material";
-import { gradients } from "@/lib/theme";
+import { surfaces } from "@/lib/theme";
 
 export default function NotFound() {
   return (
@@ -25,7 +25,7 @@ export default function NotFound() {
         sx={{
           position: "absolute",
           inset: 0,
-          background: gradients.hero,
+          background: surfaces.hero,
           pointerEvents: "none",
         }}
       />
@@ -37,7 +37,7 @@ export default function NotFound() {
               width: 104,
               height: 104,
               borderRadius: "50%",
-              bgcolor: "rgba(99, 102, 241, 0.1)",
+              bgcolor: surfaces.brandSoft,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -55,10 +55,7 @@ export default function NotFound() {
               fontSize: { xs: "5rem", md: "7rem" },
               lineHeight: 1,
               mb: 2,
-              background: gradients.brand,
-              backgroundClip: "text",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
+              color: "primary.main",
             }}
           >
             404

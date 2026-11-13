@@ -64,7 +64,11 @@ export function useCanvasInteraction({
   setSelectedItemIds,
   setSelectedItemId,
 }: UseCanvasInteractionProps) {
-  const drawing = useDrawingInteraction({ canvasId, canCreateItems });
+  const drawing = useDrawingInteraction({
+    canvasId,
+    canCreateItems,
+    items,
+  });
   const effectiveTool = resolveEffectiveTool(activeTool, { canCreateItems });
   const isDrawingOrCreating = CREATING_TOOLS.has(effectiveTool);
   // A marquee drag ends with a click on the empty stage; that click must not

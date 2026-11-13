@@ -5,7 +5,7 @@
 
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import {
   Box,
   Typography,
@@ -31,6 +31,8 @@ interface ActivityFeedProps {
   canvasId?: string;
   limit?: number;
   showTitle?: boolean;
+  /** Told once loaded whether there is anything to show (IMP-083). */
+  onHasActivity?: (hasActivity: boolean) => void;
 }
 
 /** Standalone sentence form of the shared activity message ("Created canvas …"). */
@@ -45,6 +47,7 @@ export function ActivityFeed({
   canvasId,
   limit = 20,
   showTitle = true,
+  onHasActivity,
 }: ActivityFeedProps) {
   const {
     data,
@@ -56,6 +59,12 @@ export function ActivityFeed({
   } = useActivities(canvasId, limit);
 
   const activities = data?.pages.flatMap((page) => page.activities) || [];
+  const hasActivity = activities.length > 0;
+  const loaded = !isLoading && !error;
+
+  useEffect(() => {
+    if (loaded) onHasActivity?.(hasActivity);
+  }, [loaded, hasActivity, onHasActivity]);
 
   if (isLoading) {
     return (

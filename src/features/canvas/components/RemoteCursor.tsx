@@ -5,6 +5,7 @@ import {
   collaborationColorForUser,
   cursorIdentityVariant,
 } from "@/lib/collaboration/transport-policy";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 
 interface RemoteCursorProps {
   userId: string;
@@ -43,7 +44,7 @@ export function RemoteCursor({ userId, name, color, x, y }: RemoteCursorProps) {
           height: 24,
           bgcolor: stableColor,
           clipPath: "polygon(0 0, 100% 70%, 58% 72%, 42% 100%)",
-          filter: "drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45))",
+          filter: `drop-shadow(0 1px 1px ${CANVAS_PALETTE.light.shadow})`,
           transform: variant % 2 === 0 ? "none" : "rotate(-3deg)",
           transformOrigin: "top left",
         }}

@@ -1,6 +1,11 @@
 import { load } from "cheerio";
 import { sanitizeNoteHtml, sanitizeUrl } from "@/lib/sanitization";
 import { MAX_NOTE_TEXT_LENGTH } from "@/lib/constants";
+import {
+  DEFAULT_NOTE_COLOR,
+  isNoteColorName,
+  type NoteColorName,
+} from "@/lib/note-colors";
 
 export const MAX_DOCUMENT_BYTES = 50_000;
 export const MAX_DOCUMENT_DEPTH = 12;
@@ -33,6 +38,8 @@ export type VersionedNoteContent = {
   document: TiptapNode;
   plainText: string;
   text: string;
+  /** IMP-085: absent means the default yellow. */
+  color?: NoteColorName;
 };
 
 function fail(message: string): never {
@@ -223,6 +230,13 @@ export interface NormalizeNoteOptions {
   allowEmpty?: boolean;
 }
 
+/** A note colour from the fixed list; yellow (the default) is not stored. */
+function noteColorField(value: unknown): { color?: NoteColorName } {
+  if (value === undefined || value === null) return {};
+  if (!isNoteColorName(value)) return fail("Unsupported note colour.");
+  return value === DEFAULT_NOTE_COLOR ? {} : { color: value };
+}
+
 export function normalizeNoteContent(
   input: unknown,
   options: NormalizeNoteOptions = {},
@@ -232,6 +246,7 @@ export function normalizeNoteContent(
   if (JSON.stringify(input).length > MAX_DOCUMENT_BYTES)
     return fail("Rich-text document is too large.");
   const value = input as Record<string, unknown>;
+  const color = noteColorField(value.color);
   if (value.formatVersion === 1) {
     const document = validateNode(value.document, 0, { value: 0 });
     if (document.type !== "doc")
@@ -246,6 +261,7 @@ export function normalizeNoteContent(
       document,
       plainText,
       text: renderNode(document),
+      ...color,
     };
   }
   if (typeof value.text !== "string")
@@ -260,6 +276,7 @@ export function normalizeNoteContent(
     document,
     plainText,
     text: renderNode(document),
+    ...color,
   };
 }
 

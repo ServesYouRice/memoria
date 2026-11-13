@@ -23,7 +23,7 @@ test("account export and deletion remove durable and public data", async ({
   const shareToken = new URL(shareUrl).pathname.split("/").at(-1);
   expect(shareToken).toBeTruthy();
 
-  await page.goto("/settings");
+  await page.goto("/settings/data");
   const exportButton = await hydrated(
     page.getByRole("button", { name: "Download account data" }),
   );

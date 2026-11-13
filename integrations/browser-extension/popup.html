@@ -45,10 +45,44 @@
       </form>
     </section>
 
+    <section id="page" hidden>
+      <header>
+        <h1>Save this page</h1>
+        <button id="page-settings" type="button" class="link">Settings</button>
+      </header>
+      <p id="page-title" class="page-title"></p>
+      <p id="page-url" class="hint page-url"></p>
+      <label>
+        Save to
+        <select id="canvas">
+          <option value="">Inbox</option>
+        </select>
+      </label>
+      <p class="hint">Text you selected on the page is saved with the link.</p>
+      <p id="page-error" class="error" role="alert" hidden></p>
+      <p id="page-status" class="status" role="status" hidden></p>
+      <div class="actions">
+        <button id="open-existing" type="button" class="secondary" hidden>
+          Open it
+        </button>
+        <button id="save-page" type="button">Save page</button>
+      </div>
+      <p class="switch">
+        <button id="show-tabs" type="button" class="link">
+          Save all tabs in this window instead
+        </button>
+      </p>
+    </section>
+
     <section id="main" hidden>
       <header>
         <h1>Save tabs to Memoria</h1>
-        <button id="open-settings" type="button" class="link">Settings</button>
+        <span>
+          <button id="show-page" type="button" class="link">This page</button>
+          <button id="open-settings" type="button" class="link">
+            Settings
+          </button>
+        </span>
       </header>
       <div class="toolbar">
         <label class="inline">

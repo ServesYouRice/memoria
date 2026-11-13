@@ -18,7 +18,7 @@ test("authenticator-app two-factor gates password sign-in", async ({
   const email = uniqueEmail("two-factor");
   await registerAndVerify(page, email);
 
-  await page.goto("/settings");
+  await page.goto("/settings/security");
   await (
     await hydrated(page.getByLabel("Password to confirm"))
   ).fill(DEFAULT_PASSWORD);

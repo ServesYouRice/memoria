@@ -28,7 +28,7 @@ export const READINESS_POLICY = {
   "upload-storage": "feature",
 } as const satisfies Record<ReadinessCheckDefinition["name"], ReadinessEffect>;
 
-function defaultChecks(): ReadinessCheckDefinition[] {
+export function defaultChecks(): ReadinessCheckDefinition[] {
   return [
     {
       name: "database",
@@ -66,7 +66,7 @@ function defaultChecks(): ReadinessCheckDefinition[] {
   ];
 }
 
-async function runWithDeadline(
+export async function runWithDeadline(
   run: () => Promise<unknown>,
   timeoutMs: number,
 ): Promise<void> {

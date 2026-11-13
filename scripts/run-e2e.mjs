@@ -12,7 +12,9 @@ const artifactsDir = join(projectRoot, 'test-results', 'services');
 const keepServices = process.argv.includes('--keep');
 const skipImageBuild =
   process.env.E2E_SKIP_IMAGE_BUILD === '1' || process.argv.includes('--skip-image-build');
-const harnessArgs = new Set(['--', '--keep', '--skip-image-build']);
+// --no-smoke: the canvas speed check (IMP-103) runs Playwright only.
+const skipSmoke = process.argv.includes('--no-smoke');
+const harnessArgs = new Set(['--', '--keep', '--skip-image-build', '--no-smoke']);
 const playwrightArgs = process.argv.slice(2).filter((argument) => !harnessArgs.has(argument));
 const composeArgs = ['compose', '-p', projectName, '-f', composeFile];
 const runtimeEnv = {
@@ -64,10 +66,12 @@ try {
     cwd: projectRoot,
     env: runtimeEnv,
   });
-  await run('node', ['scripts/smoke.mjs', '--strict', '--json'], {
-    cwd: projectRoot,
-    env: runtimeEnv,
-  });
+  if (!skipSmoke) {
+    await run('node', ['scripts/smoke.mjs', '--strict', '--json'], {
+      cwd: projectRoot,
+      env: runtimeEnv,
+    });
+  }
 } catch (error) {
   failure = error;
 } finally {

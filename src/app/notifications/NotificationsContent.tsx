@@ -96,7 +96,16 @@ export function NotificationsContent() {
         <EmptyState
           icon={NotificationsIcon}
           title="No notifications"
-          description="Canvas invitations and responses will appear here. Activity remains available on the dashboard."
+          description="Invitations to canvases and replies to yours appear here. Activity remains available on the dashboard."
+          action={
+            <Button
+              component={Link}
+              href="/settings/notifications"
+              variant="outlined"
+            >
+              Notification settings
+            </Button>
+          }
         />
       )}
 

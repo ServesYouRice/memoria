@@ -16,8 +16,28 @@ import { MEETING_TIMER_DISCLOSURE } from "@/lib/product-surfaces";
  * only — it is not persisted, not synchronized, and every collaborator runs
  * their own. The copy below says so rather than implying a shared countdown.
  */
-export const MeetingTimer: React.FC = () => {
-  const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+export interface MeetingTimerProps {
+  /**
+   * Opens the timer from another control (the phone "More" menu) instead of
+   * the timer's own button; the timer keeps running while it is closed.
+   */
+  externalAnchor?: HTMLElement | null;
+  onExternalClose?: () => void;
+  /** Hide the timer's own button (its state stays mounted). */
+  hideTrigger?: boolean;
+}
+
+export const MeetingTimer: React.FC<MeetingTimerProps> = ({
+  externalAnchor = null,
+  onExternalClose,
+  hideTrigger = false,
+}) => {
+  const [ownAnchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const anchorEl = ownAnchorEl ?? externalAnchor;
+  const closeTimer = () => {
+    setAnchorEl(null);
+    onExternalClose?.();
+  };
   const [timeLeft, setTimeLeft] = useState(0);
   const [duration, setDuration] = useState(15); // minutes
   const [isRunning, setIsRunning] = useState(false);
@@ -68,22 +88,24 @@ export const MeetingTimer: React.FC = () => {
 
   return (
     <>
-      <IconButton
-        onClick={(e) => setAnchorEl(e.currentTarget)}
-        color={isRunning ? "secondary" : "default"}
-        aria-label="Personal meeting timer (not shared with collaborators)"
-      >
-        <Timer />
-        {isRunning && (
-          <Typography variant="caption" sx={{ ml: 0.5, fontWeight: "bold" }}>
-            {formatTime(timeLeft)}
-          </Typography>
-        )}
-      </IconButton>
+      {!hideTrigger && (
+        <IconButton
+          onClick={(e) => setAnchorEl(e.currentTarget)}
+          color={isRunning ? "secondary" : "default"}
+          aria-label="Personal meeting timer (not shared with collaborators)"
+        >
+          <Timer />
+          {isRunning && (
+            <Typography variant="caption" sx={{ ml: 0.5, fontWeight: "bold" }}>
+              {formatTime(timeLeft)}
+            </Typography>
+          )}
+        </IconButton>
+      )}
       <Popover
         open={open}
         anchorEl={anchorEl}
-        onClose={() => setAnchorEl(null)}
+        onClose={closeTimer}
         anchorOrigin={{
           vertical: "bottom",
           horizontal: "right",
@@ -103,7 +125,7 @@ export const MeetingTimer: React.FC = () => {
             }}
           >
             <Typography variant="h6">Personal timer</Typography>
-            <IconButton size="small" onClick={() => setAnchorEl(null)}>
+            <IconButton size="small" onClick={closeTimer}>
               <Close fontSize="small" />
             </IconButton>
           </Box>

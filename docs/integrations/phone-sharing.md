@@ -1,6 +1,6 @@
 # Share links from your phone
 
-Send a link from any app on your phone to your Memoria **Inbox** board. You
+Send a link from any app on your phone to your Memoria **Inbox**. You
 can add a short "How should this be sorted?" note that the Inbox sorter reads
 later.
 
@@ -24,30 +24,20 @@ saved.
 
 ## iPhone and iPad (Apple Shortcut)
 
-The Shortcut sends the shared link to the same endpoint the browser extension
-uses:
-
-```
-POST https://<your-memoria-address>/api/v1/extensions/clip/batch
-x-api-key: <your API key>
-Content-Type: application/json
-
-{
-  "idempotencyKey": "ios-20261105143012345",
-  "links": [{ "url": "https://example.com/article" }],
-  "note": "optional: how should this be sorted?"
-}
-```
-
-`idempotencyKey` must be 8–128 letters, digits, `-` or `_`, and new for every
-share. A repeated request with the same key and body returns the first save
-(status 200) instead of creating the link again.
+A Shortcut in the Apple **Shortcuts** app sends the shared link to your
+Inbox. Setting it up takes a couple of minutes.
 
 ### 1. Create an API key
 
-In Memoria, open **API Keys**, create a key named for example "iPhone
-Shortcut", and copy it. The key can save to your account, so keep the
-Shortcut on your own devices only.
+In Memoria, open **API Keys** and tap **Create a key for my iPhone**. Copy
+the server address and the key it shows; the key is shown only once. The key
+can save to your account, so keep the Shortcut on your own devices only.
+
+### Ready-made Shortcut
+
+Some installations offer a ready-made Shortcut. Then the **Save from your
+phone** section of Memoria's Help shows an **Add the Shortcut** button: tap
+it, paste the server address and the key when it asks, and skip step 2.
 
 ### 2. Build the Shortcut
 
@@ -79,7 +69,7 @@ Memoria". Then add these actions in order:
 ### 3. Use it
 
 In Safari or any app, tap **Share** and pick **Save to Memoria**. The link
-lands on your Inbox board.
+lands on your Inbox.
 
 ### Troubleshooting
 
@@ -88,5 +78,26 @@ lands on your Inbox board.
 | `401` | The API key is wrong or was revoked. Create a new one. |
 | `400` | The link is not `http://` or `https://`, or the body is malformed. Check the field names and types in step 6. |
 | `409` | The idempotency key was reused for a different link. Check the *Formatted Date* step. |
-| `422` | The Inbox board is full. Sort or clear it first. |
+| `422` | The Inbox is full. Sort or clear it first. |
 | `429` | Too many saves in a short time. Wait a minute. |
+
+## For developers: the request the Shortcut sends
+
+The Shortcut sends the shared link to the same endpoint the browser extension
+uses:
+
+```
+POST https://<your-memoria-address>/api/v1/extensions/clip/batch
+x-api-key: <your API key>
+Content-Type: application/json
+
+{
+  "idempotencyKey": "ios-20261105143012345",
+  "links": [{ "url": "https://example.com/article" }],
+  "note": "optional: how should this be sorted?"
+}
+```
+
+`idempotencyKey` must be 8–128 letters, digits, `-` or `_`, and new for every
+share. A repeated request with the same key and body returns the first save
+(status 200) instead of creating the link again.

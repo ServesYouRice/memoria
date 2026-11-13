@@ -136,7 +136,7 @@ export async function createAgentBoard(input: {
       return { board: existing, created: false as const };
     }
 
-    const summary = `Create board ${name}`;
+    const summary = `Create canvas ${name}`;
     const agentAction = await tx.agentAction.create({
       data: {
         userId: input.actor.userId,

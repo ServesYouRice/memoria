@@ -31,8 +31,25 @@ function getS3Client() {
   return s3Client;
 }
 
+/**
+ * Where local uploads live: UPLOAD_LOCAL_DIR (the small set-up's mounted
+ * folder, IMP-100), else `.data/uploads` for development.
+ */
+export function localUploadRoot() {
+  const configured = process.env.UPLOAD_LOCAL_DIR?.trim();
+  return resolve(configured || join(process.cwd(), ".data", "uploads"));
+}
+
+/** Production keeps uploads on disk only when a folder was chosen for it. */
+export function localUploadsAllowed() {
+  return (
+    process.env.NODE_ENV !== "production" ||
+    Boolean(process.env.UPLOAD_LOCAL_DIR?.trim())
+  );
+}
+
 function getLocalPath(storageKey: string) {
-  const root = resolve(join(process.cwd(), ".data", "uploads"));
+  const root = localUploadRoot();
   const relativeKey = storageKey.replace(/^uploads[\\/]/, "");
   const target = resolve(join(root, relativeKey));
   const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
@@ -169,8 +186,16 @@ export async function deletePrivateUploadObject(
 
 export async function checkPrivateUploadStorage(): Promise<void> {
   if (process.env.UPLOAD_STORAGE !== "s3") {
-    if (process.env.NODE_ENV === "production") {
+    if (!localUploadsAllowed()) {
       throw new Error("Production private upload storage is not configured");
+    }
+    if (process.env.UPLOAD_LOCAL_DIR?.trim()) {
+      // The folder must exist and take writes (a mounted, writable volume).
+      const root = localUploadRoot();
+      await mkdir(root, { recursive: true });
+      const probe = join(root, `.ready-${process.pid}-${Date.now()}`);
+      await writeFile(probe, "ok");
+      await unlink(probe);
     }
     return;
   }

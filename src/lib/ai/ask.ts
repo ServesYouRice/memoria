@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { ApiError } from "@/lib/errors";
+import { ApiError, notFoundError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import {
   getItemPlainText,
@@ -11,9 +11,13 @@ import { runBudgetedAi, type AiUsageSnapshot } from "@/lib/ai/budget";
 import { generateText } from "@/lib/ai/service";
 import {
   ASK_BOARD_LIMIT,
+  ASK_LINKS_PER_ITEM,
   ASK_MAX_OUTPUT_TOKENS,
+  ASK_PAGE_EXCERPT_CHARS,
   ASK_RETRIEVAL_LIMIT,
+  ASK_SCOPE_TAG_LIMIT,
   ASK_SYSTEM_PROMPT,
+  askScopeLabel,
   buildAskContext,
   buildAskPrompt,
   extractSearchTerms,
@@ -21,8 +25,12 @@ import {
   type AskBoard,
   type AskCommandRejection,
   type AskRetrievedItem,
+  type AskScope,
+  type AskScopeUsed,
 } from "@/lib/ai/ask-schema";
 import { proposeAskCommand } from "@/lib/ai/ask-commands";
+import { pageCopyExcerpts } from "@/lib/services/page-copy";
+import { loadItemLinks } from "@/lib/canvas/arrow-links";
 
 const logger = createLogger("ai-ask");
 const EMBEDDING_SCAN_LIMIT = 2_000;
@@ -64,6 +72,39 @@ export type AskQueryEmbedder = (
   question: string,
 ) => Promise<AskQueryEmbedding | null>;
 
+/**
+ * A resolved scope (IMP-101): the canvas has already been checked to be the
+ * user's own. Every retrieval query adds this on top of the owner filter.
+ */
+export type AskScopeFilter =
+  | { kind: "all" }
+  | { kind: "canvas"; canvasId: string }
+  | { kind: "tag"; tag: string };
+
+const ALL: AskScopeFilter = { kind: "all" };
+
+function scopeSql(scope: AskScopeFilter) {
+  switch (scope.kind) {
+    case "all":
+      return Prisma.empty;
+    case "canvas":
+      return Prisma.sql`AND i."canvasId" = ${scope.canvasId}`;
+    case "tag":
+      return Prisma.sql`AND ${scope.tag} = ANY(i."tags")`;
+  }
+}
+
+function scopeWhere(scope: AskScopeFilter) {
+  switch (scope.kind) {
+    case "all":
+      return {};
+    case "canvas":
+      return { canvasId: scope.canvasId };
+    case "tag":
+      return { tags: { has: scope.tag } };
+  }
+}
+
 interface ItemRow {
   id: string;
   canvasId: string;
@@ -92,6 +133,7 @@ export async function searchOwnedItems(
   userId: string,
   terms: string[],
   limit = ASK_RETRIEVAL_LIMIT,
+  scope: AskScopeFilter = ALL,
 ): Promise<ItemRow[]> {
   if (terms.length === 0) return [];
   const useFts = await hasSearchVectorColumn();
@@ -110,9 +152,14 @@ export async function searchOwnedItems(
   // Terms are letters and digits only (extractSearchTerms), so OR-joining
   // them is a valid tsquery.
   const tsQuery = Prisma.sql`to_tsquery('english', ${terms.join(" | ")})`;
-  const ftsMatch = useFts
-    ? Prisma.sql`OR i."searchVector" @@ ${tsQuery}`
-    : Prisma.empty;
+  // Words found only in a link's saved page text count too (IMP-094).
+  const ftsMatch = Prisma.sql`
+    ${useFts ? Prisma.sql`OR i."searchVector" @@ ${tsQuery}` : Prisma.empty}
+    OR EXISTS (
+      SELECT 1 FROM "ItemPageCopy" p
+      WHERE p."itemId" = i."id" AND p."searchVector" @@ ${tsQuery}
+    )
+  `;
   const ftsRank = useFts
     ? Prisma.sql`+ ts_rank(COALESCE(i."searchVector", ''::tsvector), ${tsQuery})`
     : Prisma.empty;
@@ -125,6 +172,7 @@ export async function searchOwnedItems(
     WHERE c."userId" = ${userId}
       AND c."isTemplate" = false
       AND i."deletedAt" IS NULL
+      ${scopeSql(scope)}
       AND (
         ${haystack} ILIKE ANY (${patterns}::text[])
         ${ftsMatch}
@@ -152,6 +200,7 @@ export async function nearestOwnedItemIds(
   userId: string,
   query: AskQueryEmbedding,
   limit = ASK_RETRIEVAL_LIMIT,
+  scope: AskScopeFilter = ALL,
 ): Promise<string[]> {
   const rows = await prisma.itemEmbedding.findMany({
     where: {
@@ -160,6 +209,7 @@ export async function nearestOwnedItemIds(
       item: {
         deletedAt: null,
         canvas: { userId, isTemplate: false },
+        ...scopeWhere(scope),
       },
     },
     select: { itemId: true, vector: true },
@@ -178,13 +228,18 @@ export async function nearestOwnedItemIds(
     .map((row) => row.itemId);
 }
 
-async function loadOwnedItemRows(userId: string, itemIds: string[]) {
+async function loadOwnedItemRows(
+  userId: string,
+  itemIds: string[],
+  scope: AskScopeFilter,
+) {
   if (itemIds.length === 0) return [];
   const rows = await prisma.canvasItem.findMany({
     where: {
       id: { in: itemIds },
       deletedAt: null,
       canvas: { userId, isTemplate: false },
+      ...scopeWhere(scope),
     },
     select: {
       id: true,
@@ -212,13 +267,19 @@ async function loadOwnedItemRows(userId: string, itemIds: string[]) {
 export async function retrieveOwnedItems(
   userId: string,
   question: string,
-  options: { embedQuery?: AskQueryEmbedder; limit?: number } = {},
+  options: {
+    embedQuery?: AskQueryEmbedder;
+    limit?: number;
+    scope?: AskScopeFilter;
+  } = {},
 ): Promise<AskRetrievedItem[]> {
   const limit = options.limit ?? ASK_RETRIEVAL_LIMIT;
+  const scope = options.scope ?? ALL;
   const textRows = await searchOwnedItems(
     userId,
     extractSearchTerms(question),
     limit,
+    scope,
   );
 
   let vectorRows: ItemRow[] = [];
@@ -226,8 +287,8 @@ export async function retrieveOwnedItems(
     try {
       const embedding = await options.embedQuery(question);
       if (embedding) {
-        const ids = await nearestOwnedItemIds(userId, embedding, limit);
-        const loaded = await loadOwnedItemRows(userId, ids);
+        const ids = await nearestOwnedItemIds(userId, embedding, limit, scope);
+        const loaded = await loadOwnedItemRows(userId, ids, scope);
         const byId = new Map(loaded.map((row) => [row.id, row]));
         vectorRows = ids.flatMap((id) => byId.get(id) ?? []);
       }
@@ -253,7 +314,27 @@ export async function retrieveOwnedItems(
       }
     }
   }
-  return merged.map(toRetrieved);
+  const retrieved = merged.map(toRetrieved);
+  // A short excerpt of each link's saved page, around the question's words.
+  const excerpts = await pageCopyExcerpts(
+    prisma,
+    merged.filter((row) => row.type === "BOOKMARK").map((row) => row.id),
+    extractSearchTerms(question),
+    { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
+  );
+  // What each item is linked to (IMP-095): "what is connected to this?".
+  const links = await loadItemLinks(
+    prisma,
+    retrieved.map((item) => item.id),
+    ASK_LINKS_PER_ITEM,
+  );
+  for (const item of retrieved) {
+    const excerpt = excerpts.get(item.id);
+    if (excerpt) item.pageText = excerpt;
+    const itemLinks = links.get(item.id);
+    if (itemLinks) item.links = itemLinks;
+  }
+  return retrieved;
 }
 
 export async function listOwnedBoards(userId: string): Promise<AskBoard[]> {
@@ -263,6 +344,53 @@ export async function listOwnedBoards(userId: string): Promise<AskBoard[]> {
     take: ASK_BOARD_LIMIT,
     select: { id: true, name: true },
   });
+}
+
+/**
+ * Checks a requested scope against what the user owns. A canvas that is not
+ * theirs (shared with them, a template, or missing) is refused the same way,
+ * so the answer never says whether someone else's canvas exists.
+ */
+export async function resolveAskScope(
+  userId: string,
+  scope: AskScope,
+): Promise<{ filter: AskScopeFilter; used: AskScopeUsed }> {
+  if (scope.kind === "canvas") {
+    const canvas = await prisma.canvas.findFirst({
+      where: { id: scope.canvasId, userId, isTemplate: false },
+      select: { id: true, name: true },
+    });
+    if (!canvas) throw notFoundError("Canvas", scope.canvasId);
+    return {
+      filter: { kind: "canvas", canvasId: canvas.id },
+      used: { kind: "canvas", label: askScopeLabel(scope, canvas.name) },
+    };
+  }
+  if (scope.kind === "tag") {
+    return {
+      filter: { kind: "tag", tag: scope.tag },
+      used: { kind: "tag", label: askScopeLabel(scope) },
+    };
+  }
+  return { filter: ALL, used: { kind: "all", label: askScopeLabel(scope) } };
+}
+
+/** The canvases and tags the Ask box offers as scopes: the user's own only. */
+export async function listAskScopeChoices(userId: string) {
+  const [canvases, tags] = await Promise.all([
+    listOwnedBoards(userId),
+    prisma.$queryRaw<Array<{ tag: string }>>`
+      SELECT tag FROM "CanvasItem" i
+      JOIN "Canvas" c ON i."canvasId" = c."id",
+      unnest(i."tags") tag
+      WHERE c."userId" = ${userId}
+        AND c."isTemplate" = false
+        AND i."deletedAt" IS NULL
+      GROUP BY tag ORDER BY COUNT(*) DESC, tag ASC
+      LIMIT ${ASK_SCOPE_TAG_LIMIT}
+    `,
+  ]);
+  return { canvases, tags: tags.map((row) => row.tag) };
 }
 
 export interface AskSource {
@@ -282,6 +410,8 @@ export interface AskResult {
   commandRejected: AskCommandRejection | "failed" | null;
   commandError?: string;
   retrievedCount: number;
+  /** Where the question looked (IMP-101). */
+  scope: AskScopeUsed;
   /** Null when the usage store could not be read after the call. */
   usage: AiUsageSnapshot | null;
 }
@@ -300,15 +430,21 @@ export async function askMemoria(input: {
   question: string;
   signal?: AbortSignal;
   embedQuery?: AskQueryEmbedder;
+  scope?: AskScope;
 }): Promise<AskResult> {
+  const scope = await resolveAskScope(
+    input.userId,
+    input.scope ?? { kind: "all" },
+  );
   const [items, boards] = await Promise.all([
     retrieveOwnedItems(input.userId, input.question, {
       embedQuery: input.embedQuery,
+      scope: scope.filter,
     }),
     listOwnedBoards(input.userId),
   ]);
   const { context, refs } = buildAskContext(items, boards);
-  const prompt = buildAskPrompt(input.question, context);
+  const prompt = buildAskPrompt(input.question, context, scope.used.label);
 
   const budgeted = await runBudgetedAi(
     input.userId,
@@ -342,6 +478,7 @@ export async function askMemoria(input: {
     suggestion: null,
     commandRejected: output.commandRejected,
     retrievedCount: refs.items.size,
+    scope: scope.used,
     usage: budgeted.usage,
   };
 

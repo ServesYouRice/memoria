@@ -1,18 +1,15 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import { Stage } from "react-konva";
 import { useCanvasStore } from "@/stores/canvasStore";
-import {
-  Alert,
-  Box,
-  Button,
-  SpeedDial,
-  SpeedDialAction,
-  SpeedDialIcon,
-  useTheme,
-} from "@mui/material";
-import { NoteAdd, Bookmark, Image as ImageIcon } from "@mui/icons-material";
+import { Alert, Box, Button } from "@mui/material";
 import { useSession } from "@/lib/auth-client";
 import { useSearchParams } from "next/navigation";
 import {
@@ -69,10 +66,12 @@ import {
 } from "@/lib/export/export-utils";
 
 import type {
+  ArrowContent,
   CanvasAccessLevel,
   CanvasItem,
   ItemGeometryCommit,
 } from "@/types/canvas";
+import type { UpdateCanvasItemInput } from "@/lib/validation/canvas-item";
 import {
   ItemType,
   isNoteContent,
@@ -85,7 +84,10 @@ import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccess
 import type { ContextMenuPosition } from "@/features/canvas/components/CanvasContextMenu";
 import { DrawingToolbar } from "@/features/canvas/components/DrawingToolbar";
 import { CanvasHeader } from "@/features/canvas/components/CanvasHeader";
-import { GridOverlay } from "@/features/canvas/components/GridOverlay";
+import {
+  DotOverlay,
+  GridOverlay,
+} from "@/features/canvas/components/GridOverlay";
 import { DrawingPreview } from "@/features/canvas/components/DrawingPreview";
 import { CursorChat } from "@/features/canvas/components/CursorChat";
 import { ReactionSelector } from "@/features/canvas/components/ReactionSelector";
@@ -93,12 +95,23 @@ import { RemoteCursorChat } from "@/features/canvas/components/RemoteCursorChat"
 import { RemoteCursor } from "@/features/canvas/components/RemoteCursor";
 import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
-import { MainToolbar } from "@/features/canvas/components/MainToolbar";
+import { CanvasAddBar } from "@/features/canvas/components/CanvasAddBar";
+import { CanvasViewControls } from "@/features/canvas/components/CanvasViewControls";
 import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { isVersionConflict } from "@/lib/api/fetch-client";
 import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
+import { appColor, appColorTokens } from "@/lib/theme";
+import { useThemeMode } from "@/lib/theme-context";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
+import { thumbnailDataUrl } from "@/features/canvas/lib/thumbnail";
+import {
+  isLinkArrow,
+  moveArrowEnd,
+} from "@/features/canvas/lib/arrow-attachment";
+import { ArrowLabelDialog } from "@/features/canvas/components/ArrowLabelDialog";
+import { LinkedItemsPanel } from "@/features/canvas/components/LinkedItemsPanel";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -140,11 +153,15 @@ export async function runConfirmAction(
   }
 }
 
+/** Pan distance, in screen pixels, before the drawn item set is recomputed. */
+const VIEWPORT_STEP_PX = 256;
+
 /**
  * IMP-042: the board opens the canvas's collaborative document and edits it
  * live while it is available; item writes fall back to the HTTP API
  * otherwise (see `lib/collaboration/sync/client-session`).
  */
+
 export function CanvasBoard({ canvasId }: CanvasBoardProps) {
   const documentSession = useCanvasDocumentSession(canvasId, {
     onRejectedChange: () =>
@@ -173,8 +190,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const searchParams = useSearchParams();
   const focusedItemRef = useRef<string | null>(null);
   const lastThumbnailRevisionRef = useRef<string | null>(null);
-  const theme = useTheme();
-  const gridStroke = theme.palette.mode === "light" ? "#e0e0e0" : "#1e293b";
+  // Konva needs a real colour; the mode comes from the theme context.
+  const themeMode = useThemeMode().mode;
+  const gridStroke = appColorTokens[themeMode].canvasGrid;
   const { ref: stageContainerRef, size: stageSize } = useObservedStageSize();
 
   // Data Hook (Single source of truth for display)
@@ -313,6 +331,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // zoom out so the piles (placed beside existing items) are in view.
   const [fitAfterSortFrom, setFitAfterSortFrom] = useState<string | null>(null);
   const [whisperOpen, setWhisperOpen] = useState(false);
+  const [labelArrow, setLabelArrow] = useState<CanvasItem | null>(null);
   const [pendingAutopilotActions, setPendingAutopilotActions] = useState<
     AutopilotAction[]
   >([]);
@@ -813,7 +832,48 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
     if (item.type === ItemType.IMAGE) {
       handleImageDoubleClick(item);
+      return;
     }
+    if (item.type === ItemType.ARROW) setLabelArrow(item);
+  };
+
+  /** Arrow content edits (IMP-095): ends, label and line. One write each. */
+  const saveArrow = (
+    arrow: CanvasItem,
+    data: Omit<UpdateCanvasItemInput, "version">,
+  ) => {
+    if (!capabilities.canEditItems) return;
+    updateItemMutation.mutate(
+      { itemId: arrow.id, data: { ...data, version: arrow.version } },
+      {
+        onError: (error) =>
+          toast.error(
+            error instanceof Error ? error.message : "Could not save the arrow",
+          ),
+      },
+    );
+  };
+
+  const handleMoveArrowEnd = (
+    arrow: CanvasItem,
+    which: "start" | "end",
+    point: { x: number; y: number },
+  ) => {
+    const next = moveArrowEnd(arrow, which, point, items);
+    saveArrow(arrow, {
+      ...next,
+      content: next.content as CanvasItem["content"],
+    });
+  };
+
+  /** Select an item and bring it to the middle of the screen. */
+  const jumpToItem = (item: CanvasItem) => {
+    setSelectedItemId(item.id);
+    setSelectedItemIds(new Set([item.id]));
+    setPosition({
+      x: stageSize.width / 2 - (item.positionX + item.width / 2) * zoom,
+      y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
+    });
   };
 
   /** Keyboard nudge from the accessible item list, on the same commit path. */
@@ -839,18 +899,17 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     (expectedRevision: string) => {
       if (!stageRef.current || !isOwner) return;
       try {
-        const thumbnail = stageRef.current.toDataURL({
-          pixelRatio: 0.3,
-          mimeType: "image/jpeg",
-          quality: 0.6,
-        });
+        const thumbnail = thumbnailDataUrl(
+          stageRef.current,
+          appColorTokens[themeMode].canvasBackground,
+        );
         updateThumbnail.mutate({ canvasId, thumbnail, expectedRevision });
         lastThumbnailRevisionRef.current = expectedRevision;
       } catch {
         // A thumbnail is a best-effort derivative and must not interrupt editing.
       }
     },
-    [canvasId, isOwner, updateThumbnail],
+    [canvasId, isOwner, themeMode, updateThumbnail],
   );
 
   useEffect(() => {
@@ -861,7 +920,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     if (
       !isOwner ||
       totalItemCount === 0 ||
-      canvasRevision === "0" ||
+      // Revision "0" still needs a preview: seeded canvases have items but
+      // no change history yet (IMP-083).
       lastThumbnailRevisionRef.current === canvasRevision
     ) {
       return;
@@ -1095,23 +1155,113 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   };
 
   // Virtualization
-  const renderedItems = useVirtualItems(
-    items.map((item) => ({
-      ...item,
-      x: item.positionX,
-      y: item.positionY,
-    })),
-    {
-      viewport: {
-        x: position.x,
-        y: position.y,
-        width: stageSize.width,
-        height: stageSize.height,
-      },
-      zoom,
-      padding: 500,
-    },
+  const virtualSource = React.useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        x: item.positionX,
+        y: item.positionY,
+      })),
+    [items],
   );
+  // IMP-103: the shown set is recomputed only when the view crosses a
+  // VIEWPORT_STEP_PX step, so a pan does not re-render every item on every
+  // pointer move. The window is widened by one step on each side, so it
+  // always covers what is on screen at any zoom.
+  const quantizedX =
+    Math.floor(position.x / VIEWPORT_STEP_PX) * VIEWPORT_STEP_PX +
+    VIEWPORT_STEP_PX;
+  const quantizedY =
+    Math.floor(position.y / VIEWPORT_STEP_PX) * VIEWPORT_STEP_PX +
+    VIEWPORT_STEP_PX;
+  const renderedItems = useVirtualItems(virtualSource, {
+    viewport: {
+      x: quantizedX,
+      y: quantizedY,
+      width: stageSize.width + VIEWPORT_STEP_PX * 2,
+      height: stageSize.height + VIEWPORT_STEP_PX * 2,
+    },
+    zoom,
+    padding: 500,
+  });
+
+  // IMP-103: the item layer is memoized; these keep its callbacks the same
+  // between renders while always calling the latest handler.
+  const layerHandlers = useRef({
+    select: handleSelectItem,
+    contextMenu: handleContextMenu,
+    activate: handleActivateItem,
+    commit: handleCommitGeometry,
+    moveArrowEnd: handleMoveArrowEnd,
+  });
+  layerHandlers.current = {
+    select: handleSelectItem,
+    contextMenu: handleContextMenu,
+    activate: handleActivateItem,
+    commit: handleCommitGeometry,
+    moveArrowEnd: handleMoveArrowEnd,
+  };
+  const stableSelectItem = useCallback(
+    (id: string) => layerHandlers.current.select(id, false),
+    [],
+  );
+  const stableContextMenu = useCallback(
+    (...args: Parameters<typeof handleContextMenu>) =>
+      layerHandlers.current.contextMenu(...args),
+    [],
+  );
+  const stableActivateItem = useCallback(
+    (item: CanvasItem) => layerHandlers.current.activate(item),
+    [],
+  );
+  const stableCommitGeometry = useCallback(
+    (item: CanvasItem, geometry: ItemGeometryCommit) =>
+      layerHandlers.current.commit(item, geometry),
+    [],
+  );
+  const stableMoveArrowEnd = useCallback(
+    (...args: Parameters<typeof handleMoveArrowEnd>) =>
+      layerHandlers.current.moveArrowEnd(...args),
+    [],
+  );
+
+  // IMP-103: while the stage is dragged, Konva moves it itself. React's
+  // position follows only when the view crosses a VIEWPORT_STEP_PX step (and
+  // on drag end), so the toolbar and panels do not re-render on every
+  // pointer move; the HTML overlays are shifted to match in between.
+  const panOverlayRef = useRef<HTMLDivElement>(null);
+  const followStagePan = (next: { x: number; y: number }) => {
+    const sameStep =
+      Math.floor(next.x / VIEWPORT_STEP_PX) ===
+        Math.floor(position.x / VIEWPORT_STEP_PX) &&
+      Math.floor(next.y / VIEWPORT_STEP_PX) ===
+        Math.floor(position.y / VIEWPORT_STEP_PX);
+    if (!sameStep) {
+      setPosition(next);
+      return;
+    }
+    const overlay = panOverlayRef.current;
+    if (overlay)
+      overlay.style.transform = `translate(${next.x - position.x}px, ${next.y - position.y}px)`;
+  };
+  useLayoutEffect(() => {
+    if (panOverlayRef.current) panOverlayRef.current.style.transform = "";
+  }, [position]);
+  // The grids cover the same padded window as the drawn items.
+  const gridOffset = React.useMemo(
+    () => ({ x: -quantizedX / zoom, y: -quantizedY / zoom }),
+    [quantizedX, quantizedY, zoom],
+  );
+
+  // Linking arrows follow their items, so they are drawn wherever their
+  // stored box is (IMP-095).
+  const visibleItems = React.useMemo(() => {
+    const shown = new Set(renderedItems.map((item) => item.id));
+    const extra = items.filter(
+      (item) => !shown.has(item.id) && isLinkArrow(item),
+    );
+    return extra.length === 0 ? renderedItems : [...renderedItems, ...extra];
+  }, [items, renderedItems]);
 
   const [isPresentationMode, setPresentationMode] = useState(false);
 
@@ -1351,9 +1501,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         canvasName={canvasName}
       />
 
-      {viewMode === "manual" && !isPresentationMode && canEdit && (
-        <MainToolbar />
-      )}
       {viewMode === "manual" &&
         !isPresentationMode &&
         canEdit &&
@@ -1375,8 +1522,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             position: "relative",
             overflow: "hidden",
             cursor: isDrawing ? "crosshair" : "default",
-            bgcolor: (theme) =>
-              theme.palette.mode === "light" ? "#f0f2f5" : "#0d1526",
+            bgcolor: appColor("canvasBackground"),
           }}
         >
           {totalItemCount > allItems.length && (
@@ -1401,40 +1547,27 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               {totalItemCount} remain indexed for navigation and accessibility.
             </Box>
           )}
-          {!isDrawing && !isPresentationMode && canEdit && (
-            <SpeedDial
-              ariaLabel="Add Item"
-              sx={{ position: "absolute", bottom: 16, right: 16 }}
-              icon={<SpeedDialIcon />}
-            >
-              <SpeedDialAction
-                icon={<NoteAdd />}
-                onClick={() => setNoteDialogOpen(true)}
-                slotProps={{
-                  tooltip: {
-                    title: "Note",
-                  },
-                }}
-              />
-              <SpeedDialAction
-                icon={<Bookmark />}
-                onClick={() => setBookmarkDialogOpen(true)}
-                slotProps={{
-                  tooltip: {
-                    title: "Bookmark",
-                  },
-                }}
-              />
-              <SpeedDialAction
-                icon={<ImageIcon />}
-                onClick={() => setImageDialogOpen(true)}
-                slotProps={{
-                  tooltip: {
-                    title: "Image",
-                  },
-                }}
-              />
-            </SpeedDial>
+          {!isPresentationMode && canEdit && (
+            <CanvasAddBar
+              onAddNote={() => setNoteDialogOpen(true)}
+              onAddLink={() => setBookmarkDialogOpen(true)}
+              onAddImage={() => setImageDialogOpen(true)}
+            />
+          )}
+          {!isPresentationMode && (
+            <CanvasViewControls
+              zoom={zoom}
+              onZoomChange={setZoom}
+              onFitToScreen={fitToScreen}
+              gridVisible={gridVisible}
+              onGridToggle={() => setGridVisible(!gridVisible)}
+              snapEnabled={snapToGridEnabled}
+              onSnapToggle={
+                canEdit
+                  ? () => setSnapToGridEnabled(!snapToGridEnabled)
+                  : undefined
+              }
+            />
           )}
           {isOwner &&
             isInboxBoardName(canvasName) &&
@@ -1475,7 +1608,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             draggable={!isDrawing && isSpacePressed && !isTimeMachineActive}
             onDragMove={(event) => {
               const next = stageDragPosition(event);
-              if (next) setPosition(next);
+              if (next) followStagePan(next);
             }}
             onDragEnd={(event) => {
               const next = stageDragPosition(event);
@@ -1485,11 +1618,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               event.evt.preventDefault();
               const stage = event.target.getStage();
               const pointer = stage?.getPointerPosition();
-              if (!pointer) return;
+              if (!stage || !pointer) return;
               const factor = event.evt.deltaY > 0 ? 1 / 1.1 : 1.1;
               const nextZoom = Math.min(5, Math.max(0.1, zoom * factor));
-              const worldX = (pointer.x - position.x) / zoom;
-              const worldY = (pointer.y - position.y) / zoom;
+              // The stage's own offset: mid-pan, React's position may lag.
+              const worldX = (pointer.x - stage.x()) / zoom;
+              const worldY = (pointer.y - stage.y()) / zoom;
               setZoom(nextZoom);
               setPosition({
                 x: pointer.x - worldX * nextZoom,
@@ -1499,11 +1633,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             onMouseDown={isSpacePressed ? undefined : handleStageMouseDown}
             onMouseMove={(event) => {
               if (!isSpacePressed) handleStageMouseMove(event);
-              const pointer = event.target.getStage()?.getPointerPosition();
-              if (pointer) {
+              const stage = event.target.getStage();
+              const pointer = stage?.getPointerPosition();
+              if (stage && pointer) {
                 updateCursor(
-                  (pointer.x - position.x) / zoom,
-                  (pointer.y - position.y) / zoom,
+                  (pointer.x - stage.x()) / zoom,
+                  (pointer.y - stage.y()) / zoom,
                 );
               }
             }}
@@ -1512,25 +1647,36 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             ref={stageRef}
             onContextMenu={(e) => e.evt.preventDefault()}
           >
-            <GridOverlay
-              width={stageSize.width}
-              height={stageSize.height}
+            <DotOverlay
+              width={stageSize.width + VIEWPORT_STEP_PX * 2}
+              height={stageSize.height + VIEWPORT_STEP_PX * 2}
               zoom={zoom}
               gridSize={20}
-              offset={{ x: -position.x / zoom, y: -position.y / zoom }}
+              offset={gridOffset}
+              visible={!gridVisible}
+              stroke={CANVAS_PALETTE[themeMode].dot}
+            />
+            <GridOverlay
+              width={stageSize.width + VIEWPORT_STEP_PX * 2}
+              height={stageSize.height + VIEWPORT_STEP_PX * 2}
+              zoom={zoom}
+              gridSize={20}
+              offset={gridOffset}
               visible={gridVisible}
               stroke={gridStroke}
             />
             <CanvasItemLayer
-              items={exportItems ?? renderedItems}
+              items={exportItems ?? visibleItems}
+              allItems={exportItems ?? items}
+              onMoveArrowEnd={exportItems ? undefined : stableMoveArrowEnd}
               selectedItemIds={exportItems ? NO_SELECTION : selectedItemIds}
               isSelecting={exportItems ? false : isSelecting}
               selectionBox={exportItems ? null : selectionBox}
               capabilities={capabilities}
-              onSelectItem={(id) => handleSelectItem(id, false)}
-              onContextMenu={handleContextMenu}
-              onActivateItem={handleActivateItem}
-              onCommitGeometry={handleCommitGeometry}
+              onSelectItem={stableSelectItem}
+              onContextMenu={stableContextMenu}
+              onActivateItem={stableActivateItem}
+              onCommitGeometry={stableCommitGeometry}
               searchActive={!exportItems && Boolean(searchQuery.trim())}
               searchMatchIds={searchMatchIds}
             />
@@ -1538,6 +1684,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               currentPath={currentPath}
               currentCreation={currentCreation}
               zoom={zoom}
+              previewStroke={CANVAS_PALETTE[themeMode].ink}
             />
           </Stage>
 
@@ -1589,56 +1736,82 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             />
           )}
 
-          {cursors
-            .filter((cursor) => cursor.userId !== session?.user?.id)
-            .map((cursor) => {
-              const collaborator = collaborators.find(
-                (candidate) => candidate.userId === cursor.userId,
-              );
-              const screenX = cursor.position.x * zoom + position.x;
-              const screenY = cursor.position.y * zoom + position.y;
+          {/* IMP-103: shifted by followStagePan while a pan is in flight. */}
+          <Box
+            ref={panOverlayRef}
+            sx={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+            }}
+          >
+            {cursors
+              .filter((cursor) => cursor.userId !== session?.user?.id)
+              .map((cursor) => {
+                const collaborator = collaborators.find(
+                  (candidate) => candidate.userId === cursor.userId,
+                );
+                const screenX = cursor.position.x * zoom + position.x;
+                const screenY = cursor.position.y * zoom + position.y;
+                return (
+                  <RemoteCursor
+                    key={cursor.userId}
+                    userId={cursor.userId}
+                    name={
+                      collaborator?.name ||
+                      collaborator?.email ||
+                      "Collaborator"
+                    }
+                    color={cursor.color}
+                    x={screenX}
+                    y={screenY}
+                  />
+                );
+              })}
+
+            {remoteMessages.map((msg) => {
+              const screenX = msg.x * zoom + position.x;
+              const screenY = msg.y * zoom + position.y;
               return (
-                <RemoteCursor
-                  key={cursor.userId}
-                  userId={cursor.userId}
-                  name={
-                    collaborator?.name || collaborator?.email || "Collaborator"
-                  }
-                  color={cursor.color}
+                <RemoteCursorChat
+                  key={msg.id}
                   x={screenX}
                   y={screenY}
+                  message={msg.content}
+                  senderName={msg.userName}
+                  color={msg.userColor}
                 />
               );
             })}
 
-          {remoteMessages.map((msg) => {
-            const screenX = msg.x * zoom + position.x;
-            const screenY = msg.y * zoom + position.y;
-            return (
-              <RemoteCursorChat
-                key={msg.id}
-                x={screenX}
-                y={screenY}
-                message={msg.content}
-                senderName={msg.userName}
-                color={msg.userColor}
-              />
-            );
-          })}
+            {remoteReactions.map((reaction) => {
+              const screenX = reaction.x * zoom + position.x;
+              const screenY = reaction.y * zoom + position.y;
+              return (
+                <RemoteReaction
+                  key={reaction.id}
+                  x={screenX}
+                  y={screenY}
+                  emoji={reaction.emoji}
+                  senderName={reaction.userName}
+                />
+              );
+            })}
+          </Box>
 
-          {remoteReactions.map((reaction) => {
-            const screenX = reaction.x * zoom + position.x;
-            const screenY = reaction.y * zoom + position.y;
-            return (
-              <RemoteReaction
-                key={reaction.id}
-                x={screenX}
-                y={screenY}
-                emoji={reaction.emoji}
-                senderName={reaction.userName}
-              />
-            );
-          })}
+          {selectedItemId &&
+            selectedItemIds.size === 1 &&
+            !isPresentationMode && (
+              <Box
+                sx={{ position: "absolute", top: 80, right: 16, zIndex: 10 }}
+              >
+                <LinkedItemsPanel
+                  itemId={selectedItemId}
+                  items={items}
+                  onJump={jumpToItem}
+                />
+              </Box>
+            )}
 
           {selectedItemIds.size > 1 && (
             <Box
@@ -1676,6 +1849,19 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           )}
         </Box>
       )}
+
+      <ArrowLabelDialog
+        content={(labelArrow?.content as ArrowContent | undefined) ?? null}
+        onClose={() => setLabelArrow(null)}
+        onSave={(content) => {
+          if (labelArrow) {
+            saveArrow(labelArrow, {
+              content: content as CanvasItem["content"],
+            });
+          }
+          setLabelArrow(null);
+        }}
+      />
 
       <CanvasDialogs
         // Every opener of an item dialog reads the preview capabilities;

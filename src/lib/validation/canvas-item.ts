@@ -203,6 +203,8 @@ export const arrowContentSchema = z.object({
   arrowHeadStart: z.enum(["none", "arrow", "circle"]).optional(),
   arrowHeadEnd: z.enum(["none", "arrow", "circle"]).optional(),
   label: z.string().max(500).optional(),
+  /** Line pattern; an attached arrow's link takes it (IMP-095). */
+  lineStyle: z.enum(["SOLID", "DASHED", "DOTTED"]).optional(),
 });
 
 /**

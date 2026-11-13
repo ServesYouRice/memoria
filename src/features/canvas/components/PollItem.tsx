@@ -5,6 +5,7 @@ import { Group, Rect, Text } from "react-konva";
 import { isPollContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { useSession } from "@/lib/auth-client";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type PollItemProps = CanvasItemAdapterProps;
 
@@ -21,6 +22,7 @@ export function PollItem({
   onContextMenu,
   onCommitGeometry,
 }: PollItemProps) {
+  const palette = useCanvasPalette();
   const { data: session } = useSession();
   const userId = session?.user?.id;
 
@@ -61,13 +63,13 @@ export function PollItem({
       <Rect
         width={width}
         height={height}
-        fill="white"
+        fill={palette.surface}
         cornerRadius={12}
         shadowColor="black"
         shadowBlur={isSelected ? 20 : 10}
         shadowOpacity={isSelected ? 0.2 : 0.1}
         shadowOffset={{ x: 0, y: 4 }}
-        stroke={isSelected ? "#2563eb" : "#e2e8f0"}
+        stroke={isSelected ? palette.selection : palette.border}
         strokeWidth={isSelected ? 2 : 1}
       />
 
@@ -79,7 +81,7 @@ export function PollItem({
         text={question}
         fontSize={18}
         fontStyle="bold"
-        fill="#1e293b"
+        fill={palette.text}
         wrap="word"
         height={headerHeight - padding} // limit height
       />
@@ -104,9 +106,9 @@ export function PollItem({
             <Rect
               width={width - padding * 2}
               height={optionHeight}
-              fill={isVoted ? "#eff6ff" : "#f8fafc"}
+              fill={isVoted ? palette.accentSofter : palette.surfaceSubtle}
               cornerRadius={8}
-              stroke={isVoted ? "#3b82f6" : "#cbd5e1"}
+              stroke={isVoted ? palette.selection : palette.borderStrong}
               strokeWidth={1}
             />
             {/* Progress Fill */}
@@ -114,7 +116,7 @@ export function PollItem({
               <Rect
                 width={(width - padding * 2) * (percent / 100)}
                 height={optionHeight}
-                fill={isVoted ? "#dbeafe" : "#e2e8f0"}
+                fill={isVoted ? palette.accentSoft : palette.border}
                 cornerRadius={8}
                 opacity={0.5}
               />
@@ -127,7 +129,7 @@ export function PollItem({
               width={width - padding * 2 - 60} // reserve space for percent
               text={option.text}
               fontSize={14}
-              fill={isVoted ? "#1d4ed8" : "#334155"}
+              fill={isVoted ? palette.accentText : palette.textBody}
               wrap="none"
               ellipsis={true}
             />
@@ -139,7 +141,7 @@ export function PollItem({
               width={40}
               text={`${Math.round(percent)}%`}
               fontSize={12}
-              fill="#64748b"
+              fill={palette.textMuted}
               align="right"
             />
           </Group>
@@ -153,7 +155,7 @@ export function PollItem({
         width={width - padding * 2}
         text={`${totalVotes} votes • ${multipleChoice ? "Multiple Choice" : "Single Choice"} • Voting unavailable`}
         fontSize={10}
-        fill="#94a3b8"
+        fill={palette.textFaint}
         align="center"
       />
     </Group>

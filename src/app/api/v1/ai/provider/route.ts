@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { CredentialStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { withAuth, withAuthValidation } from "@/lib/api/route-handler";
-import { encryptSecret, fingerprintSecret } from "@/lib/agents/crypto";
+import {
+  decryptSecret,
+  encryptSecret,
+  fingerprintSecret,
+} from "@/lib/agents/crypto";
 import { getProviderSlot, PROVIDER_SLOTS } from "@/lib/agents/providers";
 import { aiProviderSettingsSchema } from "@/lib/validation/ai";
 import { ApiError, BadRequestError } from "@/lib/errors";
@@ -11,6 +15,7 @@ import {
   assertSafeAiBaseUrl,
   getAiAvailability,
 } from "@/lib/ai/provider-resolution";
+import { checkAiKey, type AiKeyCheck } from "@/lib/ai/key-check";
 
 // Built-in AI provider settings. The key is write-only: it is encrypted into
 // ModelCredential and no response ever includes it or its ciphertext.
@@ -89,6 +94,7 @@ const PROVIDERS = PROVIDER_SLOTS.map((slot) => ({
   provider: slot.provider,
   label: slot.label,
   defaultBaseUrl: slot.defaultBaseUrl ?? null,
+  keyPageUrl: slot.keyPageUrl ?? null,
   requiresBaseUrl: Boolean(slot.requiresBaseUrl),
   suggestedModels: slot.suggestedModels,
 }));
@@ -103,6 +109,64 @@ async function settingsResponse(userId: string) {
     current: present(credential),
     availability,
   };
+}
+
+/**
+ * IMP-102 — tests the saved key with one tiny request and records the
+ * answer: a working key becomes ACTIVE, a rejected one ERROR. Only the
+ * secret that was tested is updated, so a key replaced meanwhile is untouched.
+ */
+async function checkSavedKey(
+  userId: string,
+  apiKey: string | undefined,
+): Promise<AiKeyCheck | null> {
+  const rows = await prisma.modelCredential.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      provider: true,
+      baseUrl: true,
+      defaultModel: true,
+      capabilities: true,
+      encryptedSecret: true,
+      secretFingerprint: true,
+    },
+  });
+  const row = rows.find((entry) =>
+    capabilityList(entry.capabilities).includes(BUILTIN_AI_CAPABILITY),
+  );
+  if (!row) return null;
+  let secret = apiKey;
+  if (!secret) {
+    try {
+      secret = decryptSecret(row.encryptedSecret);
+    } catch {
+      return null;
+    }
+  }
+  const check = await checkAiKey({
+    userId,
+    provider: row.provider,
+    model: row.defaultModel,
+    apiKey: secret,
+    baseUrl: row.baseUrl,
+  });
+  const status = check.ok
+    ? CredentialStatus.ACTIVE
+    : check.problem === "wrong-key"
+      ? CredentialStatus.ERROR
+      : null;
+  if (status) {
+    await prisma.modelCredential.updateMany({
+      where: { id: row.id, secretFingerprint: row.secretFingerprint },
+      data: {
+        status,
+        lastVerifiedAt: check.ok ? new Date() : null,
+      },
+    });
+  }
+  return check;
 }
 
 export const GET = withAuth(async (_request, session) => {
@@ -151,7 +215,8 @@ export const PUT = withAuthValidation(
         where: { id: existing.id },
         data: { defaultModel: model, baseUrl: storedBaseUrl },
       });
-      return NextResponse.json(await settingsResponse(userId));
+      const check = await checkSavedKey(userId, undefined);
+      return NextResponse.json({ ...(await settingsResponse(userId)), check });
     }
 
     const secretFingerprint = fingerprintSecret(apiKey);
@@ -205,7 +270,8 @@ export const PUT = withAuthValidation(
       }
     });
 
-    return NextResponse.json(await settingsResponse(userId));
+    const check = await checkSavedKey(userId, apiKey);
+    return NextResponse.json({ ...(await settingsResponse(userId)), check });
   },
 );
 

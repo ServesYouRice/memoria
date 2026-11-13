@@ -243,6 +243,8 @@ function readChildren(
  */
 export function readNoteFragment(
   fragment: Y.XmlFragment,
+  /** IMP-085: the note's colour, kept beside the text in the item map. */
+  color?: unknown,
 ): VersionedNoteContent {
   if (fragment instanceof Y.XmlElement)
     fail("Note text must be an XML fragment.");
@@ -252,7 +254,7 @@ export function readNoteFragment(
   };
   try {
     return normalizeNoteContent(
-      { formatVersion: 1, document },
+      { formatVersion: 1, document, color },
       { allowEmpty: true },
     );
   } catch (error) {

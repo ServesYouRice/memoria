@@ -6,6 +6,7 @@ import {
   describeEmbedTarget,
 } from "@/lib/product-surfaces";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type EmbedItemProps = CanvasItemAdapterProps;
 
@@ -23,6 +24,7 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
   onContextMenu,
   onCommitGeometry,
 }) => {
+  const palette = useCanvasPalette();
   const content = item.content as EmbedContent;
   const host = describeEmbedTarget(content.url);
 
@@ -46,8 +48,8 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
       <Rect
         width={item.width}
         height={item.height}
-        fill="#f8f9fa"
-        stroke="#dde2e5"
+        fill={palette.surfaceSubtle}
+        stroke={palette.border}
         strokeWidth={1}
         cornerRadius={8}
       />
@@ -61,7 +63,7 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
         align="center"
         fontSize={11}
         fontFamily="Inter, sans-serif"
-        fill="#6c757d"
+        fill={palette.textMuted}
         ellipsis
       />
 
@@ -73,7 +75,7 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
         align="center"
         fontSize={16}
         fontFamily="Inter, sans-serif"
-        fill="#343a40"
+        fill={palette.text}
         ellipsis
       />
       <Text
@@ -84,7 +86,7 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
         align="center"
         fontSize={10}
         fontFamily="Inter, sans-serif"
-        fill="#adb5bd"
+        fill={palette.textFaint}
         ellipsis
       />
 
@@ -96,7 +98,7 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
         align="center"
         fontSize={10}
         fontFamily="Inter, sans-serif"
-        fill="#adb5bd"
+        fill={palette.textFaint}
       />
 
       {isSelected && (
@@ -105,7 +107,7 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
           y={0}
           width={item.width}
           height={item.height}
-          stroke="#0096fd"
+          stroke={palette.selection}
           strokeWidth={2}
           cornerRadius={8}
         />

@@ -17,23 +17,24 @@ function occurrences(value: string, pattern: RegExp): number {
 
 describe("launch capability registry", () => {
   it("declares every deliberately gated launch surface in one client-safe registry", () => {
+    // IMP-098 built the template and duplication routes, then switched them on.
     expect(LAUNCH_CAPABILITIES).toEqual({
-      templates: false,
-      canvasDuplication: false,
+      templates: true,
+      canvasDuplication: true,
       polls: false,
     });
-    expect(isLaunchCapabilityEnabled("templates")).toBe(false);
-    expect(isLaunchCapabilityEnabled("canvasDuplication")).toBe(false);
+    expect(isLaunchCapabilityEnabled("templates")).toBe(true);
+    expect(isLaunchCapabilityEnabled("canvasDuplication")).toBe(true);
     expect(isLaunchCapabilityEnabled("polls")).toBe(false);
   });
 
-  it("does not expose whole-canvas duplication from the dashboard", () => {
+  it("offers duplication and templates from the dashboard through their hooks", () => {
     const dashboard = source(
       "src/features/dashboard/components/DashboardContent.tsx",
     );
-    expect(dashboard).not.toMatch(
-      /useDuplicateCanvas|DuplicateIcon|>Duplicate</,
-    );
+    expect(dashboard).toContain("useDuplicateCanvas");
+    expect(dashboard).toContain("<TemplatePicker");
+    // Routes stay behind the hooks, never called from the component.
     expect(dashboard).not.toContain("/duplicate");
   });
 });
@@ -65,17 +66,57 @@ describe("canvas route composition", () => {
 });
 
 describe("selected app theme owns non-MUI CSS", () => {
-  it("uses a contrast-safe light interactive primary", () => {
-    expect(createAppTheme("light").palette.primary.main).toBe(
-      brand.primary.dark,
+  function luminance(hex: string): number {
+    const [r, g, b] = [1, 3, 5].map((i) => {
+      const channel = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return channel <= 0.03928
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrast(a: string, b: string): number {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  it("uses the solid brand blue as the light interactive primary", () => {
+    expect(createAppTheme().colorSchemes.light?.palette.primary.main).toBe(
+      brand.primary.main,
     );
   });
 
+  it.each(["light", "dark"] as const)(
+    "keeps links, labels and filled controls at 4.5:1 in %s mode",
+    (mode) => {
+      const palette = createAppTheme().colorSchemes[mode]!.palette;
+      const { primary, secondary, error, text, background } = palette;
+      for (const surface of [background.paper, background.default]) {
+        expect(contrast(primary.main, surface)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text.primary, surface)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(text.secondary, surface)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(error.main, surface)).toBeGreaterThanOrEqual(4.5);
+      }
+      for (const color of [primary, secondary]) {
+        expect(contrast(color.contrastText, color.main)).toBeGreaterThanOrEqual(
+          4.5,
+        );
+        expect(contrast(color.contrastText, color.dark)).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      }
+    },
+  );
+
   it.each(["src/app/tiptap.css", "src/components/command-palette.css"])(
-    "uses data-theme selectors in %s",
+    "follows the selected theme in %s",
     (path) => {
+      // Colours come from the MUI theme variables, which switch with the
+      // app's data-theme selection (IMP-080), never from the OS preference.
       const css = source(path);
-      expect(css).toMatch(/data-theme=["']dark["']/);
+      expect(css).toContain("var(--mui-palette-");
+      expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
       expect(css).not.toContain("prefers-color-scheme");
     },
   );

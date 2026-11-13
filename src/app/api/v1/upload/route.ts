@@ -20,6 +20,10 @@ import { prisma } from "@/lib/db";
 import { ApiError, UnprocessableEntityError } from "@/lib/errors";
 import { type S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createS3Client } from "@/lib/uploads/s3-client.mjs";
+import {
+  localUploadRoot,
+  localUploadsAllowed,
+} from "@/lib/uploads/private-storage";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import {
   activateUploadAsset,
@@ -410,12 +414,12 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
     );
     const safeUserId = sanitizePathSegment(userId);
     const storageMode = getStorageMode();
-    if (storageMode === "local" && process.env.NODE_ENV === "production") {
+    if (storageMode === "local" && !localUploadsAllowed()) {
       throw new ApiError(
         500,
         "https://memoria.local/errors/upload-storage",
         "Upload storage misconfigured",
-        "Local uploads are development-only. Configure S3-compatible storage in production.",
+        "Local uploads in production need UPLOAD_LOCAL_DIR (a mounted folder). Otherwise configure S3-compatible storage.",
       );
     }
 
@@ -480,7 +484,7 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
       s3Target = { bucket, client: getS3Client() };
     }
 
-    const uploadRoot = resolve(join(process.cwd(), ".data", "uploads"));
+    const uploadRoot = localUploadRoot();
     const uploadDir = resolve(join(uploadRoot, safeUserId));
     const filePath = resolve(uploadDir, uniqueFilename);
     const uploadPrefix = uploadDir.endsWith(sep) ? uploadDir : uploadDir + sep;

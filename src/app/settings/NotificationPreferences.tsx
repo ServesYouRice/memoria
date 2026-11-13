@@ -22,6 +22,8 @@ const DESCRIPTIONS = {
   CANVAS_SHARED: "When someone invites you to a canvas",
   SHARE_INVITATION_ACCEPTED: "When a recipient accepts your invitation",
   SHARE_INVITATION_DECLINED: "When a recipient declines your invitation",
+  ITEM_REMINDER:
+    "When an item you asked to be reminded of comes due (email is off until you turn it on)",
 } as const;
 
 export function NotificationPreferences() {

@@ -133,4 +133,40 @@ describe("thumbnail install race", () => {
       }),
     ).toBeNull();
   });
+
+  it("installs a first preview for a canvas with no change history", async () => {
+    // Seeded canvases hold items but no CanvasEvent rows, so their revision
+    // stays 0 until edited (IMP-083).
+    const user = await prisma.user.create({
+      data: {
+        email: `thumb-zero-${randomBytes(6).toString("hex")}@example.com`,
+      },
+    });
+    const canvas = await prisma.canvas.create({
+      data: { name: "Seeded", userId: user.id },
+    });
+    const candidate = await prisma.canvasThumbnailCandidate.create({
+      data: {
+        canvasId: canvas.id,
+        revision: 0n,
+        mimeType: "image/jpeg",
+        bytes: Buffer.from([1, 2, 3]),
+      },
+    });
+
+    await createThumbnailStoreHandler(prisma)(
+      { payload: { candidateId: candidate.id } } as never,
+      undefined as never,
+    );
+
+    expect(
+      await prisma.canvas.findUniqueOrThrow({
+        where: { id: canvas.id },
+        select: { thumbnailKey: true, thumbnailRevision: true },
+      }),
+    ).toEqual({
+      thumbnailKey: `thumbnails/${canvas.id}/0.jpg`,
+      thumbnailRevision: 0n,
+    });
+  });
 });

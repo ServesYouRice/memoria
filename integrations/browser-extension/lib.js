@@ -1,5 +1,5 @@
-// Pure helpers for the Memoria tab saver popup. No extension APIs here, so the
-// unit tests can import this file directly.
+// Pure helpers for the Memoria browser button (popup and background). No
+// extension APIs here, so the unit tests can import this file directly.
 
 /** The batch endpoint accepts at most this many links per request. */
 export const MAX_LINKS_PER_BATCH = 100;
@@ -108,7 +108,7 @@ export function buildBatchBody(tabs, note, idempotencyKey) {
  * Readable message from a problem+json (or other) error response. With the
  * submitted `tabs`, a validation error on `links.N.…` names that tab.
  */
-export async function readError(response, tabs = []) {
+export async function readError(response, tabs = [], subject = "the tabs") {
   let detail = "";
   let tabName = "";
   try {
@@ -130,8 +130,8 @@ export async function readError(response, tabs = []) {
     return "Memoria did not accept the API key. Check it in the extension settings.";
   }
   const message = detail
-    ? `Memoria could not save the tabs: ${String(detail).replace(/[.!?]?$/, ".")}`
-    : `Memoria could not save the tabs (HTTP ${response.status}).`;
+    ? `Memoria could not save ${subject}: ${String(detail).replace(/[.!?]?$/, ".")}`
+    : `Memoria could not save ${subject} (HTTP ${response.status}).`;
   return tabName ? `${message} Rejected tab: ${tabName}` : message;
 }
 
@@ -269,4 +269,156 @@ export function selectionSignature(tabs, note) {
     tabs.map((tab) => [tab.url, tab.title || ""]),
     String(note || "").trim(),
   ]);
+}
+
+// --- Save one page (IMP-093) ---
+
+export const CLIP_PATH = "/api/v1/extensions/clip";
+export const CANVASES_PATH = "/api/v1/extensions/canvases";
+/** Longest selected text the server keeps with a link. */
+export const MAX_SELECTION_LENGTH = 2000;
+/** Name of the canvas the server saves to when none is chosen. */
+export const INBOX_NAME = "Inbox";
+
+/** Request body for saving one page, optionally with selected text. */
+export function buildClipBody({ url, title, selection, canvasId }) {
+  const text = String(selection || "").trim();
+  const name = String(title || "").trim();
+  return {
+    url,
+    ...(name ? { title: name.slice(0, 500) } : {}),
+    ...(text ? { selection: text.slice(0, MAX_SELECTION_LENGTH) } : {}),
+    ...(canvasId ? { canvasId } : {}),
+  };
+}
+
+function apiHeaders(apiKey) {
+  return {
+    "content-type": "application/json",
+    "x-api-key": String(apiKey).trim(),
+  };
+}
+
+const UNREACHABLE =
+  "Could not reach Memoria. Check the address and your connection.";
+
+/**
+ * Save one page. Resolves with the server's answer ({ created, duplicate,
+ * item, duplicates }); a link that is already saved comes back with
+ * `created: false` and the existing copies, and is not saved twice.
+ */
+export async function sendClip({ serverUrl, apiKey, page, fetchImpl = fetch }) {
+  if (!isSavableUrl(page?.url)) {
+    throw new Error("Only web pages (http or https) can be saved.");
+  }
+  const url = `${normalizeServerUrl(serverUrl)}${CLIP_PATH}`;
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "POST",
+      headers: apiHeaders(apiKey),
+      body: JSON.stringify(buildClipBody(page)),
+    });
+  } catch {
+    throw new Error(UNREACHABLE);
+  }
+  if (!response.ok) {
+    throw new Error(await readError(response, [], "the page"));
+  }
+  return response.json();
+}
+
+/** The person's canvases as [{ id, name }], the Inbox first. */
+export async function fetchCanvases({ serverUrl, apiKey, fetchImpl = fetch }) {
+  const url = `${normalizeServerUrl(serverUrl)}${CANVASES_PATH}`;
+  let response;
+  try {
+    response = await fetchImpl(url, { headers: apiHeaders(apiKey) });
+  } catch {
+    throw new Error(UNREACHABLE);
+  }
+  if (!response.ok) {
+    throw new Error(await readError(response, [], "the page"));
+  }
+  const body = await response.json();
+  return Array.isArray(body?.canvases)
+    ? body.canvases.filter(
+        (canvas) =>
+          canvas &&
+          typeof canvas.id === "string" &&
+          typeof canvas.name === "string",
+      )
+    : [];
+}
+
+/**
+ * Which canvas the picker starts on: the last one chosen when it still
+ * exists, otherwise the Inbox. An empty id lets the server pick the Inbox.
+ */
+export function initialCanvasId(canvases, lastCanvasId) {
+  if (lastCanvasId && canvases.some((canvas) => canvas.id === lastCanvasId)) {
+    return lastCanvasId;
+  }
+  return canvases.find((canvas) => canvas.name === INBOX_NAME)?.id ?? "";
+}
+
+/**
+ * What a single-page save did, for the popup and the toolbar badge:
+ * { saved, title, canvasName, openUrl }. A link that was already saved has
+ * `saved: false` and points at the existing copy.
+ */
+export function clipOutcome(serverUrl, body, page, canvasName = "") {
+  if (body?.created === false) {
+    const existing = Array.isArray(body.duplicates) ? body.duplicates[0] : null;
+    return {
+      saved: false,
+      title: existing?.title || page.title || page.url,
+      canvasName: existing?.canvasName || "",
+      openUrl: existing ? existingLinkUrl(serverUrl, existing) : null,
+    };
+  }
+  const item = body?.item;
+  const openUrl =
+    item && typeof item.canvasId === "string" && typeof item.id === "string"
+      ? existingLinkUrl(serverUrl, {
+          path: `/canvas/${encodeURIComponent(item.canvasId)}?item=${encodeURIComponent(item.id)}`,
+        })
+      : null;
+  return {
+    saved: true,
+    title: page.title || page.url,
+    canvasName: canvasName || INBOX_NAME,
+    openUrl,
+  };
+}
+
+/** Readable one-line summary of a save outcome. */
+export function outcomeMessage(outcome) {
+  if (!outcome.saved) {
+    return outcome.canvasName
+      ? `You saved this already, in ${outcome.canvasName}.`
+      : "You saved this already.";
+  }
+  return `Saved to ${outcome.canvasName}.`;
+}
+
+/** Id of the right-click menu entry. */
+export const MENU_ID = "save-to-memoria";
+/** Name of the keyboard command that saves the current page. */
+export const SAVE_PAGE_COMMAND = "save-page";
+
+/**
+ * The page a right-click saves: the link under the pointer when there is
+ * one, otherwise the page itself with any selected text.
+ */
+export function pageFromMenuClick(info, tab) {
+  if (info?.linkUrl) {
+    const text = String(info.linkText || info.selectionText || "").trim();
+    return { url: info.linkUrl, title: text || info.linkUrl };
+  }
+  return {
+    url: info?.pageUrl || tab?.url || "",
+    title: tab?.title || "",
+    selection: info?.selectionText || "",
+  };
 }

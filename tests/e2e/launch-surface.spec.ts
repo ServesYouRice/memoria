@@ -131,9 +131,10 @@ test.describe("truthful and accessible launch surface", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByRole("main")).toBeFocused();
 
+    const codeColors: string[] = [];
     for (const combination of [
-      { selected: "light", system: "dark", code: "rgb(26, 32, 44)" },
-      { selected: "dark", system: "light", code: "rgb(226, 232, 240)" },
+      { selected: "light", system: "dark" },
+      { selected: "dark", system: "light" },
     ] as const) {
       await page.emulateMedia({
         colorScheme: combination.system,
@@ -152,21 +153,29 @@ test.describe("truthful and accessible launch surface", () => {
         probe.id = "theme-contract-probe";
         probe.innerHTML =
           '<div class="ProseMirror"><code>code</code></div><div class="command-footer">footer</div>';
+        // Reference colours straight from the selected MUI theme (IMP-080).
+        const reference = (token: string) => {
+          const element = document.createElement("span");
+          element.style.color = `var(--mui-palette-${token})`;
+          probe.append(element);
+          return getComputedStyle(element).color;
+        };
         document.body.append(probe);
         return {
           code: getComputedStyle(probe.querySelector("code")!).color,
           footer: getComputedStyle(
             probe.querySelector<HTMLElement>(".command-footer")!,
           ).color,
+          textPrimary: reference("text-primary"),
+          textSecondary: reference("text-secondary"),
         };
       });
-      expect(themeProbe.code).toBe(combination.code);
-      expect(themeProbe.footer).toBe(
-        combination.selected === "dark"
-          ? "rgba(255, 255, 255, 0.6)"
-          : "rgba(0, 0, 0, 0.6)",
-      );
+      expect(themeProbe.code).toBe(themeProbe.textPrimary);
+      expect(themeProbe.footer).toBe(themeProbe.textSecondary);
+      codeColors.push(themeProbe.code);
     }
+    // The selected mode, not the system preference, decides the colours.
+    expect(codeColors[0]).not.toBe(codeColors[1]);
 
     await page.setViewportSize({ width: 1024, height: 900 });
     await page.goto(`/canvas/${canvas.id}`);
@@ -176,7 +185,8 @@ test.describe("truthful and accessible launch surface", () => {
     await expect(itemRegion).toHaveCount(1);
     await expect(itemRegion).toContainText("Alpha roadmap");
     await expect(itemRegion).toContainText("Beta context");
-    await page.getByRole("button", { name: "Search canvas" }).click();
+    await page.getByRole("button", { name: "More canvas options" }).click();
+    await page.getByRole("menuitem", { name: "Search canvas" }).click();
     await page.getByPlaceholder("Search notes and bookmarks...").fill("Alpha");
     await expect(itemRegion).toContainText(
       "1 search match. All 2 items remain listed as canvas context.",
@@ -246,7 +256,7 @@ test.describe("truthful and accessible launch surface", () => {
     const recipientEmail = uniqueEmail("launch-recipient");
     await registerAndVerify(recipientPage, recipientEmail);
 
-    await recipientPage.goto("/settings");
+    await recipientPage.goto("/settings/notifications");
     const inAppPreference = recipientPage.getByRole("switch", {
       name: "Canvas invitations in-app notifications",
     });

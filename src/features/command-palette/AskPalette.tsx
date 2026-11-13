@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import {
   Alert,
@@ -16,7 +17,10 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  ListSubheader,
+  MenuItem,
   Paper,
+  Select,
   Stack,
   Tooltip,
   Typography,
@@ -38,6 +42,11 @@ import {
 } from "@/lib/hooks/use-agent-control";
 import { hasActiveDialog } from "@/lib/keyboard/shortcuts";
 import { isAskShortcut } from "./ask-shortcut";
+import {
+  AI_NOT_SET_UP_MESSAGE,
+  AiSetupLink,
+  isAiNotSetUp,
+} from "@/features/ai/ai-setup";
 
 interface AskSource {
   itemId: string;
@@ -56,21 +65,71 @@ export interface AskResponse {
   commandRejected: string | null;
   commandError?: string;
   retrievedCount: number;
+  scope?: { kind: string; label: string };
+}
+
+/** Where a question looks (IMP-101). The server checks the canvas is yours. */
+export type AskScope =
+  | { kind: "all" }
+  | { kind: "canvas"; canvasId: string }
+  | { kind: "tag"; tag: string };
+
+interface AskScopeChoices {
+  canvases: Array<{ id: string; name: string }>;
+  tags: string[];
+}
+
+const THIS_CANVAS = "this-canvas";
+
+function scopeValue(scope: AskScope, currentCanvasId?: string | null) {
+  if (scope.kind === "canvas")
+    return scope.canvasId === currentCanvasId
+      ? THIS_CANVAS
+      : `canvas:${scope.canvasId}`;
+  if (scope.kind === "tag") return `tag:${scope.tag}`;
+  return "all";
+}
+
+function scopeFromValue(
+  value: string,
+  currentCanvasId?: string | null,
+): AskScope {
+  if (value === THIS_CANVAS && currentCanvasId)
+    return { kind: "canvas", canvasId: currentCanvasId };
+  if (value.startsWith("canvas:"))
+    return { kind: "canvas", canvasId: value.slice(7) };
+  if (value.startsWith("tag:")) return { kind: "tag", tag: value.slice(4) };
+  return { kind: "all" };
+}
+
+async function fetchScopeChoices(): Promise<AskScopeChoices> {
+  const response = await apiFetch("/api/v1/ai/ask");
+  if (!response.ok) return { canvases: [], tags: [] };
+  const body = (await response
+    .json()
+    .catch(() => null)) as AskScopeChoices | null;
+  return {
+    canvases: Array.isArray(body?.canvases) ? body.canvases : [],
+    tags: Array.isArray(body?.tags) ? body.tags : [],
+  };
 }
 
 const REJECTION_TEXT: Record<string, string> = {
   "not-allowed":
-    "That is not something Ask can do. It can create a board, move items, make a pile or archive.",
+    "That is not something Ask can do. It can create a canvas, move items, make a pile or archive.",
   "unknown-reference":
     "The proposed change named items I could not find, so I left it out.",
   invalid: "The proposed change was not complete, so I left it out.",
 };
 
-async function postAsk(question: string): Promise<AskResponse> {
+async function postAsk(
+  question: string,
+  scope: AskScope,
+): Promise<AskResponse> {
   const response = await apiFetch("/api/v1/ai/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, scope }),
   });
   const body = (await response.json().catch(() => null)) as
     (AskResponse & { error?: string; message?: string }) | null;
@@ -90,15 +149,23 @@ async function postAsk(question: string): Promise<AskResponse> {
 export function AskPalette({
   open,
   onClose,
+  canvasId = null,
 }: {
   open: boolean;
   onClose: () => void;
+  /** The canvas Ask was opened on, offered first as "This canvas". */
+  canvasId?: string | null;
 }) {
   const theme = useTheme();
+  const [choices, setChoices] = useState<AskScopeChoices | null>(null);
+  const [scope, setScope] = useState<AskScope>(
+    canvasId ? { kind: "canvas", canvasId } : { kind: "all" },
+  );
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<AskResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [asking, setAsking] = useState(false);
   const [applying, setApplying] = useState(false);
   // Settled text belongs to the suggestion it was reached for, so finishing
@@ -118,6 +185,28 @@ export function AskPalette({
   // Bumped per question: late approve/dismiss results for an earlier answer
   // are ignored.
   const resultToken = useRef(0);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetchScopeChoices()
+      .then((loaded) => {
+        if (cancelled) return;
+        setChoices(loaded);
+        // A canvas that is not the person's own (shared with them) is not
+        // offered; Ask falls back to all of their canvases.
+        if (canvasId && !loaded.canvases.some((c) => c.id === canvasId))
+          setScope((current) =>
+            current.kind === "canvas" && current.canvasId === canvasId
+              ? { kind: "all" }
+              : current,
+          );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, canvasId]);
 
   useEffect(() => {
     if (!open) {
@@ -140,9 +229,11 @@ export function AskPalette({
     setResult(null);
     setSettled(null);
     setApprovedId(null);
+    setNeedsSetup(false);
     try {
-      setResult(await postAsk(trimmed));
+      setResult(await postAsk(trimmed, scope));
     } catch (askError) {
+      setNeedsSetup(isAiNotSetUp(askError));
       setError(
         askError instanceof Error ? askError.message : "Ask failed. Try again.",
       );
@@ -249,7 +340,7 @@ export function AskPalette({
           fullWidth
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask your boards, or tell them what to do"
+          placeholder="Ask your canvases, or tell them what to do"
           inputProps={{ "aria-label": "Ask Memoria", maxLength: 1000 }}
         />
         <IconButton
@@ -265,21 +356,92 @@ export function AskPalette({
           </IconButton>
         )}
       </Box>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: "center",
+          px: 2,
+          py: 1,
+          borderBottom: 1,
+          borderColor: "divider",
+        }}
+      >
+        <Typography
+          id="ask-scope-label"
+          variant="body2"
+          color="text.secondary"
+          sx={{ flexShrink: 0 }}
+        >
+          Looking in
+        </Typography>
+        <Select
+          size="small"
+          variant="standard"
+          disableUnderline
+          value={scopeValue(scope, canvasId)}
+          onChange={(event) =>
+            setScope(scopeFromValue(String(event.target.value), canvasId))
+          }
+          disabled={asking || applying}
+          labelId="ask-scope-label"
+          sx={{ minWidth: 0, maxWidth: "100%", fontSize: "body2.fontSize" }}
+          MenuProps={{ slotProps: { paper: { sx: { maxHeight: 360 } } } }}
+        >
+          {canvasId &&
+            (choices === null ||
+              choices.canvases.some((c) => c.id === canvasId)) && (
+              <MenuItem value={THIS_CANVAS}>This canvas</MenuItem>
+            )}
+          <MenuItem value="all">All canvases</MenuItem>
+          {scope.kind === "tag" && !choices?.tags.includes(scope.tag) && (
+            <MenuItem value={`tag:${scope.tag}`}>Tag “{scope.tag}”</MenuItem>
+          )}
+          {choices && choices.canvases.length > 0 && (
+            <ListSubheader>One canvas</ListSubheader>
+          )}
+          {choices?.canvases
+            .filter((c) => c.id !== canvasId)
+            .map((c) => (
+              <MenuItem key={c.id} value={`canvas:${c.id}`}>
+                {c.name}
+              </MenuItem>
+            ))}
+          {choices && choices.tags.length > 0 && (
+            <ListSubheader>One tag</ListSubheader>
+          )}
+          {choices?.tags.map((tag) => (
+            <MenuItem key={tag} value={`tag:${tag}`}>
+              Tag “{tag}”
+            </MenuItem>
+          ))}
+        </Select>
+      </Stack>
       <DialogContent sx={{ minHeight: 120 }}>
         {!result && !error && !asking && (
           <Typography variant="body2" color="text.secondary">
-            Try “what was that knife site I saved?” or “make a Japan board from
-            everything about Japan”. Answers come only from your own boards, and
-            changes wait for your approval.
+            Try “what was that knife site I saved?” or “make a Japan canvas from
+            everything about Japan”. Answers come only from your own canvases,
+            and changes wait for your approval.
           </Typography>
         )}
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
+        {error &&
+          (needsSetup ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              {AI_NOT_SET_UP_MESSAGE} <AiSetupLink onClick={onClose} />
+            </Alert>
+          ) : (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          ))}
         {result && (
           <Stack spacing={2}>
+            {result.scope && (
+              <Typography variant="caption" color="text.secondary">
+                Looked in: {result.scope.label}
+              </Typography>
+            )}
             <Typography sx={{ whiteSpace: "pre-wrap" }}>
               {result.answer}
             </Typography>
@@ -368,6 +530,9 @@ const visuallyHidden = {
  */
 export function AskLauncher() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const canvasMatch = pathname?.match(/^\/canvas\/([^/?#]+)/);
+  const canvasId = canvasMatch ? decodeURIComponent(canvasMatch[1]!) : null;
   const close = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
@@ -403,7 +568,7 @@ export function AskLauncher() {
       >
         <AskIcon fontSize="small" />
         <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
-          Ask your boards…
+          Ask your canvases…
         </Typography>
       </ButtonBase>
       <Tooltip title="Ask Memoria (Ctrl+J)">
@@ -417,7 +582,7 @@ export function AskLauncher() {
         </IconButton>
       </Tooltip>
       {/* Mounted only while open, so the shell carries no AI state. */}
-      {open && <AskPalette open onClose={close} />}
+      {open && <AskPalette open onClose={close} canvasId={canvasId} />}
     </>
   );
 }

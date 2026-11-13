@@ -11,7 +11,7 @@ export const metadata = {
 export default async function RecapPage() {
   if (!(await auth())?.user) redirect("/auth/login");
   return (
-    <AppShell maxWidth="md">
+    <AppShell readingWidth="md">
       <RecapContent />
     </AppShell>
   );

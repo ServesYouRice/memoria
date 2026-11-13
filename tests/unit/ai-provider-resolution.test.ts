@@ -197,6 +197,11 @@ describe("AI provider lookup order", () => {
       AI_NOT_CONFIGURED_DETAIL,
     );
     expect(AI_NOT_CONFIGURED_DETAIL).toMatch(/^AI not configured/);
+    // IMP-102: the response names the set-up page so the feature links to it.
+    expect((error as ServiceUnavailableError).toProblemDetail()).toMatchObject({
+      code: "AI_NOT_SET_UP",
+      setupUrl: "/settings/ai",
+    });
   });
 
   it("reports availability without exposing the key", async () => {

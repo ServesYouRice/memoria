@@ -13,6 +13,7 @@
  *     tags                                    string[]
  *     content                                 JSON value, every type but NOTE
  *     text                                    Y.XmlFragment, NOTE only (TipTap)
+ *     color                                   note colour name, NOTE only, optional
  *
  * Nothing else may appear in the document: the sync server rejects any update
  * that touches another root, another key, or a value of the wrong shape.
@@ -25,6 +26,8 @@ export const COLLABORATION_SYNC_PATH = "/api/collaboration/sync";
 
 export const DOCUMENT_ITEMS_KEY = "items";
 export const NOTE_TEXT_KEY = "text";
+/** IMP-085: a note's colour, one of `NOTE_COLOR_NAMES`; absent means yellow. */
+export const NOTE_COLOR_KEY = "color";
 
 export const ITEM_GEOMETRY_KEYS = [
   "positionX",
@@ -42,6 +45,7 @@ export const ITEM_KEYS = new Set<string>([
   "tags",
   "content",
   NOTE_TEXT_KEY,
+  NOTE_COLOR_KEY,
 ]);
 
 /**

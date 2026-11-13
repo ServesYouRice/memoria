@@ -46,6 +46,23 @@ import {
   createLinkEnrichmentHandler,
 } from "../src/lib/services/link-enrichment";
 import {
+  CANVAS_LINKS_BACKFILL_JOB,
+  createCanvasLinksBackfillHandler,
+} from "../src/lib/canvas/arrow-links";
+import {
+  PAGE_COPY_BACKFILL_JOB,
+  PAGE_COPY_BACKFILL_TIMEOUT_MS,
+  PAGE_COPY_JOB,
+  PAGE_COPY_TIMEOUT_MS,
+  createPageCopyBackfillHandler,
+  createPageCopyHandler,
+} from "../src/lib/services/page-copy";
+import {
+  BOOKMARK_IMPORT_JOB,
+  BOOKMARK_IMPORT_TIMEOUT_MS,
+  createBookmarkImportHandler,
+} from "../src/lib/import/bookmark-import";
+import {
   HOME_BOARD_JOB,
   createHomeBoardProposalHandler,
   enqueueHomeBoardProposal,
@@ -59,6 +76,19 @@ import {
   createWeeklyRecapHandler,
   createWeeklyRecapSweepHandler,
 } from "../src/lib/recap/weekly-recap";
+import {
+  UPLOAD_COPY_JOB,
+  UPLOAD_COPY_TIMEOUT_MS,
+  createUploadCopyHandler,
+} from "../src/lib/uploads/copy-upload";
+import {
+  REMINDER_EMAIL_JOB,
+  REMINDER_FIRE_JOB,
+  REMINDER_SWEEP_JOB,
+  createReminderEmailHandler,
+  createReminderFireHandler,
+  createReminderSweepHandler,
+} from "../src/lib/reminders/item-reminders";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -68,6 +98,7 @@ await runOutboxWorker({
   prisma,
   handlers: {
     "upload.delete": createUploadDeleteHandler(prisma),
+    [UPLOAD_COPY_JOB]: createUploadCopyHandler(prisma),
     "email.delivery-probe": createDeliveryProbeEmailHandler(),
     "email.verification": createVerificationEmailHandler(prisma),
     "email.share-invitation": createShareInvitationEmailHandler(prisma),
@@ -92,9 +123,16 @@ await runOutboxWorker({
       },
     }),
     [HOME_BOARD_JOB]: createHomeBoardProposalHandler(prisma),
+    [PAGE_COPY_JOB]: createPageCopyHandler(prisma),
+    [PAGE_COPY_BACKFILL_JOB]: createPageCopyBackfillHandler(prisma),
+    [CANVAS_LINKS_BACKFILL_JOB]: createCanvasLinksBackfillHandler(prisma),
+    [BOOKMARK_IMPORT_JOB]: createBookmarkImportHandler(prisma),
     [RECAP_SWEEP_JOB]: createWeeklyRecapSweepHandler(prisma),
     [RECAP_USER_JOB]: createWeeklyRecapHandler(prisma),
     [RECAP_EMAIL_JOB]: createWeeklyRecapEmailHandler(prisma),
+    [REMINDER_SWEEP_JOB]: createReminderSweepHandler(prisma),
+    [REMINDER_FIRE_JOB]: createReminderFireHandler(prisma),
+    [REMINDER_EMAIL_JOB]: createReminderEmailHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
@@ -103,7 +141,12 @@ await runOutboxWorker({
     "account-export.build": accountExportTimeoutMs(),
     [UPLOAD_NOTE_JOB]: UPLOAD_NOTE_TIMEOUT_MS,
     [LINK_ENRICH_JOB]: LINK_ENRICH_TIMEOUT_MS,
+    [PAGE_COPY_JOB]: PAGE_COPY_TIMEOUT_MS,
+    [PAGE_COPY_BACKFILL_JOB]: PAGE_COPY_BACKFILL_TIMEOUT_MS,
+    [CANVAS_LINKS_BACKFILL_JOB]: 120_000,
+    [BOOKMARK_IMPORT_JOB]: BOOKMARK_IMPORT_TIMEOUT_MS,
     [RECAP_USER_JOB]: RECAP_USER_TIMEOUT_MS,
+    [UPLOAD_COPY_JOB]: UPLOAD_COPY_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

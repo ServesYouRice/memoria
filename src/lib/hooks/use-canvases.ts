@@ -130,16 +130,16 @@ const api = {
   },
 
   async duplicateCanvas(canvasId: string) {
+    // apiFetch throws with the server's reason (e.g. the canvas limit).
     const response = await apiFetch(`/api/v1/canvases/${canvasId}/duplicate`, {
       method: "POST",
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Failed to duplicate canvas");
-    }
-
-    return response.json() as Promise<Canvas>;
+    return response.json() as Promise<{
+      id: string;
+      name: string;
+      itemCount: number;
+      pictureCount: number;
+    }>;
   },
 
   async getCanvas(canvasId: string) {
@@ -270,50 +270,13 @@ export function useCreateCanvas() {
 /**
  * Duplicate an existing canvas
  */
+/** IMP-098: a private copy of a canvas the caller owns. */
 export function useDuplicateCanvas() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: api.duplicateCanvas,
-    onMutate: async (canvasId) => {
-      await queryClient.cancelQueries({ queryKey: canvasKeys.list() });
-      const previousCanvases = queryClient.getQueryData<CanvasesListResponse>(
-        canvasKeys.list(),
-      );
-
-      if (previousCanvases) {
-        const originalCanvas = previousCanvases.canvases.find(
-          (c) => c.id === canvasId,
-        );
-        if (originalCanvas) {
-          queryClient.setQueryData<CanvasesListResponse>(canvasKeys.list(), {
-            ...previousCanvases,
-            canvases: [
-              {
-                ...originalCanvas,
-                id: "temp-dup-" + Date.now(),
-                name: `${originalCanvas.name} (Copy)`,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              },
-              ...previousCanvases.canvases,
-            ],
-          });
-        }
-      }
-
-      return { previousCanvases };
-    },
-    onError: (err, variables, context) => {
-      if (context?.previousCanvases) {
-        queryClient.setQueryData(canvasKeys.list(), context.previousCanvases);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({
-        queryKey: canvasKeys.list(),
-      });
-    },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: canvasKeys.all }),
   });
 }
 

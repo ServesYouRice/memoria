@@ -84,20 +84,22 @@ export interface VersionPreviewProps {
 
 export function VersionPreview({ snapshot, name }: VersionPreviewProps) {
   const theme = useTheme();
+  // CSS-variables theme: `theme.vars` follows the active colour scheme.
+  const palette = (theme.vars ?? theme).palette;
   const boxes = useMemo(() => toPreviewBoxes(snapshot), [snapshot]);
 
   const fillFor = (type: string) => {
     switch (type) {
       case "NOTE":
-        return theme.palette.warning.light;
+        return palette.warning.light;
       case "BOOKMARK":
-        return theme.palette.info.light;
+        return palette.info.light;
       case "IMAGE":
-        return theme.palette.secondary.light;
+        return palette.secondary.light;
       case "FRAME":
         return "transparent";
       default:
-        return theme.palette.action.selected;
+        return palette.action.selected;
     }
   };
 
@@ -163,8 +165,7 @@ export function VersionPreview({ snapshot, name }: VersionPreviewProps) {
               width={box.width}
               height={box.height}
               rx={Math.min(box.width, box.height) * 0.06}
-              fill={fillFor(box.type)}
-              stroke={theme.palette.divider}
+              style={{ fill: fillFor(box.type), stroke: palette.divider }}
               strokeWidth={Math.max(extent / 600, 0.5)}
             />
             {box.height >= fontSize * 1.5 && box.width >= fontSize * 3 && (
@@ -172,8 +173,7 @@ export function VersionPreview({ snapshot, name }: VersionPreviewProps) {
                 x={box.x + fontSize * 0.5}
                 y={box.y + fontSize * 1.4}
                 fontSize={fontSize}
-                fill={theme.palette.text.primary}
-                style={{ pointerEvents: "none" }}
+                style={{ pointerEvents: "none", fill: palette.text.primary }}
               >
                 {box.label.slice(0, Math.floor(box.width / (fontSize * 0.6)))}
               </text>

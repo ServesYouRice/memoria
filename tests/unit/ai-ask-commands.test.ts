@@ -1,3 +1,4 @@
+import type * as ArrowLinksModule from "@/lib/canvas/arrow-links";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BadRequestError, NotFoundError } from "@/lib/errors";
 import type * as ServiceCore from "@/lib/agents/service-core";
@@ -41,6 +42,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// The restored line's arrow is still on the board (IMP-095).
+vi.mock("@/lib/canvas/arrow-links", async (importOriginal) => ({
+  ...((await importOriginal()) as typeof ArrowLinksModule),
+  arrowsForLink: vi.fn(async () => [{ id: "arrow-1" }]),
+}));
 vi.mock("@/lib/db", () => ({
   prisma: {
     agentProfile: {
@@ -157,7 +163,7 @@ describe("proposeAskCommand files suggestions only", () => {
           agentProfileId: "prof-ask",
         }),
         rung: 3,
-        summary: 'Create board "Japan" and move 2 items onto it',
+        summary: 'Create canvas "Japan" and move 2 items onto it',
         payload: {
           kind: ASK_COMMAND_SUGGESTION_KIND,
           command: {

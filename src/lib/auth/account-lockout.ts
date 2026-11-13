@@ -1,11 +1,11 @@
 import { createHash } from "crypto";
 import { getRedisClient } from "@/lib/cache/redis-client";
+import { ACCOUNT_LOCKOUT_DURATION_MS as LOCKOUT_DURATION_MS } from "@/lib/constants";
 import { createLogger } from "@/lib/logger";
 import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
 
 const logger = createLogger("account-lockout");
 const LOCKOUT_THRESHOLD = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 const ATTEMPT_WINDOW_MS = 60 * 60 * 1000;
 const MAX_ACCOUNT_DELAY_MS = 2_000;
 type AttemptState = {

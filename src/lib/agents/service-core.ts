@@ -27,6 +27,11 @@ import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
 import { ItemType } from "@/types/canvas";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import {
+  LinkEndpointError,
+  arrowsForLink,
+  createLinkArrow,
+} from "@/lib/canvas/arrow-links";
+import {
   recordCanvasItemEvent,
   recordCanvasItemEventsBatch,
 } from "@/lib/collaboration/committed-events";
@@ -1484,7 +1489,7 @@ async function applyRevertOperation(
       ]);
       if (counts.some((count) => count > 0)) {
         throw new BadRequestError(
-          "This board holds content now (items, including ones in the trash, saved versions, embeds or shares). Undo those first, or delete the board in Memoria.",
+          "This canvas holds content now (items, including ones in the trash, saved versions, embeds or shares). Undo those first, or delete the canvas in Memoria.",
         );
       }
       await tx.canvas.delete({ where: { id: existing.id } });
@@ -1552,7 +1557,7 @@ async function applyRevertOperation(
     });
     if (!source) {
       throw new BadRequestError(
-        "The board this item came from is gone, so it cannot go back.",
+        "The canvas this item came from is gone, so it cannot go back.",
       );
     }
     // Only undo a move the user has not overridden: the item must still be
@@ -1694,6 +1699,25 @@ async function applyRevertOperation(
         createdAt: new Date(snapshot.createdAt),
       },
     });
+    // Arrows are the one record of a link (IMP-095): a line with no arrow on
+    // the board gets one, and the row keeps its id, label and style.
+    if ((await arrowsForLink(tx, snapshot)).length === 0) {
+      try {
+        await createLinkArrow(tx, {
+          canvasId: snapshot.canvasId,
+          actorId: userId,
+          fromId: snapshot.fromId,
+          toId: snapshot.toId,
+          label: snapshot.label,
+          style: snapshot.style,
+        });
+      } catch (error) {
+        if (!(error instanceof LinkEndpointError)) throw error;
+        // An end is trashed or is an arrow: the line cannot be drawn.
+        await tx.itemConnection.delete({ where: { id: restored.id } });
+        return;
+      }
+    }
     await tx.changeRecord.create({
       data: {
         changeSetId: rollbackChangeSetId,

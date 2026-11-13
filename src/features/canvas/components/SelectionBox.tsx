@@ -8,6 +8,7 @@
 
 import React from "react";
 import { Rect } from "react-konva";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 export interface SelectionBoxProps {
   x: number;
@@ -17,14 +18,15 @@ export interface SelectionBoxProps {
 }
 
 export function SelectionBox({ x, y, width, height }: SelectionBoxProps) {
+  const palette = useCanvasPalette();
   return (
     <Rect
       x={x}
       y={y}
       width={width}
       height={height}
-      fill="rgba(33, 150, 243, 0.1)"
-      stroke="#2196F3"
+      fill={palette.selectionFill}
+      stroke={palette.selection}
       strokeWidth={2}
       dash={[5, 5]}
       listening={false}

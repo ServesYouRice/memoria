@@ -46,20 +46,27 @@ ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 RUN npm install --global pnpm@11.13.1 \
   && addgroup -S memoria \
-  && adduser -S memoria -G memoria
+  && adduser -S memoria -G memoria \
+  && mkdir -p /data/uploads \
+  && chown memoria:memoria /data/uploads
+# /data/uploads is the small set-up's upload volume (UPLOAD_LOCAL_DIR,
+# IMP-100); a new named volume takes this owner from the image.
 
 COPY --from=build --chown=memoria:memoria /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build --chown=memoria:memoria /app/node_modules ./node_modules
 COPY --from=build --chown=memoria:memoria /app/.next ./.next
 COPY --from=build --chown=memoria:memoria /app/dist ./dist
 COPY --from=build --chown=memoria:memoria /app/public ./public
+# Help shows the phone guide from this file, its single source (IMP-092).
+COPY --from=build --chown=memoria:memoria /app/docs/integrations ./docs/integrations
 COPY --from=build --chown=memoria:memoria /app/prisma ./prisma
 # Prisma 7 reads the migrate datasource URL from prisma.config.ts, so the
 # `migrate` service needs it inside the runtime image.
 COPY --from=build --chown=memoria:memoria /app/prisma.config.ts ./prisma.config.ts
 COPY --from=build --chown=memoria:memoria /app/scripts ./scripts
-# Runtime scripts import this plain-JS module from src/ (shared with the app).
+# Runtime scripts import these plain-JS modules from src/ (shared with the app).
 COPY --from=build --chown=memoria:memoria /app/src/lib/uploads/s3-client.mjs ./src/lib/uploads/s3-client.mjs
+COPY --from=build --chown=memoria:memoria /app/src/lib/operations/setup-fixes.mjs ./src/lib/operations/setup-fixes.mjs
 
 USER memoria
 EXPOSE 3000

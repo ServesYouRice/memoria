@@ -9,6 +9,8 @@ export interface ProviderSlot {
    * and OpenRouter point at their OpenAI-compatible endpoints.
    */
   defaultBaseUrl?: string;
+  /** The provider's own page for creating an API key (IMP-102). */
+  keyPageUrl?: string;
   /** True when the owner must supply a base URL (local/self-hosted). */
   requiresBaseUrl?: boolean;
   capabilityFlags: string[];
@@ -22,6 +24,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "Anthropic (Claude)",
     supportsByok: true,
     defaultBaseUrl: "https://api.anthropic.com",
+    keyPageUrl: "https://console.anthropic.com/settings/keys",
     capabilityFlags: ["chat", "reasoning", "vision"],
     suggestedModels: [
       "claude-sonnet-5-5",
@@ -34,6 +37,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "OpenAI",
     supportsByok: true,
     defaultBaseUrl: "https://api.openai.com/v1",
+    keyPageUrl: "https://platform.openai.com/api-keys",
     capabilityFlags: [
       "chat",
       "reasoning",
@@ -48,6 +52,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "Google Gemini",
     supportsByok: true,
     defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    keyPageUrl: "https://aistudio.google.com/apikey",
     capabilityFlags: ["chat", "reasoning", "embeddings", "vision"],
     suggestedModels: ["gemini-2.5-flash", "gemini-2.5-pro"],
   },
@@ -56,6 +61,7 @@ export const PROVIDER_SLOTS: ProviderSlot[] = [
     label: "OpenRouter",
     supportsByok: true,
     defaultBaseUrl: "https://openrouter.ai/api/v1",
+    keyPageUrl: "https://openrouter.ai/settings/keys",
     capabilityFlags: ["chat", "routing", "vision"],
     suggestedModels: ["anthropic/claude-sonnet-5.5", "openai/gpt-5.4"],
   },

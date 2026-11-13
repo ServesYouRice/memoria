@@ -1,7 +1,8 @@
 /**
  * Root Layout
  *
- * - Uses a hermetic system font stack (no build-time network dependency)
+ * - Brand fonts ship with the app (@fontsource-variable): no build-time
+ *   network access and no third-party font request at runtime
  * - Analytics integration (Issue #40)
  * - CSP nonce integration for MUI/Emotion
  */
@@ -16,6 +17,8 @@ import {
   THEME_ATTRIBUTE,
   THEME_INIT_SCRIPT,
 } from "@/lib/theme-preference";
+import "@fontsource-variable/figtree";
+import "@fontsource-variable/bricolage-grotesque";
 import "./tiptap.css";
 
 export const viewport: Viewport = {

@@ -2,6 +2,10 @@ import React from "react";
 import { Group, Rect, Text } from "react-konva";
 import { type CanvasItemAdapterProps, type FrameContent } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
+import {
+  CANVAS_PALETTE,
+  useCanvasPalette,
+} from "@/features/canvas/lib/canvas-palette";
 
 type FrameItemProps = CanvasItemAdapterProps;
 
@@ -13,6 +17,7 @@ export const FrameItem: React.FC<FrameItemProps> = ({
   onContextMenu,
   onCommitGeometry,
 }) => {
+  const palette = useCanvasPalette();
   const content = item.content as FrameContent;
 
   return (
@@ -38,8 +43,8 @@ export const FrameItem: React.FC<FrameItemProps> = ({
         y={0}
         width={item.width}
         height={30}
-        fill={content.backgroundColor || "#f0f0f0"}
-        stroke="#e0e0e0"
+        fill={content.backgroundColor || palette.frameFill}
+        stroke={palette.border}
         strokeWidth={1}
         cornerRadius={[4, 4, 0, 0]}
       />
@@ -49,7 +54,9 @@ export const FrameItem: React.FC<FrameItemProps> = ({
         text={content.title || "Frame"}
         fontSize={14}
         fontFamily="Inter, sans-serif"
-        fill="#333"
+        fill={
+          content.backgroundColor ? CANVAS_PALETTE.light.text : palette.text
+        }
       />
 
       {/* Frame Body */}
@@ -59,7 +66,7 @@ export const FrameItem: React.FC<FrameItemProps> = ({
         width={item.width}
         height={item.height - 30}
         fill="transparent"
-        stroke="#e0e0e0"
+        stroke={palette.border}
         strokeWidth={1}
         cornerRadius={[0, 0, 4, 4]}
       />
@@ -71,7 +78,7 @@ export const FrameItem: React.FC<FrameItemProps> = ({
           y={-2}
           width={item.width + 4}
           height={item.height + 4}
-          stroke="#0096fd"
+          stroke={palette.selection}
           strokeWidth={2}
           cornerRadius={6}
           listening={false}

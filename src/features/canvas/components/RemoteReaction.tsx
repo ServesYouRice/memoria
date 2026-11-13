@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Typography } from "@mui/material";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 
 interface RemoteReactionProps {
   x: number;
@@ -29,7 +30,7 @@ export const RemoteReaction: React.FC<RemoteReactionProps> = ({
       <Typography
         sx={{
           fontSize: "3rem",
-          filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.2))",
+          filter: `drop-shadow(0 2px 4px ${CANVAS_PALETTE.light.shadow})`,
         }}
       >
         {emoji}
@@ -43,7 +44,7 @@ export const RemoteReaction: React.FC<RemoteReactionProps> = ({
           transform: "translateX(-50%)",
           whiteSpace: "nowrap",
           color: "white",
-          backgroundColor: "rgba(0,0,0,0.6)",
+          backgroundColor: CANVAS_PALETTE.light.scrim,
           px: 0.5,
           borderRadius: 1,
           fontSize: "0.7rem",

@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { Button, Typography } from "@mui/material";
+import { GuideContent } from "@/components/GuideContent";
+import { phoneSharingGuide } from "@/lib/guides/phone-sharing";
 import {
   InfoSection,
   PublicInfoPage,
@@ -10,7 +13,8 @@ export const metadata: Metadata = {
     "Help for canvases, collaboration, recovery, and keyboard access.",
 };
 
-export default function HelpPage() {
+export default async function HelpPage() {
+  const phone = await phoneSharingGuide();
   return (
     <PublicInfoPage
       title="Help"
@@ -18,7 +22,7 @@ export default function HelpPage() {
     >
       <InfoSection title="Canvas navigation">
         Hold Space and drag to pan, use the wheel or trackpad to zoom, and
-        switch to Organizer view for a keyboard- and screen-reader-friendly item
+        switch to Organised list for a keyboard- and screen-reader-friendly item
         list. Press ? inside the application to open the current
         keyboard-shortcut reference.
       </InfoSection>
@@ -50,6 +54,44 @@ export default function HelpPage() {
         is not shared with collaborators. AR is experimental and only appears
         when the deployment explicitly opts in after its device matrix has
         passed.
+      </InfoSection>
+      <InfoSection title="Save from your phone">
+        Send a link from any app on your phone to your Memoria Inbox. You need
+        an API key for the iPhone: create one on the API Keys page with{" "}
+        <strong>Create a key for my iPhone</strong>.
+        <GuideContent
+          sections={phone.sections}
+          after={
+            phone.shortcutUrl
+              ? {
+                  title: "1. Create an API key",
+                  content: (
+                    <>
+                      <Typography
+                        component="h4"
+                        variant="subtitle1"
+                        sx={{ fontWeight: 600, color: "text.primary", mt: 2 }}
+                      >
+                        2. Add the Shortcut
+                      </Typography>
+                      <Typography component="p" sx={{ my: 1 }}>
+                        Tap the button on your iPhone or iPad, then paste the
+                        server address and the key when the Shortcut asks.
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        href={phone.shortcutUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Add the Shortcut
+                      </Button>
+                    </>
+                  ),
+                }
+              : undefined
+          }
+        />
       </InfoSection>
       <InfoSection title="Troubleshooting">
         Retry a failed canvas load from its error banner. Check the Status page

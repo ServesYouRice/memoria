@@ -512,7 +512,7 @@ export async function proposeHomeBoard(
       payload: {
         kind: ASK_COMMAND_SUGGESTION_KIND,
         command,
-        question: "Suggested home board for a new Inbox item",
+        question: "Suggested home canvas for a new Inbox item",
         source: "home-board",
       },
       rung: AGENT_CAPABILITY_RUNGS.PROPOSE,
@@ -553,7 +553,7 @@ export function createHomeBoardProposalHandler(
   return async (job) => {
     const { itemId } = payloadSchema.parse(job.payload);
     const outcome = await proposeHomeBoard(prisma, itemId, options);
-    logger.info({ itemId, outcome: outcome.status }, "Home board proposal");
+    logger.info({ itemId, outcome: outcome.status }, "Home canvas proposal");
   };
 }
 
@@ -772,7 +772,7 @@ export async function acceptHomeBoardSuggestion(input: {
   const payload = suggestion.payload as { command?: { type?: unknown } } | null;
   if (payload?.command?.type !== "move_items") {
     await closeStale(row.itemId, suggestion.id);
-    throw new BadRequestError("This suggestion is not a board move.");
+    throw new BadRequestError("This suggestion is not a canvas move.");
   }
 
   let result: Awaited<ReturnType<typeof executeAskCommandSuggestion>>;
@@ -829,7 +829,7 @@ export async function acceptHomeBoardSuggestion(input: {
     throw error;
   }
   if (!("boardId" in result)) {
-    throw new BadRequestError("This suggestion is not a board move.");
+    throw new BadRequestError("This suggestion is not a canvas move.");
   }
   return {
     itemId: row.itemId,

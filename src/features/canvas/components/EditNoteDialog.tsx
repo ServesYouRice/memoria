@@ -271,7 +271,11 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
           version: item.version,
           content: isTextItem
             ? textItemContent(item.content, data.content)
-            : normalizeNoteContent(data.content),
+            : // The editor knows only the text; keep the note's colour.
+              normalizeNoteContent({
+                ...data.content,
+                color: (item.content as { color?: unknown }).color,
+              }),
           tags: data.tags || [],
         },
       });

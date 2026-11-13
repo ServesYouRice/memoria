@@ -12,6 +12,40 @@ const logger = createLogger("uploads/lifecycle");
 
 type Tx = Prisma.TransactionClient;
 
+/**
+ * Charges one file of `size` bytes to the user's quota, or throws the upload
+ * limit error and charges nothing. Run inside the transaction that creates
+ * the matching PENDING asset.
+ */
+export async function chargeUploadQuota(
+  tx: Tx,
+  input: { userId: string; size: number; maxFiles: number; maxBytes: number },
+) {
+  await tx.$executeRaw`
+    INSERT INTO "UploadQuota" ("userId", "assetCount", "totalBytes", "updatedAt")
+    VALUES (${input.userId}, 0, 0, NOW()) ON CONFLICT ("userId") DO NOTHING
+  `;
+  const reservation = await tx.uploadQuota.updateMany({
+    where: {
+      userId: input.userId,
+      assetCount: { lt: input.maxFiles },
+      totalBytes: { lte: BigInt(input.maxBytes - input.size) },
+    },
+    data: {
+      assetCount: { increment: 1 },
+      totalBytes: { increment: BigInt(input.size) },
+    },
+  });
+  if (reservation.count !== 1) {
+    throw new ApiError(
+      400,
+      "https://memoria.local/errors/upload",
+      "Upload quota exceeded",
+      "Upload limit reached for this account",
+    );
+  }
+}
+
 export async function reserveUploadAsset(
   prisma: PrismaClient,
   input: {
@@ -27,29 +61,7 @@ export async function reserveUploadAsset(
   },
 ) {
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`
-      INSERT INTO "UploadQuota" ("userId", "assetCount", "totalBytes", "updatedAt")
-      VALUES (${input.userId}, 0, 0, NOW()) ON CONFLICT ("userId") DO NOTHING
-    `;
-    const reservation = await tx.uploadQuota.updateMany({
-      where: {
-        userId: input.userId,
-        assetCount: { lt: input.maxFiles },
-        totalBytes: { lte: BigInt(input.maxBytes - input.size) },
-      },
-      data: {
-        assetCount: { increment: 1 },
-        totalBytes: { increment: BigInt(input.size) },
-      },
-    });
-    if (reservation.count !== 1) {
-      throw new ApiError(
-        400,
-        "https://memoria.local/errors/upload",
-        "Upload quota exceeded",
-        "Upload limit reached for this account",
-      );
-    }
+    await chargeUploadQuota(tx, input);
     return tx.uploadAsset.create({
       data: {
         userId: input.userId,

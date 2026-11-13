@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type React from "react";
-import { GridOverlay, snapToGrid } from "../GridOverlay";
+import { DotOverlay, GridOverlay, snapToGrid } from "../GridOverlay";
 
 type LineProps = { points: number[]; strokeWidth: number };
 
@@ -81,6 +81,64 @@ describe("GridOverlay", () => {
   it("renders nothing when hidden", () => {
     expect(
       GridOverlay({ width: 10, height: 10, gridSize: 20, visible: false }),
+    ).toBeNull();
+  });
+});
+
+describe("DotOverlay (IMP-085)", () => {
+  type ShapeProps = {
+    sceneFunc: (context: unknown, shape: unknown) => void;
+  };
+  function dots(props: Parameters<typeof DotOverlay>[0]) {
+    const layer = DotOverlay(props) as React.ReactElement<{
+      children: React.ReactElement<ShapeProps>;
+    }> | null;
+    if (!layer) return null;
+    const arcs: Array<[number, number]> = [];
+    const context = {
+      beginPath() {},
+      moveTo() {},
+      arc(x: number, y: number) {
+        arcs.push([x, y]);
+      },
+      fillShape() {},
+    };
+    layer.props.children.props.sceneFunc(context, {});
+    return arcs;
+  }
+
+  it("draws dots on the snap positions across the view in one shape", () => {
+    const arcs = dots({
+      width: 400,
+      height: 200,
+      gridSize: 20,
+      visible: true,
+      zoom: 1,
+      offset: { x: 100, y: 0 },
+    })!;
+    expect(arcs.length).toBeGreaterThan(100);
+    for (const [x, y] of arcs) {
+      expect(x % 20).toBe(0);
+      expect(y % 20).toBe(0);
+    }
+    expect(Math.min(...arcs.map(([x]) => x))).toBeLessThanOrEqual(100);
+    expect(Math.max(...arcs.map(([x]) => x))).toBeGreaterThanOrEqual(500);
+  });
+
+  it("keeps the dot count bounded when zoomed far out", () => {
+    const arcs = dots({
+      width: 1920,
+      height: 1080,
+      gridSize: 20,
+      visible: true,
+      zoom: 0.05,
+    })!;
+    expect(arcs.length).toBeLessThan(12_000);
+  });
+
+  it("draws nothing when the grid lines are on", () => {
+    expect(
+      dots({ width: 400, height: 200, gridSize: 20, visible: false }),
     ).toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import { isBootstrapAvailable } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 import { SetupForm } from "./SetupForm";
+import { SetupCheck } from "./SetupCheck";
 
 export default async function SetupPage() {
   const bootstrapAvailable = await isBootstrapAvailable();
@@ -14,7 +15,7 @@ export default async function SetupPage() {
         minHeight: "100vh",
         px: 3,
         py: 8,
-        background: "linear-gradient(180deg, #f4efe2 0%, #ffffff 100%)",
+        bgcolor: "background.default",
       }}
     >
       {!bootstrapAvailable ? (
@@ -36,6 +37,7 @@ export default async function SetupPage() {
               Memoria Bootstrap
             </Typography>
           </Box>
+          <SetupCheck />
           <SetupForm needsToken={Boolean(env.APP_BOOTSTRAP_TOKEN)} />
         </>
       )}

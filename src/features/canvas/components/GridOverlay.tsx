@@ -4,8 +4,9 @@
  */
 
 import React from "react";
-import { Layer, Line } from "react-konva";
+import { Layer, Line, Shape } from "react-konva";
 import { EXPORT_EXCLUDE_NAME } from "@/lib/export/export-utils";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 
 export interface GridOverlayProps {
   width: number;
@@ -45,7 +46,7 @@ export function GridOverlay({
   visible,
   offset = { x: 0, y: 0 },
   zoom = 1,
-  stroke = "#e0e0e0",
+  stroke = CANVAS_PALETTE.light.grid,
 }: GridOverlayProps) {
   if (!visible) return null;
 
@@ -89,6 +90,55 @@ export function GridOverlay({
   return (
     <Layer name={EXPORT_EXCLUDE_NAME} listening={false}>
       {lines}
+    </Layer>
+  );
+}
+
+/** Dots are never drawn closer together than this on screen. */
+export const MIN_DOT_SCREEN_SPACING_PX = 16;
+/** Dot radius on screen, whatever the zoom. */
+const DOT_SCREEN_RADIUS_PX = 1.2;
+
+/**
+ * IMP-085: the calm default background, faint dots on the snap positions. One
+ * Konva shape draws every dot in a single path, so the cost stays at one node.
+ * Shown when the grid lines are off; like the grid, it is left out of exports.
+ */
+export function DotOverlay({
+  width,
+  height,
+  gridSize,
+  visible,
+  offset = { x: 0, y: 0 },
+  zoom = 1,
+  stroke = CANVAS_PALETTE.light.dot,
+}: GridOverlayProps) {
+  if (!visible || !(gridSize > 0) || !(zoom > 0)) return null;
+  let step = gridSize;
+  while (step * zoom < MIN_DOT_SCREEN_SPACING_PX) step *= 2;
+  const startX = Math.floor(offset.x / step) * step;
+  const startY = Math.floor(offset.y / step) * step;
+  const endX = startX + width / zoom + step;
+  const endY = startY + height / zoom + step;
+  const radius = DOT_SCREEN_RADIUS_PX / zoom;
+
+  return (
+    <Layer name={EXPORT_EXCLUDE_NAME} listening={false}>
+      <Shape
+        listening={false}
+        perfectDrawEnabled={false}
+        fill={stroke}
+        sceneFunc={(context, shape) => {
+          context.beginPath();
+          for (let x = startX; x <= endX; x += step) {
+            for (let y = startY; y <= endY; y += step) {
+              context.moveTo(x + radius, y);
+              context.arc(x, y, radius, 0, Math.PI * 2);
+            }
+          }
+          context.fillShape(shape);
+        }}
+      />
     </Layer>
   );
 }

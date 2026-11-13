@@ -1,8 +1,15 @@
-// Memoria Tab Saver popup. Works with the promise-based WebExtension API in
-// Chrome, Edge (`chrome.*`) and Firefox (`browser.*`).
+// Memoria browser button popup. Opens on "Save this page"; "Save all tabs" is
+// the second view. Works with the promise-based WebExtension API in Chrome,
+// Edge (`chrome.*`) and Firefox (`browser.*`).
 import {
   alreadySavedLinks,
   chunk,
+  clipOutcome,
+  fetchCanvases,
+  initialCanvasId,
+  INBOX_NAME,
+  outcomeMessage,
+  sendClip,
   closableTabIds,
   existingLinkUrl,
   isApiKey,
@@ -32,6 +39,7 @@ let saving = false;
 
 function show(section) {
   $("setup").hidden = section !== "setup";
+  $("page").hidden = section !== "page";
   $("main").hidden = section !== "main";
 }
 
@@ -127,7 +135,134 @@ async function saveSetup(event) {
 
   settings = { serverUrl, apiKey };
   await ext.storage.local.set(settings);
-  await showTabs();
+  await showPage();
+}
+
+// --- "Save this page" (IMP-093) ---
+
+let currentTab = null;
+let savingPage = false;
+let existingUrl = null;
+/** Results the background script stored are shown if this recent. */
+const LAST_RESULT_MAX_AGE_MS = 10 * 60 * 1000;
+
+function setExisting(url, label = "Open it") {
+  existingUrl = url;
+  $("open-existing").hidden = !url;
+  $("open-existing").textContent = label;
+}
+
+function renderCanvasOptions(canvases, chosenId) {
+  const select = $("canvas");
+  const options = canvases.some((canvas) => canvas.name === INBOX_NAME)
+    ? canvases
+    : [{ id: "", name: INBOX_NAME }, ...canvases];
+  select.replaceChildren(
+    ...options.map((canvas) => {
+      const option = document.createElement("option");
+      option.value = canvas.id;
+      option.textContent = canvas.name;
+      return option;
+    }),
+  );
+  select.value = chosenId;
+}
+
+async function loadCanvases() {
+  const { lastCanvasId } = await ext.storage.local.get("lastCanvasId");
+  let canvases = [];
+  try {
+    canvases = await fetchCanvases(settings);
+  } catch {
+    // Saving still works: the server picks the Inbox when no canvas is sent.
+  }
+  renderCanvasOptions(canvases, initialCanvasId(canvases, lastCanvasId));
+}
+
+// The page's selected text, read only when the person clicks save. The
+// popup's activeTab grant covers this one tab; browser pages refuse it.
+async function readSelection(tabId) {
+  if (!ext.scripting?.executeScript) return "";
+  try {
+    const [result] = await ext.scripting.executeScript({
+      target: { tabId },
+      func: () => String(globalThis.getSelection?.() ?? ""),
+    });
+    return typeof result?.result === "string" ? result.result : "";
+  } catch {
+    return "";
+  }
+}
+
+// A save the right-click menu or the keyboard shortcut made while the popup
+// was closed: show it once, then clear the toolbar badge.
+async function showLastResult() {
+  const { lastResult } = await ext.storage.local.get("lastResult");
+  if (!lastResult) return;
+  await ext.storage.local.set({ lastResult: null });
+  await ext.action?.setBadgeText?.({ text: "" });
+  if (Date.now() - Number(lastResult.at || 0) > LAST_RESULT_MAX_AGE_MS) return;
+  const prefix = lastResult.title ? `${lastResult.title}: ` : "";
+  if (lastResult.error) {
+    setMessage("page-error", `${prefix}${lastResult.error}`);
+    return;
+  }
+  setMessage("page-status", `${prefix}${lastResult.message}`);
+  setExisting(
+    lastResult.openUrl || null,
+    lastResult.saved ? "Open in Memoria" : "Open it",
+  );
+}
+
+async function showPage() {
+  [currentTab] = await ext.tabs.query({ active: true, currentWindow: true });
+  const savable = isSavableUrl(currentTab?.url);
+  $("page-title").textContent =
+    currentTab?.title || currentTab?.url || "No page";
+  $("page-url").textContent = currentTab?.url || "";
+  setMessage(
+    "page-error",
+    savable
+      ? ""
+      : "This is a browser page, so it cannot be saved. You can still save the other tabs.",
+  );
+  setMessage("page-status", "");
+  setExisting(null);
+  $("save-page").disabled = !savable;
+  show("page");
+  await showLastResult();
+  await loadCanvases();
+}
+
+async function savePage() {
+  if (savingPage || !currentTab || !settings) return;
+  savingPage = true;
+  $("save-page").disabled = true;
+  $("canvas").disabled = true;
+  setMessage("page-error", "");
+  setMessage("page-status", "Saving…");
+  setExisting(null);
+  try {
+    const select = $("canvas");
+    const canvasName = select.selectedOptions[0]?.textContent || INBOX_NAME;
+    const page = {
+      url: currentTab.url,
+      title: currentTab.title,
+      selection: await readSelection(currentTab.id),
+      canvasId: select.value,
+    };
+    const body = await sendClip({ ...settings, page });
+    const outcome = clipOutcome(settings.serverUrl, body, page, canvasName);
+    setMessage("page-status", outcomeMessage(outcome));
+    setExisting(outcome.openUrl, outcome.saved ? "Open in Memoria" : "Open it");
+  } catch (error) {
+    setMessage("page-status", "");
+    setMessage("page-error", error.message);
+  } finally {
+    savingPage = false;
+    $("save-page").disabled = false;
+    $("canvas").disabled = false;
+  }
 }
 
 function selectedTabs() {
@@ -144,6 +279,7 @@ function renderSelection() {
   $("save").disabled = saving || count === 0;
   $("note").disabled = saving;
   $("open-settings").disabled = saving;
+  $("show-page").disabled = saving;
   $("save").textContent =
     count === 1 ? "Save and close 1 tab" : `Save and close ${count} tabs`;
 }
@@ -348,8 +484,22 @@ async function saveSelected() {
 
 async function start() {
   $("setup-form").addEventListener("submit", saveSetup);
-  $("setup-cancel").addEventListener("click", () => show("main"));
+  $("setup-cancel").addEventListener("click", () => show("page"));
   $("open-settings").addEventListener("click", openSetup);
+  $("page-settings").addEventListener("click", openSetup);
+  $("save-page").addEventListener("click", savePage);
+  $("show-tabs").addEventListener("click", () => void showTabs());
+  $("show-page").addEventListener("click", () => void showPage());
+  $("canvas").addEventListener("change", (event) => {
+    const select = event.target;
+    void ext.storage.local.set({
+      lastCanvasId: select.value,
+      lastCanvasName: select.selectedOptions[0]?.textContent || INBOX_NAME,
+    });
+  });
+  $("open-existing").addEventListener("click", () => {
+    if (existingUrl) void ext.tabs.create({ url: existingUrl, active: true });
+  });
   $("save").addEventListener("click", save);
   $("toggle-all").addEventListener("change", (event) => {
     selected.clear();
@@ -375,10 +525,10 @@ async function start() {
     setMessage("setup-error", error.message);
     return;
   }
-  await showTabs();
+  await showPage();
 }
 
 start().catch((error) => {
-  show("main");
-  setMessage("save-error", error.message);
+  show("page");
+  setMessage("page-error", error.message);
 });

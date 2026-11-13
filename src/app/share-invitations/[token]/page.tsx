@@ -21,7 +21,7 @@ export default async function ShareInvitationPage({
   }
 
   return (
-    <AppShell maxWidth="sm">
+    <AppShell readingWidth="sm">
       <InvitationResponseContent token={token} />
     </AppShell>
   );

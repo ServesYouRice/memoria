@@ -75,7 +75,7 @@ export function WeeklyRecapSettings() {
     : [...STALE_WEEK_OPTIONS, data.staleLinkWeeks].sort((a, b) => a - b);
 
   return (
-    <Stack spacing={1} sx={{ mt: 3 }}>
+    <Stack id="weekly-recap" spacing={1} sx={{ mt: 3, scrollMarginTop: 80 }}>
       <Typography variant="subtitle2">Weekly recap</Typography>
       <Typography variant="body2" color="text.secondary">
         Once a week you get a short recap in the app: what you saved, piles it

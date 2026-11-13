@@ -5,7 +5,7 @@ Memoria is a stateful Node application for visual note organization. It combines
 ## Production Model
 
 - Runtime: stateful Node server with Next.js App Router and a custom WebSocket server
-- Required production services: PostgreSQL, Redis, S3-compatible object storage
+- Required production services: PostgreSQL, Redis, and upload storage (S3-compatible object storage, or a disk volume in the small set-up)
 - Target platform: the owner's shared k3s cluster (PostgreSQL 18 via CloudNativePG, Valkey, Cloudflare R2); cluster configuration lives in the private `infra` repo
 - Reference self-host stack: Docker Compose, with SeaweedFS serving the S3 API under the `minio` service name; this is for local and self-host use only
 - Non-goal for v1: serverless-first deployment
@@ -33,7 +33,44 @@ What `pnpm setup:dev` does:
 - runs Prisma generate and development migrations
 - optionally supports `--seed`
 
-### Self-Host
+### Self-Host: pick a set-up
+
+| | Small set-up | Full set-up |
+| --- | --- | --- |
+| Command | `pnpm setup:small` | `pnpm setup:selfhost` |
+| Parts running | 6: app, sync, worker, scheduler, PostgreSQL, Redis | 10: the same, plus gateway, object storage, backup, backup monitor |
+| Uploads | Disk volume (`uploads_data`) | S3-compatible object storage |
+| Backups | You run them (database and the uploads volume) | Scheduled, encrypted, checked off-host |
+| HTTPS | Your own proxy in front | Bundled Caddy gateway |
+| More replicas | No | Yes (`replicas` profile) |
+| Pick it when | One small server, a few people, you already have a reverse proxy | Several people rely on it, you want backups and room to grow |
+
+Memory use at rest is in
+[docs/operations/resource-budgets.md](docs/operations/resource-budgets.md).
+
+#### Small set-up
+
+```bash
+MEMORIA_PUBLIC_URL=https://notes.example.com \
+EMAIL_PROVIDER=smtp SMTP_HOST=... SMTP_PORT=587 SMTP_USER=... SMTP_PASS=... \
+EMAIL_FROM=notes@example.com EMAIL_SENDER_VERIFIED=true \
+EMAIL_DELIVERY_PROBE_TO=you@example.com \
+pnpm setup:small
+```
+
+It writes `.env.small`, starts `docker-compose.small.yml`, and checks that
+the app, the database, Redis, uploads and a live editing connection all work.
+Point your own HTTPS proxy (Caddy, nginx, Traefik, a Cloudflare Tunnel) at
+`127.0.0.1:3000`, and make sure it passes WebSocket connections for
+`/api/collaboration/`. Use `http://localhost:3000` as the address to try it
+on one machine first.
+
+What you give up compared with the full set-up: no bundled object storage
+(uploads sit in a Docker volume, so the app cannot run a second copy), no
+scheduled backups (back up the database and the `uploads_data` volume
+yourself), and no bundled HTTPS gateway.
+
+#### Full set-up
 
 ```bash
 pnpm setup:selfhost
@@ -48,7 +85,9 @@ What `pnpm setup:selfhost` does:
 - runs live smoke checks against the app HTTP and collaboration paths
 - prints the bootstrap URL for first-run initialization
 
-After the stack is up, open `/setup` and create the first owner account. That flow creates:
+After the stack is up, open `/setup`. It first runs the set-up check (database,
+Redis, uploads, sync server, and a live connection through your proxy) and
+names the fix for anything that fails. Then create the first owner account. That flow creates:
 
 - the first owner user
 - the default `Personal` workspace
@@ -58,7 +97,8 @@ After the stack is up, open `/setup` and create the first owner account. That fl
 
 - `pnpm setup:dev`
 - `pnpm setup:selfhost`
-- `pnpm doctor`
+- `pnpm setup:small`
+- `pnpm doctor` (`pnpm doctor:small` for the small set-up)
 - `pnpm smoke`
 - `pnpm stack:up`
 - `pnpm stack:down`
@@ -66,7 +106,7 @@ After the stack is up, open `/setup` and create the first owner account. That fl
 - `pnpm build`
 - `pnpm start`
 
-`pnpm doctor` validates the current env file, database reachability, Redis reachability, object storage reachability, Prisma migration status, pgvector availability, and, when the app is reachable, the live HTTP/WebSocket smoke path. `pnpm smoke` runs the live app checks directly.
+`pnpm doctor` validates the current env file, database reachability, Redis reachability, object storage reachability, Prisma migration status, pgvector availability, and, when the app is reachable, the live HTTP/WebSocket smoke path, including a live editing connection opened through the public address (`AUTH_URL`). Each failure prints a `Fix:` line in plain words. `pnpm smoke` runs the live app checks directly.
 
 ## Agent Foundation
 
@@ -121,17 +161,20 @@ Use `.env.example` as the source template. Important variables:
 - `APP_BOOTSTRAP_TOKEN`
 - `MODEL_CREDENTIAL_ENCRYPTION_KEY`
 - `UPLOAD_STORAGE`
+- `UPLOAD_LOCAL_DIR` (small set-up: the folder for uploads on disk)
 - `S3_BUCKET`
 - `S3_REGION`
 - `S3_ENDPOINT`
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
+- `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_BUTTON_LABEL`
+  (optional: "Sign in with" an existing login system; see
+  [docs/operations/single-sign-on.md](docs/operations/single-sign-on.md))
 
 Production rules enforced by the app:
 
 - Redis is required
-- local uploads are rejected
-- S3-compatible storage must be configured
+- uploads use S3-compatible storage, or a named disk folder (`UPLOAD_STORAGE=local` with `UPLOAD_LOCAL_DIR`, small set-up only)
 - a bootstrap token must exist for first-run setup
 - production email uses `sendgrid`, `resend`, or `smtp` (`SMTP_*` settings, TLS required); the `console` provider is development/test only
 

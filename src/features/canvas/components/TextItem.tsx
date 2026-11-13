@@ -2,6 +2,7 @@ import React from "react";
 import { Group, Text } from "react-konva";
 import { type CanvasItemAdapterProps, type TextContent } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
+import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
 type TextItemProps = CanvasItemAdapterProps;
 
@@ -14,6 +15,7 @@ export const TextItem: React.FC<TextItemProps> = ({
   onContextMenu,
   onCommitGeometry,
 }) => {
+  const palette = useCanvasPalette();
   const content = item.content as TextContent;
 
   return (
@@ -39,7 +41,7 @@ export const TextItem: React.FC<TextItemProps> = ({
         text={content.text}
         fontSize={content.fontSize || 16}
         fontFamily={content.fontFamily || "Inter, sans-serif"}
-        fill={content.color || "#000000"}
+        fill={content.color || palette.ink}
         align={content.align || "left"}
         width={item.width}
         // height is usually auto for text, but we can constrain if needed

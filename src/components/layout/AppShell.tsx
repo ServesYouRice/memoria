@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import {
   Badge,
   Box,
   Button,
+  ButtonBase,
   Container,
   Divider,
   Drawer,
@@ -42,7 +43,6 @@ import {
 } from "@mui/icons-material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { gradients } from "@/lib/theme";
 import { useUnreadNotifications } from "@/lib/hooks/use-notifications";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { AskLauncher } from "@/features/command-palette/AskPalette";
@@ -60,10 +60,16 @@ function getInitials(name?: string | null, email?: string | null) {
   return "U";
 }
 
+/** Outer width shared by the top bar and every signed-in page (IMP-087). */
+export const SHELL_MAX_WIDTH = "lg" as const;
+
 export interface AppShellProps {
   children: React.ReactNode;
-  /** Max width of the page content container. Pass false for full-bleed pages. */
-  maxWidth?: "sm" | "md" | "lg" | "xl" | false;
+  /**
+   * Narrow reading pages keep the shared outer width (so titles line up with
+   * the top bar on every page) and set a left-aligned inner column instead.
+   */
+  readingWidth?: "sm" | "md";
 }
 
 /**
@@ -71,7 +77,7 @@ export interface AppShellProps {
  * with primary navigation, search, notifications, theme toggle, and the
  * user account menu.
  */
-export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
+export function AppShell({ children, readingWidth }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
@@ -89,6 +95,26 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
     (href !== "/dashboard" && pathname?.startsWith(`${href}/`));
 
   const closeAccountMenu = () => setAccountAnchor(null);
+
+  // "⌘ K" on Apple keyboards; set after mount so server HTML matches.
+  const [shortcutLabel, setShortcutLabel] = useState("Ctrl K");
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/.test(navigator.platform)) setShortcutLabel("⌘ K");
+  }, []);
+
+  // Ctrl/Cmd+K opens search, unless the page already used it (the
+  // dashboard opens its command palette, which also offers search).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        router.push("/search");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [router]);
 
   return (
     <Box
@@ -115,191 +141,257 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
         Skip to main content
       </Button>
       <AppBar position="sticky">
-        {/* Tighter on the narrowest phones: seven controls fit 320px. */}
-        <Toolbar sx={{ gap: { xs: 0.5, sm: 1 } }}>
-          {/* Mobile menu */}
-          <IconButton
-            edge="start"
-            aria-label="Open navigation menu"
-            onClick={() => setDrawerOpen(true)}
-            sx={{ display: { xs: "inline-flex", md: "none" } }}
-          >
-            <MenuIcon />
-          </IconButton>
-
-          {/* Brand */}
-          <Box
-            component={Link}
-            href="/dashboard"
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              textDecoration: "none",
-              color: "inherit",
-              mr: { md: 2 },
-            }}
-          >
-            <MemoriaLogo size={32} />
-            <Typography
-              variant="h6"
-              sx={{ fontWeight: 700, display: { xs: "none", sm: "block" } }}
-            >
-              Memoria
-            </Typography>
-          </Box>
-
-          {/* Desktop nav */}
-          <Box
-            component="nav"
-            aria-label="Primary navigation"
-            sx={{ display: { xs: "none", md: "flex" }, gap: 0.5, flexGrow: 1 }}
-          >
-            {NAV_ITEMS.map((item) => (
-              <Button
-                key={item.href}
-                component={Link}
-                href={item.href}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                size="small"
-                startIcon={<item.icon />}
-                sx={{
-                  px: 1.5,
-                  color: isActive(item.href)
-                    ? "primary.main"
-                    : "text.secondary",
-                  bgcolor: (theme) =>
-                    isActive(item.href)
-                      ? alpha(theme.palette.primary.main, 0.08)
-                      : "transparent",
-                  "&:hover": {
-                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
-                    color: "primary.main",
-                  },
-                }}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </Box>
-
-          <Box sx={{ flexGrow: { xs: 1, md: 0 } }} />
-          {user && <AskLauncher />}
-
-          {/* Actions */}
-          <Tooltip title="Search">
+        {/* Same outer width as the page, so the logo lines up with titles. */}
+        <Container maxWidth={SHELL_MAX_WIDTH}>
+          {/* Tighter on the narrowest phones: seven controls fit 320px. */}
+          <Toolbar disableGutters sx={{ gap: { xs: 0.5, sm: 1 } }}>
+            {/* Mobile menu */}
             <IconButton
-              aria-label="Search"
-              onClick={() => router.push("/search")}
+              edge="start"
+              aria-label="Open navigation menu"
+              onClick={() => setDrawerOpen(true)}
+              sx={{ display: { xs: "inline-flex", md: "none" } }}
             >
-              <SearchIcon />
+              <MenuIcon />
             </IconButton>
-          </Tooltip>
-          <Tooltip title="Notifications">
-            <IconButton
-              aria-label={
-                unreadNotifications > 0
-                  ? `Notifications, ${unreadNotifications} unread`
-                  : "Notifications"
-              }
+
+            {/* Brand */}
+            <Box
               component={Link}
-              href="/notifications"
+              href="/dashboard"
               sx={{
-                color: isActive("/notifications") ? "primary.main" : undefined,
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                textDecoration: "none",
+                color: "inherit",
+                mr: { md: 2 },
               }}
             >
-              <Badge
-                badgeContent={unreadNotifications}
-                color="error"
-                max={99}
-                invisible={unreadNotifications === 0}
-              >
-                <NotificationsIcon />
-              </Badge>
-            </IconButton>
-          </Tooltip>
-          <ThemeToggle />
-          <Tooltip title="Account">
-            <IconButton
-              aria-label="Account menu"
-              onClick={(e) => setAccountAnchor(e.currentTarget)}
-              sx={{ ml: 0.5 }}
-            >
-              <Avatar
-                src={toImageProxyUrl(user?.image)}
-                sx={{
-                  width: 32,
-                  height: 32,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  background: gradients.brand,
-                  color: "#fff",
-                }}
-              >
-                {getInitials(user?.name, user?.email)}
-              </Avatar>
-            </IconButton>
-          </Tooltip>
-
-          <Menu
-            anchorEl={accountAnchor}
-            open={Boolean(accountAnchor)}
-            onClose={closeAccountMenu}
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            transformOrigin={{ vertical: "top", horizontal: "right" }}
-          >
-            <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="subtitle2" noWrap>
-                {user?.name || "Account"}
-              </Typography>
+              <MemoriaLogo size={32} />
               <Typography
-                variant="caption"
-                noWrap
-                sx={{
-                  color: "text.secondary",
-                  display: "block",
-                }}
+                variant="h6"
+                sx={{ fontWeight: 700, display: { xs: "none", sm: "block" } }}
               >
-                {user?.email}
+                Memoria
               </Typography>
             </Box>
-            <Divider sx={{ mb: 0.5 }} />
-            <MenuItem
-              component={Link}
-              href="/settings"
-              onClick={closeAccountMenu}
-            >
-              <ListItemIcon>
-                <SettingsIcon fontSize="small" />
-              </ListItemIcon>
-              Settings
-            </MenuItem>
-            <MenuItem
-              component={Link}
-              href="/api-keys"
-              onClick={closeAccountMenu}
-            >
-              <ListItemIcon>
-                <ApiKeysIcon fontSize="small" />
-              </ListItemIcon>
-              API Keys
-            </MenuItem>
-            <Divider sx={{ my: 0.5 }} />
-            <MenuItem
-              onClick={() => {
-                closeAccountMenu();
-                void signOutAndRedirect("/").catch(() => {
-                  toast.error("Sign out failed. Please try again.");
-                });
+
+            {/* Desktop nav */}
+            <Box
+              component="nav"
+              aria-label="Primary navigation"
+              sx={{
+                display: { xs: "none", md: "flex" },
+                gap: 0.5,
+                flexGrow: 1,
               }}
             >
-              <ListItemIcon>
-                <LogoutIcon fontSize="small" />
-              </ListItemIcon>
-              Sign out
-            </MenuItem>
-          </Menu>
-        </Toolbar>
+              {NAV_ITEMS.map((item) => (
+                <Button
+                  key={item.href}
+                  component={Link}
+                  href={item.href}
+                  aria-current={isActive(item.href) ? "page" : undefined}
+                  size="small"
+                  startIcon={<item.icon />}
+                  sx={{
+                    px: 1.5,
+                    color: isActive(item.href)
+                      ? "primary.main"
+                      : "text.secondary",
+                    bgcolor: (theme) =>
+                      isActive(item.href)
+                        ? alpha(theme.palette.primary.main, 0.08)
+                        : "transparent",
+                    "&:hover": {
+                      bgcolor: (theme) =>
+                        alpha(theme.palette.primary.main, 0.08),
+                      color: "primary.main",
+                    },
+                  }}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </Box>
+
+            <Box sx={{ flexGrow: { xs: 1, md: 0 } }} />
+            {user && <AskLauncher />}
+
+            {/* Actions. Wide screens get a visible search field (IMP-083);
+                narrower ones keep the icon. */}
+            <ButtonBase
+              aria-label="Search"
+              aria-keyshortcuts="Control+K Meta+K"
+              onClick={() => router.push("/search")}
+              sx={{
+                display: { xs: "none", lg: "flex" },
+                alignItems: "center",
+                gap: 1,
+                width: 240,
+                height: 40,
+                px: 1.5,
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "action.hover",
+                color: "text.secondary",
+                justifyContent: "flex-start",
+                "&:hover": { borderColor: "text.secondary" },
+                "&.Mui-focusVisible": {
+                  outline: "2px solid",
+                  outlineColor: "primary.main",
+                  outlineOffset: 2,
+                },
+              }}
+            >
+              <SearchIcon fontSize="small" />
+              <Typography
+                variant="body2"
+                component="span"
+                sx={{ flexGrow: 1, textAlign: "left" }}
+              >
+                Search…
+              </Typography>
+              <Box
+                component="kbd"
+                sx={{
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  px: 0.75,
+                  py: 0.25,
+                  borderRadius: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "background.paper",
+                }}
+              >
+                {shortcutLabel}
+              </Box>
+            </ButtonBase>
+            <Tooltip title="Search">
+              <IconButton
+                aria-label="Search"
+                onClick={() => router.push("/search")}
+                sx={{ display: { lg: "none" } }}
+              >
+                <SearchIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Notifications">
+              <IconButton
+                aria-label={
+                  unreadNotifications > 0
+                    ? `Notifications, ${unreadNotifications} unread`
+                    : "Notifications"
+                }
+                component={Link}
+                href="/notifications"
+                sx={{
+                  color: isActive("/notifications")
+                    ? "primary.main"
+                    : undefined,
+                }}
+              >
+                {/* Render no badge at zero: MUI's hidden-badge transform can
+                  compute to `none` after a full load and leave a red "0". */}
+                {unreadNotifications > 0 ? (
+                  <Badge
+                    badgeContent={unreadNotifications}
+                    color="error"
+                    max={99}
+                  >
+                    <NotificationsIcon />
+                  </Badge>
+                ) : (
+                  <NotificationsIcon />
+                )}
+              </IconButton>
+            </Tooltip>
+            <ThemeToggle />
+            <Tooltip title="Account">
+              <IconButton
+                aria-label="Account menu"
+                onClick={(e) => setAccountAnchor(e.currentTarget)}
+                sx={{ ml: 0.5 }}
+              >
+                <Avatar
+                  src={toImageProxyUrl(user?.image)}
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    bgcolor: "primary.main",
+                    color: "primary.contrastText",
+                  }}
+                >
+                  {getInitials(user?.name, user?.email)}
+                </Avatar>
+              </IconButton>
+            </Tooltip>
+
+            <Menu
+              anchorEl={accountAnchor}
+              open={Boolean(accountAnchor)}
+              onClose={closeAccountMenu}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+            >
+              <Box sx={{ px: 2, py: 1.5 }}>
+                <Typography variant="subtitle2" noWrap>
+                  {user?.name || "Account"}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{
+                    color: "text.secondary",
+                    display: "block",
+                  }}
+                >
+                  {user?.email}
+                </Typography>
+              </Box>
+              <Divider sx={{ mb: 0.5 }} />
+              <MenuItem
+                component={Link}
+                href="/settings"
+                onClick={closeAccountMenu}
+              >
+                <ListItemIcon>
+                  <SettingsIcon fontSize="small" />
+                </ListItemIcon>
+                Settings
+              </MenuItem>
+              <MenuItem
+                component={Link}
+                href="/api-keys"
+                onClick={closeAccountMenu}
+              >
+                <ListItemIcon>
+                  <ApiKeysIcon fontSize="small" />
+                </ListItemIcon>
+                API Keys
+              </MenuItem>
+              <Divider sx={{ my: 0.5 }} />
+              <MenuItem
+                onClick={() => {
+                  closeAccountMenu();
+                  void signOutAndRedirect("/").catch(() => {
+                    toast.error("Sign out failed. Please try again.");
+                  });
+                }}
+              >
+                <ListItemIcon>
+                  <LogoutIcon fontSize="small" />
+                </ListItemIcon>
+                Sign out
+              </MenuItem>
+            </Menu>
+          </Toolbar>
+        </Container>
       </AppBar>
 
       {/* Mobile drawer */}
@@ -347,26 +439,26 @@ export function AppShell({ children, maxWidth = "lg" }: AppShellProps) {
       </Drawer>
 
       {/* Page content */}
-      {maxWidth === false ? (
-        <Box
-          id="main-content"
-          component="main"
-          tabIndex={-1}
-          sx={{ flexGrow: 1 }}
-        >
-          {children}
-        </Box>
-      ) : (
-        <Container
-          component="main"
-          id="main-content"
-          tabIndex={-1}
-          maxWidth={maxWidth}
-          sx={{ flexGrow: 1, py: 4 }}
-        >
-          {children}
-        </Container>
-      )}
+      <Container
+        component="main"
+        id="main-content"
+        tabIndex={-1}
+        maxWidth={SHELL_MAX_WIDTH}
+        sx={{ flexGrow: 1, py: 4 }}
+      >
+        {readingWidth ? (
+          <Box
+            data-testid="reading-column"
+            sx={{
+              maxWidth: (theme) => theme.breakpoints.values[readingWidth],
+            }}
+          >
+            {children}
+          </Box>
+        ) : (
+          children
+        )}
+      </Container>
       <Divider />
       <Box component="footer" sx={{ py: 2, px: 3 }}>
         <Stack

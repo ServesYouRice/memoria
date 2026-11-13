@@ -165,7 +165,7 @@ describe("Operator, Cron, Bootstrap, and CSP boundaries (IMP-058)", () => {
         expect(prismaMocks.$transaction).not.toHaveBeenCalled();
       });
 
-      it("queues the three daily retention jobs and the weekly recap with stable dedupe keys", async () => {
+      it("queues the three daily retention jobs, the weekly recap and the reminder sweep with stable dedupe keys", async () => {
         process.env.CRON_SECRET = "valid-cron-secret-12345";
         vi.useFakeTimers();
         vi.setSystemTime(new Date("2026-08-25T14:30:00.000Z"));
@@ -183,7 +183,17 @@ describe("Operator, Cron, Bootstrap, and CSP boundaries (IMP-058)", () => {
         const data = await res.json();
         expect(data).toEqual({ queued: true, day: "2026-08-25" });
 
-        expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledTimes(4);
+        expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledTimes(5);
+        // IMP-097: one reminder sweep per 15-minute window.
+        expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledWith(
+          expect.anything(),
+          {
+            type: "reminders.sweep",
+            payload: {},
+            dedupeKey: `reminders.sweep:${Math.floor(Date.parse("2026-08-25T14:30:00.000Z") / 900_000)}`,
+            maxAttempts: 5,
+          },
+        );
         expect(outboxMocks.enqueueOutboxJob).toHaveBeenCalledWith(
           expect.anything(),
           {

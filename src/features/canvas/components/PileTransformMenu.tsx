@@ -16,6 +16,11 @@ import {
 } from "@mui/icons-material";
 import { toast } from "sonner";
 import { canvasItemKeys } from "@/lib/hooks/use-canvas-items";
+import {
+  AI_NOT_SET_UP_MESSAGE,
+  AI_SETUP_PATH,
+  aiSetupNeeded,
+} from "@/features/ai/ai-setup";
 import type { PileTransformKind } from "@/lib/ai/pile-transform-kinds";
 
 const PILE_ACTIONS: Array<{
@@ -85,7 +90,19 @@ export function usePileTransform(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ canvasId, frameId, kind }),
         });
-        if (!response.ok) throw new Error(await readProblem(response));
+        if (!response.ok) {
+          if (await aiSetupNeeded(response)) {
+            // IMP-102: point straight at the AI set-up.
+            toast.error(AI_NOT_SET_UP_MESSAGE, {
+              action: {
+                label: "Set up AI",
+                onClick: () => window.location.assign(AI_SETUP_PATH),
+              },
+            });
+            return;
+          }
+          throw new Error(await readProblem(response));
+        }
         // The committed event also delivers the note; this covers a missed one.
         await queryClient.invalidateQueries({
           queryKey: canvasItemKeys.list(canvasId),

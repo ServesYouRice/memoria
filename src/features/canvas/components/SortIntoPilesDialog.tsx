@@ -95,7 +95,7 @@ export function SortIntoPilesDialog({
           setError(
             organizeError instanceof Error
               ? organizeError.message
-              : "Could not sort this board.",
+              : "Could not sort this canvas.",
           );
         })
         .finally(() => {

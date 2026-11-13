@@ -30,6 +30,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import Link from "next/link";
 
 interface SearchResult {
   itemId: string;
@@ -39,6 +40,8 @@ interface SearchResult {
   content: unknown;
   tags: string[];
   snippet: string;
+  /** Items joined to this one by an arrow (IMP-095). */
+  links?: Array<{ direction: "to" | "from"; itemId: string; title: string }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -216,7 +219,14 @@ export function SearchContent() {
           description={
             typeFilter
               ? "Choose All to see every result, or load more."
-              : "Try different keywords, or check the spelling."
+              : "Try other words or check the spelling. New saves land in your Inbox."
+          }
+          action={
+            typeFilter ? undefined : (
+              <Button component={Link} href="/inbox" variant="outlined">
+                Open the Inbox
+              </Button>
+            )
           }
         />
       )}
@@ -284,6 +294,20 @@ export function SearchContent() {
                             addSuffix: true,
                           })}
                         </Typography>
+                        {result.links && result.links.length > 0 && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{ color: "text.secondary" }}
+                          >
+                            linked to{" "}
+                            {result.links
+                              .slice(0, 3)
+                              .map((link) => link.title)
+                              .join(", ")}
+                            {result.links.length > 3 ? "…" : ""}
+                          </Typography>
+                        )}
                         {result.tags.slice(0, 4).map((tag) => (
                           <Chip
                             key={tag}

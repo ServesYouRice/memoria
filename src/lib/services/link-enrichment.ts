@@ -47,6 +47,11 @@ import {
   type LinkPageResult,
 } from "./link-page";
 import { findSimilarLinks, normalizeLinkUrl } from "./duplicates";
+import {
+  enqueuePageCopy,
+  storePageCopy,
+  wantsArchiveLookup,
+} from "./page-copy";
 
 const logger = createLogger("link-enrichment");
 
@@ -348,11 +353,13 @@ export function createLinkEnrichmentHandler(
     const saved = item.content as BookmarkContentLike;
     let metadata: ExtractedMetadata | null = null;
     let pageText = "";
+    let pageReadAt: Date | null = null;
     if (process.env.FEATURE_BOOKMARK_UNFURLING !== "false") {
       const page = await fetchPage(url, { signal: context?.signal });
       if (page.ok) {
         metadata = page.metadata;
         pageText = extractPageText(page.html);
+        pageReadAt = new Date();
       } else if (job.attempts < job.maxAttempts) {
         throw new LinkPageFetchError(page);
       } else {
@@ -511,6 +518,21 @@ export function createLinkEnrichmentHandler(
           where: { id: itemId },
           data: { normalizedUrl },
         });
+      }
+
+      // Keep the page's readable text (IMP-094); the archive lookup, when the
+      // person turned it on, runs as its own job.
+      if (pageText && pageReadAt) {
+        await storePageCopy(tx, {
+          itemId,
+          userId: fresh.userId,
+          url,
+          text: pageText,
+          readAt: pageReadAt,
+        });
+      }
+      if (await wantsArchiveLookup(tx, fresh.userId)) {
+        await enqueuePageCopy(tx, [itemId]);
       }
 
       let similarItemIds: string[] = [];

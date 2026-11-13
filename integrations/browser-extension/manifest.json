@@ -1,14 +1,43 @@
 {
   "manifest_version": 3,
-  "name": "Memoria Tab Saver",
+  "name": "Memoria",
   "short_name": "Memoria",
-  "version": "0.1.0",
-  "description": "Save every open tab to your Memoria Inbox in one click, then close them.",
-  "action": {
-    "default_title": "Save tabs to Memoria",
-    "default_popup": "popup.html"
+  "version": "0.2.0",
+  "description": "Save the page you are on, or every open tab, to Memoria in one click.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
   },
-  "permissions": ["tabs", "storage"],
+  "action": {
+    "default_title": "Save to Memoria",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Open the Memoria button"
+    },
+    "save-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "Save this page to Memoria"
+    }
+  },
+  "permissions": ["tabs", "storage", "activeTab", "scripting", "contextMenus"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "browser_specific_settings": {
     "gecko": {

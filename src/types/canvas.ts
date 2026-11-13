@@ -117,6 +117,8 @@ export interface NoteContent {
   formatVersion?: 1;
   document?: Record<string, unknown>;
   plainText?: string;
+  /** IMP-085: one of `NOTE_COLOR_NAMES`; absent means yellow. */
+  color?: string;
 }
 
 /**
@@ -189,6 +191,8 @@ export interface ArrowContent {
   arrowHeadStart?: "none" | "arrow" | "circle";
   arrowHeadEnd?: "none" | "arrow" | "circle";
   label?: string;
+  /** Line pattern; a linking arrow's link takes it (IMP-095). */
+  lineStyle?: "SOLID" | "DASHED" | "DOTTED";
 }
 
 /**

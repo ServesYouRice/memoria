@@ -35,14 +35,24 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
+// "Something old" (IMP-097) has its own tests.
+vi.mock("@/features/dashboard/components/SomethingOldCard", () => ({
+  SomethingOldCard: () => null,
+}));
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
     invalidateQueries: state.invalidateQueries,
     setQueriesData: state.setQueriesData,
   }),
 }));
+// Templates and duplication (IMP-098) have their own tests.
+vi.mock("@/lib/hooks/use-templates", () => ({
+  useTemplates: () => ({ data: undefined, isLoading: false }),
+  useCreateFromTemplate: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
 vi.mock("@/lib/hooks/use-canvases", () => ({
   canvasKeys: { all: ["canvases"] },
+  useDuplicateCanvas: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCanvases: () => ({
     data: {
       pages: [{ canvases: CANVASES, pagination: { total: CANVASES.length } }],

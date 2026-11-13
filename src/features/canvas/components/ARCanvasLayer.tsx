@@ -25,6 +25,7 @@ import {
   AR_EXPERIMENTAL_DISCLOSURE,
   isArCanvasEnabled,
 } from "@/lib/product-surfaces";
+import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 
 /**
  * Module scope, so every render passes MUI the same transition type. A type
@@ -205,8 +206,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
             left: 0,
             right: 0,
             zIndex: 10,
-            background:
-              "linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)",
+            background: `linear-gradient(to bottom, ${CANVAS_PALETTE.light.scrim}, transparent)`,
             p: 2,
             display: "flex",
             alignItems: "center",
@@ -231,7 +231,12 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
           </Box>
           <Typography
             variant="caption"
-            sx={{ color: "rgba(255,255,255,0.85)", flexBasis: "100%", mt: 0.5 }}
+            sx={{
+              color: "common.white",
+              opacity: 0.85,
+              flexBasis: "100%",
+              mt: 0.5,
+            }}
           >
             {AR_EXPERIMENTAL_DISCLOSURE}
           </Typography>
@@ -305,7 +310,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
                   left: `${10 + (item.positionX % 500) / 6}%`,
                   maxWidth: 280,
                   p: 2,
-                  bgcolor: "rgba(255, 255, 255, 0.92)",
+                  bgcolor: "background.paper",
                   backdropFilter: "blur(10px)",
                   borderRadius: 2,
                   border: "2px solid",
@@ -359,7 +364,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
             position: "absolute",
             bottom: 24,
             left: 24,
-            bgcolor: "rgba(0, 0, 0, 0.7)",
+            bgcolor: CANVAS_PALETTE.light.scrim,
             color: "white",
           }}
         />

@@ -83,7 +83,7 @@ describe("ExportDialog full-canvas export", () => {
         stageRef={{ current: null }}
       />,
     );
-    await exportAs(/JSON/);
+    await exportAs(/JSON \(Backup\)/);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     const json = JSON.parse(await blobs[0].text());
     expect(json.items.map((entry: CanvasItem) => entry.id)).toEqual([

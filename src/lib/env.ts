@@ -106,7 +106,15 @@ const envSchema = z
     ITEMS_SESSION_IP_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     CSP_REPORT_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
     REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
+    // IMP-099: sign in with an existing OpenID Connect login system. Off
+    // unless issuer, client id and secret are all set.
+    OIDC_ISSUER: optionalUrl,
+    OIDC_CLIENT_ID: optionalString,
+    OIDC_CLIENT_SECRET: optionalString,
+    OIDC_BUTTON_LABEL: emptyToUndefined(z.string().max(40)),
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
+    /** Allow people to look saved links up on archive.org (IMP-094). */
+    WEB_ARCHIVE_LOOKUP: z.enum(["true", "false"]).optional(),
     BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,
     // DEC-013: the AR canvas layer stays off until the real-device matrix
     // passes. Deployments opt in explicitly.
@@ -132,7 +140,27 @@ const envSchema = z
     RESEND_API_KEY: optionalString,
     MODEL_CREDENTIAL_ENCRYPTION_KEY: optionalString,
     UPLOAD_STORAGE: z.enum(["local", "s3"]).default("local"),
+    // IMP-100: where local uploads live. Setting it is what allows local
+    // uploads in production (the small set-up, one app replica).
+    UPLOAD_LOCAL_DIR: emptyToUndefined(
+      z
+        .string()
+        .refine(
+          (value) => value.startsWith("/"),
+          "UPLOAD_LOCAL_DIR must be an absolute path",
+        ),
+    ),
     UPLOADS_PUBLIC_URL: optionalUrl,
+    // IMP-092: a ready-made Apple Shortcut shared from iCloud, if any.
+    IOS_SHORTCUT_URL: emptyToUndefined(
+      z
+        .string()
+        .url()
+        .refine(
+          (value) => value.startsWith("https://www.icloud.com/shortcuts/"),
+          "IOS_SHORTCUT_URL must be an https://www.icloud.com/shortcuts/ link",
+        ),
+    ),
     UPLOAD_SCAN_URL: optionalUrl,
     UPLOAD_SCAN_REQUIRED: z.enum(["true", "false"]).default("false"),
     UPLOAD_SCAN_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
@@ -172,6 +200,23 @@ const envSchema = z
     MINIO_ROOT_PASSWORD: optionalString,
   })
   .superRefine((data, ctx) => {
+    // Single sign-on is all or nothing: a half-set login system is a typo.
+    const oidc = [
+      ["OIDC_ISSUER", data.OIDC_ISSUER],
+      ["OIDC_CLIENT_ID", data.OIDC_CLIENT_ID],
+      ["OIDC_CLIENT_SECRET", data.OIDC_CLIENT_SECRET],
+    ] as const;
+    if (oidc.some(([, value]) => value) && !oidc.every(([, value]) => value)) {
+      for (const [name, value] of oidc) {
+        if (!value)
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: `${name} is required when single sign-on is configured (OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET go together).`,
+          });
+      }
+    }
+
     const validateProductionRuntime =
       data.NODE_ENV === "production" &&
       process.env.MEMORIA_BUILD_PHASE !== "true";
@@ -237,11 +282,16 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && data.UPLOAD_STORAGE !== "s3") {
+    if (
+      validateProductionRuntime &&
+      data.UPLOAD_STORAGE !== "s3" &&
+      !data.UPLOAD_LOCAL_DIR
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["UPLOAD_STORAGE"],
-        message: "UPLOAD_STORAGE must be set to s3 in production.",
+        message:
+          "UPLOAD_STORAGE must be set to s3 in production, or to local with UPLOAD_LOCAL_DIR naming a mounted folder (small set-up).",
       });
     }
 

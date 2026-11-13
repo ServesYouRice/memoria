@@ -6,7 +6,10 @@ import { Stage } from "react-konva";
 import type Konva from "konva";
 import type { CanvasItem } from "@/types/canvas";
 import { NO_CANVAS_CAPABILITIES } from "@/types/canvas";
-import { ReadonlyCanvasItemLayer } from "@/features/canvas/components/ReadonlyCanvasItemLayer";
+import {
+  ReadonlyCanvasBackground,
+  ReadonlyCanvasItemLayer,
+} from "@/features/canvas/components/ReadonlyCanvasItemLayer";
 import { CanvasAccessiblePanel } from "@/features/canvas/components/CanvasAccessiblePanel";
 
 const ZOOM_STEP = 0.1;
@@ -123,6 +126,12 @@ export function EmbedViewer({
               }
               onWheel={handleWheel}
             >
+              <ReadonlyCanvasBackground
+                width={size.width}
+                height={size.height}
+                zoom={zoom}
+                position={position}
+              />
               <ReadonlyCanvasItemLayer items={items} />
             </Stage>
           )

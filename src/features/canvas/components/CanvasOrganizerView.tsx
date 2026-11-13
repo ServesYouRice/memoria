@@ -25,6 +25,7 @@ import HubIcon from "@mui/icons-material/Hub";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import RestoreIcon from "@mui/icons-material/Restore";
 import type { CanvasItem } from "@/types/canvas";
+import { surfaces } from "@/lib/theme";
 import {
   isBookmarkContent,
   isEmbedContent,
@@ -201,8 +202,7 @@ function renderEntityCard(
       variant="outlined"
       sx={{
         borderRadius: 3,
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(247,248,252,0.96) 100%)",
+        bgcolor: "background.paper",
       }}
     >
       <CardContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
@@ -591,7 +591,7 @@ export function CanvasOrganizerView({
       sx={{
         flexGrow: 1,
         overflow: "auto",
-        bgcolor: "#eef2f8",
+        bgcolor: "background.default",
         px: { xs: 2, md: 3 },
         py: 3,
       }}
@@ -608,8 +608,7 @@ export function CanvasOrganizerView({
           mb: 3,
           border: "1px solid",
           borderColor: "divider",
-          background:
-            "radial-gradient(circle at top left, rgba(29,78,216,0.14), transparent 42%), linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+          bgcolor: surfaces.navy,
           color: "common.white",
         }}
       >
@@ -646,7 +645,7 @@ export function CanvasOrganizerView({
             </Typography>
             <Typography
               variant="body1"
-              sx={{ maxWidth: 760, color: "rgba(255,255,255,0.78)" }}
+              sx={{ maxWidth: 760, color: "common.white", opacity: 0.78 }}
             >
               This tab is the agent-organized view of the current canvas. It
               stays read-only here, keeps traceability back to raw notes, and
@@ -656,14 +655,16 @@ export function CanvasOrganizerView({
           </Box>
           <Button
             component="a"
-            href="/settings#agent-console"
+            href="/settings/ai#agent-console"
             variant="contained"
             color="secondary"
             sx={{
               borderRadius: 999,
               px: 2.5,
               py: 1,
-              background: "linear-gradient(135deg, #f97316 0%, #fb7185 100%)",
+              bgcolor: "common.white",
+              color: "secondary.main",
+              "&:hover": { bgcolor: "grey.100" },
             }}
           >
             Open agent console

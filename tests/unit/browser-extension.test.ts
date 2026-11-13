@@ -1,6 +1,14 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildBatchBody,
+  buildClipBody,
+  fetchCanvases,
+  initialCanvasId,
+  MAX_SELECTION_LENGTH,
+  pageFromMenuClick,
+  sendClip,
   chunk,
   closableTabIds,
   isApiKey,
@@ -10,7 +18,8 @@ import {
   selectionSignature,
   sendBatch,
 } from "../../integrations/browser-extension/lib.js";
-import { clipBatchSchema } from "@/lib/validation/extension";
+import { clipBatchSchema, clipSchema } from "@/lib/validation/extension";
+import { manifestFor, zip } from "../../scripts/build-browser-extension.mjs";
 
 describe("browser extension helpers", () => {
   it("preselects normal web tabs only", () => {
@@ -327,5 +336,112 @@ describe("browser extension duplicate confirmation", () => {
       ],
     };
     expect(unconfirmed(tabs, body)).toEqual([1, 3]);
+  });
+});
+
+describe("single-page save helpers (IMP-093)", () => {
+  it("builds a clip body the server accepts, trimming and capping the selection", () => {
+    const body = buildClipBody({
+      url: "https://a.example/",
+      title: " Title ",
+      selection: ` ${"x".repeat(3000)} `,
+      canvasId: "ctrip000000000000000000b",
+    });
+    expect(body.title).toBe("Title");
+    expect(body.selection).toHaveLength(MAX_SELECTION_LENGTH);
+    expect(clipSchema.safeParse(body).success).toBe(true);
+    expect(
+      buildClipBody({ url: "https://a.example/", selection: "  " }),
+    ).toEqual({ url: "https://a.example/" });
+  });
+
+  it("starts the picker on the remembered canvas, else the Inbox", () => {
+    const canvases = [
+      { id: "a", name: "Trip" },
+      { id: "b", name: "Inbox" },
+    ];
+    expect(initialCanvasId(canvases, "a")).toBe("a");
+    expect(initialCanvasId(canvases, "gone")).toBe("b");
+    expect(initialCanvasId([{ id: "a", name: "Trip" }], undefined)).toBe("");
+  });
+
+  it("names the link under the pointer, or the page with its selection", () => {
+    expect(
+      pageFromMenuClick(
+        { linkUrl: "https://l.example/", linkText: "Link" },
+        { url: "https://p.example/", title: "P" },
+      ),
+    ).toEqual({ url: "https://l.example/", title: "Link" });
+    expect(
+      pageFromMenuClick(
+        { pageUrl: "https://p.example/", selectionText: "words" },
+        { url: "https://p.example/", title: "P" },
+      ),
+    ).toEqual({ url: "https://p.example/", title: "P", selection: "words" });
+  });
+
+  it("refuses to send a browser page and reports a key the server refused", async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      sendClip({
+        serverUrl: "https://m.example",
+        apiKey: "mk_x",
+        page: { url: "about:blank" },
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/web pages/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await expect(
+      fetchCanvases({
+        serverUrl: "https://m.example",
+        apiKey: "mk_x",
+        fetchImpl: async () =>
+          ({ ok: false, status: 401, json: async () => ({}) }) as never,
+      }),
+    ).rejects.toThrow(/did not accept the API key/);
+  });
+
+  it("asks for the smallest permissions that work", () => {
+    const manifest = JSON.parse(
+      readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          "../../integrations/browser-extension/manifest.json",
+        ),
+        "utf8",
+      ),
+    );
+    expect(manifest.permissions.sort()).toEqual(
+      ["activeTab", "contextMenus", "scripting", "storage", "tabs"].sort(),
+    );
+    expect(manifest.host_permissions).toBeUndefined();
+    expect(manifest.content_scripts).toBeUndefined();
+    expect(manifest.commands["save-page"].suggested_key.default).toBeTruthy();
+  });
+
+  it("builds a Chrome and a Firefox manifest with only the keys each reads", () => {
+    const manifest = {
+      background: {
+        service_worker: "background.js",
+        scripts: ["background.js"],
+        type: "module",
+      },
+      browser_specific_settings: { gecko: { id: "x" } },
+    };
+    expect(manifestFor("chrome", manifest)).toEqual({
+      background: { service_worker: "background.js", type: "module" },
+    });
+    expect(manifestFor("firefox", manifest)).toEqual({
+      background: { scripts: ["background.js"], type: "module" },
+      browser_specific_settings: { gecko: { id: "x" } },
+    });
+  });
+
+  it("writes a zip with the right checksums", () => {
+    const archive = zip([["a.txt", Buffer.from("hello")]]);
+    expect(archive.readUInt32LE(0)).toBe(0x04034b50);
+    // CRC-32 of "hello".
+    expect(archive.readUInt32LE(14)).toBe(0x3610a686);
+    expect(archive.readUInt32LE(archive.length - 22)).toBe(0x06054b50);
   });
 });

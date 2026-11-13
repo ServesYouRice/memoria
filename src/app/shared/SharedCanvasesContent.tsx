@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
-import { Alert, Chip } from "@mui/material";
+import { Alert, Button, Chip } from "@mui/material";
 import {
   PeopleAltOutlined as SharedIcon,
   VisibilityOutlined as ViewIcon,
@@ -18,6 +17,7 @@ import {
 } from "@/features/dashboard/components/CanvasCard";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
+import Link from "next/link";
 import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
 
 const ROLE_META = {
@@ -31,7 +31,6 @@ const ROLE_META = {
 };
 
 export function SharedCanvasesContent() {
-  const router = useRouter();
   const { data: canvases, isLoading, error } = useSharedCanvases();
 
   const items = canvases ?? [];
@@ -65,7 +64,16 @@ export function SharedCanvasesContent() {
         <EmptyState
           icon={SharedIcon}
           title="Nothing shared with you yet"
-          description="When someone shares a canvas with you, it will show up here. Ask a teammate to share one from their canvas's Share dialog."
+          description="Canvases other people share with you appear here. They open a canvas, choose Share and enter your email address."
+          action={
+            <Button
+              component={Link}
+              href="/help#sharing-roles"
+              variant="outlined"
+            >
+              How sharing works
+            </Button>
+          }
         />
       )}
 
@@ -79,7 +87,7 @@ export function SharedCanvasesContent() {
                 name={canvas.name}
                 thumbnail={canvasThumbnailUrl(canvas)}
                 index={index}
-                onClick={() => router.push(`/canvas/${canvas.id}`)}
+                href={`/canvas/${canvas.id}`}
                 badge={
                   <Chip
                     size="small"

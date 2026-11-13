@@ -120,7 +120,7 @@ function staleAskMove() {
 function assertMovable(items: { type: string }[]) {
   if (items.some((item) => !MOVABLE_TYPES.has(item.type))) {
     throw new BadRequestError(
-      "Images and frames stay on their board; leave them out of moves.",
+      "Images and frames stay on their canvas; leave them out of moves.",
     );
   }
 }
@@ -149,7 +149,7 @@ export async function proposeAskCommand(input: {
   if (command.type === "make_pile") {
     const canvasIds = new Set(items.map((item) => item.canvasId));
     if (canvasIds.size !== 1) {
-      throw new BadRequestError("A pile can only hold items from one board.");
+      throw new BadRequestError("A pile can only hold items from one canvas.");
     }
     const canvasId = items[0]!.canvasId;
     if (!profile.allowedCanvasIds.includes(canvasId)) {
@@ -180,7 +180,7 @@ export async function proposeAskCommand(input: {
       where: { id: command.boardId, userId: input.userId, isTemplate: false },
       select: { name: true },
     });
-    if (!board) throw new NotFoundError("Board not found.");
+    if (!board) throw new NotFoundError("Canvas not found.");
     boardName = board.name;
   }
 
@@ -323,7 +323,7 @@ export async function executeAskCommandSuggestion(input: {
         where: { id: command.boardId, userId, isTemplate: false },
         select: { id: true, name: true },
       });
-      if (!target) throw new NotFoundError("Board not found.");
+      if (!target) throw new NotFoundError("Canvas not found.");
     }
 
     const changeSet = await tx.changeSet.create({
@@ -343,7 +343,7 @@ export async function executeAskCommandSuggestion(input: {
       createdBoardId = target.id;
     }
 
-    if (!target) throw new NotFoundError("Board not found.");
+    if (!target) throw new NotFoundError("Canvas not found.");
 
     // This first read only picks the boards to lock; everything the move
     // writes comes from the second read, made while those locks are held.
