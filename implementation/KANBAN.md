@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-104](tasks/IMP-104.md) | Polls with votes counted on the server | |
 | [IMP-105](tasks/IMP-105.md) | A timer everyone on the canvas sees | |
 | [IMP-106](tasks/IMP-106.md) | Your own tagging rules | |
 | [IMP-107](tasks/IMP-107.md) | Standing notes for AI agents, per workspace | |
@@ -34,6 +33,8 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-112](tasks/IMP-112.md) | Publish the AGPL-3.0 licence and a "never paywalled" promise | |
 | [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | |
 | [IMP-116](tasks/IMP-116.md) | Shared JavaScript fits its size budget again | |
+| [IMP-117](tasks/IMP-117.md) | The durable-canvas browser test matches how viewports are saved | |
+| [IMP-118](tasks/IMP-118.md) | AI sorting tests do not depend on a live Redis allowance | |
 
 ## WAITING
 

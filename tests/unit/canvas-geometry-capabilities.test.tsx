@@ -75,12 +75,11 @@ describe("capability resolution per role", () => {
     },
   );
 
-  it.each(ALL_ROLES)(
-    "never grants client-side voting to %s (DEC-005)",
-    (role) => {
-      expect(resolveCanvasCapabilities(role).canVote).toBe(false);
-    },
-  );
+  // IMP-104: anyone with access may vote; the vote route records only the
+  // caller's own vote.
+  it.each(ALL_ROLES)("grants voting to %s only with access", (role) => {
+    expect(resolveCanvasCapabilities(role).canVote).toBe(role !== "NONE");
+  });
 });
 
 describe("every item type has an explicit geometry stance", () => {

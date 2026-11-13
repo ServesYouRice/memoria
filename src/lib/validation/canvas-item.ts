@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { POLL_MAX_CHOICES } from "@/lib/polls/limits";
 import { ItemType } from "@/types/canvas";
 import { sanitizeUrl } from "@/lib/sanitization";
 import {
@@ -235,19 +236,26 @@ export const embedContentSchema = z.object({
 });
 
 /**
- * Poll content validation
+ * Poll content validation (IMP-104): the question and its choices only.
+ * Votes are counted on the server (`PollVote`); a `votes` list from an older
+ * poll or a changed browser is dropped here, never stored.
  */
 export const pollContentSchema = z.object({
-  question: z.string().min(1).max(500),
+  question: z.string().trim().min(1).max(500),
   options: z
     .array(
       z.object({
-        id: z.string().max(50),
-        text: z.string().max(200),
-        votes: z.array(z.string().cuid()).max(1000),
+        id: z.string().min(1).max(50),
+        text: z.string().trim().min(1).max(200),
       }),
     )
-    .max(20),
+    .min(2)
+    .max(POLL_MAX_CHOICES)
+    .refine(
+      (options) =>
+        new Set(options.map((option) => option.id)).size === options.length,
+      "Each choice needs its own id",
+    ),
   multipleChoice: z.boolean().optional(),
 });
 

@@ -38,7 +38,7 @@ export const MEETING_TIMER_DISCLOSURE =
 export const LAUNCH_CAPABILITIES = Object.freeze({
   templates: true,
   canvasDuplication: true,
-  polls: false,
+  polls: true,
 });
 
 export type LaunchCapability = keyof typeof LAUNCH_CAPABILITIES;

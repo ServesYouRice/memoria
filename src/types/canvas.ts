@@ -3,6 +3,8 @@
  * Based on ADR-0004: Data Model
  */
 
+import { isLaunchCapabilityEnabled } from "@/lib/product-surfaces";
+
 export enum ItemType {
   NOTE = "NOTE",
   BOOKMARK = "BOOKMARK",
@@ -38,8 +40,8 @@ export interface CanvasCapabilities {
   canCopyItems: boolean;
   canComment: boolean;
   /**
-   * Poll voting. Held at `false` for every role until server-authoritative
-   * voting ships (DEC-005) — no role may write a vote from the client.
+   * Poll voting (IMP-104): anyone with access may vote while polls are on.
+   * The vote route checks access again and records only the caller's vote.
    */
   canVote: boolean;
   canManageCanvas: boolean;
@@ -63,8 +65,7 @@ export function resolveCanvasCapabilities(
     canDeleteItems: canEdit,
     canCopyItems: accessLevel !== "NONE",
     canComment,
-    // DEC-005: client-side voting is gated off until the server owns it.
-    canVote: false,
+    canVote: accessLevel !== "NONE" && isLaunchCapabilityEnabled("polls"),
     canManageCanvas: accessLevel === "OWNER",
   };
 }
@@ -228,7 +229,6 @@ export interface EmbedContent {
 export interface PollOption {
   id: string;
   text: string;
-  votes: string[]; // Array of user IDs
 }
 
 export interface PollContent {

@@ -45,6 +45,13 @@ const CreateNoteDialog = dynamic(
     ),
   { ssr: false },
 );
+const CreatePollDialog = dynamic(
+  () =>
+    import("@/features/canvas/components/CreatePollDialog").then(
+      (mod) => mod.CreatePollDialog,
+    ),
+  { ssr: false },
+);
 const CreateBookmarkDialog = dynamic(
   () =>
     import("@/features/canvas/components/CreateBookmarkDialog").then(
@@ -98,6 +105,8 @@ interface CanvasDialogsProps {
   setBookmarkDialogOpen: (open: boolean) => void;
   imageDialogOpen: boolean;
   setImageDialogOpen: (open: boolean) => void;
+  pollDialogOpen: boolean;
+  setPollDialogOpen: (open: boolean) => void;
 
   editNoteDialogOpen: boolean;
   setEditNoteDialogOpen: (open: boolean) => void;
@@ -166,6 +175,8 @@ export function CanvasDialogs({
   setBookmarkDialogOpen,
   imageDialogOpen,
   setImageDialogOpen,
+  pollDialogOpen,
+  setPollDialogOpen,
   editNoteDialogOpen,
   setEditNoteDialogOpen,
   editingNoteItem,
@@ -246,6 +257,12 @@ export function CanvasDialogs({
           <CreateNoteDialog
             open={noteDialogOpen}
             onClose={() => setNoteDialogOpen(false)}
+            canvasId={canvasId}
+            initialPosition={{ x: 100, y: 100 }}
+          />
+          <CreatePollDialog
+            open={pollDialogOpen}
+            onClose={() => setPollDialogOpen(false)}
             canvasId={canvasId}
             initialPosition={{ x: 100, y: 100 }}
           />

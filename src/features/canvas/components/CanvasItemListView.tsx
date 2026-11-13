@@ -120,11 +120,9 @@ export function describeItemDetail(
     return content.description || content.url;
   }
   if (isPollContent(content)) {
-    const votes = content.options.reduce(
-      (sum, option) => sum + option.votes.length,
-      0,
-    );
-    return `${content.options.length} options, ${votes} votes recorded. Voting is unavailable.`;
+    return `Poll with ${content.options.length} choices: ${content.options
+      .map((option) => option.text)
+      .join(", ")}. Vote and see the counts on the canvas.`;
   }
   if (isEmbedContent(content)) {
     return `Link preview for ${content.url}. Opens in a new tab; nothing is loaded inside the canvas.`;

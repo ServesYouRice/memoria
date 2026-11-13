@@ -19,6 +19,7 @@ import {
   CropSquare as ShapeIcon,
   ArrowForward as ArrowIcon,
   Edit as DrawIcon,
+  BallotOutlined as PollIcon,
 } from "@mui/icons-material";
 import { useCanvasStore, type CanvasTool } from "@/stores/canvasStore";
 import { TOUCH_TARGET } from "@/lib/theme";
@@ -27,6 +28,8 @@ export interface CanvasAddBarProps {
   onAddNote: () => void;
   onAddLink: () => void;
   onAddImage: () => void;
+  /** Shown only while polls are switched on (IMP-104). */
+  onAddPoll?: () => void;
 }
 
 type BarEntry = {
@@ -91,6 +94,7 @@ export function CanvasAddBar({
   onAddNote,
   onAddLink,
   onAddImage,
+  onAddPoll,
 }: CanvasAddBarProps) {
   const { activeTool, setActiveTool } = useCanvasStore();
 
@@ -160,6 +164,17 @@ export function CanvasAddBar({
       icon: <DrawIcon fontSize="small" />,
       tool: "draw",
     },
+    ...(onAddPoll
+      ? [
+          {
+            key: "poll",
+            label: "Poll",
+            hint: "Ask a question everyone can vote on",
+            icon: <PollIcon fontSize="small" />,
+            onClick: onAddPoll,
+          },
+        ]
+      : []),
   ];
 
   const render = (entry: BarEntry) =>

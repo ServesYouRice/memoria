@@ -58,6 +58,8 @@ import { HomeBoardSuggestions, isInboxBoardName } from "./HomeBoardSuggestions";
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
 import { toast } from "sonner";
+import { isPollChangedMessage } from "@/lib/polls/shared";
+import { pollKeys } from "@/features/canvas/hooks/use-poll-results";
 import {
   BoardExportCaptureContext,
   type BoardExportCapture,
@@ -99,7 +101,10 @@ import { CanvasAddBar } from "@/features/canvas/components/CanvasAddBar";
 import { CanvasViewControls } from "@/features/canvas/components/CanvasViewControls";
 import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { isArCanvasEnabled } from "@/lib/product-surfaces";
+import {
+  isArCanvasEnabled,
+  isLaunchCapabilityEnabled,
+} from "@/lib/product-surfaces";
 import { isVersionConflict } from "@/lib/api/fetch-client";
 import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
 import { appColor, appColorTokens } from "@/lib/theme";
@@ -349,6 +354,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [pollDialogOpen, setPollDialogOpen] = useState(false);
 
   // Edit Dialogs
   const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false);
@@ -604,61 +610,71 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // Collaboration
   const { data: session } = useSession();
 
-  const handleRemoteMessage = useCallback((message: unknown) => {
-    if (!message || typeof message !== "object") return;
-    const payload = message as Record<string, unknown>;
-    const position = payload.position as
-      { x?: unknown; y?: unknown } | undefined;
-    if (
-      payload.kind === "cursor_chat" &&
-      typeof payload.userId === "string" &&
-      typeof payload.message === "string" &&
-      typeof payload.userName === "string" &&
-      typeof payload.userColor === "string" &&
-      typeof position?.x === "number" &&
-      typeof position.y === "number"
-    ) {
-      const id = Date.now().toString() + Math.random().toString();
-      setRemoteMessages((prev) => [
-        ...prev,
-        {
-          id,
-          userId: payload.userId as string,
-          content: payload.message as string,
-          x: position.x as number,
-          y: position.y as number,
-          userName: payload.userName as string,
-          userColor: payload.userColor as string,
-        },
-      ]);
-      setTimeout(() => {
-        setRemoteMessages((prev) => prev.filter((m) => m.id !== id));
-      }, 5000);
-    } else if (
-      payload.kind === "reaction" &&
-      typeof payload.userId === "string" &&
-      typeof payload.emoji === "string" &&
-      typeof payload.userName === "string" &&
-      typeof position?.x === "number" &&
-      typeof position.y === "number"
-    ) {
-      const id = Date.now().toString() + Math.random().toString();
-      setRemoteReactions((prev) => [
-        ...prev,
-        {
-          id,
-          userId: payload.userId as string,
-          emoji: payload.emoji as string,
-          x: position.x as number,
-          y: position.y as number,
-          userName: payload.userName as string,
-        },
-      ]);
-      setTimeout(() => {
-        setRemoteReactions((prev) => prev.filter((r) => r.id !== id));
-      }, 3000);
-    }
-  }, []);
+  const handleRemoteMessage = useCallback(
+    (message: unknown) => {
+      if (!message || typeof message !== "object") return;
+      // IMP-104: a vote changed a poll's counts; read them again.
+      if (isPollChangedMessage(message)) {
+        void queryClient.invalidateQueries({
+          queryKey: pollKeys.canvas(canvasId),
+        });
+        return;
+      }
+      const payload = message as Record<string, unknown>;
+      const position = payload.position as
+        { x?: unknown; y?: unknown } | undefined;
+      if (
+        payload.kind === "cursor_chat" &&
+        typeof payload.userId === "string" &&
+        typeof payload.message === "string" &&
+        typeof payload.userName === "string" &&
+        typeof payload.userColor === "string" &&
+        typeof position?.x === "number" &&
+        typeof position.y === "number"
+      ) {
+        const id = Date.now().toString() + Math.random().toString();
+        setRemoteMessages((prev) => [
+          ...prev,
+          {
+            id,
+            userId: payload.userId as string,
+            content: payload.message as string,
+            x: position.x as number,
+            y: position.y as number,
+            userName: payload.userName as string,
+            userColor: payload.userColor as string,
+          },
+        ]);
+        setTimeout(() => {
+          setRemoteMessages((prev) => prev.filter((m) => m.id !== id));
+        }, 5000);
+      } else if (
+        payload.kind === "reaction" &&
+        typeof payload.userId === "string" &&
+        typeof payload.emoji === "string" &&
+        typeof payload.userName === "string" &&
+        typeof position?.x === "number" &&
+        typeof position.y === "number"
+      ) {
+        const id = Date.now().toString() + Math.random().toString();
+        setRemoteReactions((prev) => [
+          ...prev,
+          {
+            id,
+            userId: payload.userId as string,
+            emoji: payload.emoji as string,
+            x: position.x as number,
+            y: position.y as number,
+            userName: payload.userName as string,
+          },
+        ]);
+        setTimeout(() => {
+          setRemoteReactions((prev) => prev.filter((r) => r.id !== id));
+        }, 3000);
+      }
+    },
+    [canvasId, queryClient],
+  );
 
   const handleCommittedEvents = useCallback(
     async (events: CommittedCanvasItemEvent[]) => {
@@ -1552,6 +1568,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               onAddNote={() => setNoteDialogOpen(true)}
               onAddLink={() => setBookmarkDialogOpen(true)}
               onAddImage={() => setImageDialogOpen(true)}
+              onAddPoll={
+                isLaunchCapabilityEnabled("polls")
+                  ? () => setPollDialogOpen(true)
+                  : undefined
+              }
             />
           )}
           {!isPresentationMode && (
@@ -1878,6 +1899,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         setBookmarkDialogOpen={setBookmarkDialogOpen}
         imageDialogOpen={imageDialogOpen}
         setImageDialogOpen={setImageDialogOpen}
+        pollDialogOpen={pollDialogOpen}
+        setPollDialogOpen={setPollDialogOpen}
         editNoteDialogOpen={editNoteDialogOpen}
         setEditNoteDialogOpen={setEditNoteDialogOpen}
         editingNoteItem={editingNoteItem}

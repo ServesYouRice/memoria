@@ -21,11 +21,12 @@ describe("launch capability registry", () => {
     expect(LAUNCH_CAPABILITIES).toEqual({
       templates: true,
       canvasDuplication: true,
-      polls: false,
+      polls: true,
     });
     expect(isLaunchCapabilityEnabled("templates")).toBe(true);
     expect(isLaunchCapabilityEnabled("canvasDuplication")).toBe(true);
-    expect(isLaunchCapabilityEnabled("polls")).toBe(false);
+    // IMP-104: votes are counted on the server, so polls are on.
+    expect(isLaunchCapabilityEnabled("polls")).toBe(true);
   });
 
   it("offers duplication and templates from the dashboard through their hooks", () => {

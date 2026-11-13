@@ -75,6 +75,8 @@ model User {
   clipBatches             ClipBatch[]
   weeklyRecaps            WeeklyRecap[]
   itemReminders           ItemReminder[]
+  pollVotes               PollVote[]
+  pollClosures            PollClosure[]
 }
 
 enum AccountExportStatus {
@@ -331,6 +333,8 @@ model CanvasItem {
   pageCopy            ItemPageCopy?
   homeBoardSuggestion HomeBoardSuggestion?
   reminders           ItemReminder[]
+  pollVotes           PollVote[]
+  pollClosure         PollClosure?
   notifications       Notification[]
 
   @@index([canvasId, deletedAt])
@@ -479,6 +483,32 @@ model ItemReminder {
   @@unique([userId, itemId])
   @@index([remindAt])
   @@index([userId, remindAt])
+}
+
+/// IMP-104: one person's vote for one choice of a poll item. Votes are
+/// written only by the poll vote route; the shared document never holds them.
+model PollVote {
+  id        String     @id @default(cuid())
+  itemId    String
+  item      CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  choiceId  String
+  createdAt DateTime   @default(now())
+
+  @@unique([itemId, userId, choiceId])
+  @@index([itemId, choiceId])
+}
+
+/// IMP-104: the canvas owner closed this poll; it takes no more votes.
+model PollClosure {
+  itemId     String     @id
+  item       CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  closedById String
+  closedBy   User       @relation(fields: [closedById], references: [id], onDelete: Cascade)
+  closedAt   DateTime   @default(now())
+
+  @@index([closedById])
 }
 
 model NotificationPreference {

@@ -120,10 +120,6 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
   const optionHeight = 36;
   const optionGap = 10;
   const headerHeight = 56;
-  const totalVotes = item.content.options.reduce(
-    (sum, option) => sum + option.votes.length,
-    0,
-  );
   const height =
     headerHeight +
     item.content.options.length * (optionHeight + optionGap) +
@@ -152,10 +148,6 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
 
       {item.content.options.map((option, index) => {
         const y = headerHeight + index * (optionHeight + optionGap);
-        const percent =
-          totalVotes > 0
-            ? Math.round((option.votes.length / totalVotes) * 100)
-            : 0;
 
         return (
           <Group key={option.id} x={padding} y={y}>
@@ -167,32 +159,14 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
               strokeWidth={1}
               cornerRadius={8}
             />
-            {percent > 0 && (
-              <Rect
-                width={(width - padding * 2) * (percent / 100)}
-                height={optionHeight}
-                fill={palette.accentSoft}
-                cornerRadius={8}
-                opacity={0.7}
-              />
-            )}
             <Text
               x={10}
               y={10}
-              width={width - padding * 2 - 70}
+              width={width - padding * 2 - 20}
               text={option.text}
               fontSize={14}
               fill={palette.textBody}
               ellipsis
-            />
-            <Text
-              x={width - padding * 2 - 55}
-              y={10}
-              width={45}
-              text={`${percent}%`}
-              fontSize={12}
-              fill={palette.textMuted}
-              align="right"
             />
           </Group>
         );
@@ -202,7 +176,8 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
         x={padding}
         y={height - 20}
         width={width - padding * 2}
-        text={`${totalVotes} votes | ${item.content.multipleChoice ? "Multiple Choice" : "Single Choice"} | Voting unavailable at launch`}
+        // IMP-104: counts are read on the live canvas, never from content.
+        text={`${item.content.multipleChoice ? "Pick any" : "Pick one"} • Results are on the live canvas`}
         fontSize={10}
         fill={palette.textFaint}
         align="center"

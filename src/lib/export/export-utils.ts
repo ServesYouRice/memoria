@@ -8,12 +8,15 @@ import {
   isTextContent,
   isBookmarkContent,
   isImageContent,
+  isPollContent,
   type NoteContent,
+  type PollContent,
   type TextContent,
   type BookmarkContent,
   type ImageContent,
 } from "@/types/canvas";
 import { apiFetch } from "@/lib/api/fetch-client";
+import type { PollResult } from "@/lib/polls/shared";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
 /** A canvas larger than this many listing pages fails the export loudly. */
@@ -70,6 +73,55 @@ export async function fetchAllCanvasItems(
   return merged;
 }
 
+/** A poll's question and its result as the server counted it (IMP-104). */
+export interface ExportedPoll {
+  itemId: string;
+  question: string;
+  multipleChoice: boolean;
+  closed: boolean;
+  voters: number;
+  choices: { id: string; text: string; votes: number }[];
+}
+
+/**
+ * The results of the canvas's polls. Counts live on the server, never in
+ * item content, so an export reads them; a canvas without polls asks nothing.
+ */
+export async function exportedPolls(
+  canvasId: string,
+  items: CanvasItem[],
+): Promise<ExportedPoll[]> {
+  const polls = items.filter(
+    (item) => item.type === ItemType.POLL && isPollContent(item.content),
+  );
+  if (polls.length === 0) return [];
+  const response = await apiFetch(
+    `/api/v1/canvases/${encodeURIComponent(canvasId)}/polls`,
+  );
+  const results = new Map(
+    ((await response.json()) as { polls: PollResult[] }).polls.map((result) => [
+      result.itemId,
+      result,
+    ]),
+  );
+  return polls.map((item) => {
+    const content = item.content as PollContent;
+    const result = results.get(item.id);
+    return {
+      itemId: item.id,
+      question: content.question,
+      multipleChoice: content.multipleChoice === true,
+      closed: result?.closed ?? false,
+      voters: result?.voters ?? 0,
+      choices: content.options.map((option) => ({
+        id: option.id,
+        text: option.text,
+        votes: result?.counts[option.id] ?? 0,
+      })),
+    };
+  });
+}
+
 /**
  * Export canvas to JSON string
  */
@@ -89,6 +141,8 @@ export async function exportToJSON(
     })),
     // Item pairs joined by an arrow (IMP-095).
     links: canvasLinks(items),
+    // Poll questions with their counted results (IMP-104).
+    polls: await exportedPolls(canvasId, items),
   };
   return JSON.stringify(exportData, null, 2);
 }
@@ -134,6 +188,15 @@ export async function exportToMarkdown(
         break;
       // Add other types as needed
     }
+  }
+
+  const polls = await exportedPolls(canvasId, items);
+  for (const poll of polls) {
+    md += `## Poll: ${poll.question}\n\n`;
+    for (const choice of poll.choices) {
+      md += `- ${choice.text}: ${choice.votes} ${choice.votes === 1 ? "vote" : "votes"}\n`;
+    }
+    md += `\n${poll.voters === 1 ? "1 person" : `${poll.voters} people`} voted${poll.closed ? "; the poll is closed" : ""}.\n\n`;
   }
 
   const links = canvasLinks(items);
