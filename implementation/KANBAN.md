@@ -29,6 +29,27 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | |
 | [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | |
 | [IMP-119](tasks/IMP-119.md) | Settings page shows one copy of each field while it loads | |
+| [IMP-120](tasks/IMP-120.md) | "Page not found" says so in plain words and offers two ways on | |
+| [IMP-121](tasks/IMP-121.md) | Plain words on Status, Your data, Share and Help | |
+| [IMP-122](tasks/IMP-122.md) | Every label uses sentence case | |
+| [IMP-123](tasks/IMP-123.md) | One name for two-step codes | |
+| [IMP-124](tasks/IMP-124.md) | Settings tidy-up: one password field with show/hide, clear headings, shortcuts get their own entry | |
+| [IMP-125](tasks/IMP-125.md) | Small readability and markup fixes found by the accessibility check | |
+| [IMP-126](tasks/IMP-126.md) | Every page can be reached from a menu (Inbox, Reminders, Weekly recap, Help) | |
+| [IMP-128](tasks/IMP-128.md) | Password and email pages look and read like the sign-in page | |
+| [IMP-129](tasks/IMP-129.md) | Shared-link and setup pages carry the Memoria name and a way on | |
+| [IMP-130](tasks/IMP-130.md) | "Organised list" shows a real list you can filter and sort | |
+| [IMP-131](tasks/IMP-131.md) | AI settings fit one screen; the rest sits under "Advanced" | |
+| [IMP-132](tasks/IMP-132.md) | Deleted canvases go to Trash for 30 days (server side) | |
+| [IMP-134](tasks/IMP-134.md) | One search, and Ctrl K always opens it | |
+| [IMP-135](tasks/IMP-135.md) | The canvas menu is sorted into named groups | |
+| [IMP-136](tasks/IMP-136.md) | Dashboard: one "New canvas" button, plus sort and filter | |
+| [IMP-137](tasks/IMP-137.md) | Each canvas card has a "..." menu: rename, duplicate, move to workspace, delete | |
+| [IMP-138](tasks/IMP-138.md) | Activity names the canvas, groups repeats and stays small | |
+| [IMP-139](tasks/IMP-139.md) | On a phone, hidden tools get a "More" button and labels fit | |
+| [IMP-140](tasks/IMP-140.md) | Press and hold opens an item's menu on touch screens (check on a real iPhone first) | |
+| [IMP-141](tasks/IMP-141.md) | An empty canvas shows a first step | |
+| [IMP-142](tasks/IMP-142.md) | Double-click a note and type on it (no pop-up form) | |
 
 ## WAITING
 
@@ -36,6 +57,9 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 | ---- | ------- | ------- |
 | [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster (draft: ServesYouRice/Infra#4) | DEC-004 |
 | [IMP-115](tasks/IMP-115.md) | A hosted paid plan people can sign up and pay for | DEC-019 |
+| [IMP-127](tasks/IMP-127.md) | API keys live inside Settings | IMP-126 |
+| [IMP-133](tasks/IMP-133.md) | Deleting a canvas says "Move to Trash", offers Undo, and Trash lists it | IMP-132 |
+| [IMP-143](tasks/IMP-143.md) | "Note" drops a note on the board, ready to type | IMP-142 |
 
 ## USER DECISIONS
 
