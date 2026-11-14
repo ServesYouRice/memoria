@@ -64,12 +64,14 @@ import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
 import { AutoFileSettings } from "./AutoFileSettings";
 import { WeeklyRecapSettings } from "./WeeklyRecapSettings";
 import { BookmarkImportSettings } from "./BookmarkImportSettings";
+import { RegistrationInviteSettings } from "./RegistrationInviteSettings";
 import { ApiKeysContent } from "../api-keys/ApiKeysContent";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 import { DisabledReason } from "@/components/DisabledReason";
 import {
   LEGACY_SETTINGS_ANCHORS,
   SETTINGS_SECTIONS,
+  visibleSettingsSections,
   type SettingsSectionId,
 } from "./sections";
 
@@ -89,6 +91,8 @@ interface SettingsContentProps {
   section?: SettingsSectionId;
   /** The API keys group's phone details (IMP-127), set by the server. */
   apiKeys?: { serverAddress: string; shortcutUrl: string | null };
+  /** The owner of this Memoria also sees Invites (IMP-153). */
+  isOwner?: boolean;
 }
 
 interface AiUsage {
@@ -157,7 +161,14 @@ function SettingsSection({
 }
 
 /** IMP-086: side menu on wide screens, scrolling tabs on a phone. */
-function SettingsNav({ current }: { current: SettingsSectionId }) {
+function SettingsNav({
+  current,
+  isOwner,
+}: {
+  current: SettingsSectionId;
+  isOwner: boolean;
+}) {
+  const sections = visibleSettingsSections(isOwner);
   return (
     <>
       <Box
@@ -166,7 +177,7 @@ function SettingsNav({ current }: { current: SettingsSectionId }) {
         sx={{ display: { xs: "none", md: "block" } }}
       >
         <List disablePadding sx={{ position: "sticky", top: 88 }}>
-          {SETTINGS_SECTIONS.map((section) => {
+          {sections.map((section) => {
             const selected = section.id === current;
             return (
               <ListItem key={section.id} disablePadding>
@@ -206,7 +217,7 @@ function SettingsNav({ current }: { current: SettingsSectionId }) {
           allowScrollButtonsMobile
           aria-label="Settings groups"
         >
-          {SETTINGS_SECTIONS.map((section) => (
+          {sections.map((section) => (
             <Tab
               key={section.id}
               value={section.id}
@@ -237,6 +248,7 @@ export function SettingsContent({
   user,
   section = "account",
   apiKeys,
+  isOwner = false,
 }: SettingsContentProps) {
   useLegacyAnchorRedirect(section);
   const info =
@@ -257,7 +269,7 @@ export function SettingsContent({
           alignItems: "start",
         }}
       >
-        <SettingsNav current={section} />
+        <SettingsNav current={section} isOwner={isOwner} />
         <Box
           component="section"
           aria-labelledby="settings-group-title"
@@ -292,6 +304,7 @@ export function SettingsContent({
                 shortcutUrl={apiKeys.shortcutUrl}
               />
             )}
+            {section === "invites" && isOwner && <RegistrationInviteSettings />}
             {section === "data" && <DataGroup />}
           </Stack>
         </Box>

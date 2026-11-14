@@ -85,6 +85,7 @@ describe("settings list markup", () => {
         <SettingsContent
           user={{ id: "u1", name: "Ada", email: "a@x.io" }}
           section={section.id}
+          isOwner
         />,
       );
       const nav = screen.getAllByRole("navigation", { name: "Settings" })[0];

@@ -234,6 +234,19 @@ export function shareInvitationTemplate(data: {
   };
 }
 
+/** IMP-153: the owner invited someone to make an account. */
+export function registrationInviteTemplate(data: {
+  invitationUrl: string;
+  expiresIn: string;
+}): EmailTemplate {
+  const text = `You are invited to make an account on Memoria, a place for visual notes on canvases.\n\nCreate your account: ${data.invitationUrl}\n\nThis single-use link expires in ${data.expiresIn}. If you did not expect it, you can ignore this email.`;
+  return {
+    subject: "You are invited to Memoria",
+    text,
+    html: `<p>You are invited to make an account on Memoria, a place for visual notes on canvases.</p><p><a href="${escapeHtml(data.invitationUrl)}">Create your account</a></p><p>This single-use link expires in ${escapeHtml(data.expiresIn)}. If you did not expect it, you can ignore this email.</p>`,
+  };
+}
+
 export function shareDecisionTemplate(data: {
   recipientEmail: string;
   canvasName: string;

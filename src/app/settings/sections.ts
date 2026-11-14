@@ -1,6 +1,7 @@
 /**
  * IMP-086: Settings is split into groups, each at its own address.
- * `/settings` opens Account. IMP-091 added Import.
+ * `/settings` opens Account. IMP-091 added Import. A group marked
+ * `ownerOnly` is shown to the owner of this Memoria alone (IMP-153).
  */
 export const SETTINGS_SECTIONS = [
   {
@@ -55,6 +56,15 @@ export const SETTINGS_SECTIONS = [
     intro: "Create keys for browser extensions and webhooks. Keep them secret.",
   },
   {
+    // IMP-153: only the owner of this Memoria sees this group.
+    id: "invites",
+    path: "/settings/invites",
+    label: "Invites",
+    intro:
+      "Invite someone to make their own account here. Only you, as the owner, see this.",
+    ownerOnly: true,
+  },
+  {
     id: "data",
     path: "/settings/data",
     label: "Your data",
@@ -64,6 +74,15 @@ export const SETTINGS_SECTIONS = [
 
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
 export type SettingsSectionInfo = (typeof SETTINGS_SECTIONS)[number];
+
+/** The groups this person may open: owner-only ones are left out for others. */
+export function visibleSettingsSections(
+  isOwner: boolean,
+): SettingsSectionInfo[] {
+  return SETTINGS_SECTIONS.filter(
+    (section) => isOwner || !("ownerOnly" in section && section.ownerOnly),
+  );
+}
 
 /** The group for a URL segment (`undefined` is Account), or null if unknown. */
 export function settingsSectionFromSegments(
