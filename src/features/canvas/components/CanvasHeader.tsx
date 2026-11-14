@@ -21,6 +21,7 @@ import {
   ListItemText,
   useMediaQuery,
   useTheme,
+  alpha,
 } from "@mui/material";
 import {
   ArrowBack,
@@ -61,6 +62,7 @@ import { MeetingTimer } from "./MeetingTimer";
 import type { SharedTimerSnapshot } from "@/lib/hooks/use-collaboration";
 import type { SharedTimerAction } from "@/lib/collaboration/shared-timer";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
+import { appColor, brand } from "@/lib/theme";
 import { PresentToAll } from "@mui/icons-material";
 import { zoomedIn, zoomedOut } from "./CanvasViewControls";
 import { type CanvasSecondaryAction } from "@/features/canvas/components/CanvasSecondaryActions";
@@ -144,6 +146,12 @@ export const VIEW_MODES = {
       "See every item as a list you can sort, filter and use by keyboard",
   },
 } as const;
+
+/**
+ * IMP-125: the "Live" label keeps a light green tint and a green label that
+ * reads at 4.5:1 or more on it (6.1:1 light, 7.8:1 dark on the header).
+ */
+const LIVE_STATUS_BACKGROUND = alpha(brand.success.main, 0.12);
 
 export function CanvasHeader({
   canvasId,
@@ -851,9 +859,13 @@ export function CanvasHeader({
                   }
                   sx={{
                     height: 24,
-                    fontSize: 11,
+                    fontSize: 12,
                     color: "text.primary",
                     "& .MuiChip-icon": { marginLeft: 0.5 },
+                    ...(collaborationStatus === "connected" && {
+                      bgcolor: LIVE_STATUS_BACKGROUND,
+                      color: appColor("liveStatusText"),
+                    }),
                   }}
                 />
               </Tooltip>

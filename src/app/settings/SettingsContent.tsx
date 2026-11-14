@@ -167,21 +167,22 @@ function SettingsNav({ current }: { current: SettingsSectionId }) {
           {SETTINGS_SECTIONS.map((section) => {
             const selected = section.id === current;
             return (
-              <ListItemButton
-                key={section.id}
-                component={NextLink}
-                href={section.path}
-                selected={selected}
-                aria-current={selected ? "page" : undefined}
-                sx={{ borderRadius: 2, mb: 0.5, minHeight: 44 }}
-              >
-                <ListItemText
-                  primary={section.label}
-                  slotProps={{
-                    primary: { sx: { fontWeight: selected ? 600 : 500 } },
-                  }}
-                />
-              </ListItemButton>
+              <ListItem key={section.id} disablePadding>
+                <ListItemButton
+                  component={NextLink}
+                  href={section.path}
+                  selected={selected}
+                  aria-current={selected ? "page" : undefined}
+                  sx={{ borderRadius: 2, mb: 0.5, minHeight: 44 }}
+                >
+                  <ListItemText
+                    primary={section.label}
+                    slotProps={{
+                      primary: { sx: { fontWeight: selected ? 600 : 500 } },
+                    }}
+                  />
+                </ListItemButton>
+              </ListItem>
             );
           })}
         </List>
@@ -366,13 +367,13 @@ function AccountGroup({ user }: { user: SettingsUser }) {
         <TextField
           label="Email"
           value={user.email || ""}
-          disabled
           fullWidth
           helperText="Your email address cannot be changed."
           slotProps={{
             input: {
               startAdornment: <EmailIcon color="action" sx={{ mr: 1 }} />,
             },
+            htmlInput: { readOnly: true },
           }}
         />
         <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
