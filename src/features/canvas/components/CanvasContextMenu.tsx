@@ -21,6 +21,7 @@ import {
   Check as CheckIcon,
   NotificationsActive as ReminderIcon,
   DynamicFeed as AlsoShowOnIcon,
+  OndemandVideo as VideoNotesIcon,
 } from "@mui/icons-material";
 import {
   ItemType,
@@ -40,6 +41,8 @@ import { SavedCopyDialog } from "./SavedCopyDialog";
 import { ReminderDialog } from "./ReminderDialog";
 import { AlsoShowOnDialog } from "./AlsoShowOnDialog";
 import { isPlaceableType } from "@/lib/placements/shared";
+import { parseVideoLink } from "@/lib/video/video-link";
+import { VideoNotesDialog } from "./VideoNotesDialog";
 
 export interface ContextMenuPosition {
   x: number;
@@ -173,6 +176,12 @@ export function CanvasContextMenu({
     item?.type === ItemType.BOOKMARK
       ? openableUrl((item.content as { url?: unknown }).url)
       : null;
+  // IMP-114: a saved video (a link or a link preview) keeps notes at
+  // moments and a transcript.
+  const isVideo =
+    (item?.type === ItemType.BOOKMARK || item?.type === ItemType.EMBED) &&
+    parseVideoLink((item.content as { url?: unknown }).url) !== null;
+  const [videoItemId, setVideoItemId] = React.useState<string | null>(null);
 
   const showNoteColors =
     item?.type === ItemType.NOTE &&
@@ -221,6 +230,14 @@ export function CanvasContextMenu({
               <SavedCopyIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>Read saved copy</ListItemText>
+          </MenuItem>
+        )}
+        {isVideo && item && (
+          <MenuItem onClick={() => handleAction(() => setVideoItemId(item.id))}>
+            <ListItemIcon>
+              <VideoNotesIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Video notes and transcript…</ListItemText>
           </MenuItem>
         )}
         {capabilities.canCopyItems && (
@@ -292,6 +309,10 @@ export function CanvasContextMenu({
       <SavedCopyDialog
         itemId={savedCopyItemId}
         onClose={() => setSavedCopyItemId(null)}
+      />
+      <VideoNotesDialog
+        itemId={videoItemId}
+        onClose={() => setVideoItemId(null)}
       />
     </>
   );

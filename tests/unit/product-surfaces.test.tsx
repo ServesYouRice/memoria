@@ -18,6 +18,7 @@ import {
   EMBED_SURFACE_MODE,
   MEETING_TIMER_DISCLOSURE,
   MEETING_TIMER_SCOPE,
+  describeEmbedCard,
   describeEmbedTarget,
   isArCanvasEnabled,
 } from "@/lib/product-surfaces";
@@ -51,6 +52,27 @@ describe("DEC-011 embeds are link previews, never live frames", () => {
 
   it("falls back to the raw value for an unparseable URL", () => {
     expect(describeEmbedTarget("not a url")).toBe("not a url");
+  });
+
+  it("names a video card's title and where it is from (IMP-114)", () => {
+    expect(
+      describeEmbedCard({
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title: "  A talk  ",
+      }),
+    ).toEqual({
+      title: "A talk",
+      source: "YouTube · youtube.com",
+      isVideo: true,
+    });
+    expect(describeEmbedCard({ url: "https://vimeo.com/76979871" }).title).toBe(
+      "Vimeo video",
+    );
+    expect(describeEmbedCard({ url: "https://figma.com/file/1" })).toEqual({
+      title: "figma.com",
+      source: "https://figma.com/file/1",
+      isVideo: false,
+    });
   });
 });
 

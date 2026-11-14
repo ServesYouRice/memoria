@@ -40,10 +40,7 @@ import {
   useCanvasPalette,
 } from "@/features/canvas/lib/canvas-palette";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
-import {
-  EMBED_PREVIEW_LABEL,
-  describeEmbedTarget,
-} from "@/lib/product-surfaces";
+import { EMBED_PREVIEW_LABEL, describeEmbedCard } from "@/lib/product-surfaces";
 
 function ReadonlyBookmarkImage({
   src,
@@ -563,7 +560,7 @@ export function ReadonlyCanvasItem({
           x={0}
           y={item.height / 2 - 12}
           width={item.width}
-          text={`${EMBED_PREVIEW_LABEL} · ${describeEmbedTarget(item.content.url)}`}
+          text={`${EMBED_PREVIEW_LABEL} · ${describeEmbedCard(item.content).title}`}
           align="center"
           fontSize={16}
           fill={palette.textMuted}
