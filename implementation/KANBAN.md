@@ -29,7 +29,6 @@ to RUN-ME-3).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-151](tasks/IMP-151.md) | OpenTelemetry; drop `@vercel/analytics`; runtime browser Sentry address | - |
 
 ## WAITING
 

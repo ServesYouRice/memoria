@@ -18,6 +18,54 @@ port 9093. The checked-in Alertmanager receiver retains and groups alerts in its
 UI without embedding organization credentials; configure an external paging
 receiver before relying on unattended notifications.
 
+## Errors, traces and metrics export
+
+All of these are read when a process starts or a page is served, never at
+build time, so one image serves staging and production with different
+settings. Each is off unless its variable is set.
+
+| Variable | Process | Effect |
+| --- | --- | --- |
+| `SENTRY_DSN` | app, sync, workers | Server errors go to Sentry (production only). |
+| `SENTRY_BROWSER_DSN` | app | Browser errors go to Sentry. |
+| `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | all | Tag Sentry events and the OTel resource. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | app, sync, workers | Traces and metrics over OTLP/HTTP. |
+
+**Browser Sentry.** The root layout reads `SENTRY_BROWSER_DSN` on each request
+and renders it (with the environment and release) as
+`<meta name="memoria-sentry-*">` tags. `src/instrumentation-client.ts` reads
+the tags and only then loads the Sentry chunk, so a page served without a DSN
+fetches no Sentry code (IMP-116). The CSP `connect-src` names the DSN's ingest
+origin from the same variable at request time. `SENTRY_DSN` alone never turns
+browser reporting on; set both, to the same DSN if one project is enough.
+There is no `NEXT_PUBLIC_SENTRY_DSN` build argument any more.
+
+**OpenTelemetry.** With `OTEL_EXPORTER_OTLP_ENDPOINT` set (for example
+`http://otel-collector:4318`), each process exports traces and metrics to
+`<endpoint>/v1/traces` and `<endpoint>/v1/metrics`:
+
+- `memoria-web` (Next's `instrumentation.ts`): Next.js's own request, render
+  and fetch spans.
+- `memoria-sync` (`scripts/sync-server.ts`): `sync.authorize`,
+  `sync.load_document` and `sync.apply_update` spans.
+- `memoria-worker` (`scripts/outbox-worker.ts`) and `memoria-capture`: one
+  `outbox.job` span per job, tagged with the job type.
+- Metrics: every operational counter (the ones `/api/metrics` exposes to
+  Prometheus) is also a `memoria.<name>` OTel counter, exported each minute.
+
+The standard variables apply: `OTEL_SERVICE_NAME` and
+`OTEL_RESOURCE_ATTRIBUTES` override the resource, `OTEL_EXPORTER_OTLP_HEADERS`
+adds auth headers, per-signal `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` /
+`..._METRICS_ENDPOINT` override the paths, and `OTEL_TRACES_SAMPLER_ARG`
+(0 to 1, default 1) sets the parent-based sampling ratio. Span attributes
+carry kinds and sizes, never canvas, user or job ids. When both Sentry and
+OTLP are on, OTel owns the tracer provider (`enableOpenTelemetrySetup` is off
+in `sentry.server.config.ts`); Sentry still reports errors. Buffered spans
+and metrics are flushed on graceful shutdown (waiting at most five seconds);
+an unreachable collector never blocks start-up or shutdown.
+
+## Alert rules
+
 Every rule in `monitoring/alerts.yml` has an explicit threshold, severity,
 owner, and runbook. Exercise changes with:
 

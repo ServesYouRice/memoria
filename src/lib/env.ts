@@ -129,8 +129,15 @@ const envSchema = z
     // DEC-013: the AR canvas layer stays off until the real-device matrix
     // passes. Deployments opt in explicitly.
     NEXT_PUBLIC_ENABLE_AR_CANVAS: z.enum(["true", "false"]).optional(),
-    NEXT_PUBLIC_SENTRY_DSN: optionalString,
     SENTRY_DSN: optionalString,
+    // IMP-151: the browser reads these at request time (root layout), so one
+    // image serves every environment. Browser Sentry stays off unless set.
+    SENTRY_BROWSER_DSN: optionalUrl,
+    SENTRY_ENVIRONMENT: optionalString,
+    SENTRY_RELEASE: optionalString,
+    // IMP-151: OTLP/HTTP traces and metrics; off unless an endpoint is set.
+    OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
+    OTEL_SERVICE_NAME: optionalString,
     SENTRY_AUTH_TOKEN: optionalString,
     CRON_SECRET: optionalString,
     /**

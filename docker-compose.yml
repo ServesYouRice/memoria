@@ -4,8 +4,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     container_name: memoria-app
     restart: unless-stopped
     init: true
@@ -55,7 +53,10 @@ services:
       MODEL_CREDENTIAL_ENCRYPTION_KEY: ${MODEL_CREDENTIAL_ENCRYPTION_KEY}
       CRON_SECRET: ${CRON_SECRET}
       SENTRY_DSN: ${SENTRY_DSN:-}
-      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      SENTRY_BROWSER_DSN: ${SENTRY_BROWSER_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       FEATURE_BOOKMARK_UNFURLING: ${FEATURE_BOOKMARK_UNFURLING:-true}
       BOOKMARK_REFRESH_INTERVAL_MS: ${BOOKMARK_REFRESH_INTERVAL_MS:-900000}
@@ -200,6 +201,7 @@ services:
       OUTBOX_HANDLER_TIMEOUT_MS: ${OUTBOX_HANDLER_TIMEOUT_MS:-15000}
       OUTBOX_CONCURRENCY: ${OUTBOX_CONCURRENCY:-4}
       PAGE_CAPTURE: ${PAGE_CAPTURE:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     read_only: true
 
   # Optional (IMP-110): keeps a picture and a PDF of each saved link. Off and
@@ -288,6 +290,7 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     read_only: true
     tmpfs:
       - /tmp

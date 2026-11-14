@@ -1,4 +1,5 @@
 import "../src/lib/env";
+import { shutdownTelemetry, startTelemetry } from "../src/lib/telemetry/otel";
 import { prisma } from "../src/lib/db";
 import { runOutboxWorker } from "../src/lib/outbox/worker";
 import { createUploadDeleteHandler } from "../src/lib/uploads/outbox-handler";
@@ -107,6 +108,9 @@ import {
   createVideoTranscriptHandler,
 } from "../src/lib/video/video-items";
 
+// IMP-151: OTLP traces and metrics, off unless an endpoint is set.
+await startTelemetry("memoria-worker");
+
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
 process.once("SIGTERM", () => controller.abort());
@@ -176,3 +180,4 @@ await runOutboxWorker({
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });
 await prisma.$disconnect();
+await shutdownTelemetry();

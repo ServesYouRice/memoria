@@ -77,7 +77,7 @@ describe("CSP Middleware", () => {
     it("limits connect-src to the app, its sockets and Sentry ingest", () => {
       vi.stubEnv("AUTH_URL", "https://memoria.example.com/");
       vi.stubEnv(
-        "NEXT_PUBLIC_SENTRY_DSN",
+        "SENTRY_BROWSER_DSN",
         "https://publickey@o123.ingest.de.sentry.io/456",
       );
 
@@ -95,7 +95,7 @@ describe("CSP Middleware", () => {
 
     it("uses a plain ws origin for a local http app", () => {
       vi.stubEnv("AUTH_URL", "http://localhost:3000");
-      vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
+      vi.stubEnv("SENTRY_BROWSER_DSN", "");
 
       expect(directive(buildCSP("n"), "connect-src")).toEqual([
         "'self'",
@@ -106,7 +106,7 @@ describe("CSP Middleware", () => {
     it("falls back to NEXTAUTH_URL and skips unusable values", () => {
       vi.stubEnv("AUTH_URL", undefined as unknown as string);
       vi.stubEnv("NEXTAUTH_URL", "https://legacy.example.com");
-      vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "not a url");
+      vi.stubEnv("SENTRY_BROWSER_DSN", "not a url");
 
       expect(directive(buildCSP("n"), "connect-src")).toEqual([
         "'self'",
