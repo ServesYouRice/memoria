@@ -2129,8 +2129,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       />
       <ConfirmDialog
         open={pendingAutopilotActions.length > 0}
-        title="Apply automatic layout?"
-        message={`Autopilot will reorganize ${pendingAutopilotActions.length} items in one atomic update.`}
+        title="Auto-organise this canvas?"
+        message={`This moves ${pendingAutopilotActions.length} items in one step.`}
         confirmLabel="Apply layout"
         onClose={() => setPendingAutopilotActions([])}
         onConfirm={async () => {

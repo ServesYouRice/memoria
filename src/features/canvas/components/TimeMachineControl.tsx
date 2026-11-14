@@ -49,7 +49,7 @@ export function TimeMachineControl({
           alignItems: "center",
         }}
       >
-        <Typography variant="h6">Time Machine</Typography>
+        <Typography variant="h6">Replay changes</Typography>
         <Box>
           <Typography
             variant="subtitle1"

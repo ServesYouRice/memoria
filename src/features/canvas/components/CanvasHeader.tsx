@@ -19,6 +19,8 @@ import {
   Chip,
   ListItemIcon,
   ListItemText,
+  ListSubheader,
+  Divider,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
@@ -63,7 +65,92 @@ import type { SharedTimerAction } from "@/lib/collaboration/shared-timer";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { PresentToAll } from "@mui/icons-material";
 import { zoomedIn, zoomedOut } from "./CanvasViewControls";
-import { type CanvasSecondaryAction } from "@/features/canvas/components/CanvasSecondaryActions";
+import {
+  type CanvasMenuGroup,
+  type CanvasSecondaryAction,
+} from "@/features/canvas/components/CanvasSecondaryActions";
+
+// IMP-135: the "More canvas options" menu shows its commands under these
+// headings, in this order, and in this order inside each group.
+const MENU_GROUPS: { id: CanvasMenuGroup; heading: string }[] = [
+  { id: "canvas", heading: "Canvas" },
+  { id: "view", heading: "View" },
+  { id: "ai", heading: "AI" },
+  { id: "tools", heading: "Tools" },
+  { id: "history", heading: "History" },
+];
+
+const MENU_ENTRY_ORDER = [
+  "rename",
+  "export",
+  "view-mode",
+  "search",
+  "tags",
+  "zoom-in",
+  "zoom-out",
+  "fit",
+  "grid",
+  "snap",
+  "presentation",
+  "theme",
+  "ai",
+  "autopilot",
+  "sort-into-piles",
+  "serendipity",
+  "whisper",
+  "timer",
+  "ar",
+  "follow",
+  "time-machine",
+  "versions",
+];
+
+function menuEntryRank(key: string): number {
+  const rank = MENU_ENTRY_ORDER.indexOf(
+    key.startsWith("follow-") ? "follow" : key,
+  );
+  return rank === -1 ? MENU_ENTRY_ORDER.length : rank;
+}
+
+/**
+ * Lays the entries out under their group headings. Headings are plain list
+ * rows, not menu items, so arrow keys skip them; empty groups get none. The
+ * result is a flat array because MUI's Menu does not accept fragments.
+ */
+function renderGroupedMenuItems<
+  T extends { key: string; group: CanvasMenuGroup },
+>(entries: T[], renderEntry: (entry: T) => React.ReactNode): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  for (const group of MENU_GROUPS) {
+    const inGroup = entries
+      .filter((entry) => entry.group === group.id)
+      .sort((a, b) => menuEntryRank(a.key) - menuEntryRank(b.key));
+    if (inGroup.length === 0) continue;
+    if (nodes.length > 0) {
+      nodes.push(
+        <Divider key={`divider-${group.id}`} component="li" role="separator" />,
+      );
+    }
+    nodes.push(
+      <ListSubheader
+        key={`heading-${group.id}`}
+        component="li"
+        role="presentation"
+        disableSticky
+        sx={{ lineHeight: "32px", bgcolor: "transparent" }}
+      >
+        {group.heading}
+      </ListSubheader>,
+    );
+    for (const entry of inGroup) nodes.push(renderEntry(entry));
+  }
+  return nodes;
+}
+
+// A long menu scrolls inside the screen instead of running off it.
+const menuPaperSlotProps = {
+  paper: { sx: { maxHeight: "calc(100dvh - 96px)" } },
+};
 
 export interface CollaboratorInfo {
   userId: string;
@@ -289,6 +376,7 @@ export function CanvasHeader({
   const secondaryActions: CanvasSecondaryAction[] = [
     onAI && {
       key: "ai",
+      group: "ai",
       label: "AI assistant",
       icon: <AIIcon />,
       onClick: onAI,
@@ -296,6 +384,7 @@ export function CanvasHeader({
     },
     onSerendipity && {
       key: "serendipity",
+      group: "ai",
       label: "Surprise me",
       icon: <SerendipityIcon />,
       onClick: onSerendipity,
@@ -303,13 +392,15 @@ export function CanvasHeader({
     },
     onAutopilot && {
       key: "autopilot",
-      label: "Auto-organize canvas",
+      group: "ai",
+      label: "Auto-organise canvas",
       icon: <AutopilotIcon />,
       onClick: onAutopilot,
       color: "primary" as const,
     },
     onSortIntoPiles && {
       key: "sort-into-piles",
+      group: "ai",
       label: "Sort into piles",
       icon: <PilesIcon />,
       onClick: onSortIntoPiles,
@@ -317,13 +408,15 @@ export function CanvasHeader({
     },
     onWhisper && {
       key: "whisper",
+      group: "tools",
       label: "Quick capture",
       icon: <WhisperIcon />,
       onClick: onWhisper,
     },
     onTimeMachine && {
       key: "time-machine",
-      label: "Visual history",
+      group: "history",
+      label: "Replay changes",
       icon: <HistoryIcon />,
       onClick: onTimeMachine,
       color: "secondary" as const,
@@ -332,6 +425,7 @@ export function CanvasHeader({
     onAR &&
       isArCanvasEnabled() && {
         key: "ar",
+        group: "tools",
         label: "Augmented reality view (experimental)",
         icon: <ARIcon />,
         onClick: onAR,
@@ -339,6 +433,7 @@ export function CanvasHeader({
       },
     onTagFilter && {
       key: "tags",
+      group: "view",
       label: "Filter canvas by tags",
       icon: <TagIcon />,
       onClick: onTagFilter,
@@ -347,6 +442,7 @@ export function CanvasHeader({
     onSearchChange &&
       !showSearch && {
         key: "search",
+        group: "view",
         label: "Search canvas",
         icon: <SearchIcon />,
         onClick: () => setShowSearch(true),
@@ -421,6 +517,7 @@ export function CanvasHeader({
     };
     type MenuEntry = {
       key: string;
+      group: CanvasMenuGroup;
       label: string;
       icon: React.ReactNode;
       onClick: () => void;
@@ -429,12 +526,14 @@ export function CanvasHeader({
     const entries: MenuEntry[] = [
       canManageCanvas && {
         key: "rename",
+        group: "canvas",
         label: "Rename canvas",
         icon: <EditIcon fontSize="small" />,
         onClick: handleNameClick,
       },
       onViewModeChange && {
         key: "view-mode",
+        group: "view",
         label:
           viewMode === "manual"
             ? `Switch to ${VIEW_MODES.organizer.label}`
@@ -450,6 +549,7 @@ export function CanvasHeader({
       },
       ...secondaryActions.map((action) => ({
         key: action.key,
+        group: action.group,
         label: action.badgeCount
           ? `${action.label} (${action.badgeCount})`
           : action.label,
@@ -458,24 +558,28 @@ export function CanvasHeader({
       })),
       {
         key: "zoom-in",
+        group: "view",
         label: "Zoom in",
         icon: <ZoomIn fontSize="small" />,
         onClick: handleZoomIn,
       },
       {
         key: "zoom-out",
+        group: "view",
         label: "Zoom out",
         icon: <ZoomOut fontSize="small" />,
         onClick: handleZoomOut,
       },
       {
         key: "fit",
+        group: "view",
         label: `Fit to screen (now ${Math.round(zoom * 100)}%)`,
         icon: <FitScreen fontSize="small" />,
         onClick: onFitToScreen,
       },
       onGridToggle && {
         key: "grid",
+        group: "view",
         label: gridVisible ? "Hide grid" : "Show grid",
         icon: gridVisible ? (
           <GridOffIcon fontSize="small" />
@@ -486,24 +590,28 @@ export function CanvasHeader({
       },
       onSnapToggle && {
         key: "snap",
-        label: snapEnabled ? "Disable snap to grid" : "Enable snap to grid",
+        group: "view",
+        label: snapEnabled ? "Turn off snap to grid" : "Turn on snap to grid",
         icon: <FitScreen fontSize="small" />,
         onClick: onSnapToggle,
       },
       {
         key: "timer",
+        group: "tools",
         label: "Shared timer",
         icon: <TimerIcon fontSize="small" />,
         onClick: () => setTimerAnchor(moreButtonRef.current),
       },
       onPresentationMode && {
         key: "presentation",
-        label: isPresentationMode ? "Exit presentation" : "Enter presentation",
+        group: "view",
+        label: isPresentationMode ? "Exit presentation" : "Present",
         icon: <PresentToAll fontSize="small" />,
         onClick: onPresentationMode,
       },
       {
         key: "theme",
+        group: "view",
         label: themeMode === "light" ? "Dark mode" : "Light mode",
         icon:
           themeMode === "light" ? (
@@ -516,6 +624,7 @@ export function CanvasHeader({
       ...(onFollowUser
         ? collaborators.map((collaborator) => ({
             key: `follow-${collaborator.userId}`,
+            group: "tools" as const,
             label: `Follow ${collaborator.name || collaborator.email}`,
             icon: <FollowIcon fontSize="small" />,
             onClick: () => onFollowUser(collaborator.userId),
@@ -524,13 +633,15 @@ export function CanvasHeader({
         : []),
       onExport && {
         key: "export",
+        group: "canvas",
         label: "Export canvas",
         icon: <ExportIcon fontSize="small" />,
         onClick: onExport,
       },
       onVersionHistory && {
         key: "versions",
-        label: "Version history",
+        group: "history",
+        label: "Saved versions",
         icon: <VersionHistoryIcon fontSize="small" />,
         onClick: onVersionHistory,
       },
@@ -612,7 +723,10 @@ export function CanvasHeader({
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
             onClose={handleMenuClose}
-            slotProps={{ list: { "aria-label": "More canvas options" } }}
+            slotProps={{
+              ...menuPaperSlotProps,
+              list: { "aria-label": "More canvas options" },
+            }}
           >
             {showStatus && (
               <MenuItem disabled key="status" sx={{ opacity: "1 !important" }}>
@@ -628,7 +742,7 @@ export function CanvasHeader({
                 />
               </MenuItem>
             )}
-            {entries.map((entry) => (
+            {renderGroupedMenuItems(entries, (entry) => (
               <MenuItem
                 key={entry.key}
                 selected={entry.selected}
@@ -669,6 +783,7 @@ export function CanvasHeader({
     : null;
   type MoreEntry = {
     key: string;
+    group: CanvasMenuGroup;
     label: string;
     icon: React.ReactNode;
     onClick: () => void;
@@ -677,6 +792,7 @@ export function CanvasHeader({
   const moreEntries: MoreEntry[] = [
     ...secondaryActions.map((action) => ({
       key: action.key,
+      group: action.group,
       label: action.badgeCount
         ? `${action.label} (${action.badgeCount})`
         : action.label,
@@ -685,18 +801,21 @@ export function CanvasHeader({
     })),
     {
       key: "timer",
+      group: "tools",
       label: "Shared timer",
       icon: <TimerIcon fontSize="small" />,
       onClick: () => setTimerAnchor(moreButtonRef.current),
     },
     onPresentationMode && {
       key: "presentation",
+      group: "view",
       label: isPresentationMode ? "Exit presentation" : "Present",
       icon: <PresentToAll fontSize="small" />,
       onClick: onPresentationMode,
     },
     {
       key: "theme",
+      group: "view",
       label: themeMode === "light" ? "Dark mode" : "Light mode",
       icon:
         themeMode === "light" ? (
@@ -708,13 +827,15 @@ export function CanvasHeader({
     },
     onExport && {
       key: "export",
+      group: "canvas",
       label: "Export canvas",
       icon: <ExportIcon fontSize="small" />,
       onClick: onExport,
     },
     onVersionHistory && {
       key: "versions",
-      label: "Version history",
+      group: "history",
+      label: "Saved versions",
       icon: <VersionHistoryIcon fontSize="small" />,
       onClick: onVersionHistory,
     },
@@ -945,9 +1066,12 @@ export function CanvasHeader({
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
           onClose={handleMenuClose}
-          slotProps={{ list: { "aria-label": "More canvas options" } }}
+          slotProps={{
+            ...menuPaperSlotProps,
+            list: { "aria-label": "More canvas options" },
+          }}
         >
-          {moreEntries.map((entry) => (
+          {renderGroupedMenuItems(moreEntries, (entry) => (
             <MenuItem
               key={entry.key}
               selected={entry.selected}

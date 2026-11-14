@@ -88,7 +88,7 @@ for (const viewport of [
     for (const label of [
       "Rename canvas",
       "Zoom in",
-      "Version history",
+      "Saved versions",
       "Export canvas",
     ]) {
       await expect(menu.getByRole("menuitem", { name: label })).toBeVisible();
