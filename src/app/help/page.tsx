@@ -6,6 +6,7 @@ import {
   InfoSection,
   PublicInfoPage,
 } from "@/components/layout/PublicInfoPage";
+import { ALWAYS_FREE, MEMORIA_LICENCE_NAME } from "@/lib/licence/promise";
 
 export const metadata: Metadata = {
   title: "Help",
@@ -91,6 +92,15 @@ export default async function HelpPage() {
               : undefined
           }
         />
+      </InfoSection>
+      <InfoSection title="Always free">
+        Memoria is free software under the {MEMORIA_LICENCE_NAME}. These
+        features will always stay free and never be put behind a payment:
+        <ul>
+          {ALWAYS_FREE.map((feature) => (
+            <li key={feature}>{feature}</li>
+          ))}
+        </ul>
       </InfoSection>
       <InfoSection title="Troubleshooting">
         Retry a failed canvas load from its error banner. Check the Status page
