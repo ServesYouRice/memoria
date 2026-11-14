@@ -110,7 +110,7 @@ describe("selected app theme owns non-MUI CSS", () => {
     },
   );
 
-  it.each(["src/app/tiptap.css", "src/components/command-palette.css"])(
+  it.each(["src/app/tiptap.css"])(
     "follows the selected theme in %s",
     (path) => {
       // Colours come from the MUI theme variables, which switch with the

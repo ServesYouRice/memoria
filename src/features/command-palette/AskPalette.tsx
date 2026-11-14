@@ -41,6 +41,7 @@ import {
   useRevertChangeSet,
 } from "@/lib/hooks/use-agent-control";
 import { hasActiveDialog } from "@/lib/keyboard/shortcuts";
+import { ASK_EVENT, type AskEventDetail } from "./ask-event";
 import { isAskShortcut } from "./ask-shortcut";
 import {
   AI_NOT_SET_UP_MESSAGE,
@@ -150,11 +151,14 @@ export function AskPalette({
   open,
   onClose,
   canvasId = null,
+  initialQuestion = "",
 }: {
   open: boolean;
   onClose: () => void;
   /** The canvas Ask was opened on, offered first as "This canvas". */
   canvasId?: string | null;
+  /** Typed into the box, not sent (the Search page's bridge, IMP-134). */
+  initialQuestion?: string;
 }) {
   const theme = useTheme();
   const [choices, setChoices] = useState<AskScopeChoices | null>(null);
@@ -162,7 +166,7 @@ export function AskPalette({
     canvasId ? { kind: "canvas", canvasId } : { kind: "all" },
   );
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(initialQuestion);
   const [result, setResult] = useState<AskResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -533,7 +537,24 @@ export function AskLauncher() {
   const pathname = usePathname();
   const canvasMatch = pathname?.match(/^\/canvas\/([^/?#]+)/);
   const canvasId = canvasMatch ? decodeURIComponent(canvasMatch[1]!) : null;
-  const close = useCallback(() => setOpen(false), []);
+  const [initialQuestion, setInitialQuestion] = useState("");
+  const close = useCallback(() => {
+    setOpen(false);
+    setInitialQuestion("");
+  }, []);
+
+  // The Search page hands over what was typed; it waits in the box.
+  useEffect(() => {
+    const onAsk = (event: Event) => {
+      const detail = (event as CustomEvent<AskEventDetail>).detail;
+      setInitialQuestion(
+        typeof detail?.question === "string" ? detail.question : "",
+      );
+      setOpen(true);
+    };
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -582,7 +603,14 @@ export function AskLauncher() {
         </IconButton>
       </Tooltip>
       {/* Mounted only while open, so the shell carries no AI state. */}
-      {open && <AskPalette open onClose={close} canvasId={canvasId} />}
+      {open && (
+        <AskPalette
+          open
+          onClose={close}
+          canvasId={canvasId}
+          initialQuestion={initialQuestion}
+        />
+      )}
     </>
   );
 }

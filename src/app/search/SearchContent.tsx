@@ -25,12 +25,18 @@ import {
   ImageOutlined as ImageIcon,
   NotesOutlined as TextIcon,
   CategoryOutlined as OtherIcon,
+  AutoAwesomeOutlined as AskIcon,
 } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import Link from "next/link";
+import {
+  ASK_EVENT,
+  type AskEventDetail,
+} from "@/features/command-palette/ask-event";
+import { SEARCH_INPUT_ID } from "./search-input-id";
 
 interface SearchResult {
   itemId: string;
@@ -152,6 +158,7 @@ export function SearchContent() {
       />
 
       <TextField
+        id={SEARCH_INPUT_ID}
         autoFocus
         fullWidth
         value={query}
@@ -173,6 +180,23 @@ export function SearchContent() {
         }}
         sx={{ mb: 2 }}
       />
+
+      {/* Bridge to Ask: the same words as a question for the AI (IMP-134). */}
+      {query.trim().length >= 2 && (
+        <Button
+          startIcon={<AskIcon />}
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent<AskEventDetail>(ASK_EVENT, {
+                detail: { question: query.trim() },
+              }),
+            )
+          }
+          sx={{ mb: 2 }}
+        >
+          {`Ask AI about "${query.trim()}"`}
+        </Button>
+      )}
 
       {(availableTypes.length > 1 || typeFilter !== null) && (
         <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 3 }}>

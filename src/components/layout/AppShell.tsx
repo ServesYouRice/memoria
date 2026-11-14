@@ -50,6 +50,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUnreadNotifications } from "@/lib/hooks/use-notifications";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { AskLauncher } from "@/features/command-palette/AskPalette";
+import { SEARCH_INPUT_ID } from "@/app/search/search-input-id";
 
 const NAV_ITEMS = [
   { label: "Canvases", href: "/dashboard", icon: DashboardIcon },
@@ -125,19 +126,23 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
     if (/Mac|iPhone|iPad/.test(navigator.platform)) setShortcutLabel("⌘ K");
   }, []);
 
-  // Ctrl/Cmd+K opens search, unless the page already used it (the
-  // dashboard opens its command palette, which also offers search).
+  // Ctrl/Cmd+K is the one way into search (IMP-134): it opens the Search
+  // page, or on that page puts the cursor back in its field.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        router.push("/search");
+        if (pathname === "/search") {
+          document.getElementById(SEARCH_INPUT_ID)?.focus();
+        } else {
+          router.push("/search");
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [router]);
+  }, [pathname, router]);
 
   return (
     <Box
