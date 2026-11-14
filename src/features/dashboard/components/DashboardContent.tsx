@@ -17,7 +17,6 @@ import {
   InputAdornment,
   Paper,
   TextField,
-  Tooltip,
   Typography,
   Alert,
   alpha,
@@ -30,17 +29,20 @@ import {
   BrushOutlined as CanvasIcon,
   FolderOutlined as WorkspaceIcon,
   UploadFile,
-  FileCopyOutlined as DuplicateIcon,
 } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import {
   useCanvases,
   useCreateCanvas,
   useDuplicateCanvas,
+  useUpdateCanvas,
   canvasKeys,
   type CanvasListSort,
 } from "@/lib/hooks/use-canvases";
-import { useWorkspace } from "@/lib/hooks/use-workspaces";
+import {
+  useAssignCanvasToWorkspace,
+  useWorkspace,
+} from "@/lib/hooks/use-workspaces";
 import { ActivityFeed } from "./ActivityFeed";
 import { StarterRow } from "./StarterRow";
 import { ImportCanvasDialog } from "./ImportCanvasDialog";
@@ -48,6 +50,7 @@ import { SomethingOldCard } from "./SomethingOldCard";
 import { BLANK_TEMPLATE, TemplatePicker } from "./TemplatePicker";
 import { useCreateFromTemplate, useTemplates } from "@/lib/hooks/use-templates";
 import { CanvasCard, CanvasCardSkeleton, CardGrid } from "./CanvasCard";
+import { CanvasCardMenu } from "./CanvasCardMenu";
 import { GlobalSearchDialog } from "@/components/GlobalSearchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -141,6 +144,9 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const creating = createCanvas.isPending || createFromTemplate.isPending;
   // IMP-098: a private copy of one of the person's canvases.
   const duplicateCanvas = useDuplicateCanvas();
+  // IMP-137: the card menu renames and moves canvases.
+  const updateCanvas = useUpdateCanvas();
+  const assignToWorkspace = useAssignCanvasToWorkspace();
   const handleDuplicate = async (canvasId: string) => {
     try {
       const copy = await duplicateCanvas.mutateAsync(canvasId);
@@ -240,6 +246,13 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
     if (selectionMode) setSelectedCanvasIds(new Set());
+  };
+
+  // A card menu's Delete selects just that canvas outside selection mode;
+  // cancelling must not leave it selected.
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    if (!selectionMode) setSelectedCanvasIds(new Set());
   };
 
   const handleBulkDelete = async () => {
@@ -573,20 +586,26 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                           }}
                         />
                       ) : (
-                        <Tooltip title="Duplicate">
-                          <IconButton
-                            size="small"
-                            aria-label={`Duplicate ${canvas.name}`}
-                            disabled={duplicateCanvas.isPending}
-                            onClick={() => void handleDuplicate(canvas.id)}
-                            sx={{
-                              bgcolor: "background.paper",
-                              "&:hover": { bgcolor: "background.paper" },
-                            }}
-                          >
-                            <DuplicateIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <CanvasCardMenu
+                          canvas={canvas}
+                          onRename={(name) =>
+                            updateCanvas.mutateAsync({
+                              canvasId: canvas.id,
+                              data: { name },
+                            })
+                          }
+                          onDuplicate={() => void handleDuplicate(canvas.id)}
+                          onMove={(target) =>
+                            assignToWorkspace.mutateAsync({
+                              canvasId: canvas.id,
+                              workspaceId: target,
+                            })
+                          }
+                          onDelete={() => {
+                            setSelectedCanvasIds(new Set([canvas.id]));
+                            setDeleteConfirmOpen(true);
+                          }}
+                        />
                       )
                     }
                   />
@@ -681,10 +700,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       />
 
       {/* Delete confirmation dialog */}
-      <Dialog
-        open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-      >
+      <Dialog open={deleteConfirmOpen} onClose={closeDeleteConfirm}>
         <DialogTitle sx={{ fontWeight: 600 }}>Delete canvases?</DialogTitle>
         <DialogContent>
           <Typography>
@@ -694,7 +710,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
-          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={closeDeleteConfirm}>Cancel</Button>
           <Button
             onClick={handleBulkDelete}
             variant="contained"

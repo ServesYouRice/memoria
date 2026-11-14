@@ -36,6 +36,7 @@ vi.mock("@/lib/hooks/use-templates", () => ({
 vi.mock("@/lib/hooks/use-canvases", () => ({
   canvasKeys: { all: ["canvases"] },
   useDuplicateCanvas: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateCanvas: () => ({ mutateAsync: vi.fn() }),
   useCanvases: () => ({
     data: {
       pages: [
@@ -62,6 +63,7 @@ vi.mock("@/lib/hooks/use-canvases", () => ({
 }));
 vi.mock("@/lib/hooks/use-workspaces", () => ({
   useWorkspace: () => ({ data: undefined }),
+  useAssignCanvasToWorkspace: () => ({ mutateAsync: vi.fn() }),
 }));
 vi.mock("@/lib/theme-context", () => ({
   useThemeMode: () => ({ mode: "light", toggleTheme: vi.fn() }),
