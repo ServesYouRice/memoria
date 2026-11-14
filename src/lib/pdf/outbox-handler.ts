@@ -19,6 +19,7 @@ import { z } from "zod";
 import { createLogger } from "@/lib/logger";
 import { OutboxDeferError, type OutboxHandler } from "@/lib/outbox/types";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { deferWhileCanvasInTrash } from "@/lib/canvas/trashed-canvas-jobs";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { parseCanvasItemContent } from "@/lib/validation/canvas-item";
@@ -131,11 +132,12 @@ export function createPdfReadHandler(
       select: {
         canvasId: true,
         content: true,
-        canvas: { select: { userId: true } },
+        canvas: { select: { userId: true, deletedAt: true } },
       },
     });
     const parsed = pdfContentSchema.safeParse(item?.content);
     if (!item || !parsed.success) return;
+    deferWhileCanvasInTrash(item.canvas);
     const content = parsed.data;
     const fileUrl = pdfFileUrl(content.assetId);
 

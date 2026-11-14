@@ -22,7 +22,11 @@ export const DELETE = withAuth<unknown, RouteContext>(
       "EDIT",
     );
     const { count } = await prisma.itemVideoNote.deleteMany({
-      where: { id: noteId, itemId, item: { deletedAt: null } },
+      where: {
+        id: noteId,
+        itemId,
+        item: { deletedAt: null, canvas: { deletedAt: null } },
+      },
     });
     if (count === 0) throw new NotFoundError("Note not found");
     return new NextResponse(null, { status: 204 });

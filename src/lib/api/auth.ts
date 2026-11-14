@@ -179,8 +179,10 @@ export async function requireItemAccess(
   userEmail: string,
   requiredLevel: "VIEW" | "COMMENT" | "EDIT",
 ): Promise<CanvasAccessLevel> {
+  // An item on a canvas in Trash reads as missing (IMP-132), like an
+  // unknown id, so its routes say nothing about the item.
   const item = await prisma.canvasItem.findUnique({
-    where: { id: itemId },
+    where: { id: itemId, canvas: { deletedAt: null } },
     select: {
       canvasId: true,
     },

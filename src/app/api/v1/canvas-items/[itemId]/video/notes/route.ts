@@ -31,7 +31,7 @@ export const POST = withAuthValidation(
       "EDIT",
     );
     const item = await prisma.canvasItem.findFirst({
-      where: { id: itemId, deletedAt: null },
+      where: { id: itemId, deletedAt: null, canvas: { deletedAt: null } },
       select: { type: true, content: true },
     });
     const target = item ? videoOfItem(item) : null;

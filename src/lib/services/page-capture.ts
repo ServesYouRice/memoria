@@ -28,6 +28,7 @@ import {
   type PrismaClient,
 } from "@/generated/prisma/client";
 import { ApiError, NotFoundError } from "@/lib/errors";
+import { deferWhileCanvasInTrash } from "@/lib/canvas/trashed-canvas-jobs";
 import { createLogger } from "@/lib/logger";
 import { enqueueOutboxJobs } from "@/lib/outbox/enqueue";
 import type { OutboxHandler } from "@/lib/outbox/types";
@@ -223,11 +224,12 @@ export function createPageCaptureHandler(
       select: {
         canvasId: true,
         content: true,
-        canvas: { select: { userId: true } },
+        canvas: { select: { userId: true, deletedAt: true } },
       },
     });
     const url = (item?.content as { url?: unknown } | null)?.url;
     if (!item || typeof url !== "string" || !url) return;
+    deferWhileCanvasInTrash(item.canvas);
     const userId = item.canvas.userId;
     const user = await prisma.user.findUnique({
       where: { id: userId },

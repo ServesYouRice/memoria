@@ -22,7 +22,10 @@ export async function purgeCanvas(
 
   // The asset rows cascade away with the canvas, so each charged
   // asset's quota is released here, once, and every object not yet
-  // DELETED gets a delete job.
+  // DELETED gets a delete job. That covers every file a card of this canvas
+  // keeps: a PDF card's file (IMP-113) and a saved link's page picture and
+  // PDF (IMP-110) are uploads of the card's own canvas, so they need no
+  // per-item release (`releasePdfUploadsOf` releases a subset of these).
   await releaseCanvasUploads(tx, canvasId);
   const deleted = await tx.canvas.delete({ where: { id: canvasId } });
   // Nothing references the stored thumbnail once the row is gone.

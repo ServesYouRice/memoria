@@ -21,7 +21,7 @@ interface RouteContext {
 
 async function loadVideo(itemId: string) {
   const item = await prisma.canvasItem.findFirst({
-    where: { id: itemId, deletedAt: null },
+    where: { id: itemId, deletedAt: null, canvas: { deletedAt: null } },
     select: { type: true, content: true, canvas: { select: { userId: true } } },
   });
   const target = item ? videoOfItem(item) : null;

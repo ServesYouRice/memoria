@@ -30,7 +30,7 @@ export const GET = withAuth<unknown, RouteContext>(
     );
 
     const item = await prisma.canvasItem.findFirst({
-      where: { id: itemId, deletedAt: null },
+      where: { id: itemId, deletedAt: null, canvas: { deletedAt: null } },
       select: { type: true, content: true, pageCapture: true },
     });
     const url = (item?.content as { url?: unknown } | null)?.url;

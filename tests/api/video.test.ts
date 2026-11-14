@@ -300,7 +300,11 @@ describe("DELETE /api/v1/canvas-items/{itemId}/video/notes/{noteId}", () => {
     );
     expect(response.status).toBe(204);
     expect(mocks.noteDeleteMany).toHaveBeenCalledWith({
-      where: { id: "n1", itemId: "item-1", item: { deletedAt: null } },
+      where: {
+        id: "n1",
+        itemId: "item-1",
+        item: { deletedAt: null, canvas: { deletedAt: null } },
+      },
     });
     mocks.noteDeleteMany.mockResolvedValueOnce({ count: 0 });
     expect(

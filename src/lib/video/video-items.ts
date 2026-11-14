@@ -17,6 +17,7 @@
 
 import { z } from "zod";
 import { ItemType, Prisma, type PrismaClient } from "@/generated/prisma/client";
+import { deferWhileCanvasInTrash } from "@/lib/canvas/trashed-canvas-jobs";
 import { createLogger } from "@/lib/logger";
 import { enqueueOutboxJobs } from "@/lib/outbox/enqueue";
 import type { OutboxHandler } from "@/lib/outbox/types";
@@ -327,11 +328,12 @@ export function createVideoTranscriptHandler(
       select: {
         type: true,
         content: true,
-        canvas: { select: { userId: true } },
+        canvas: { select: { userId: true, deletedAt: true } },
       },
     });
     const target = item ? videoOfItem(item) : null;
     if (!item || !target || target.video.provider !== "youtube") return;
+    deferWhileCanvasInTrash(item.canvas);
     const userId = item.canvas.userId;
     const owner = await prisma.user.findUnique({
       where: { id: userId },
