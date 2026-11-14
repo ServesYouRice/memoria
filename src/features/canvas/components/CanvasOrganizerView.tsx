@@ -56,6 +56,9 @@ interface CanvasOrganizerViewProps {
 }
 
 function getItemSummary(item: CanvasItem) {
+  if (item.type === "PDF") {
+    return (item.content as { filename?: string }).filename || "PDF";
+  }
   if (item.type === "TABLE") {
     const text = (item.content as { text?: string }).text ?? "";
     return text.slice(0, 140) || "Empty table";

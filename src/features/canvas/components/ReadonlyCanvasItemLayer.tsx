@@ -25,6 +25,7 @@ import {
   isFrameItemContent,
   isImageContent,
   isNoteContent,
+  isPdfContent,
   isPollContent,
   isShapeContent,
   isTableContent,
@@ -34,6 +35,7 @@ import { tableCellKey } from "@/lib/tables/table-content";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { useThemeMode } from "@/lib/theme-context";
 import { DotOverlay } from "@/features/canvas/components/GridOverlay";
+import { PdfCardFace } from "@/features/canvas/components/PdfItem";
 import { NOTE_STYLE, noteColorsFor } from "@/features/canvas/lib/note-colors";
 import {
   CANVAS_PALETTE,
@@ -155,6 +157,21 @@ function ReadonlyTableItem({ item }: { item: CanvasItem }) {
           </Group>
         )),
       )}
+    </Group>
+  );
+}
+
+function ReadonlyPdfItem({ item }: { item: CanvasItem }) {
+  const palette = useCanvasPalette();
+  if (!isPdfContent(item.content)) return null;
+  return (
+    <Group x={item.positionX} y={item.positionY}>
+      <PdfCardFace
+        content={item.content}
+        width={item.width}
+        height={item.height}
+        palette={palette}
+      />
     </Group>
   );
 }
@@ -588,6 +605,10 @@ export function ReadonlyCanvasItem({
 
   if (item.type === ItemType.TABLE) {
     return <ReadonlyTableItem item={item} />;
+  }
+
+  if (item.type === ItemType.PDF) {
+    return <ReadonlyPdfItem item={item} />;
   }
 
   return null;
