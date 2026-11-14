@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-116](tasks/IMP-116.md) | Shared JavaScript fits its size budget again | |
 | [IMP-117](tasks/IMP-117.md) | The durable-canvas browser test matches how viewports are saved | |
 
 ## WAITING

@@ -11,6 +11,15 @@ describe("explicit Sentry configuration", () => {
     );
   });
 
+  it("loads browser telemetry only when configured, outside the shared JavaScript (IMP-116)", () => {
+    const client = readFileSync("src/instrumentation-client.ts", "utf8");
+    expect(client).toContain("Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN)");
+    expect(client).toContain(
+      'if (sentryEnabled) void import("../sentry.client.config")',
+    );
+    expect(client).not.toMatch(/^import ["']\.\.\/sentry\.client\.config["']/m);
+  });
+
   it("imports server and edge telemetry only when configured", () => {
     const instrumentation = readFileSync("src/instrumentation.ts", "utf8");
     expect(instrumentation).toContain("Boolean(process.env.SENTRY_DSN)");

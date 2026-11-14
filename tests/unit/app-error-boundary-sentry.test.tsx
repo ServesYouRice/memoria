@@ -38,16 +38,30 @@ describe("App Router error boundaries report to Sentry", () => {
     expect(sentry.captureException).toHaveBeenCalledWith(error);
   });
 
-  it("loads the browser Sentry config from the client instrumentation file", async () => {
+  it("loads the browser Sentry config from the client instrumentation file only when configured", async () => {
     // Next.js loads instrumentation-client next to the app directory (src/).
     expect(existsSync("src/instrumentation-client.ts")).toBe(true);
+    const entry = "../../src/instrumentation-client";
+
+    // IMP-116: without a public DSN no Sentry code is loaded at all.
     sentry.init.mockClear();
     vi.resetModules();
-    const entry = "../../src/instrumentation-client";
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
     await import(/* @vite-ignore */ entry);
-    expect(sentry.init).toHaveBeenCalledTimes(1);
-    expect(sentry.init.mock.calls[0]?.[0]).toMatchObject({
-      enabled: false,
-    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sentry.init).not.toHaveBeenCalled();
+
+    // A production build with a DSN loads it and turns it on.
+    sentry.init.mockClear();
+    vi.resetModules();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://key@sentry.example/1");
+    try {
+      await import(/* @vite-ignore */ entry);
+      await vi.waitFor(() => expect(sentry.init).toHaveBeenCalledTimes(1));
+      expect(sentry.init.mock.calls[0]?.[0]).toMatchObject({ enabled: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
