@@ -15,6 +15,7 @@ import {
   isFrameItemContent,
   isEmbedContent,
   isPollContent,
+  isTableContent,
 } from "@/types/canvas";
 import { SelectionBox } from "@/features/canvas/components/SelectionBox";
 import type { SelectionBox as SelectionBoxState } from "@/lib/hooks/use-selection-box";
@@ -29,6 +30,7 @@ import { TextItem } from "@/features/canvas/components/TextItem";
 import { FrameItem } from "@/features/canvas/components/FrameItem";
 import { EmbedItem } from "@/features/canvas/components/EmbedItem";
 import { PollItem } from "@/features/canvas/components/PollItem";
+import { TableItem } from "@/features/canvas/components/TableItem";
 import { isStructuralCanvasItem } from "@/features/canvas/search";
 
 interface CanvasItemLayerProps {
@@ -137,6 +139,9 @@ export const CanvasItemLayer = React.memo(function CanvasItemLayer({
         }
         if (item.type === ItemType.POLL && isPollContent(item.content)) {
           rendered = <PollItem {...adapterProps} />;
+        }
+        if (item.type === ItemType.TABLE && isTableContent(item.content)) {
+          rendered = <TableItem {...adapterProps} />;
         }
         if (!rendered) return null;
 

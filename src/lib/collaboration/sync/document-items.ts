@@ -17,7 +17,13 @@ import {
   ITEM_GEOMETRY_KEYS,
   NOTE_COLOR_KEY,
   NOTE_TEXT_KEY,
+  TABLE_CELLS_KEY,
 } from "./protocol";
+import {
+  isTableContentShape,
+  normalizeTable,
+  type TableStructure,
+} from "@/lib/tables/table-content";
 import { DEFAULT_NOTE_COLOR, isNoteColorName } from "@/lib/note-colors";
 import {
   canonicalNoteDocument,
@@ -69,6 +75,37 @@ export function isNoteTextFragment(value: unknown): value is Y.XmlFragment {
   return value instanceof Y.XmlFragment && !(value instanceof Y.XmlElement);
 }
 
+/** IMP-108: a table's shared cells, or null. */
+export function tableCellsMap(map: ItemMap): Y.Map<unknown> | null {
+  const cells = map.get(TABLE_CELLS_KEY);
+  return cells instanceof Y.Map ? cells : null;
+}
+
+/** The cells as a plain record; entries that are not text are skipped. */
+export function readTableCells(cells: Y.Map<unknown> | null) {
+  const record: Record<string, string> = {};
+  cells?.forEach((value, key) => {
+    if (typeof value === "string") record[key] = value;
+  });
+  return record;
+}
+
+/**
+ * A table item's content from its structure and its shared cells. Cells of
+ * rows or columns another person removed at the same time are dropped here.
+ */
+function readTableContent(map: ItemMap): unknown {
+  const structure = map.get("content");
+  if (!structure || typeof structure !== "object") return null;
+  const { columns, rows } = structure as Partial<TableStructure>;
+  if (!Array.isArray(columns) || !Array.isArray(rows)) return null;
+  return normalizeTable({
+    columns,
+    rows,
+    cells: readTableCells(tableCellsMap(map)),
+  });
+}
+
 /** Structural JSON equality that ignores object key order (jsonb reorders keys). */
 export function jsonEqual(left: unknown, right: unknown): boolean {
   if (left === right) return true;
@@ -112,6 +149,10 @@ export function readItemState(
   const [positionX, positionY, width, height, zIndex] = numbers as number[];
   const tags = map.get("tags");
   let content: unknown = map.get("content");
+  if (type === ItemType.TABLE) {
+    content = readTableContent(map);
+    if (!content) return null;
+  }
   if (type === ItemType.NOTE) {
     const fragment = map.get(NOTE_TEXT_KEY);
     if (!isNoteTextFragment(fragment)) return null;
@@ -159,6 +200,14 @@ function fillItemMap(map: ItemMap, state: CanvasItemState, fresh: boolean) {
   for (const key of ITEM_GEOMETRY_KEYS) set(key, state[key]);
   set("tags", [...state.tags]);
 
+  if (state.type === ItemType.TABLE && isTableContentShape(state.content)) {
+    if (map.has(NOTE_TEXT_KEY)) map.delete(NOTE_TEXT_KEY);
+    if (map.has(NOTE_COLOR_KEY)) map.delete(NOTE_COLOR_KEY);
+    fillTableCells(map, state.content, set, fresh);
+    return;
+  }
+
+  if (map.has(TABLE_CELLS_KEY)) map.delete(TABLE_CELLS_KEY);
   if (state.type !== ItemType.NOTE) {
     if (map.has(NOTE_TEXT_KEY)) map.delete(NOTE_TEXT_KEY);
     if (map.has(NOTE_COLOR_KEY)) map.delete(NOTE_COLOR_KEY);
@@ -197,6 +246,30 @@ function fillItemMap(map: ItemMap, state: CanvasItemState, fresh: boolean) {
     }
   }
   writeNoteFragment(fragment as Y.XmlFragment, document);
+}
+
+/**
+ * IMP-108: the structure is one value; each cell is set or removed on its
+ * own, and only when it differs, so concurrent edits of other cells stay.
+ */
+function fillTableCells(
+  map: ItemMap,
+  table: { columns: unknown[]; rows: unknown[]; cells: Record<string, string> },
+  set: (key: string, value: unknown) => void,
+  fresh: boolean,
+) {
+  set("content", { columns: table.columns, rows: table.rows });
+  let cells = tableCellsMap(map);
+  if (!cells || fresh) {
+    cells = new Y.Map<unknown>();
+    map.set(TABLE_CELLS_KEY, cells);
+  }
+  for (const key of Array.from(cells.keys())) {
+    if (!(key in table.cells)) cells.delete(key);
+  }
+  for (const [key, value] of Object.entries(table.cells)) {
+    if (cells.get(key) !== value) cells.set(key, value);
+  }
 }
 
 /**

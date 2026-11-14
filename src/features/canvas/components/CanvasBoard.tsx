@@ -50,6 +50,12 @@ import {
 } from "@/lib/ai/autopilot-service";
 import { useObservedStageSize } from "@/features/canvas/components/use-observed-stage-size";
 import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
+import { TableCellDialog } from "@/features/canvas/components/TableCellDialog";
+import {
+  createTable,
+  tableHeight,
+  tableWidth,
+} from "@/lib/tables/table-content";
 import { resolveBoardCapabilities } from "@/features/canvas/hooks/time-machine-capabilities";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 import { UploadNoteOffer } from "./UploadNoteOffer";
@@ -806,6 +812,26 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         zIndex: allItems.length + 1,
         tags: [],
       });
+    }
+  };
+
+  const handleAddTable = async () => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
+    const table = createTable(3, 3);
+    try {
+      await createItem({
+        content: table,
+        type: ItemType.TABLE,
+        positionX: center.x - tableWidth(table) / 2,
+        positionY: center.y - tableHeight(table) / 2,
+        width: tableWidth(table),
+        height: tableHeight(table),
+        canvasId: canvasId,
+        zIndex: allItems.length + 1,
+        tags: [],
+      });
+    } catch {
+      toast.error("The table was not added.");
     }
   };
 
@@ -1578,6 +1604,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                   ? () => setPollDialogOpen(true)
                   : undefined
               }
+              onAddTable={() => void handleAddTable()}
             />
           )}
           {!isPresentationMode && (
@@ -1876,6 +1903,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         </Box>
       )}
 
+      <TableCellDialog items={allItems} />
       <ArrowLabelDialog
         content={(labelArrow?.content as ArrowContent | undefined) ?? null}
         onClose={() => setLabelArrow(null)}

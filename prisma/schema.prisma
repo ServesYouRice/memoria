@@ -393,6 +393,7 @@ enum ItemType {
   FRAME
   EMBED
   POLL
+  TABLE
 }
 
 enum ShareRole {

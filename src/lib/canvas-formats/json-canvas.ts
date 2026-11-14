@@ -23,6 +23,7 @@ import {
   type TextContent,
 } from "@/types/canvas";
 import { NOTE_COLOR_NAMES, type NoteColorName } from "@/lib/note-colors";
+import { tableToMarkdown, type TableContent } from "@/lib/tables/table-content";
 import {
   MAX_FILE_ELEMENTS,
   bump,
@@ -136,6 +137,14 @@ export function toJsonCanvas(items: readonly CanvasItem[]): {
           ...box(item),
           type: "text",
           text: (item.content as TextContent).text ?? "",
+        });
+        break;
+      case ItemType.TABLE:
+        // JSON Canvas has no tables; a Markdown table keeps the cells.
+        nodes.push({
+          ...box(item),
+          type: "text",
+          text: tableToMarkdown(item.content as TableContent),
         });
         break;
       case ItemType.BOOKMARK:

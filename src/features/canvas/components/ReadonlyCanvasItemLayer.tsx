@@ -27,8 +27,10 @@ import {
   isNoteContent,
   isPollContent,
   isShapeContent,
+  isTableContent,
   isTextItemContent,
 } from "@/types/canvas";
+import { tableCellKey } from "@/lib/tables/table-content";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { useThemeMode } from "@/lib/theme-context";
 import { DotOverlay } from "@/features/canvas/components/GridOverlay";
@@ -104,6 +106,54 @@ function ReadonlyImageItem({ item }: { item: CanvasItem }) {
           fill={palette.textMuted}
           align="center"
         />
+      )}
+    </Group>
+  );
+}
+
+function ReadonlyTableItem({ item }: { item: CanvasItem }) {
+  const palette = useCanvasPalette();
+  if (!isTableContent(item.content)) return null;
+  const table = item.content;
+  const rowTop = table.rows.map((_, index) =>
+    table.rows.slice(0, index).reduce((sum, row) => sum + row.height, 0),
+  );
+  const columnLeft = table.columns.map((_, index) =>
+    table.columns
+      .slice(0, index)
+      .reduce((sum, column) => sum + column.width, 0),
+  );
+  return (
+    <Group x={item.positionX} y={item.positionY}>
+      {table.rows.map((row, rowIndex) =>
+        table.columns.map((column, columnIndex) => (
+          <Group
+            key={`${row.id}:${column.id}`}
+            x={columnLeft[columnIndex]}
+            y={rowTop[rowIndex]}
+          >
+            <Rect
+              width={column.width}
+              height={row.height}
+              fill={rowIndex === 0 ? palette.surfaceSubtle : palette.surface}
+              stroke={palette.border}
+              strokeWidth={1}
+            />
+            <Text
+              x={8}
+              y={8}
+              width={Math.max(0, column.width - 16)}
+              height={Math.max(0, row.height - 16)}
+              text={table.cells[tableCellKey(row.id, column.id)] ?? ""}
+              fontSize={14}
+              fontStyle={rowIndex === 0 ? "bold" : "normal"}
+              fill={palette.text}
+              verticalAlign="middle"
+              wrap="word"
+              ellipsis
+            />
+          </Group>
+        )),
       )}
     </Group>
   );
@@ -534,6 +584,10 @@ function ReadonlyCanvasItem({
 
   if (item.type === ItemType.POLL) {
     return <ReadonlyPollItem item={item} />;
+  }
+
+  if (item.type === ItemType.TABLE) {
+    return <ReadonlyTableItem item={item} />;
   }
 
   return null;

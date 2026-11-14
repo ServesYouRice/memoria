@@ -28,6 +28,11 @@ export const DOCUMENT_ITEMS_KEY = "items";
 export const NOTE_TEXT_KEY = "text";
 /** IMP-085: a note's colour, one of `NOTE_COLOR_NAMES`; absent means yellow. */
 export const NOTE_COLOR_KEY = "color";
+/**
+ * IMP-108: a table's cells, one entry per cell ("row:col" → text), so edits
+ * to different cells merge. The table's structure stays in "content".
+ */
+export const TABLE_CELLS_KEY = "cells";
 
 export const ITEM_GEOMETRY_KEYS = [
   "positionX",
@@ -46,6 +51,7 @@ export const ITEM_KEYS = new Set<string>([
   "content",
   NOTE_TEXT_KEY,
   NOTE_COLOR_KEY,
+  TABLE_CELLS_KEY,
 ]);
 
 /**

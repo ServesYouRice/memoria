@@ -20,6 +20,7 @@ import {
   ArrowForward as ArrowIcon,
   Edit as DrawIcon,
   BallotOutlined as PollIcon,
+  TableChartOutlined as TableIcon,
 } from "@mui/icons-material";
 import { useCanvasStore, type CanvasTool } from "@/stores/canvasStore";
 import { TOUCH_TARGET } from "@/lib/theme";
@@ -30,6 +31,8 @@ export interface CanvasAddBarProps {
   onAddImage: () => void;
   /** Shown only while polls are switched on (IMP-104). */
   onAddPoll?: () => void;
+  /** Adds a 3 by 3 table (IMP-108). */
+  onAddTable?: () => void;
 }
 
 type BarEntry = {
@@ -95,6 +98,7 @@ export function CanvasAddBar({
   onAddLink,
   onAddImage,
   onAddPoll,
+  onAddTable,
 }: CanvasAddBarProps) {
   const { activeTool, setActiveTool } = useCanvasStore();
 
@@ -172,6 +176,17 @@ export function CanvasAddBar({
             hint: "Ask a question everyone can vote on",
             icon: <PollIcon fontSize="small" />,
             onClick: onAddPoll,
+          },
+        ]
+      : []),
+    ...(onAddTable
+      ? [
+          {
+            key: "table",
+            label: "Table",
+            hint: "Add a table with rows and columns",
+            icon: <TableIcon fontSize="small" />,
+            onClick: onAddTable,
           },
         ]
       : []),

@@ -4,6 +4,12 @@
  */
 
 import { isLaunchCapabilityEnabled } from "@/lib/product-surfaces";
+import {
+  isTableContentShape,
+  type TableContent,
+} from "@/lib/tables/table-content";
+
+export type { TableContent } from "@/lib/tables/table-content";
 
 export enum ItemType {
   NOTE = "NOTE",
@@ -16,6 +22,7 @@ export enum ItemType {
   FRAME = "FRAME",
   EMBED = "EMBED",
   POLL = "POLL",
+  TABLE = "TABLE",
 }
 
 /**
@@ -250,7 +257,8 @@ export type ItemContent =
   | TextContent
   | FrameContent
   | EmbedContent
-  | PollContent;
+  | PollContent
+  | TableContent;
 
 /**
  * Full canvas item (matches database schema)
@@ -408,6 +416,11 @@ export function isEmbedContent(content: ItemContent): content is EmbedContent {
 
 export function isPollContent(content: ItemContent): content is PollContent {
   return "question" in content && "options" in content;
+}
+
+/** IMP-108: type-scoped; use after checking `item.type === ItemType.TABLE`. */
+export function isTableContent(content: unknown): content is TableContent {
+  return isTableContentShape(content);
 }
 
 /**

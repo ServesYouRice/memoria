@@ -25,6 +25,7 @@ import {
   ITEM_KEYS,
   NOTE_COLOR_KEY,
   NOTE_TEXT_KEY,
+  TABLE_CELLS_KEY,
   isNewCanvasItemId,
   type ItemGeometryKey,
 } from "./protocol";
@@ -33,7 +34,15 @@ import {
   type ItemMap,
   isNoteTextFragment,
   jsonEqual,
+  readTableCells,
 } from "./document-items";
+import {
+  TABLE_MAX_CELL_CHARS,
+  TABLE_MAX_COLUMNS,
+  TABLE_MAX_ROWS,
+  parseTableCellKey,
+  tableStructureSchema,
+} from "@/lib/tables/table-content";
 import { readNoteFragment } from "./note-fragment";
 import { DEFAULT_NOTE_COLOR } from "@/lib/note-colors";
 
@@ -69,6 +78,8 @@ export interface TouchedItems {
   ids: Set<string>;
   fields: Map<string, Set<string>>;
   noteText: Set<string>;
+  /** IMP-108: items whose table cells changed. */
+  tableCells: Set<string>;
 }
 
 const tagsSchema = z
@@ -92,6 +103,7 @@ export function collectTouchedItems(
     ids: new Set(),
     fields: new Map(),
     noteText: new Set(),
+    tableCells: new Set(),
   };
   const itemsType = items as unknown as AnyType;
 
@@ -132,8 +144,16 @@ export function collectTouchedItems(
       continue;
     }
 
-    // A nested type inside an item: only the note text may hold one.
-    if (path[0]?._item?.parentSub !== NOTE_TEXT_KEY)
+    // A nested type inside an item: only note text and table cells (one
+    // flat map of text) may hold one.
+    const nestedKey = path[0]?._item?.parentSub;
+    if (nestedKey === TABLE_CELLS_KEY) {
+      if (path.length !== 1 || !(changedType instanceof Y.Map))
+        reject("Table cells hold plain text only.");
+      touched.tableCells.add(itemId);
+      continue;
+    }
+    if (nestedKey !== NOTE_TEXT_KEY)
       reject("Only note text may hold nested content.");
     touched.noteText.add(itemId);
   }
@@ -173,7 +193,46 @@ function readTags(map: ItemMap): string[] {
  * Non-note content must already be in the form the content schema produces,
  * so the row the server stores and the document every client sees agree.
  */
+/**
+ * IMP-108: a table keeps its structure in "content" (already normalized) and
+ * each cell in the cells map. Cells must be text within the limit under a
+ * well-formed key; cells of rows or columns removed at the same time by
+ * someone else are allowed in the document and dropped from the row.
+ */
+function readTableItemContent(map: ItemMap): unknown {
+  if (map.has(NOTE_TEXT_KEY)) reject("Only notes hold rich text.");
+  if (map.has(NOTE_COLOR_KEY)) reject("Only notes have a note colour.");
+  const structure = map.get("content");
+  if (structure === undefined || structure instanceof Y.AbstractType)
+    reject("Item content must be a plain value.");
+  const parsed = tableStructureSchema.safeParse(structure);
+  if (!parsed.success || !jsonEqual(parsed.data, structure))
+    reject("Invalid table.");
+  const cells = map.get(TABLE_CELLS_KEY);
+  if (!(cells instanceof Y.Map)) reject("A table needs its cells.");
+  if (cells.size > TABLE_MAX_ROWS * TABLE_MAX_COLUMNS)
+    reject("The table has too many cells.");
+  cells.forEach((value, key) => {
+    if (
+      typeof value !== "string" ||
+      value.length > TABLE_MAX_CELL_CHARS ||
+      !parseTableCellKey(key)
+    )
+      reject("Invalid table cell.");
+  });
+  try {
+    return parseCanvasItemContent(ItemType.TABLE, {
+      ...parsed.data,
+      cells: readTableCells(cells),
+    });
+  } catch {
+    reject("Invalid table.");
+  }
+}
+
 function readContent(map: ItemMap, type: ItemType): unknown {
+  if (type === ItemType.TABLE) return readTableItemContent(map);
+  if (map.has(TABLE_CELLS_KEY)) reject("Only tables hold cells.");
   if (map.has(NOTE_TEXT_KEY)) reject("Only notes hold rich text.");
   if (map.has(NOTE_COLOR_KEY)) reject("Only notes have a note colour.");
   const value = map.get("content");
@@ -191,6 +250,7 @@ function readContent(map: ItemMap, type: ItemType): unknown {
 
 function readNoteContent(map: ItemMap): unknown {
   if (map.has("content")) reject("Notes keep their content as rich text.");
+  if (map.has(TABLE_CELLS_KEY)) reject("Only tables hold cells.");
   const fragment = map.get(NOTE_TEXT_KEY);
   if (!isNoteTextFragment(fragment)) reject("Notes need rich text.");
   // Only the stored form: a listed colour other than the default yellow.
@@ -310,6 +370,10 @@ export function validateTouchedItems(
     if (touched.noteText.has(id)) {
       if (type !== ItemType.NOTE) reject("Only notes hold rich text.");
       fields.content = readNoteContent(map);
+    }
+    if (touched.tableCells.has(id)) {
+      if (type !== ItemType.TABLE) reject("Only tables hold cells.");
+      fields.content = readContent(map, type);
     }
     if (Object.keys(fields).length > 0)
       changes.push({ kind: "update", id, type, fields, replaced: false });

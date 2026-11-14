@@ -41,6 +41,7 @@ import {
   isNoteContent,
   isPollContent,
   isShapeContent,
+  isTableContent,
   isTextContent,
 } from "@/types/canvas";
 import { notePlainText } from "@/features/canvas/search";
@@ -56,6 +57,10 @@ const NUDGE_STEP_LARGE = 10;
 export function describeItemHeading(item: CanvasItem): string {
   const content = item.content;
 
+  // Tables carry a `text` too, so they are checked before notes.
+  if (item.type === ItemType.TABLE && isTableContent(content)) {
+    return `Table, ${content.rows.length} rows by ${content.columns.length} columns`;
+  }
   if (isNoteContent(content)) {
     const text = notePlainText(content).trim();
     return text ? text.split("\n")[0]!.slice(0, 80) : "Empty note";
@@ -113,6 +118,9 @@ export function describeItemDetail(
       : "Unattached connection.";
   }
 
+  if (item.type === ItemType.TABLE && isTableContent(content)) {
+    return content.text.slice(0, 280) || "Empty table";
+  }
   if (isNoteContent(content)) {
     return notePlainText(content).slice(0, 280);
   }

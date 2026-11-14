@@ -9,6 +9,7 @@ import {
   isBookmarkContent,
   isImageContent,
   isPollContent,
+  isTableContent,
   type NoteContent,
   type PollContent,
   type TextContent,
@@ -18,6 +19,7 @@ import {
 import { apiFetch } from "@/lib/api/fetch-client";
 import type { PollResult } from "@/lib/polls/shared";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
+import { tableToMarkdown } from "@/lib/tables/table-content";
 
 /** A canvas larger than this many listing pages fails the export loudly. */
 const MAX_EXPORT_PAGES = 200;
@@ -184,6 +186,11 @@ export async function exportToMarkdown(
         if (isImageContent(item.content)) {
           const imageContent = item.content as ImageContent;
           md += `![${imageContent.alt || "Image"}](${imageContent.url})\n\n`;
+        }
+        break;
+      case ItemType.TABLE:
+        if (isTableContent(item.content)) {
+          md += `${tableToMarkdown(item.content)}\n\n`;
         }
         break;
       // Add other types as needed
