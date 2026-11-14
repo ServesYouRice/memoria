@@ -29,7 +29,6 @@ to RUN-ME-3).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-148](tasks/IMP-148.md) | Release command: build, tag, push, digest; stop on high findings | - |
 | [IMP-149](tasks/IMP-149.md) | Least-privilege runtime database role | - |
 | [IMP-150](tasks/IMP-150.md) | Expand/contract rule for migrations; `DEPLOYMENT.md` | - |
 | [IMP-151](tasks/IMP-151.md) | OpenTelemetry; drop `@vercel/analytics`; runtime browser Sentry address | - |

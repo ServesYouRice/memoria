@@ -57,6 +57,7 @@
     "check-bundle": "node scripts/check-bundle-size.mjs",
     "check-schema-drift": "node scripts/check-schema-drift.mjs",
     "gate": "node scripts/gate.mjs",
+    "release": "node scripts/release.mjs",
     "lint-staged": "lint-staged",
     "prepare": "husky"
   },
