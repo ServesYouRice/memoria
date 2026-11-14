@@ -44,6 +44,8 @@ describe("shouldApplyStrictAuthRateLimit credential routes", () => {
     ["GET", "/api/auth/get-session", false],
     ["POST", "/api/v1/auth/register", true],
     ["POST", "/api/v1/canvases", false],
+    ["POST", "/api/v1/registration-invites", true],
+    ["GET", "/api/v1/registration-invites", false],
   ])("%s %s -> %s", (method, path, expected) => {
     expect(shouldApplyStrictAuthRateLimit(path, method)).toBe(expected);
   });

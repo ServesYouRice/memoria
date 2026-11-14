@@ -5,9 +5,11 @@ import { decryptSecret } from "@/lib/agents/crypto";
 import { sendEmail, sendEmailVerification } from "@/lib/email";
 import { env } from "@/lib/env";
 import {
+  registrationInviteTemplate,
   shareDecisionTemplate,
   shareInvitationTemplate,
 } from "@/lib/email/templates";
+import { registrationInviteUrl } from "@/lib/auth/registration-invites";
 
 const payloadSchema = z.object({ verificationId: z.string().cuid() }).strict();
 
@@ -165,6 +167,54 @@ export function createShareDecisionEmailHandler(
         email: invitation.invitedBy.email,
         name: invitation.invitedBy.name || undefined,
       },
+      ...template,
+      deliveryId: job.id,
+      signal: context?.signal,
+    });
+  };
+}
+
+const registrationInvitePayloadSchema = z
+  .object({ inviteId: z.string().cuid() })
+  .strict();
+
+/**
+ * IMP-153: mails a sign-up invite. A revoked, used or expired invite sends
+ * nothing; the owner already saw the link, so a failed send loses nothing.
+ */
+export function createRegistrationInviteEmailHandler(
+  prisma: PrismaClient,
+  send = sendEmail,
+): OutboxHandler {
+  return async (job, context) => {
+    const { inviteId } = registrationInvitePayloadSchema.parse(job.payload);
+    const invite = await prisma.registrationInvite.findUnique({
+      where: { id: inviteId },
+      select: {
+        email: true,
+        expiresAt: true,
+        usedAt: true,
+        deliverySecret: true,
+      },
+    });
+    if (
+      !invite ||
+      invite.usedAt ||
+      invite.expiresAt <= new Date() ||
+      !invite.deliverySecret
+    )
+      return;
+    const token = decryptSecret(invite.deliverySecret);
+    const days = Math.max(
+      1,
+      Math.round((invite.expiresAt.getTime() - Date.now()) / 86_400_000),
+    );
+    const template = registrationInviteTemplate({
+      invitationUrl: registrationInviteUrl(env.AUTH_URL, token, invite.email),
+      expiresIn: days === 1 ? "1 day" : `${days} days`,
+    });
+    await send({
+      to: { email: invite.email },
       ...template,
       deliveryId: job.id,
       signal: context?.signal,

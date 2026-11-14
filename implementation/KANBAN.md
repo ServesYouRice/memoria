@@ -31,7 +31,6 @@ to RUN-ME-3).
 | ---- | ------- | ------- |
 | [IMP-151](tasks/IMP-151.md) | OpenTelemetry; drop `@vercel/analytics`; runtime browser Sentry address | - |
 | [IMP-152](tasks/IMP-152.md) | Direct browser uploads; password-reset mail through the outbox | - |
-| [IMP-153](tasks/IMP-153.md) | Owner invite tool (Settings page and command) for invite-only sign-up | DEC-024 |
 
 ## WAITING
 

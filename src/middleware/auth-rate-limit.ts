@@ -38,8 +38,9 @@ const SENSITIVE_POST_PREFIXES: ReadonlyArray<[string, AuthRateLimitGroup]> = [
 ];
 
 /**
- * Account routes that verify the current password (Argon2). Matched on the
- * exact method and path so the account exports and other reads stay out.
+ * Account routes that verify the current password (Argon2) or send mail.
+ * Matched on the exact method and path so the account exports and other
+ * reads stay out.
  */
 const SENSITIVE_ACCOUNT_ROUTES: ReadonlyArray<{
   method: string;
@@ -47,6 +48,8 @@ const SENSITIVE_ACCOUNT_ROUTES: ReadonlyArray<{
 }> = [
   { method: "POST", pathname: "/api/v1/users/change-password" },
   { method: "DELETE", pathname: "/api/v1/users/account" },
+  // IMP-153: each sign-up invite can send an email.
+  { method: "POST", pathname: "/api/v1/registration-invites" },
 ];
 
 /**

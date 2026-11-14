@@ -29,7 +29,7 @@ type InviteConsumer = {
         usedAt: null;
         expiresAt: { gt: Date };
       };
-      data: { usedAt: Date };
+      data: { usedAt: Date; deliverySecret: null };
     }): Promise<{ count: number }>;
   };
 };
@@ -81,7 +81,8 @@ export async function consumeRegistrationAdmission(
       usedAt: null,
       expiresAt: { gt: now },
     },
-    data: { usedAt: now },
+    // A used invite keeps no copy of its link (IMP-153).
+    data: { usedAt: now, deliverySecret: null },
   });
   if (result.count !== 1) throw unavailable();
 }

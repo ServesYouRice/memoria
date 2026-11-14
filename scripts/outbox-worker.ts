@@ -4,6 +4,7 @@ import { runOutboxWorker } from "../src/lib/outbox/worker";
 import { createUploadDeleteHandler } from "../src/lib/uploads/outbox-handler";
 import {
   createDeliveryProbeEmailHandler,
+  createRegistrationInviteEmailHandler,
   createShareDecisionEmailHandler,
   createShareInvitationEmailHandler,
   createVerificationEmailHandler,
@@ -113,6 +114,7 @@ await runOutboxWorker({
     "email.verification": createVerificationEmailHandler(prisma),
     "email.share-invitation": createShareInvitationEmailHandler(prisma),
     "email.share-decision": createShareDecisionEmailHandler(prisma),
+    "email.registration-invite": createRegistrationInviteEmailHandler(prisma),
     "canvas.event.publish": createCanvasEventHandler(prisma),
     "canvas.restore.publish": createCanvasRestoreEventHandler(prisma),
     "retention.trash": createTrashRetentionHandler(prisma),

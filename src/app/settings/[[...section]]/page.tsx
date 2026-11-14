@@ -7,6 +7,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { SettingsContent } from "../SettingsContent";
 import { settingsSectionFromSegments } from "../sections";
 import { iosShortcutUrl, memoriaAddress } from "@/lib/guides/phone-sharing";
+import { isInstanceOwner } from "@/lib/auth/registration-invites";
 
 interface SettingsPageProps {
   params: Promise<{ section?: string[] }>;
@@ -29,6 +30,10 @@ export default async function SettingsPage({ params }: SettingsPageProps) {
     redirect("/auth/login");
   }
 
+  // IMP-153: Invites is the owner's alone; for anyone else it does not exist.
+  const isOwner = await isInstanceOwner(prisma, session.user.id);
+  if ("ownerOnly" in section && section.ownerOnly && !isOwner) notFound();
+
   // IMP-099: someone who only signs in with a login system has no password.
   const hasPassword = Boolean(
     await getCredentialPasswordHash(prisma, session.user.id),
@@ -40,6 +45,7 @@ export default async function SettingsPage({ params }: SettingsPageProps) {
         user={{ ...session.user, hasPassword }}
         section={section.id}
         passkeys={passkeysEnabled()}
+        isOwner={isOwner}
         apiKeys={
           section.id === "api-keys"
             ? { serverAddress: memoriaAddress(), shortcutUrl: iosShortcutUrl() }
