@@ -25,15 +25,16 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
+| [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | |
+| [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | |
+| [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | |
+| [IMP-119](tasks/IMP-119.md) | Settings page shows one copy of each field while it loads | |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster (draft: ServesYouRice/Infra#4) | DEC-004 |
-| [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | IMP-094 |
-| [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | IMP-094 |
-| [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | IMP-094 |
 | [IMP-115](tasks/IMP-115.md) | A hosted paid plan people can sign up and pay for | DEC-019 |
 
 ## USER DECISIONS
