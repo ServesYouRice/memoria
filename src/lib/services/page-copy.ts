@@ -74,6 +74,8 @@ export type StorePageCopyResult = "stored" | "empty" | "over-budget";
  * Keep a link's page text, within the per-link and per-account budgets.
  * Call inside a transaction: the account lock keeps two jobs from both
  * passing the budget check. A link over the account budget keeps no text.
+ * PDF cards (IMP-113) keep their text here too, with their own per-item
+ * `maxBytes`, against the same account budget.
  */
 export async function storePageCopy(
   tx: Store,
@@ -83,9 +85,13 @@ export async function storePageCopy(
     url: string;
     text: string;
     readAt: Date;
+    maxBytes?: number;
   },
 ): Promise<StorePageCopyResult> {
-  const text = trimToBytes(input.text.trim(), PAGE_COPY_BUDGET.maxBytesPerLink);
+  const text = trimToBytes(
+    input.text.trim(),
+    input.maxBytes ?? PAGE_COPY_BUDGET.maxBytesPerLink,
+  );
   if (!text) return "empty";
   const textBytes = Buffer.byteLength(text, "utf8");
   await lockAccount(tx, input.userId);

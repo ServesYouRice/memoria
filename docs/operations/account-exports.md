@@ -22,11 +22,14 @@ Included record types:
 - `profile`
 - `workspace`, `canvas`, `canvasItem`, and `canvasVersion`
 - `itemPageCopy`: the saved readable text of a link's page, with the address
-  that was read, when it was read and any web-archive link (IMP-094)
+  that was read, when it was read and any web-archive link (IMP-094); for a
+  PDF card, the text read from its file, whose address is the upload path
+  (IMP-113)
 - `canvasShare`, `comment`, `activity`, and `notificationPreference`
 - `uploadMetadata`
 - `uploadObjectStart`, ordered `uploadObjectChunk` records, and
   `uploadObjectEnd` for active private upload objects owned by the account
+  (pictures, voice recordings and PDF files)
 
 Password/session material, OAuth/API credentials, verification/invitation
 secrets, model/integration credentials, operational logs, and derived

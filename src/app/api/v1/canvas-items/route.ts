@@ -37,6 +37,7 @@ import {
   decodeItemCursor,
 } from "@/lib/api/bounded-response";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { enqueuePdfReads } from "@/lib/pdf/pdf-items";
 
 /**
  * POST /api/v1/canvas-items
@@ -85,6 +86,8 @@ export async function POST(request: NextRequest) {
           version: created.version,
           operation: "created",
         });
+        // A PDF card's text is read in the background (IMP-113).
+        await enqueuePdfReads(tx, [created]);
         return created;
       });
 

@@ -398,6 +398,7 @@ enum ItemType {
   EMBED
   POLL
   TABLE
+  PDF
 }
 
 enum ShareRole {

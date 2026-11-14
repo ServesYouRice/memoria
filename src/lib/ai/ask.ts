@@ -140,7 +140,8 @@ export async function searchOwnedItems(
   const haystack = Prisma.sql`concat_ws(' ',
     i."content"->>'plainText', i."content"->>'text', i."content"->>'title',
     i."content"->>'description', i."content"->>'url', i."content"->>'question',
-    i."content"->>'alt', array_to_string(i."tags", ' '))`;
+    i."content"->>'alt', i."content"->>'filename',
+    array_to_string(i."tags", ' '))`;
   const patterns = terms.map((term) => `%${term.replace(/[\\%_]/g, "\\$&")}%`);
   const hits = Prisma.join(
     patterns.map(
@@ -152,7 +153,8 @@ export async function searchOwnedItems(
   // Terms are letters and digits only (extractSearchTerms), so OR-joining
   // them is a valid tsquery.
   const tsQuery = Prisma.sql`to_tsquery('english', ${terms.join(" | ")})`;
-  // Words found only in a link's saved page text count too (IMP-094).
+  // Words found only in a link's saved page text (IMP-094) or inside a PDF
+  // (IMP-113) count too.
   const ftsMatch = Prisma.sql`
     ${useFts ? Prisma.sql`OR i."searchVector" @@ ${tsQuery}` : Prisma.empty}
     OR EXISTS (
@@ -315,10 +317,13 @@ export async function retrieveOwnedItems(
     }
   }
   const retrieved = merged.map(toRetrieved);
-  // A short excerpt of each link's saved page, around the question's words.
+  // A short excerpt of each link's saved page or PDF's text (IMP-113),
+  // around the question's words.
   const excerpts = await pageCopyExcerpts(
     prisma,
-    merged.filter((row) => row.type === "BOOKMARK").map((row) => row.id),
+    merged
+      .filter((row) => row.type === "BOOKMARK" || row.type === "PDF")
+      .map((row) => row.id),
     extractSearchTerms(question),
     { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
   );

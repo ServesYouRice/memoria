@@ -1,9 +1,10 @@
 /**
  * Upload API
  *
- * Handles file uploads for canvas images and voice notes with security
- * measures:
- * - File type validation from magic bytes (images; audio only for voice notes)
+ * Handles file uploads for canvas images, voice notes and PDF cards with
+ * security measures:
+ * - File type validation from magic bytes (images; audio only for voice
+ *   notes; PDFs only for PDF cards)
  * - File size limits
  * - Sanitized filenames
  * - Private storage with an authorized read proxy
@@ -32,12 +33,14 @@ import {
   reserveUploadAsset,
 } from "@/lib/uploads/lifecycle";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import { RESOURCE_BUDGETS } from "@/lib/policy/resource-budgets";
 import { createLogger } from "@/lib/logger";
 import { boundRequestBody, payloadTooLarge } from "@/lib/uploads/body-limit";
 import { checkImageBounds } from "@/lib/uploads/image-bounds";
 import {
   ALLOWED_AUDIO_MIME_TYPES,
   ALLOWED_IMAGE_MIME_TYPES,
+  ALLOWED_PDF_MIME_TYPES,
   declaredTypeMatches,
   detectUploadType,
 } from "@/lib/uploads/file-types";
@@ -51,6 +54,12 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 // Multipart framing (boundaries, headers, canvasId field) on top of the file.
 const MULTIPART_OVERHEAD_ALLOWANCE = 64 * 1024;
 const MAX_REQUEST_BODY_BYTES = MAX_FILE_SIZE + MULTIPART_OVERHEAD_ALLOWANCE;
+// PDF cards (IMP-113) take larger files. The purpose is named in the query
+// string because the body cap is applied before the form is read.
+const PDF_PURPOSE = "pdf";
+const MAX_PDF_FILE_SIZE = RESOURCE_BUDGETS.pdf.maxFileBytes;
+const MAX_PDF_REQUEST_BODY_BYTES =
+  MAX_PDF_FILE_SIZE + MULTIPART_OVERHEAD_ALLOWANCE;
 const MAX_FILES_PER_USER = LAUNCH_LIMITS.uploadsPerUser;
 const MAX_TOTAL_BYTES_PER_USER = LAUNCH_LIMITS.uploadBytesPerUser;
 
@@ -324,9 +333,16 @@ async function runMalwareScan(
 export const POST = withApiHandler(async (rawRequest: NextRequest) => {
   const { userId, email } = await requireAuth();
 
+  const isPdf =
+    new URL(rawRequest.url).searchParams.get("purpose") === PDF_PURPOSE;
+  const maxFileSize = isPdf ? MAX_PDF_FILE_SIZE : MAX_FILE_SIZE;
+
   // Enforce the cap before anything buffers the body: formData() and the
   // idempotency hash (req.clone().arrayBuffer()) both read it whole.
-  const request = await boundRequestBody(rawRequest, MAX_REQUEST_BODY_BYTES);
+  const request = await boundRequestBody(
+    rawRequest,
+    isPdf ? MAX_PDF_REQUEST_BODY_BYTES : MAX_REQUEST_BODY_BYTES,
+  );
 
   return runIdempotent(request, userId, async () => {
     const formData = await request.formData();
@@ -354,7 +370,10 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
     await requireCanvasAccess(canvasId, userId, email, "EDIT");
 
     const purpose = formData.get("purpose");
-    if (purpose !== null && purpose !== VOICE_NOTE_PURPOSE) {
+    if (
+      purpose !== null &&
+      (isPdf ? purpose !== PDF_PURPOSE : purpose !== VOICE_NOTE_PURPOSE)
+    ) {
       throw new ApiError(
         400,
         "https://memoria.local/errors/upload",
@@ -368,25 +387,31 @@ export const POST = withApiHandler(async (rawRequest: NextRequest) => {
     // only use up the quota.
     if (isVoiceNote) await assertUploadNoteOffered(userId, "speechToText");
 
-    if (file.size > MAX_FILE_SIZE) {
-      throw payloadTooLarge(MAX_FILE_SIZE);
+    if (file.size > maxFileSize) {
+      throw payloadTooLarge(maxFileSize);
     }
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // A PDF is recognised from its first bytes only: a file that merely
+    // claims to be one (by name or declared type) is refused here.
     const detectedType = detectUploadType(buffer);
-    const allowed: readonly string[] = isVoiceNote
-      ? ALLOWED_AUDIO_MIME_TYPES
-      : ALLOWED_IMAGE_MIME_TYPES;
+    const allowed: readonly string[] = isPdf
+      ? ALLOWED_PDF_MIME_TYPES
+      : isVoiceNote
+        ? ALLOWED_AUDIO_MIME_TYPES
+        : ALLOWED_IMAGE_MIME_TYPES;
     if (!detectedType || !allowed.includes(detectedType.mime)) {
       throw new ApiError(
         400,
         "https://memoria.local/errors/upload",
         "Bad Request",
-        isVoiceNote
-          ? "Invalid or unsupported audio format"
-          : "Invalid or unsupported image format",
+        isPdf
+          ? "This file is not a PDF"
+          : isVoiceNote
+            ? "Invalid or unsupported audio format"
+            : "Invalid or unsupported image format",
       );
     }
 

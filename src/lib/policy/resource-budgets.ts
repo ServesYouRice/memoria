@@ -32,4 +32,19 @@ export const RESOURCE_BUDGETS = {
     maxBytesPerLink: 256 * 1024,
     maxBytesPerAccount: 64 * 1024 * 1024,
   },
+  /**
+   * PDFs on the canvas (IMP-113). A file up to `maxFileBytes` is stored and
+   * counts toward the upload allowance; its text is read only when it is at
+   * most `maxReadBytes` and `maxPages`, within `readTimeoutMs` and a reader
+   * heap of `readHeapMb`. Up to `maxTextBytesPerFile` of text is kept in the
+   * saved-text store, which shares the page-copy account budget.
+   */
+  pdf: {
+    maxFileBytes: 20 * 1024 * 1024,
+    maxReadBytes: 10 * 1024 * 1024,
+    maxPages: 300,
+    readTimeoutMs: 30_000,
+    readHeapMb: 256,
+    maxTextBytesPerFile: 1024 * 1024,
+  },
 } as const;

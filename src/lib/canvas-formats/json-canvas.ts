@@ -95,6 +95,7 @@ const LEFT_OUT_KIND: Partial<Record<ItemType, string>> = {
   [ItemType.IMAGE]: "images",
   [ItemType.SHAPE]: "shapes",
   [ItemType.POLL]: "polls",
+  [ItemType.PDF]: "PDFs",
 };
 
 /**

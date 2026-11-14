@@ -51,3 +51,8 @@ allowBuilds:
   protobufjs: true
   sharp: true
   unrs-resolver: true
+
+# IMP-113: pdfjs-dist only reads PDF text in Node; its optional canvas
+# binding (prebuilt native code for drawing pages) is never used.
+ignoredOptionalDependencies:
+  - "@napi-rs/canvas"
