@@ -39,8 +39,7 @@ export const SETTINGS_SECTIONS = [
     id: "ai",
     path: "/settings/ai",
     label: "AI assistant",
-    intro:
-      "Connect your own AI key, see what it used today, and control the AI helpers and agents.",
+    intro: "Connect your own AI key and choose what AI may do for you.",
   },
   {
     id: "import",

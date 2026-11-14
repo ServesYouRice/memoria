@@ -21,7 +21,7 @@ vi.mock("@/lib/theme-context", () => ({
   useThemeMode: () => ({ mode: "light", toggleTheme: vi.fn() }),
 }));
 vi.mock("@/features/agents/components/AgentControlCenter", () => ({
-  AgentControlCenter: () => <div>Agent control center</div>,
+  AgentControlCenter: () => <div>AI helpers and history</div>,
 }));
 vi.mock("@/features/auth/components/SecuritySettings", () => ({
   SecuritySettings: Stub,

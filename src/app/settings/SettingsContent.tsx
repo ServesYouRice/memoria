@@ -32,6 +32,9 @@ import {
   Tabs,
   IconButton,
   InputAdornment,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import {
   Person as PersonIcon,
@@ -49,6 +52,8 @@ import {
   Shield as SecurityIcon,
   Visibility,
   VisibilityOff,
+  ToggleOnOutlined as AiPermissionsIcon,
+  ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
 import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
@@ -632,7 +637,8 @@ function NotificationsGroup() {
   );
 }
 
-function AiUsageSection() {
+/** Today's AI allowance, read once for the summary and the Advanced details. */
+function useAiUsage() {
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   const [usageUnavailable, setUsageUnavailable] = useState(false);
 
@@ -650,8 +656,34 @@ function AiUsageSection() {
     return () => controller.abort();
   }, []);
 
+  return { aiUsage, usageUnavailable };
+}
+
+/** IMP-131: one plain sentence; the exact numbers live under Advanced. */
+function usedTodaySentence(aiUsage: AiUsage): string {
+  if (!aiUsage.enabled) {
+    return "AI features are currently disabled by the operator.";
+  }
+  if (aiUsage.tokensUsed === 0 && aiUsage.requests === 0) {
+    return "Nothing used today.";
+  }
+  const percent = Math.round(
+    (aiUsage.tokensUsed / Math.max(1, aiUsage.tokenLimit)) * 100,
+  );
+  const requests = `${aiUsage.requests} request${aiUsage.requests === 1 ? "" : "s"}`;
+  return `${percent}% of today's AI allowance used (${requests}).`;
+}
+
+function formatUsd(microUsd: number): string {
+  return `$${(microUsd / 1_000_000).toFixed(4)}`;
+}
+
+function AiUsageSection({
+  aiUsage,
+  usageUnavailable,
+}: ReturnType<typeof useAiUsage>) {
   return (
-    <SettingsSection icon={<AiUsageIcon color="primary" />} title="AI usage">
+    <SettingsSection icon={<AiUsageIcon color="primary" />} title="Used today">
       {usageUnavailable ? (
         <Alert severity="warning">
           AI allowance information is temporarily unavailable.
@@ -659,9 +691,7 @@ function AiUsageSection() {
       ) : aiUsage ? (
         <Stack spacing={1.5}>
           <Typography variant="body2" color="text.secondary">
-            {aiUsage.enabled
-              ? `${aiUsage.tokensUsed.toLocaleString()} of ${aiUsage.tokenLimit.toLocaleString()} worst-case tokens reserved today across ${aiUsage.requests} request${aiUsage.requests === 1 ? "" : "s"}.`
-              : "AI features are currently disabled by the operator."}
+            {usedTodaySentence(aiUsage)}
           </Typography>
           <LinearProgress
             variant="determinate"
@@ -669,14 +699,8 @@ function AiUsageSection() {
               100,
               (aiUsage.tokensUsed / Math.max(1, aiUsage.tokenLimit)) * 100,
             )}
-            aria-label="Daily AI token allowance used"
+            aria-label="Share of today's AI allowance used"
           />
-          <Typography variant="caption" color="text.secondary">
-            Cost allowance: ${(aiUsage.costMicroUsdUsed / 1_000_000).toFixed(4)}{" "}
-            of ${(aiUsage.costMicroUsdLimit / 1_000_000).toFixed(4)}. Concurrent
-            requests: {aiUsage.activeRequests}/{aiUsage.concurrencyLimit}.
-            Rejected today: {aiUsage.rejections}.
-          </Typography>
         </Stack>
       ) : (
         <Typography variant="body2" color="text.secondary">
@@ -687,48 +711,135 @@ function AiUsageSection() {
   );
 }
 
+function AiUsageDetails({ aiUsage }: { aiUsage: AiUsage }) {
+  const lines = [
+    `Tokens set aside today: ${aiUsage.tokensUsed.toLocaleString()} of ${aiUsage.tokenLimit.toLocaleString()}`,
+    `Cost so far today: ${formatUsd(aiUsage.costMicroUsdUsed)} of ${formatUsd(aiUsage.costMicroUsdLimit)}`,
+    `Requests running now: ${aiUsage.activeRequests} of ${aiUsage.concurrencyLimit}`,
+    `Requests refused today: ${aiUsage.rejections}`,
+  ];
+  return (
+    <Box>
+      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+        Details
+      </Typography>
+      {lines.map((line) => (
+        <Typography key={line} variant="body2" color="text.secondary">
+          {line}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
+const AGENT_CONSOLE_HASH = "#agent-console";
+
+/**
+ * IMP-131: agents, more providers and history sit in one closed block. Links
+ * to `/settings/ai#agent-console` open it and scroll to it.
+ */
+function AiAdvanced({ children }: { children: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const openFromHash = () => {
+      if (window.location.hash !== AGENT_CONSOLE_HASH) return;
+      setExpanded(true);
+      ref.current?.scrollIntoView?.({ block: "start" });
+    };
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, []);
+
+  return (
+    <Accordion
+      id="agent-console"
+      ref={ref}
+      variant="outlined"
+      disableGutters
+      expanded={expanded}
+      onChange={(_event, next) => setExpanded(next)}
+      sx={{
+        borderRadius: 3,
+        scrollMarginTop: 80,
+        "&::before": { display: "none" },
+      }}
+    >
+      <AccordionSummary
+        expandIcon={<ExpandMoreIcon />}
+        aria-controls="agent-console-content"
+        id="agent-console-summary"
+        sx={{ px: { xs: 2.5, sm: 3.5 }, minHeight: 56 }}
+      >
+        <Typography sx={{ fontWeight: 600 }}>
+          Advanced: agents, more providers, history
+        </Typography>
+      </AccordionSummary>
+      <AccordionDetails
+        id="agent-console-content"
+        sx={{ px: { xs: 2.5, sm: 3.5 }, pb: 3.5 }}
+      >
+        <Stack spacing={3}>{children}</Stack>
+      </AccordionDetails>
+    </Accordion>
+  );
+}
+
 function AiGroup() {
   const router = useRouter();
+  const usage = useAiUsage();
   return (
     <>
       <SettingsSection
         icon={<AiProviderIcon color="primary" />}
-        title="AI provider"
+        title="Connect your AI"
       >
         <AiProviderSettings />
+      </SettingsSection>
+
+      <SettingsSection
+        icon={<AiPermissionsIcon color="primary" />}
+        title="What AI may do"
+      >
         <LinkEnrichmentSettings />
         <AutoFileSettings />
       </SettingsSection>
 
-      <AiUsageSection />
+      <AiUsageSection {...usage} />
 
-      <AgentControlCenter />
+      <AiAdvanced>
+        {usage.aiUsage && <AiUsageDetails aiUsage={usage.aiUsage} />}
 
-      <SettingsSection
-        icon={<ApiKeysIcon color="primary" />}
-        title="Developer settings"
-      >
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
+        <AgentControlCenter />
+
+        <SettingsSection
+          icon={<ApiKeysIcon color="primary" />}
+          title="Developer settings"
         >
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-              API keys
-            </Typography>
-            <Typography variant="body2" sx={{ color: "text.secondary" }}>
-              Manage API keys for external access and extensions
-            </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+            }}
+          >
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                API keys
+              </Typography>
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                Manage API keys for external access and extensions
+              </Typography>
+            </Box>
+            <Button variant="outlined" onClick={() => router.push("/api-keys")}>
+              Manage keys
+            </Button>
           </Box>
-          <Button variant="outlined" onClick={() => router.push("/api-keys")}>
-            Manage keys
-          </Button>
-        </Box>
-      </SettingsSection>
+        </SettingsSection>
+      </AiAdvanced>
     </>
   );
 }
