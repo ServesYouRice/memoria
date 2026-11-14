@@ -5,7 +5,6 @@
 
 import "./src/lib/env";
 import { createServer } from "http";
-import { parse } from "url";
 import next from "next";
 import {
   assertSupportedSyncUpstream,
@@ -27,6 +26,12 @@ const syncServerUrl = new URL(
   process.env.SYNC_SERVER_INTERNAL_URL || "http://127.0.0.1:3001",
 );
 assertSupportedSyncUpstream(syncServerUrl);
+
+// The path part of a request target, without query or fragment (what
+// `url.parse(target).pathname` returned, without the deprecated API).
+function requestPathname(target: string | undefined): string {
+  return (target || "").split(/[?#]/, 1)[0] ?? "";
+}
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -52,12 +57,9 @@ app
             ? suppliedRequestId
             : nanoid(16);
         req.headers["x-request-id"] = requestId;
-        const parsedUrl = parse(req.url!, true);
-        await runWithRequestContext(requestId, () =>
-          handle(req, res, parsedUrl),
-        );
+        await runWithRequestContext(requestId, () => handle(req, res));
       } catch (err) {
-        const pathname = parse(req.url || "").pathname;
+        const pathname = requestPathname(req.url);
         logger.error(
           { error: err, pathname },
           "Error occurred handling request",
@@ -78,7 +80,7 @@ app
         "COLLABORATION_PROXY_SECRET is not set: collaboration sockets proxied by this server share its address for per-client limits unless TRUSTED_PROXY_CIDRS covers it",
       );
     server.on("upgrade", (req, socket, head) => {
-      const pathname = parse(req.url || "").pathname || "";
+      const pathname = requestPathname(req.url);
       // Other upgrades (Next.js development HMR) are Next's own.
       if (!pathname.startsWith("/api/collaboration/")) return;
       stampUpgradeClientIp(req, proxySecret);
