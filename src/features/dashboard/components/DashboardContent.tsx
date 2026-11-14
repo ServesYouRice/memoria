@@ -53,7 +53,15 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { useThemeMode } from "@/lib/theme-context";
 import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
 import { apiFetch } from "@/lib/api/fetch-client";
-import { deleteCanvasesBounded, removeCanvasesFromPages } from "./bulk-delete";
+import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import {
+  deleteCanvasesBounded,
+  removeCanvasesFromPages,
+  restoreCanvasesBounded,
+} from "./bulk-delete";
+
+const canvasCount = (count: number) =>
+  `${count} canvas${count === 1 ? "" : "es"}`;
 
 export function DashboardContent({ userName }: { userName?: string | null }) {
   const router = useRouter();
@@ -194,6 +202,30 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     if (selectionMode) setSelectedCanvasIds(new Set());
   };
 
+  // Undo of a bulk delete (IMP-133): the canvases come back from Trash.
+  const undoBulkDelete = async (ids: string[]) => {
+    const result = await restoreCanvasesBounded(ids, (id) =>
+      apiFetch(`/api/v1/canvases/${id}/restore`, { method: "POST" }),
+    );
+    const refetchType = result.rateLimited ? "none" : undefined;
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: canvasKeys.all, refetchType }),
+      queryClient.invalidateQueries({ queryKey: ["trash"], refetchType }),
+    ]);
+    const left = result.stillInTrash.length;
+    if (left === 0) {
+      toast.success("Restored");
+    } else if (result.restored.length > 0) {
+      toast.warning(
+        `Restored ${canvasCount(result.restored.length)}. ${canvasCount(left)} could not be restored and ${left === 1 ? "is" : "are"} still in Trash.`,
+      );
+    } else {
+      toast.error(
+        `Could not restore ${canvasCount(left)}. ${left === 1 ? "It is" : "They are"} still in Trash.`,
+      );
+    }
+  };
+
   const handleBulkDelete = async () => {
     const ids = visibleSelectedIds;
     if (ids.length === 0) return;
@@ -205,11 +237,15 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
         apiFetch(`/api/v1/canvases/${id}`, { method: "DELETE" }),
       );
       const succeeded = result.deleted.length;
-      const plural = (count: number) =>
-        `${count} canvas${count === 1 ? "" : "es"}`;
+      const moved = [...result.deleted];
+      const undo = {
+        // Long enough to read and reach the button (at least 8 seconds).
+        duration: 10_000,
+        action: { label: "Undo", onClick: () => void undoBulkDelete(moved) },
+      };
 
       if (result.failed.length === 0 && result.notAttempted.length === 0) {
-        toast.success(`Deleted ${plural(succeeded)}`);
+        toast.success(`${canvasCount(succeeded)} moved to Trash`, undo);
         setSelectedCanvasIds(new Set());
         setSelectionMode(false);
       } else {
@@ -222,12 +258,15 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             }.`
           : (result.failed.find((failure) => failure.detail)?.detail ??
             "Failed to delete canvas");
-        const message =
-          succeeded > 0
-            ? `Deleted ${plural(succeeded)}, ${unfinished} not deleted. ${reason}`
-            : `Failed to delete selected canvases. ${reason}`;
-        if (succeeded > 0) toast.warning(message);
-        else toast.error(message);
+        if (succeeded > 0)
+          toast.warning(
+            `${canvasCount(succeeded)} moved to Trash, ${unfinished} not moved. ${reason}`,
+            undo,
+          );
+        else
+          toast.error(
+            `Could not move the selected canvases to Trash. ${reason}`,
+          );
         setSelectedCanvasIds(
           new Set([
             ...result.failed.map((failure) => failure.id),
@@ -573,12 +612,13 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
       >
-        <DialogTitle sx={{ fontWeight: 600 }}>Delete canvases?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 600 }}>
+          Move {canvasCount(visibleSelectedIds.length)} to Trash?
+        </DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete {visibleSelectedIds.length} canvas
-            {visibleSelectedIds.length === 1 ? "" : "es"}? This action cannot be
-            undone.
+            You can restore {visibleSelectedIds.length === 1 ? "it" : "them"}{" "}
+            from Trash for {LAUNCH_LIMITS.trashRetentionDays} days.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
@@ -589,7 +629,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             color="error"
             disabled={isDeleting || visibleSelectedIds.length === 0}
           >
-            {isDeleting ? "Deleting…" : "Delete"}
+            {isDeleting ? "Moving…" : "Move to Trash"}
           </Button>
         </DialogActions>
       </Dialog>

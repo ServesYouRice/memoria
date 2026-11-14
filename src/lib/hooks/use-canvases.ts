@@ -142,6 +142,14 @@ const api = {
     }>;
   },
 
+  async restoreCanvas(canvasId: string) {
+    // apiFetch throws with the server's reason (e.g. the canvas limit).
+    const response = await apiFetch(`/api/v1/canvases/${canvasId}/restore`, {
+      method: "POST",
+    });
+    return response.json() as Promise<Canvas>;
+  },
+
   async getCanvas(canvasId: string) {
     const response = await apiFetch(`/api/v1/canvases/${canvasId}`);
     if (!response.ok) {
@@ -277,6 +285,19 @@ export function useDuplicateCanvas() {
     mutationFn: api.duplicateCanvas,
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: canvasKeys.all }),
+  });
+}
+
+/** IMP-133: bring a canvas back from Trash with everything on it. */
+export function useRestoreCanvas() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.restoreCanvas,
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: canvasKeys.all }),
+        queryClient.invalidateQueries({ queryKey: ["trash"] }),
+      ]),
   });
 }
 
