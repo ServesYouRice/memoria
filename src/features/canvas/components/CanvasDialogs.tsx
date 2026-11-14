@@ -101,6 +101,8 @@ interface CanvasDialogsProps {
 
   noteDialogOpen: boolean;
   setNoteDialogOpen: (open: boolean) => void;
+  /** Where the note dialog creates its note: the middle of the view. */
+  noteDialogPosition: { x: number; y: number };
   bookmarkDialogOpen: boolean;
   setBookmarkDialogOpen: (open: boolean) => void;
   imageDialogOpen: boolean;
@@ -171,6 +173,7 @@ export function CanvasDialogs({
   collaborators,
   noteDialogOpen,
   setNoteDialogOpen,
+  noteDialogPosition,
   bookmarkDialogOpen,
   setBookmarkDialogOpen,
   imageDialogOpen,
@@ -258,7 +261,7 @@ export function CanvasDialogs({
             open={noteDialogOpen}
             onClose={() => setNoteDialogOpen(false)}
             canvasId={canvasId}
-            initialPosition={{ x: 100, y: 100 }}
+            initialPosition={noteDialogPosition}
           />
           <CreatePollDialog
             open={pollDialogOpen}

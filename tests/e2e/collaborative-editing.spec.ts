@@ -21,14 +21,23 @@ function itemList(page: Page, canvasName: string) {
 
 async function openSharedNote(page: Page, canvasName: string, text: string) {
   const row = itemList(page, canvasName).getByLabel(`note: ${text}`);
-  await row.focus();
-  await row.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Edit Note" });
-  // The dialog edits the shared text once the canvas document has synced.
-  await expect(dialog.getByText(LIVE_EDITING)).toBeVisible({
+  // IMP-142: the note is typed on in place once the canvas document has
+  // synced; before that it opens in the note dialog, which is closed again.
+  const inPlace = page.getByRole("group", { name: "Editing note" });
+  await expect(async () => {
+    if (await page.getByRole("dialog").first().isVisible()) {
+      await page.keyboard.press("Escape");
+    }
+    await row.focus();
+    await row.press("Enter");
+    await expect(inPlace).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(inPlace.getByText(LIVE_EDITING)).toBeVisible({
     timeout: 20_000,
   });
-  return dialog.locator(".ProseMirror");
+  // The board stays in view: no dialog covers it.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  return inPlace.locator(".ProseMirror");
 }
 
 test("two browsers co-edit the same note and converge", async ({
@@ -128,4 +137,32 @@ test("two browsers co-edit the same note and converge", async ({
   });
 
   await collaboratorContext.close();
+});
+
+test("Note drops a note in view, ready to type (IMP-143)", async ({ page }) => {
+  await registerAndVerify(page, uniqueEmail("note-in-place"));
+  const canvas = await createCanvas(page, "Note In Place Canvas");
+  await page.goto(`/canvas/${canvas.id}`);
+
+  const addBar = page.getByRole("toolbar", { name: "Add to canvas" });
+  const inPlace = page.getByRole("group", { name: "Editing note" });
+  // Until the canvas document has synced, "Note" opens the note dialog.
+  await expect(async () => {
+    if (await page.getByRole("dialog").first().isVisible()) {
+      await page.keyboard.press("Escape");
+    }
+    await addBar.getByRole("button", { name: "Note" }).click();
+    await expect(inPlace).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  const editor = inPlace.locator(".ProseMirror");
+  await expect(editor).toBeFocused();
+  await page.keyboard.type("hello");
+  await page.keyboard.press("Escape");
+  await expect(inPlace).toHaveCount(0);
+
+  await expect(
+    itemList(page, canvas.name).getByLabel("note: hello"),
+  ).toBeAttached({ timeout: 20_000 });
 });

@@ -134,6 +134,23 @@ import {
 } from "@/features/canvas/lib/arrow-attachment";
 import { ArrowLabelDialog } from "@/features/canvas/components/ArrowLabelDialog";
 import { LinkedItemsPanel } from "@/features/canvas/components/LinkedItemsPanel";
+import {
+  CanvasEmptyHint,
+  showsCanvasEmptyHint,
+} from "@/features/canvas/components/CanvasEmptyHint";
+import { NoteInlineEditor } from "@/features/canvas/components/NoteInlineEditor";
+import {
+  liveEditingAvailable,
+  liveNoteFragment,
+} from "@/features/canvas/lib/live-note";
+import {
+  NEW_NOTE_SIZE,
+  useAddNote,
+} from "@/features/canvas/hooks/use-add-note";
+import {
+  editsNoteInPlace,
+  noteScreenRect,
+} from "@/features/canvas/lib/note-screen-rect";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -228,6 +245,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     geometry,
     canvasBounds,
     totalItemCount,
+    itemCountLoaded,
     canvasRevision,
     canvasName,
     zoom,
@@ -397,6 +415,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     useState<CanvasItem | null>(null);
   const [editImageDialogOpen, setEditImageDialogOpen] = useState(false);
   const [editingImageItem, setEditingImageItem] = useState<CanvasItem | null>(
+    null,
+  );
+  // IMP-142: the note typed on in place, and where focus goes back after.
+  const [inlineNote, setInlineNote] = useState<CanvasItem | null>(null);
+  const inlineReturnFocusRef = useRef<HTMLElement | null>(null);
+  // IMP-143: a new note waiting for its shared text before it is typed on.
+  const [pendingInlineNoteId, setPendingInlineNoteId] = useState<string | null>(
     null,
   );
 
@@ -884,6 +909,27 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
   };
 
+  // The toolbar, the item list and the empty-canvas hint (IMP-141) start
+  // items the same way. IMP-143: "Note" drops a note in view, ready to type.
+  const addNote = useAddNote({
+    canvasId,
+    canCreateItems: capabilities.canCreateItems,
+    liveEditing: liveEditingAvailable(documentSession, documentState),
+    position,
+    stageSize,
+    zoom,
+    items: allItems,
+    createItem,
+    openDialog: () => setNoteDialogOpen(true),
+    onCreated: (item, inPlace) => {
+      setSelectedItemId(item.id);
+      setSelectedItemIds(new Set([item.id]));
+      if (inPlace && viewMode === "manual") setPendingInlineNoteId(item.id);
+    },
+  });
+  const handleAddNote = () => void addNote();
+  const handleAddLink = () => setBookmarkDialogOpen(true);
+
   const handleAddTable = async () => {
     const center = viewportCenterWorld(position, stageSize, zoom);
     const table = createTable(3, 3);
@@ -1081,9 +1127,40 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     setSelectedItemId(itemId);
   };
 
+  /** IMP-142: put a text cursor on the note itself, with the board in view. */
+  const openInlineNote = (item: CanvasItem) => {
+    const active = document.activeElement;
+    inlineReturnFocusRef.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+    const rect = noteScreenRect(item, position, zoom);
+    if (
+      rect.left < 0 ||
+      rect.top < 0 ||
+      rect.left + rect.width > stageSize.width ||
+      rect.top + rect.height > stageSize.height
+    ) {
+      setPosition({
+        x: stageSize.width / 2 - (item.positionX + item.width / 2) * zoom,
+        y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
+      });
+    }
+    setInlineNote(item);
+  };
+  const closeInlineNote = useCallback(() => {
+    setInlineNote(null);
+    const returnTo = inlineReturnFocusRef.current;
+    inlineReturnFocusRef.current = null;
+    if (returnTo?.isConnected) returnTo.focus();
+  }, []);
   const handleNoteDoubleClick = (item: CanvasItem) => {
     if (!capabilities.canEditItems) return;
     if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
+      const liveEditing =
+        liveNoteFragment(documentSession, documentState, item.id) !== null;
+      if (viewMode === "manual" && editsNoteInPlace(item, zoom, liveEditing)) {
+        openInlineNote(item);
+        return;
+      }
       setEditingNoteItem(item);
       setEditNoteDialogOpen(true);
     }
@@ -1386,6 +1463,49 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   const [isPresentationMode, setPresentationMode] = useState(false);
 
+  // IMP-142: the in-place editor follows the note as it is panned, zoomed or
+  // moved, and closes when the note is deleted or live editing stops.
+  const inlineNoteItem = inlineNote
+    ? (allItems.find((candidate) => candidate.id === inlineNote.id) ??
+      inlineNote)
+    : null;
+  const inlineNoteFragment =
+    inlineNote && canEdit && viewMode === "manual"
+      ? liveNoteFragment(documentSession, documentState, inlineNote.id)
+      : null;
+  useEffect(() => {
+    if (inlineNote && !inlineNoteFragment) closeInlineNote();
+  }, [closeInlineNote, inlineNote, inlineNoteFragment]);
+  // IMP-143: the fallback note dialog also creates its note in view.
+  const viewCenter = viewportCenterWorld(position, stageSize, zoom);
+  const noteDialogPosition = {
+    x: viewCenter.x - NEW_NOTE_SIZE / 2,
+    y: viewCenter.y - NEW_NOTE_SIZE / 2,
+  };
+  // IMP-143: a new note opens in place as soon as its shared text is ready.
+  const pendingInlineItem = pendingInlineNoteId
+    ? allItems.find((candidate) => candidate.id === pendingInlineNoteId)
+    : undefined;
+  const pendingInlineReady =
+    pendingInlineItem !== undefined &&
+    canEdit &&
+    liveNoteFragment(documentSession, documentState, pendingInlineItem.id) !==
+      null;
+  useEffect(() => {
+    if (!pendingInlineItem || !pendingInlineReady) return;
+    const active = document.activeElement;
+    inlineReturnFocusRef.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+    setPendingInlineNoteId(null);
+    setInlineNote(pendingInlineItem);
+  }, [pendingInlineItem, pendingInlineReady]);
+  useEffect(() => {
+    // Never open an editor long after the press.
+    if (!pendingInlineNoteId) return;
+    const timer = window.setTimeout(() => setPendingInlineNoteId(null), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [pendingInlineNoteId]);
+
   const fitToScreen = useCallback(() => {
     if (
       canvasBounds?.minX === null ||
@@ -1621,7 +1741,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onActivateItem={handleActivateItem}
         onNudgeItem={handleNudgeItem}
         onDeleteItem={handleDeleteItem}
-        onCreateItem={() => setNoteDialogOpen(true)}
+        onCreateItem={handleAddNote}
         canvasName={canvasName}
       />
 
@@ -1679,10 +1799,24 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               {totalItemCount} remain indexed for navigation and accessibility.
             </Box>
           )}
+          {showsCanvasEmptyHint({
+            viewMode,
+            // A time-machine preview shows a past state, not this count.
+            presenting: isPresentationMode || isTimeMachineActive,
+            itemsLoaded: itemCountLoaded,
+            // The board shows a new item before the index count follows.
+            itemCount: Math.max(totalItemCount, allItems.length),
+          }) && (
+            <CanvasEmptyHint
+              canEdit={canEdit}
+              onAddNote={handleAddNote}
+              onAddLink={handleAddLink}
+            />
+          )}
           {!isPresentationMode && canEdit && (
             <CanvasAddBar
-              onAddNote={() => setNoteDialogOpen(true)}
-              onAddLink={() => setBookmarkDialogOpen(true)}
+              onAddNote={handleAddNote}
+              onAddLink={handleAddLink}
               onAddImage={() => setImageDialogOpen(true)}
               onAddPoll={
                 isLaunchCapabilityEnabled("polls")
@@ -1841,6 +1975,22 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               previewStroke={CANVAS_PALETTE[themeMode].ink}
             />
           </Stage>
+
+          {inlineNoteItem && inlineNoteFragment && (
+            <NoteInlineEditor
+              item={inlineNoteItem}
+              fragment={inlineNoteFragment}
+              position={position}
+              zoom={zoom}
+              viewportHeight={stageSize.height}
+              onClose={closeInlineNote}
+              onTags={() => {
+                closeInlineNote();
+                setEditingNoteItem(inlineNoteItem);
+                setEditNoteDialogOpen(true);
+              }}
+            />
+          )}
 
           {chatOpen && (
             <CursorChat
@@ -2029,6 +2179,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         collaborators={collaborators}
         noteDialogOpen={noteDialogOpen}
         setNoteDialogOpen={setNoteDialogOpen}
+        noteDialogPosition={noteDialogPosition}
         bookmarkDialogOpen={bookmarkDialogOpen}
         setBookmarkDialogOpen={setBookmarkDialogOpen}
         imageDialogOpen={imageDialogOpen}
