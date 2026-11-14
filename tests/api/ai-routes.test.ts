@@ -8,6 +8,7 @@ const authMocks = vi.hoisted(() => ({
 const prismaMocks = vi.hoisted(() => ({
   canvasFindUnique: vi.fn(),
   canvasFindFirst: vi.fn(),
+  userFindUnique: vi.fn(),
 }));
 
 const aiServiceMocks = vi.hoisted(() => ({
@@ -45,6 +46,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: prismaMocks.canvasFindUnique,
       findFirst: prismaMocks.canvasFindFirst,
     },
+    user: { findUnique: prismaMocks.userFindUnique },
   },
 }));
 
@@ -54,6 +56,7 @@ vi.mock("@/lib/ai/service", () => ({
   summarizeCanvas: aiServiceMocks.summarizeCanvas,
   buildCanvasSummaryContent: aiServiceMocks.buildCanvasSummaryContent,
   AI_SUMMARY_ITEM_LIMIT: 500,
+  TAG_SYSTEM_PROMPT: "You are a precise tagging system.",
 }));
 
 vi.mock("@/lib/ai/budget", () => ({
@@ -381,6 +384,34 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
       expect(aiServiceMocks.generateTags).toHaveBeenCalledWith(
         "General relativity describes the geometry of spacetime.",
         sessionUser.id,
+        null,
+      );
+    });
+
+    it("POST /api/v1/ai/tags sends the person's own tagging rules and counts them in the budget (IMP-106)", async () => {
+      prismaMocks.userFindUnique.mockResolvedValue({
+        taggingRules: "Use few tags.",
+      });
+      aiServiceMocks.generateTags.mockResolvedValue(["physics"]);
+
+      const res = await tagsPost(
+        createNextRequest("http://localhost/api/v1/ai/tags", {
+          body: { content: "Spacetime." },
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(aiServiceMocks.generateTags).toHaveBeenCalledWith(
+        "Spacetime.",
+        sessionUser.id,
+        "Use few tags.",
+      );
+      expect(aiBudgetMocks.runBudgetedAi).toHaveBeenCalledWith(
+        sessionUser.id,
+        expect.objectContaining({
+          prompt: expect.stringContaining("Use few tags."),
+        }),
+        expect.any(Function),
       );
     });
   });

@@ -27,6 +27,9 @@ model User {
   /// Look saved links up in a public web archive (IMP-094). Off by default;
   /// sends the link address to a third party.
   webArchiveLookup Boolean   @default(false)
+  /// The person's own words on how things are tagged (IMP-106); null means
+  /// the standard behaviour. Sent to the AI as their rules, never page data.
+  taggingRules     String?   @db.VarChar(1000)
   /// Inbox items move to a suggested board on their own when it is a confident match (IMP-066).
   autoFileItems    Boolean   @default(false)
   /// The weekly recap also arrives by email; in-app only by default (IMP-070).
