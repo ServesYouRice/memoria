@@ -147,7 +147,7 @@ export function VersionHistoryDialog({
     <>
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle>
-          Version History
+          Saved versions
           <IconButton
             aria-label="Close version history"
             onClick={onClose}

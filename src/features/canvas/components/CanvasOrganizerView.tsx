@@ -340,7 +340,7 @@ function renderEntityCard(
               textTransform: "uppercase",
             }}
           >
-            Derived relations
+            Links AI found
           </Typography>
           <Stack spacing={1} sx={{ mt: 1 }}>
             {relationGroups.every((group) => group.relations.length === 0) ? (
@@ -635,7 +635,7 @@ export function CanvasOrganizerView({
             >
               <AutoAwesomeIcon />
               <Typography variant="overline" sx={{ letterSpacing: 1.5 }}>
-                Organizer Lens
+                AI organiser
               </Typography>
             </Stack>
             <Typography
@@ -645,16 +645,14 @@ export function CanvasOrganizerView({
                 mb: 1,
               }}
             >
-              Derived structure, not live mutation
+              What AI has worked out about this canvas
             </Typography>
             <Typography
               variant="body1"
               sx={{ maxWidth: 760, color: "common.white", opacity: 0.78 }}
             >
-              This tab is the agent-organized view of the current canvas. It
-              stays read-only here, keeps traceability back to raw notes, and
-              sends approvals and rollbacks through the dedicated agent control
-              surface.
+              A read-only summary made by AI helpers. Your notes are not changed
+              here. Approve or undo AI changes in Settings, under AI assistant.
             </Typography>
           </Box>
           <Button
@@ -671,7 +669,7 @@ export function CanvasOrganizerView({
               "&:hover": { bgcolor: "grey.100" },
             }}
           >
-            Open agent console
+            Open AI settings
           </Button>
         </Stack>
       </Paper>
@@ -689,25 +687,25 @@ export function CanvasOrganizerView({
         }}
       >
         {[
-          { label: "Manual items", value: itemCount, icon: <HubIcon /> },
+          { label: "Your items", value: itemCount, icon: <HubIcon /> },
           {
-            label: "Derived entities",
+            label: "Things AI found",
             value: knowledgeQuery.data?.entities.length || 0,
             icon: <AutoAwesomeIcon />,
           },
           {
-            label: "Derived relations",
+            label: "Links AI found",
             value: relationCount,
             icon: <HubIcon />,
           },
           {
-            label: "Open suggestions",
+            label: "Suggestions waiting",
             value: suggestions.filter((entry) => entry.status === "OPEN")
               .length,
             icon: <PendingActionsIcon />,
           },
           {
-            label: "Audited change sets",
+            label: "AI changes made",
             value: changeSets.length,
             icon: <RestoreIcon />,
           },
@@ -790,7 +788,7 @@ export function CanvasOrganizerView({
                     fontWeight: 700,
                   }}
                 >
-                  Derived entities
+                  Things AI found
                 </Typography>
                 <Typography
                   variant="body2"
@@ -798,8 +796,7 @@ export function CanvasOrganizerView({
                     color: "text.secondary",
                   }}
                 >
-                  Stable semantic records connected back to source items through
-                  item links.
+                  Each one links back to the notes it came from.
                 </Typography>
               </Box>
               <FormControl size="small" sx={{ minWidth: 220 }}>
@@ -869,7 +866,7 @@ export function CanvasOrganizerView({
                     fontWeight: 700,
                   }}
                 >
-                  Proposal queue
+                  Suggestions waiting
                 </Typography>
                 <Typography
                   variant="body2"
@@ -992,7 +989,7 @@ export function CanvasOrganizerView({
                 mb: 0.5,
               }}
             >
-              Audited writes
+              AI changes made
             </Typography>
             <Typography
               variant="body2"

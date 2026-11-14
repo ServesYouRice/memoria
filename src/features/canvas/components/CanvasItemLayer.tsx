@@ -1,4 +1,5 @@
 import React from "react";
+import type Konva from "konva";
 import { Group, Layer } from "react-konva";
 import type {
   CanvasCapabilities,
@@ -32,6 +33,7 @@ import { EmbedItem } from "@/features/canvas/components/EmbedItem";
 import { PollItem } from "@/features/canvas/components/PollItem";
 import { TableItem } from "@/features/canvas/components/TableItem";
 import { isStructuralCanvasItem } from "@/features/canvas/search";
+import { createPressAndHold } from "@/features/canvas/press-and-hold";
 
 interface CanvasItemLayerProps {
   items: CanvasItem[];
@@ -85,15 +87,72 @@ export const CanvasItemLayer = React.memo(function CanvasItemLayer({
     () => new Map((allItems ?? items).map((item) => [item.id, item])),
     [allItems, items],
   );
+
+  // IMP-140: iOS Safari sends no `contextmenu` for a long press, so a held
+  // finger opens the same item menu that right-click opens.
+  const layerRef = React.useRef<Konva.Layer>(null);
+  const onContextMenuRef = React.useRef(onContextMenu);
+  onContextMenuRef.current = onContextMenu;
+  const hold = React.useMemo(
+    () =>
+      createPressAndHold<string>({
+        onHold: (point, itemId) =>
+          onContextMenuRef.current(
+            {
+              evt: {
+                clientX: point.x,
+                clientY: point.y,
+                preventDefault: () => {},
+              },
+            },
+            itemId,
+          ),
+      }),
+    [],
+  );
+  React.useEffect(() => {
+    const container = layerRef.current?.getStage()?.container();
+    if (!container) return;
+    // A second finger (pinch), movement or lifting ends the hold. These are
+    // stage-wide because the second finger may land off the item.
+    const onStart = (event: TouchEvent) => {
+      if (event.touches.length > 1) hold.cancel();
+    };
+    const onMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) hold.move({ x: touch.clientX, y: touch.clientY });
+    };
+    const onEnd = () => hold.cancel();
+    container.style.setProperty("-webkit-touch-callout", "none");
+    container.addEventListener("touchstart", onStart, { passive: true });
+    container.addEventListener("touchmove", onMove, { passive: true });
+    container.addEventListener("touchend", onEnd, { passive: true });
+    container.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      hold.cancel();
+      container.removeEventListener("touchstart", onStart);
+      container.removeEventListener("touchmove", onMove);
+      container.removeEventListener("touchend", onEnd);
+      container.removeEventListener("touchcancel", onEnd);
+    };
+  }, [hold]);
+
   return (
-    <Layer>
+    <Layer ref={layerRef}>
       {items.map((item) => {
         const adapterProps = {
           item,
           isSelected: selectedItemIds.has(item.id),
           capabilities,
           onSelect: () => onSelectItem(item.id),
-          onContextMenu: (event: any) => onContextMenu(event, item.id),
+          onContextMenu: (event: any) => {
+            // Android sends `contextmenu` after the same long press.
+            if (hold.shouldIgnoreContextMenu()) {
+              event?.evt?.preventDefault?.();
+              return;
+            }
+            onContextMenu(event, item.id);
+          },
           onActivate: () => onActivateItem(item),
           onCommitGeometry: (geometry: ItemGeometryCommit) =>
             onCommitGeometry(item, geometry),
@@ -153,7 +212,26 @@ export const CanvasItemLayer = React.memo(function CanvasItemLayer({
               ? 0.55
               : 0.18;
         return (
-          <Group key={item.id} opacity={opacity}>
+          <Group
+            key={item.id}
+            opacity={opacity}
+            onTouchStart={(event) => {
+              const touch = event.evt.touches[0];
+              if (touch) {
+                hold.start(
+                  { x: touch.clientX, y: touch.clientY },
+                  item.id,
+                  event.evt.touches.length,
+                );
+              }
+            }}
+            onDragStart={(event) => {
+              // A drag is not a hold; and a hold that already opened the
+              // menu must not turn into a drag of the item.
+              if (hold.isHeld()) event.target.stopDrag();
+              else hold.cancel();
+            }}
+          >
             {rendered}
           </Group>
         );
