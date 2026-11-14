@@ -8,7 +8,11 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Parses every source file with the TypeScript compiler; slow on a loaded
+// machine, so the default 5s limit flakes.
+vi.setConfig({ testTimeout: 30_000 });
 
 const ROOT = path.join(process.cwd(), "src");
 const SKIP_DIRS = new Set(["generated"]);
