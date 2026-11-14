@@ -45,6 +45,27 @@ describe("proxy forwards the CSP to the app", () => {
     expect(requestCsp).toContain(`'nonce-${nonce}'`);
   });
 
+  it("lets pages PUT to the direct upload bucket (IMP-152)", async () => {
+    vi.stubEnv("UPLOAD_STORAGE", "s3");
+    vi.stubEnv("UPLOAD_DIRECT_UPLOADS", "");
+    vi.stubEnv("S3_BUCKET", "memoria-uploads");
+    vi.stubEnv("S3_ENDPOINT", "https://0123abcd.r2.cloudflarestorage.com");
+    vi.stubEnv("S3_PUBLIC_ENDPOINT", "");
+    try {
+      const response = await proxy(
+        new NextRequest("http://localhost:3000/dashboard"),
+      );
+      const connect = (response.headers.get("Content-Security-Policy") ?? "")
+        .split("; ")
+        .find((directive) => directive.startsWith("connect-src "));
+      expect(connect?.split(" ")).toContain(
+        "https://memoria-uploads.0123abcd.r2.cloudflarestorage.com",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("forwards the embed frame-ancestors too", async () => {
     dbMocks.findUnique.mockResolvedValue({
       id: "embed-1",

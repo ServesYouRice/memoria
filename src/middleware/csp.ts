@@ -1,5 +1,6 @@
 import { type NextResponse } from "next/server";
 import { nanoid } from "nanoid";
+import { directUploadOrigin } from "@/lib/uploads/direct-upload-config";
 
 /**
  * Generate a nonce for CSP
@@ -67,8 +68,14 @@ export function buildCSP(
     "img-src": present(["'self'", "data:", "blob:", publicUploadsOrigin()]),
     "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
     // Browser code only talks to this app (HTTP and its WebSockets) and,
-    // when configured, Sentry. No other host may receive data.
-    "connect-src": present(["'self'", appSocketOrigin(), sentryIngestOrigin()]),
+    // when configured, Sentry and the upload bucket that presigned direct
+    // uploads go to (IMP-152). No other host may receive data.
+    "connect-src": present([
+      "'self'",
+      appSocketOrigin(),
+      sentryIngestOrigin(),
+      directUploadOrigin(),
+    ]),
     "frame-ancestors": frameAncestors.length > 0 ? frameAncestors : ["'none'"],
     "frame-src": ["'none'"],
     "object-src": ["'none'"],

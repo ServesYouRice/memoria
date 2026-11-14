@@ -62,6 +62,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1162.0",
+    "@aws-sdk/s3-request-presigner": "^3.1162.0",
     "@better-auth/passkey": "1.7.17",
     "@emotion/cache": "^11.13.5",
     "@emotion/react": "^11.13.5",

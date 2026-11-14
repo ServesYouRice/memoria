@@ -3,10 +3,16 @@ import { prisma } from "../src/lib/db";
 import { runOutboxWorker } from "../src/lib/outbox/worker";
 import { createUploadDeleteHandler } from "../src/lib/uploads/outbox-handler";
 import {
+  DIRECT_UPLOAD_EXPIRE_JOB,
+  createDirectUploadExpireHandler,
+} from "../src/lib/uploads/direct-upload";
+import {
   createDeliveryProbeEmailHandler,
   createShareDecisionEmailHandler,
   createShareInvitationEmailHandler,
+  createPasswordResetEmailHandler,
   createVerificationEmailHandler,
+  PASSWORD_RESET_EMAIL_JOB,
 } from "../src/lib/email/outbox-handler";
 import {
   createCanvasEventHandler,
@@ -109,8 +115,10 @@ await runOutboxWorker({
   handlers: {
     "upload.delete": createUploadDeleteHandler(prisma),
     [UPLOAD_COPY_JOB]: createUploadCopyHandler(prisma),
+    [DIRECT_UPLOAD_EXPIRE_JOB]: createDirectUploadExpireHandler(prisma),
     "email.delivery-probe": createDeliveryProbeEmailHandler(),
     "email.verification": createVerificationEmailHandler(prisma),
+    [PASSWORD_RESET_EMAIL_JOB]: createPasswordResetEmailHandler(prisma),
     "email.share-invitation": createShareInvitationEmailHandler(prisma),
     "email.share-decision": createShareDecisionEmailHandler(prisma),
     "canvas.event.publish": createCanvasEventHandler(prisma),

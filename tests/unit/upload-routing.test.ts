@@ -5,6 +5,9 @@ describe("upload rate-limit routing", () => {
   it.each([
     ["/api/v1/upload", "POST", true],
     ["/api/v1/upload", "GET", false],
+    // Direct uploads (IMP-152) are counted at the presign only.
+    ["/api/v1/upload/direct", "POST", true],
+    ["/api/v1/upload/direct/confirm", "POST", false],
     ["/api/v1/uploads/asset-1", "GET", false],
     ["/api/v1/uploads/asset-1", "DELETE", false],
     // Bookmark file imports are uploads too (IMP-091).

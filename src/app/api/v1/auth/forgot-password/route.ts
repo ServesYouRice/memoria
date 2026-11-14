@@ -6,7 +6,7 @@
  * - Email enumeration prevention (always returns success)
  * - Secure token generation using nanoid
  * - Token expiration (1 hour by default)
- * - Graceful email failure handling
+ * - Durable delivery: the mail is an outbox job (`email.password-reset`)
  *
  * @module app/api/v1/auth/forgot-password
  *
@@ -31,16 +31,18 @@
  * - Always returns success to prevent email enumeration attacks
  * - Only sends email if user actually exists in database
  * - Token is 32 characters of secure random data
- * - Email failures are logged but don't affect the response
+ * - The outbox worker retries provider failures; they never affect the
+ *   response
  *
- * @see {@link sendPasswordResetEmail} for email template details
+ * @see {@link createPasswordResetEmailHandler} for delivery
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { logger } from "@/lib/logger";
-import { sendPasswordResetEmail } from "@/lib/email";
+import { encryptSecret } from "@/lib/agents/crypto";
+import { PASSWORD_RESET_EMAIL_JOB } from "@/lib/email/outbox-handler";
 import { errorResponse } from "@/lib/errors";
+import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { createHash } from "crypto";
@@ -87,44 +89,25 @@ export async function POST(request: NextRequest) {
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + TOKEN_EXPIRY_HOURS);
 
-      // Save token to database
-      await prisma.passwordResetToken.create({
-        data: {
-          token: tokenHash,
-          email: email.toLowerCase(),
-          expiresAt,
-        },
+      // The token and its mail job commit together (IMP-152): the outbox
+      // worker sends it, retries a provider outage, and the request never
+      // waits on a provider round trip that would reveal the account by
+      // timing. The raw token is kept encrypted for the job only.
+      await prisma.$transaction(async (tx) => {
+        const reset = await tx.passwordResetToken.create({
+          data: {
+            token: tokenHash,
+            email: email.toLowerCase(),
+            expiresAt,
+            deliverySecret: encryptSecret(token),
+          },
+        });
+        await enqueueOutboxJob(tx, {
+          type: PASSWORD_RESET_EMAIL_JOB,
+          payload: { resetTokenId: reset.id },
+          dedupeKey: `${PASSWORD_RESET_EMAIL_JOB}:${reset.id}`,
+        });
       });
-
-      // Send password reset email
-      const baseUrl =
-        process.env.AUTH_URL ||
-        process.env.NEXTAUTH_URL ||
-        request.nextUrl.origin;
-      const resetUrl = `${baseUrl}/auth/reset-password?token=${token}`;
-
-      // The provider send runs after the response: awaiting an SMTP or HTTPS
-      // round trip only for existing accounts would reveal them by timing.
-      const normalizedEmail = email.toLowerCase();
-      void sendPasswordResetEmail(
-        { email: normalizedEmail, name: user.name || undefined },
-        {
-          userName: user.name || "User",
-          resetUrl,
-          expiresIn: `${TOKEN_EXPIRY_HOURS} hour${TOKEN_EXPIRY_HOURS > 1 ? "s" : ""}`,
-        },
-      ).then(
-        () => {
-          logger.info({ email: normalizedEmail }, "Password reset email sent");
-        },
-        (emailError: unknown) => {
-          // Log only: the response never reveals whether delivery failed.
-          logger.error(
-            { error: emailError, email: normalizedEmail },
-            "Failed to send password reset email",
-          );
-        },
-      );
     }
 
     // Always return success (security best practice)
