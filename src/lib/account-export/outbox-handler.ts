@@ -334,6 +334,30 @@ async function buildArchive(
         cursor = rows.at(-1)!.itemId;
       }
     }
+    // Which uploads are the picture and PDF of which saved link (IMP-110);
+    // the files themselves are in the upload records below.
+    {
+      let cursor: string | undefined;
+      for (;;) {
+        await assertNotCancelled(prisma, input.exportId, input.signal);
+        const rows = await prisma.itemPageCapture.findMany({
+          where: { item: { canvas: { userId: input.userId } } },
+          orderBy: { itemId: "asc" },
+          take: ACCOUNT_EXPORT_PAGE_SIZE,
+          ...(cursor ? { cursor: { itemId: cursor }, skip: 1 } : {}),
+          select: {
+            itemId: true,
+            url: true,
+            imageAssetId: true,
+            pdfAssetId: true,
+            capturedAt: true,
+          },
+        });
+        for (const row of rows) await write("itemPageCapture", row);
+        if (rows.length < ACCOUNT_EXPORT_PAGE_SIZE) break;
+        cursor = rows.at(-1)!.itemId;
+      }
+    }
     await writePages("canvasVersion", (cursor) =>
       prisma.canvasVersion.findMany({
         where: { canvas: { userId: input.userId } },

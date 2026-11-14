@@ -109,6 +109,7 @@ function fakePrisma(
     canvasItem: { findMany: emptyPage },
     canvasVersion: { findMany: emptyPage },
     itemPageCopy: { findMany: emptyPage },
+    itemPageCapture: { findMany: emptyPage },
     canvasShare: { findMany: emptyPage },
     comment: { findMany: emptyPage },
     activity: { findMany: emptyPage },

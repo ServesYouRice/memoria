@@ -66,6 +66,47 @@ describe("Read saved copy (IMP-094)", () => {
     );
   });
 
+  it("shows the picture and PDF of the page when the deployment keeps them (IMP-110)", async () => {
+    answer({
+      url: "https://news.example/story",
+      copy: null,
+      capture: {
+        capturedAt: "2026-11-14T10:00:00.000Z",
+        imageUrl: "/api/v1/canvas-items/item-1/page-capture/image",
+        pdfUrl: "/api/v1/canvas-items/item-1/page-capture/pdf",
+      },
+    });
+    render(<SavedCopyDialog itemId="item-1" onClose={() => {}} />);
+
+    const capture = await screen.findByTestId("saved-copy-capture");
+    const picture = capture.querySelector("img");
+    expect(picture?.getAttribute("src")).toBe(
+      "/api/v1/canvas-items/item-1/page-capture/image",
+    );
+    const pdf = screen.getByRole("link", { name: "Open the PDF" });
+    expect(pdf.getAttribute("href")).toBe(
+      "/api/v1/canvas-items/item-1/page-capture/pdf",
+    );
+    expect(pdf.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(
+      screen.getByText(
+        new RegExp(`made on ${savedCopyDate("2026-11-14T10:00:00.000Z")}`),
+      ),
+    ).toBeTruthy();
+    // A capture counts as a saved copy: no "no saved copy yet" message.
+    expect(screen.queryByText(/no saved copy yet/)).toBeNull();
+  });
+
+  it("shows nothing extra without a capture", async () => {
+    answer({
+      url: "https://news.example/story",
+      copy: { text: "The story.", readAt: null, archiveUrl: null },
+    });
+    render(<SavedCopyDialog itemId="item-1" onClose={() => {}} />);
+    await screen.findByTestId("saved-copy-text");
+    expect(screen.queryByTestId("saved-copy-capture")).toBeNull();
+  });
+
   it("explains when there is no copy yet and an archive lookup is running", async () => {
     answer({ url: "https://news.example/", copy: null, archivePending: true });
     render(<SavedCopyDialog itemId="item-1" onClose={() => {}} />);

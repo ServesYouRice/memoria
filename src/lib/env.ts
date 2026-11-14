@@ -115,6 +115,11 @@ const envSchema = z
     FEATURE_BOOKMARK_UNFURLING: z.enum(["true", "false"]).optional(),
     /** Allow people to look saved links up on archive.org (IMP-094). */
     WEB_ARCHIVE_LOOKUP: z.enum(["true", "false"]).optional(),
+    /**
+     * Keep a picture and a PDF of each saved link (IMP-110). Off unless set;
+     * needs the optional `capture` worker (compose profile) to do the work.
+     */
+    PAGE_CAPTURE: z.enum(["true", "false"]).optional(),
     BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,
     // DEC-013: the AR canvas layer stays off until the real-device matrix
     // passes. Deployments opt in explicitly.

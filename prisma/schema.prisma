@@ -337,6 +337,7 @@ model CanvasItem {
   clipBatchItems      ClipBatchItem[]
   enrichment          ItemEnrichment?
   pageCopy            ItemPageCopy?
+  pageCapture         ItemPageCapture?
   homeBoardSuggestion HomeBoardSuggestion?
   reminders           ItemReminder[]
   pollVotes           PollVote[]
@@ -814,27 +815,32 @@ enum KnowledgeEntityStatus {
 }
 
 model UploadAsset {
-  id          String            @id @default(cuid())
-  userId      String
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  canvasId    String
-  canvas      Canvas            @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  storageKey  String            @unique
-  storageMode String
-  filename    String
-  mimeType    String
-  size        Int
-  status      UploadAssetStatus @default(PENDING)
-  lastError   String?
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId     String
+  canvas       Canvas            @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  storageKey   String            @unique
+  storageMode  String
+  filename     String
+  mimeType     String
+  size         Int
+  status       UploadAssetStatus @default(PENDING)
+  lastError    String?
   // The text note the upload.note job made from this file (IMP-071). Set in
   // the same transaction that creates the note, so a repeated job skips. Not a
   // foreign key: notes are soft-deleted, and re-requesting clears it.
-  noteItemId  String?
-  createdAt   DateTime          @default(now())
+  noteItemId   String?
+  /// The saved link whose page this file is a picture or PDF of (IMP-110).
+  /// Not a foreign key: the sweep that follows an item's permanent deletion
+  /// finds files whose item is gone and deletes them with their quota.
+  sourceItemId String?
+  createdAt    DateTime          @default(now())
 
   @@index([userId, createdAt])
   @@index([canvasId, createdAt])
   @@index([status, createdAt])
+  @@index([sourceItemId])
 }
 
 model RegistrationInvite {
@@ -1420,6 +1426,28 @@ model ItemPageCopy {
 
   @@index([userId])
   @@index([searchVector], type: Gin, map: "idx_item_page_copy_fts")
+}
+
+/// A picture and a PDF of a saved link's page (IMP-110), kept only when the
+/// deployment turns page capture on. The files are UploadAsset rows (storage
+/// quota, export and deletion come with them); this row says which belong to
+/// the item. Deleted with its item; the files follow through the capture
+/// sweep. Untrusted web content: served only as an image or a PDF through an
+/// authorised route.
+model ItemPageCapture {
+  itemId       String     @id
+  item         CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the canvas, whose storage quota the files count against.
+  userId       String
+  /// The address that was captured.
+  url          String
+  imageAssetId String?
+  pdfAssetId   String?
+  capturedAt   DateTime
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([userId])
 }
 
 enum HomeBoardSuggestionStatus {

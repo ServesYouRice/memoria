@@ -21,6 +21,12 @@ export interface SavedCopyResponse {
     readAt: string | null;
     archiveUrl: string | null;
   } | null;
+  /** The picture and PDF of the page, when the deployment keeps them (IMP-110). */
+  capture?: {
+    capturedAt: string;
+    imageUrl: string | null;
+    pdfUrl: string | null;
+  } | null;
   archivePending?: boolean;
 }
 
@@ -62,6 +68,7 @@ export function SavedCopyDialog({
   }, [itemId]);
 
   const copy = data?.copy;
+  const capture = data?.capture;
   return (
     <Dialog
       open={Boolean(itemId)}
@@ -93,12 +100,58 @@ export function SavedCopyDialog({
                   </>
                 )}
               </Typography>
-            ) : (
+            ) : !capture ? (
               <Typography variant="body2" sx={{ mb: 2 }}>
                 There is no saved copy yet. Memoria keeps one when it reads the
                 page, shortly after the link is saved, unless the page could not
                 be read.
               </Typography>
+            ) : null}
+            {capture && (
+              <Box sx={{ mb: 2 }} data-testid="saved-copy-capture">
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 1 }}
+                >
+                  {`Picture and PDF of the page, made on ${savedCopyDate(capture.capturedAt)}.`}
+                  {capture.pdfUrl && (
+                    <>
+                      {" "}
+                      <Link
+                        href={capture.pdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open the PDF
+                      </Link>
+                    </>
+                  )}
+                </Typography>
+                {capture.imageUrl && (
+                  <Link
+                    href={capture.imageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Box
+                      component="img"
+                      src={capture.imageUrl}
+                      alt="The saved page as it looked when it was saved"
+                      loading="lazy"
+                      sx={{
+                        display: "block",
+                        maxWidth: "100%",
+                        maxHeight: "50vh",
+                        objectFit: "contain",
+                        objectPosition: "top",
+                        border: 1,
+                        borderColor: "divider",
+                      }}
+                    />
+                  </Link>
+                )}
+              </Box>
             )}
             {copy?.archiveUrl && (
               <Typography variant="body2" sx={{ mb: 2 }}>

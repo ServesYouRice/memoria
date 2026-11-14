@@ -2,6 +2,7 @@ import type { OutboxJob, PrismaClient } from "@/generated/prisma/client";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import { pruneCompletedOutboxJobs } from "@/lib/outbox/repository";
 import type { OutboxHandler, OutboxHandlerContext } from "@/lib/outbox/types";
+import { sweepOrphanPageCaptures } from "@/lib/services/page-capture";
 import {
   LAUNCH_LIMITS,
   workspaceCheckpointRetention,
@@ -107,7 +108,12 @@ export function createTrashRetentionHandler(
       `,
       { deadlineAt: retentionDeadline(context), signal: context?.signal },
     );
-    if (remains) await enqueueContinuation(prisma, job);
+    // IMP-110: the page pictures and PDFs of the links just deleted.
+    const capturesRemain = await runBatchedRetention(
+      () => sweepOrphanPageCaptures(prisma, RETENTION_BATCH_SIZE),
+      { deadlineAt: retentionDeadline(context), signal: context?.signal },
+    );
+    if (remains || capturesRemain) await enqueueContinuation(prisma, job);
   };
 }
 
