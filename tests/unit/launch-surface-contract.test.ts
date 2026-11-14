@@ -21,11 +21,12 @@ describe("launch capability registry", () => {
     expect(LAUNCH_CAPABILITIES).toEqual({
       templates: true,
       canvasDuplication: true,
-      polls: false,
+      polls: true,
     });
     expect(isLaunchCapabilityEnabled("templates")).toBe(true);
     expect(isLaunchCapabilityEnabled("canvasDuplication")).toBe(true);
-    expect(isLaunchCapabilityEnabled("polls")).toBe(false);
+    // IMP-104: votes are counted on the server, so polls are on.
+    expect(isLaunchCapabilityEnabled("polls")).toBe(true);
   });
 
   it("offers duplication and templates from the dashboard through their hooks", () => {
@@ -150,5 +151,32 @@ describe("public launch copy", () => {
       /unlimited|free forever|enterprise-grade|join thousands|blazing fast|lightning fast|export anywhere/i,
     );
     expect(copy).toMatch(/PNG, PDF, Markdown, or JSON/);
+  });
+
+  it("says what Memoria leads on, from the limits it enforces (IMP-111)", () => {
+    const home = source("src/app/page.tsx");
+    for (const title of [
+      "A large free allowance",
+      "AI on your own key, no credits",
+      "Agents suggest, you approve",
+      "Keeps working offline",
+      "Runs on your own server",
+    ])
+      expect(home).toContain(`title: "${title}"`);
+    // The allowance is read from the enforced limits, never typed in.
+    expect(home).toMatch(
+      /A large free allowance",\s*text: `Up to \$\{LAUNCH_LIMITS\.canvasesPerUser\}/,
+    );
+    // No rival is named and no rival price is quoted.
+    expect(home).not.toMatch(/\$\d|€\d|per month|\/mo\b|cheaper than/i);
+
+    const agents = source("docs/agents/connect-ai-apps.md");
+    expect(agents.split("\n").slice(0, 4).join(" ")).toContain(
+      "**Agents suggest, you approve.**",
+    );
+    expect(source("src/app/help/page.tsx")).toContain(
+      'title="If Memoria ever stops"',
+    );
+    expect(source("README.md")).toContain("One app, one version to upgrade");
   });
 });

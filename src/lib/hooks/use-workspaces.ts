@@ -9,6 +9,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 export interface Workspace {
   id: string;
   name: string;
+  /** IMP-107: the owner's standing notes for AI agents ("" when none). */
+  agentNotes?: string;
   canvasCount: number;
   createdAt: string;
   updatedAt: string;
@@ -138,14 +140,16 @@ export function useUpdateWorkspace() {
     mutationFn: async ({
       workspaceId,
       name,
+      agentNotes,
     }: {
       workspaceId: string;
-      name: string;
+      name?: string;
+      agentNotes?: string;
     }) => {
       const response = await apiFetch(`/api/v1/workspaces/${workspaceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, agentNotes }),
       });
 
       if (!response.ok) {

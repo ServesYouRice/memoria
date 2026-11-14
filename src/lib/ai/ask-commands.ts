@@ -56,6 +56,7 @@ const MOVABLE_TYPES = new Set<string>([
   ItemType.TEXT,
   ItemType.EMBED,
   ItemType.POLL,
+  ItemType.TABLE,
   ItemType.DRAWING,
   ItemType.SHAPE,
 ]);

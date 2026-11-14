@@ -50,6 +50,12 @@ import {
 } from "@/lib/ai/autopilot-service";
 import { useObservedStageSize } from "@/features/canvas/components/use-observed-stage-size";
 import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
+import { TableCellDialog } from "@/features/canvas/components/TableCellDialog";
+import {
+  createTable,
+  tableHeight,
+  tableWidth,
+} from "@/lib/tables/table-content";
 import { resolveBoardCapabilities } from "@/features/canvas/hooks/time-machine-capabilities";
 import { SortIntoPilesDialog } from "./SortIntoPilesDialog";
 import { UploadNoteOffer } from "./UploadNoteOffer";
@@ -58,6 +64,19 @@ import { HomeBoardSuggestions, isInboxBoardName } from "./HomeBoardSuggestions";
 import { useGesture } from "@use-gesture/react";
 import type Konva from "konva";
 import { toast } from "sonner";
+import { isPollChangedMessage } from "@/lib/polls/shared";
+import { pollKeys } from "@/features/canvas/hooks/use-poll-results";
+import {
+  fetchPlacementsElsewhere,
+  placementKeys,
+  useCanvasPlacements,
+  useMovePlacement,
+  useRemovePlacement,
+} from "@/features/canvas/hooks/use-placements";
+import { isPlacementChangedMessage } from "@/lib/placements/shared";
+import type { PlacedItem } from "@/lib/placements/shared";
+import { PlacementLayer } from "@/features/canvas/components/PlacementLayer";
+import { PlacementMenu } from "@/features/canvas/components/PlacementMenu";
 import {
   BoardExportCaptureContext,
   type BoardExportCapture,
@@ -99,7 +118,10 @@ import { CanvasAddBar } from "@/features/canvas/components/CanvasAddBar";
 import { CanvasViewControls } from "@/features/canvas/components/CanvasViewControls";
 import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { isArCanvasEnabled } from "@/lib/product-surfaces";
+import {
+  isArCanvasEnabled,
+  isLaunchCapabilityEnabled,
+} from "@/lib/product-surfaces";
 import { isVersionConflict } from "@/lib/api/fetch-client";
 import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
 import { appColor, appColorTokens } from "@/lib/theme";
@@ -340,6 +362,20 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const [pendingAutopilotItems, setPendingAutopilotItems] = useState<
     AutopilotItem[]
   >([]);
+  // IMP-109: items from other canvases shown here, and their menu.
+  const placements = useCanvasPlacements(canvasId);
+  const movePlacement = useMovePlacement(canvasId);
+  const removePlacement = useRemovePlacement();
+  const [placementMenu, setPlacementMenu] = useState<{
+    placed: PlacedItem;
+    x: number;
+    y: number;
+  } | null>(null);
+  // IMP-109: deleting items also shown on other canvases asks first.
+  const [pendingSharedDelete, setPendingSharedDelete] = useState<{
+    message: string;
+    run: () => Promise<void>;
+  } | null>(null);
   const [pendingRestoreVersionId, setPendingRestoreVersionId] = useState<
     string | null
   >(null);
@@ -349,6 +385,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [pollDialogOpen, setPollDialogOpen] = useState(false);
 
   // Edit Dialogs
   const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false);
@@ -411,6 +448,39 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     setSelectedItemId,
   });
 
+  /**
+   * IMP-109: run a delete, first saying where else the items will
+   * disappear when some are also shown on other canvases.
+   */
+  const deleteWithWarning = async (
+    targets: CanvasItem[],
+    run: () => Promise<void>,
+  ) => {
+    let elsewhere: Awaited<ReturnType<typeof fetchPlacementsElsewhere>> = {};
+    try {
+      elsewhere = await fetchPlacementsElsewhere(
+        canvasId,
+        targets.map((item) => item.id),
+      );
+    } catch {
+      // Without the answer, delete as before: the trash can restore it.
+    }
+    const shown = Object.values(elsewhere);
+    if (shown.length === 0) {
+      await run();
+      return;
+    }
+    const names = Array.from(new Set(shown.flatMap((e) => e.canvasNames)));
+    const count = shown.reduce((sum, e) => sum + e.count, 0);
+    setPendingSharedDelete({
+      message:
+        names.length > 0
+          ? `It will also disappear from: ${names.join(", ")}. It goes to the trash once, and restoring it brings it back everywhere.`
+          : `It will also disappear from ${count} other ${count === 1 ? "canvas" : "canvases"}. It goes to the trash once, and restoring it brings it back everywhere.`,
+      run,
+    });
+  };
+
   // Keyboard Hook
   const [isSpacePressed, setIsSpacePressed] = useState(false);
 
@@ -422,16 +492,18 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           const itemsToDelete = allItems.filter((item) =>
             selectedItemIds.has(item.id),
           );
-          await Promise.all(
-            itemsToDelete.map((item) =>
-              deleteItem({
-                itemId: item.id,
-                version: item.version,
-                canvasId: item.canvasId,
-              }),
-            ),
-          );
-          setSelectedItemIds(new Set());
+          await deleteWithWarning(itemsToDelete, async () => {
+            await Promise.all(
+              itemsToDelete.map((item) =>
+                deleteItem({
+                  itemId: item.id,
+                  version: item.version,
+                  canvasId: item.canvasId,
+                }),
+              ),
+            );
+            setSelectedItemIds(new Set());
+          });
         } catch (err) {
           console.error("Failed to bulk delete items:", err);
         }
@@ -441,12 +513,14 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         );
         if (selectedItem) {
           try {
-            await deleteItem({
-              itemId: selectedItem.id,
-              version: selectedItem.version,
-              canvasId: selectedItem.canvasId,
+            await deleteWithWarning([selectedItem], async () => {
+              await deleteItem({
+                itemId: selectedItem.id,
+                version: selectedItem.version,
+                canvasId: selectedItem.canvasId,
+              });
+              setSelectedItemId(null);
             });
-            setSelectedItemId(null);
           } catch (err) {
             console.error("Failed to delete item:", err);
           }
@@ -604,61 +678,78 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // Collaboration
   const { data: session } = useSession();
 
-  const handleRemoteMessage = useCallback((message: unknown) => {
-    if (!message || typeof message !== "object") return;
-    const payload = message as Record<string, unknown>;
-    const position = payload.position as
-      { x?: unknown; y?: unknown } | undefined;
-    if (
-      payload.kind === "cursor_chat" &&
-      typeof payload.userId === "string" &&
-      typeof payload.message === "string" &&
-      typeof payload.userName === "string" &&
-      typeof payload.userColor === "string" &&
-      typeof position?.x === "number" &&
-      typeof position.y === "number"
-    ) {
-      const id = Date.now().toString() + Math.random().toString();
-      setRemoteMessages((prev) => [
-        ...prev,
-        {
-          id,
-          userId: payload.userId as string,
-          content: payload.message as string,
-          x: position.x as number,
-          y: position.y as number,
-          userName: payload.userName as string,
-          userColor: payload.userColor as string,
-        },
-      ]);
-      setTimeout(() => {
-        setRemoteMessages((prev) => prev.filter((m) => m.id !== id));
-      }, 5000);
-    } else if (
-      payload.kind === "reaction" &&
-      typeof payload.userId === "string" &&
-      typeof payload.emoji === "string" &&
-      typeof payload.userName === "string" &&
-      typeof position?.x === "number" &&
-      typeof position.y === "number"
-    ) {
-      const id = Date.now().toString() + Math.random().toString();
-      setRemoteReactions((prev) => [
-        ...prev,
-        {
-          id,
-          userId: payload.userId as string,
-          emoji: payload.emoji as string,
-          x: position.x as number,
-          y: position.y as number,
-          userName: payload.userName as string,
-        },
-      ]);
-      setTimeout(() => {
-        setRemoteReactions((prev) => prev.filter((r) => r.id !== id));
-      }, 3000);
-    }
-  }, []);
+  const handleRemoteMessage = useCallback(
+    (message: unknown) => {
+      if (!message || typeof message !== "object") return;
+      // IMP-104: a vote changed a poll's counts; read them again.
+      // IMP-109: an item shown here changed on its home canvas.
+      if (isPlacementChangedMessage(message)) {
+        void queryClient.invalidateQueries({
+          queryKey: placementKeys.canvas(canvasId),
+        });
+        return;
+      }
+      if (isPollChangedMessage(message)) {
+        void queryClient.invalidateQueries({
+          queryKey: pollKeys.canvas(canvasId),
+        });
+        return;
+      }
+      const payload = message as Record<string, unknown>;
+      const position = payload.position as
+        { x?: unknown; y?: unknown } | undefined;
+      if (
+        payload.kind === "cursor_chat" &&
+        typeof payload.userId === "string" &&
+        typeof payload.message === "string" &&
+        typeof payload.userName === "string" &&
+        typeof payload.userColor === "string" &&
+        typeof position?.x === "number" &&
+        typeof position.y === "number"
+      ) {
+        const id = Date.now().toString() + Math.random().toString();
+        setRemoteMessages((prev) => [
+          ...prev,
+          {
+            id,
+            userId: payload.userId as string,
+            content: payload.message as string,
+            x: position.x as number,
+            y: position.y as number,
+            userName: payload.userName as string,
+            userColor: payload.userColor as string,
+          },
+        ]);
+        setTimeout(() => {
+          setRemoteMessages((prev) => prev.filter((m) => m.id !== id));
+        }, 5000);
+      } else if (
+        payload.kind === "reaction" &&
+        typeof payload.userId === "string" &&
+        typeof payload.emoji === "string" &&
+        typeof payload.userName === "string" &&
+        typeof position?.x === "number" &&
+        typeof position.y === "number"
+      ) {
+        const id = Date.now().toString() + Math.random().toString();
+        setRemoteReactions((prev) => [
+          ...prev,
+          {
+            id,
+            userId: payload.userId as string,
+            emoji: payload.emoji as string,
+            x: position.x as number,
+            y: position.y as number,
+            userName: payload.userName as string,
+          },
+        ]);
+        setTimeout(() => {
+          setRemoteReactions((prev) => prev.filter((r) => r.id !== id));
+        }, 3000);
+      }
+    },
+    [canvasId, queryClient],
+  );
 
   const handleCommittedEvents = useCallback(
     async (events: CommittedCanvasItemEvent[]) => {
@@ -687,6 +778,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     connectionMessage: collaborationConnectionMessage,
     broadcastMessage,
     updateCursor,
+    timer: sharedTimer,
+    sendTimerCommand,
   } = useCollaboration({
     canvasId,
     name: session?.user?.name || "Anonymous",
@@ -791,6 +884,26 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
   };
 
+  const handleAddTable = async () => {
+    const center = viewportCenterWorld(position, stageSize, zoom);
+    const table = createTable(3, 3);
+    try {
+      await createItem({
+        content: table,
+        type: ItemType.TABLE,
+        positionX: center.x - tableWidth(table) / 2,
+        positionY: center.y - tableHeight(table) / 2,
+        width: tableWidth(table),
+        height: tableHeight(table),
+        canvasId: canvasId,
+        zIndex: allItems.length + 1,
+        tags: [],
+      });
+    } catch {
+      toast.error("The table was not added.");
+    }
+  };
+
   const handleWhisperSend = async (text: string) => {
     const center = viewportCenterWorld(position, stageSize, zoom);
     await createItem({
@@ -888,11 +1001,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const handleDeleteItem = (item: CanvasItem) => {
     if (!capabilities.canDeleteItems) return;
     // The hook rolls back and shows the failure toast.
-    deleteItem({
-      itemId: item.id,
-      version: item.version,
-      canvasId: item.canvasId,
-    }).catch(() => {});
+    void deleteWithWarning([item], () =>
+      deleteItem({
+        itemId: item.id,
+        version: item.version,
+        canvasId: item.canvasId,
+      })
+        .then(() => undefined)
+        .catch(() => {}),
+    );
   };
 
   const generateThumbnail = useCallback(
@@ -997,11 +1114,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     if (!selectedItemId) return;
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
-      deleteItem({
-        itemId: selectedItemId,
-        version: selectedItem.version,
-        canvasId: selectedItem.canvasId,
-      }).catch(() => {});
+      void deleteWithWarning([selectedItem], () =>
+        deleteItem({
+          itemId: selectedItem.id,
+          version: selectedItem.version,
+          canvasId: selectedItem.canvasId,
+        })
+          .then(() => undefined)
+          .catch(() => {}),
+      );
     }
   };
 
@@ -1391,6 +1512,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onPresentationMode={() => setPresentationMode((active) => !active)}
         isPresentationMode={isPresentationMode}
         canManageCanvas={isOwner}
+        timer={sharedTimer}
+        onTimerCommand={sendTimerCommand}
+        canControlTimer={canEdit}
         saveStatus={
           updateItemMutation.isPending
             ? "saving"
@@ -1552,6 +1676,12 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               onAddNote={() => setNoteDialogOpen(true)}
               onAddLink={() => setBookmarkDialogOpen(true)}
               onAddImage={() => setImageDialogOpen(true)}
+              onAddPoll={
+                isLaunchCapabilityEnabled("polls")
+                  ? () => setPollDialogOpen(true)
+                  : undefined
+              }
+              onAddTable={() => void handleAddTable()}
             />
           )}
           {!isPresentationMode && (
@@ -1679,6 +1809,22 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               onCommitGeometry={stableCommitGeometry}
               searchActive={!exportItems && Boolean(searchQuery.trim())}
               searchMatchIds={searchMatchIds}
+            />
+            <PlacementLayer
+              canvasId={canvasId}
+              // An export draws its own full list, shown items included.
+              placed={exportItems ? [] : (placements.data ?? [])}
+              canMove={canEdit}
+              onMove={(placementId, x, y) =>
+                movePlacement.mutate(
+                  { placementId, positionX: x, positionY: y },
+                  {
+                    onError: () =>
+                      toast.error("The item could not be moved here."),
+                  },
+                )
+              }
+              onMenu={(placed, x, y) => setPlacementMenu({ placed, x, y })}
             />
             <DrawingPreview
               currentPath={currentPath}
@@ -1850,6 +1996,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         </Box>
       )}
 
+      <TableCellDialog items={allItems} />
       <ArrowLabelDialog
         content={(labelArrow?.content as ArrowContent | undefined) ?? null}
         onClose={() => setLabelArrow(null)}
@@ -1878,6 +2025,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         setBookmarkDialogOpen={setBookmarkDialogOpen}
         imageDialogOpen={imageDialogOpen}
         setImageDialogOpen={setImageDialogOpen}
+        pollDialogOpen={pollDialogOpen}
+        setPollDialogOpen={setPollDialogOpen}
         editNoteDialogOpen={editNoteDialogOpen}
         setEditNoteDialogOpen={setEditNoteDialogOpen}
         editingNoteItem={editingNoteItem}
@@ -1947,6 +2096,37 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           onApplied={() => setFitAfterSortFrom(boundsKey)}
         />
       )}
+      <PlacementMenu
+        state={placementMenu}
+        canRemove={canEdit}
+        onClose={() => setPlacementMenu(null)}
+        onRemove={(placed) =>
+          removePlacement.mutate(
+            {
+              canvasId,
+              placementId: placed.placementId,
+              itemId: placed.item.id,
+            },
+            {
+              onError: () =>
+                toast.error("The item could not be taken off this canvas."),
+            },
+          )
+        }
+      />
+      <ConfirmDialog
+        open={pendingSharedDelete !== null}
+        title="Delete an item shown on other canvases?"
+        message={pendingSharedDelete?.message ?? ""}
+        confirmLabel="Delete everywhere"
+        destructive
+        onClose={() => setPendingSharedDelete(null)}
+        onConfirm={async () => {
+          const pending = pendingSharedDelete;
+          setPendingSharedDelete(null);
+          await pending?.run();
+        }}
+      />
       <ConfirmDialog
         open={pendingAutopilotActions.length > 0}
         title="Apply automatic layout?"

@@ -94,11 +94,22 @@ export async function isLinkEnrichmentEnabled(
   db: TransactionClient,
   userId: string,
 ): Promise<boolean> {
+  return (await linkEnrichmentSettings(db, userId)).enabled;
+}
+
+/** Whether links get enriched, and the person's own tagging rules (IMP-106). */
+async function linkEnrichmentSettings(
+  db: TransactionClient,
+  userId: string,
+): Promise<{ enabled: boolean; taggingRules: string | null }> {
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { autoEnrichLinks: true },
+    select: { autoEnrichLinks: true, taggingRules: true },
   });
-  return Boolean(user?.autoEnrichLinks);
+  return {
+    enabled: Boolean(user?.autoEnrichLinks),
+    taggingRules: user?.taggingRules ?? null,
+  };
 }
 
 /**
@@ -345,7 +356,8 @@ export function createLinkEnrichmentHandler(
       return;
     }
     // The user may have turned enrichment off after saving.
-    if (!(await isLinkEnrichmentEnabled(prisma, enrichment.userId))) {
+    const settings = await linkEnrichmentSettings(prisma, enrichment.userId);
+    if (!settings.enabled) {
       await markSkipped(prisma, itemId);
       return;
     }
@@ -379,6 +391,7 @@ export function createLinkEnrichmentHandler(
         description: metadata?.description || saved.description,
         siteName: metadata?.siteName || saved.siteName,
         pageText,
+        taggingRules: settings.taggingRules,
         signal: context?.signal,
       });
     } catch (error) {

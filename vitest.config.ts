@@ -13,6 +13,10 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
+    // IMP-118: unit tests never share the developer's Redis (a daily AI
+    // allowance spent there failed them). An empty value wins over `.env`;
+    // a test that needs Redis stubs REDIS_URL itself.
+    env: { REDIS_URL: "" },
     // The @mui/icons-material barrel resolves to one module per icon. Left
     // unbundled it opens thousands of files at once and trips EMFILE on
     // Windows, so pre-bundle it into a single dependency chunk.

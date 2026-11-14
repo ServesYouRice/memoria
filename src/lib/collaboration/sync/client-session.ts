@@ -351,9 +351,7 @@ export class CanvasDocumentSession {
     if (parsed.canvasId !== this.canvasId)
       throw new Error("The item belongs to another canvas.");
     if (parsed.type === ItemType.POLL && !isLaunchCapabilityEnabled("polls"))
-      throw new Error(
-        "Polls are disabled until voting is server-authoritative.",
-      );
+      throw new Error("Polls are switched off.");
     if (this.items.size >= LAUNCH_LIMITS.itemsPerCanvas)
       throw new Error("This canvas has reached its item limit.");
     const state: CanvasItemState = {

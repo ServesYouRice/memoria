@@ -4,6 +4,10 @@ import type { OutboxHandler } from "@/lib/outbox/types";
 import { getRedisClient } from "@/lib/cache/redis-client";
 import { canvasChannel } from "./channels";
 import { toCommittedEventEnvelope } from "./committed-events";
+import {
+  placementCanvasIds,
+  publishPlacementChanged,
+} from "@/lib/placements/placements";
 
 const payloadSchema = z.object({ eventId: z.string().cuid() }).strict();
 
@@ -36,6 +40,10 @@ export function createCanvasEventHandler(
         timestamp: Date.now(),
       }),
     );
+    // IMP-109: canvases that also show this item read it again.
+    const elsewhere = await placementCanvasIds(prisma, event.entityId);
+    if (elsewhere.length > 0)
+      await publishPlacementChanged(elsewhere, event.entityId, publish);
   };
 }
 
@@ -70,5 +78,17 @@ export function createCanvasRestoreEventHandler(
         timestamp: Date.now(),
       }),
     );
+    // IMP-109: items of this canvas shown elsewhere may have changed too.
+    const shown = await prisma.itemPlacement.findMany({
+      where: { item: { canvasId: event.canvasId } },
+      select: { canvasId: true },
+      distinct: ["canvasId"],
+    });
+    if (shown.length > 0)
+      await publishPlacementChanged(
+        shown.map((row) => row.canvasId),
+        `restore:${event.canvasId}`,
+        publish,
+      );
   };
 }

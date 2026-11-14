@@ -182,3 +182,48 @@ describe("link settings: web-archive lookup (IMP-094)", () => {
     expect((await patch({})).status).toBe(400);
   });
 });
+
+describe("link settings: your own tagging rules (IMP-106)", () => {
+  function patch(body: unknown) {
+    return patchLinkSettings(
+      new NextRequest("http://localhost/api/v1/ai/link-enrichment", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      {},
+    );
+  }
+
+  it("saves the rules trimmed, and an empty box returns to the standard", async () => {
+    expect((await patch({ taggingRules: "  Use few tags.  " })).status).toBe(
+      200,
+    );
+    expect(mocks.updateUser).toHaveBeenLastCalledWith({
+      where: { id: "u1" },
+      data: { taggingRules: "Use few tags." },
+    });
+    expect((await patch({ taggingRules: "" })).status).toBe(200);
+    expect(mocks.updateUser).toHaveBeenLastCalledWith({
+      where: { id: "u1" },
+      data: { taggingRules: null },
+    });
+  });
+
+  it("refuses rules over the limit and shows the saved ones", async () => {
+    expect((await patch({ taggingRules: "x".repeat(1001) })).status).toBe(400);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+    mocks.findUser.mockResolvedValue({
+      autoEnrichLinks: true,
+      webArchiveLookup: false,
+      taggingRules: "Use few tags.",
+    });
+    const response = await getLinkSettings(
+      new NextRequest("http://localhost/api/v1/ai/link-enrichment"),
+      {},
+    );
+    expect(await response.json()).toMatchObject({
+      taggingRules: "Use few tags.",
+    });
+  });
+});

@@ -1,10 +1,16 @@
 /**
  * Next.js client instrumentation (src/, next to the app directory).
  *
- * Next.js runs this before the app hydrates. It loads the browser Sentry
- * config, whose single Sentry.init stays disabled unless the build is a
- * production build with NEXT_PUBLIC_SENTRY_DSN set.
+ * Next.js runs this before the app hydrates. Browser telemetry is opt-in:
+ * only a production build with NEXT_PUBLIC_SENTRY_DSN set loads the Sentry
+ * config, and it loads as its own chunk. The public DSN is inlined at build
+ * time, so a build without one carries no Sentry code in the JavaScript
+ * every page loads (IMP-116: that code was most of the shared budget).
  *
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation-client
  */
-import "../sentry.client.config";
+const sentryEnabled =
+  process.env.NODE_ENV === "production" &&
+  Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN);
+
+if (sentryEnabled) void import("../sentry.client.config");

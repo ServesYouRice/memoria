@@ -1,5 +1,20 @@
 import { ItemType } from "@/generated/prisma/client";
-import { describe, expect, it } from "vitest";
+import type * as ProductSurfaces from "@/lib/product-surfaces";
+import type { LaunchCapability } from "@/lib/product-surfaces";
+import { describe, expect, it, vi } from "vitest";
+
+// IMP-104: polls are on; these tests keep the off switch working.
+vi.mock("@/lib/product-surfaces", async (importOriginal) => {
+  const actual = await importOriginal<typeof ProductSurfaces>();
+  return {
+    ...actual,
+    isLaunchCapabilityEnabled: (capability: string) =>
+      capability === "polls"
+        ? false
+        : actual.isLaunchCapabilityEnabled(capability as LaunchCapability),
+  };
+});
+
 import { requirePollsEnabled } from "@/lib/polls/availability";
 
 describe("poll launch gate", () => {
@@ -12,7 +27,7 @@ describe("poll launch gate", () => {
       expect.objectContaining({
         status: 404,
         type: "https://memoria.local/errors/feature-disabled",
-        detail: "Polls are disabled until voting is server-authoritative.",
+        detail: "Polls are switched off.",
       }),
     );
   });

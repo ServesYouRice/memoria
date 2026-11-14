@@ -25,24 +25,16 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-104](tasks/IMP-104.md) | Polls with votes counted on the server | |
-| [IMP-105](tasks/IMP-105.md) | A timer everyone on the canvas sees | |
-| [IMP-106](tasks/IMP-106.md) | Your own tagging rules | |
-| [IMP-107](tasks/IMP-107.md) | Standing notes for AI agents, per workspace | |
-| [IMP-108](tasks/IMP-108.md) | Tables on the canvas | |
-| [IMP-109](tasks/IMP-109.md) | One item on several canvases | |
-| [IMP-112](tasks/IMP-112.md) | Publish the AGPL-3.0 licence and a "never paywalled" promise | |
-| [IMP-111](tasks/IMP-111.md) | Home page and guides say what Memoria leads on | |
-| [IMP-116](tasks/IMP-116.md) | Shared JavaScript fits its size budget again | |
+| [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | |
+| [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | |
+| [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | |
+| [IMP-119](tasks/IMP-119.md) | Settings page shows one copy of each field while it loads | |
 
 ## WAITING
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
 | [IMP-056](tasks/IMP-056.md) | Deploy Memoria on the k3s cluster (draft: ServesYouRice/Infra#4) | DEC-004 |
-| [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (picture and PDF) | IMP-094 |
-| [IMP-113](tasks/IMP-113.md) | PDFs on the canvas: upload, read, search and ask | IMP-094 |
-| [IMP-114](tasks/IMP-114.md) | Video cards with time-stamped notes and a transcript | IMP-094 |
 | [IMP-115](tasks/IMP-115.md) | A hosted paid plan people can sign up and pay for | DEC-019 |
 
 ## USER DECISIONS

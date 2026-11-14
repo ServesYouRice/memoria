@@ -4,12 +4,19 @@ import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Alert,
+  Box,
+  Button,
   ListItem,
   ListItemText,
   Skeleton,
   Stack,
   Switch,
+  TextField,
 } from "@mui/material";
+import {
+  TAGGING_RULES_EXAMPLE,
+  TAGGING_RULES_MAX_CHARS,
+} from "@/lib/ai/tagging-rules";
 
 const ENDPOINT = "/api/v1/ai/link-enrichment";
 
@@ -18,10 +25,14 @@ interface LinkEnrichmentPayload {
   aiConfigured: boolean;
   webArchiveAvailable?: boolean;
   webArchiveLookup?: boolean;
+  taggingRules?: string;
 }
 
 type LinkSettingsChange = Partial<
-  Pick<LinkEnrichmentPayload, "autoEnrichLinks" | "webArchiveLookup">
+  Pick<
+    LinkEnrichmentPayload,
+    "autoEnrichLinks" | "webArchiveLookup" | "taggingRules"
+  >
 >;
 
 /** Settings switch for naming, tagging and summarizing saved links. */
@@ -29,13 +40,16 @@ export function LinkEnrichmentSettings() {
   const [data, setData] = useState<LinkEnrichmentPayload | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rules, setRules] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
     void fetch(ENDPOINT, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Link enrichment request failed");
-        setData((await response.json()) as LinkEnrichmentPayload);
+        const payload = (await response.json()) as LinkEnrichmentPayload;
+        setData(payload);
+        setRules(payload.taggingRules ?? "");
       })
       .catch((error) => {
         if ((error as Error).name !== "AbortError") setLoadFailed(true);
@@ -52,7 +66,16 @@ export function LinkEnrichmentSettings() {
         body: JSON.stringify(change),
       });
       if (!response.ok) throw new Error("Save failed");
-      setData((await response.json()) as LinkEnrichmentPayload);
+      const payload = (await response.json()) as LinkEnrichmentPayload;
+      setData(payload);
+      if (change.taggingRules !== undefined) {
+        setRules(payload.taggingRules ?? "");
+        toast.success(
+          payload.taggingRules
+            ? "Your tagging rules are saved."
+            : "Tagging is back to the standard rules.",
+        );
+      }
     } catch {
       toast.error("Could not save the link setting.");
     } finally {
@@ -106,6 +129,30 @@ export function LinkEnrichmentSettings() {
           />
         </ListItem>
       )}
+      <Box sx={{ px: 1, pt: 1 }}>
+        <TextField
+          label="How should things be tagged?"
+          placeholder={`For example: ${TAGGING_RULES_EXAMPLE}`}
+          helperText={`In your own words. New automatic tags follow these rules; tags you set yourself are never replaced. Leave it empty for the standard tags. ${rules.length}/${TAGGING_RULES_MAX_CHARS}`}
+          value={rules}
+          onChange={(event) =>
+            setRules(event.target.value.slice(0, TAGGING_RULES_MAX_CHARS))
+          }
+          slotProps={{ htmlInput: { maxLength: TAGGING_RULES_MAX_CHARS } }}
+          multiline
+          minRows={2}
+          fullWidth
+        />
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
+          <Button
+            variant="outlined"
+            disabled={saving || rules === (data.taggingRules ?? "")}
+            onClick={() => void toggle({ taggingRules: rules })}
+          >
+            Save tagging rules
+          </Button>
+        </Box>
+      </Box>
     </Stack>
   );
 }

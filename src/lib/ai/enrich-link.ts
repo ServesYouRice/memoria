@@ -21,6 +21,7 @@ import {
 } from "./errors";
 import { findAiProvider } from "./provider-resolution";
 import { generateText } from "./service";
+import { withTaggingRules } from "./tagging-rules";
 
 const logger = createLogger("ai-enrich-link");
 
@@ -51,6 +52,8 @@ export interface LinkAiInput {
   description?: string | null;
   siteName?: string | null;
   pageText?: string | null;
+  /** The person's own tagging rules (IMP-106); none means the standard ones. */
+  taggingRules?: string | null;
   signal?: AbortSignal;
 }
 
@@ -84,7 +87,7 @@ export function truncateUtf8(value: string, maxBytes: number): string {
  * within `maxBytes` (AI_MAX_PROMPT_BYTES by default).
  */
 export function buildLinkPrompt(
-  input: Omit<LinkAiInput, "userId" | "signal">,
+  input: Omit<LinkAiInput, "userId" | "signal" | "taggingRules">,
   maxBytes = aiMaxPromptBytes(),
 ): string {
   const header = [
@@ -186,22 +189,24 @@ export async function suggestLinkDetails(
   if (!(await findAiProvider(input.userId))) {
     return { ok: false, reason: "not-configured" };
   }
-  // The system prompt is sent too, so it counts against the same cap.
+  // The system prompt, the person's tagging rules included, is sent too, so
+  // it counts against the same cap.
+  const system = withTaggingRules(SYSTEM_PROMPT, input.taggingRules);
   const prompt = buildLinkPrompt(
     input,
-    aiMaxPromptBytes() - Buffer.byteLength(SYSTEM_PROMPT, "utf8") - 1,
+    aiMaxPromptBytes() - Buffer.byteLength(system, "utf8") - 1,
   );
   try {
     const { value } = await runBudgetedAi(
       input.userId,
       {
-        prompt: `${SYSTEM_PROMPT}\n${prompt}`,
+        prompt: `${system}\n${prompt}`,
         maxOutputTokens: LINK_AI_MAX_OUTPUT_TOKENS,
       },
       () =>
         generateText({
           prompt,
-          system: SYSTEM_PROMPT,
+          system,
           temperature: 0.2,
           maxTokens: LINK_AI_MAX_OUTPUT_TOKENS,
           userId: input.userId,

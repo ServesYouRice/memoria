@@ -10,6 +10,7 @@ import {
 } from "./provider-resolution";
 import { AiUpstreamError } from "./providers";
 import type { AiChatTurn } from "./chat-history";
+import { withTaggingRules } from "./tagging-rules";
 
 const logger = createLogger("ai-provider");
 export const AI_SUMMARY_ITEM_LIMIT = 500;
@@ -225,14 +226,18 @@ export async function summarizeCanvas(
   });
 }
 
+export const TAG_SYSTEM_PROMPT =
+  "You are a precise tagging system. Output only the tags separated by commas.";
+
 export async function generateTags(
   content: string,
   userId?: string,
+  /** The person's own tagging rules (IMP-106); none means the standard ones. */
+  taggingRules?: string | null,
 ): Promise<string[]> {
   const result = await generateText({
     prompt: `Generate up to 5 relevant tags for the following content. Return them as a comma-separated list, no hashmarks:\n\n${content}`,
-    system:
-      "You are a precise tagging system. Output only the tags separated by commas.",
+    system: withTaggingRules(TAG_SYSTEM_PROMPT, taggingRules),
     temperature: 0.3,
     maxTokens: 80,
     userId,

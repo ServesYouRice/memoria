@@ -3,6 +3,14 @@
  * Based on ADR-0004: Data Model
  */
 
+import { isLaunchCapabilityEnabled } from "@/lib/product-surfaces";
+import {
+  isTableContentShape,
+  type TableContent,
+} from "@/lib/tables/table-content";
+
+export type { TableContent } from "@/lib/tables/table-content";
+
 export enum ItemType {
   NOTE = "NOTE",
   BOOKMARK = "BOOKMARK",
@@ -14,6 +22,7 @@ export enum ItemType {
   FRAME = "FRAME",
   EMBED = "EMBED",
   POLL = "POLL",
+  TABLE = "TABLE",
 }
 
 /**
@@ -38,8 +47,8 @@ export interface CanvasCapabilities {
   canCopyItems: boolean;
   canComment: boolean;
   /**
-   * Poll voting. Held at `false` for every role until server-authoritative
-   * voting ships (DEC-005) — no role may write a vote from the client.
+   * Poll voting (IMP-104): anyone with access may vote while polls are on.
+   * The vote route checks access again and records only the caller's vote.
    */
   canVote: boolean;
   canManageCanvas: boolean;
@@ -63,8 +72,7 @@ export function resolveCanvasCapabilities(
     canDeleteItems: canEdit,
     canCopyItems: accessLevel !== "NONE",
     canComment,
-    // DEC-005: client-side voting is gated off until the server owns it.
-    canVote: false,
+    canVote: accessLevel !== "NONE" && isLaunchCapabilityEnabled("polls"),
     canManageCanvas: accessLevel === "OWNER",
   };
 }
@@ -228,7 +236,6 @@ export interface EmbedContent {
 export interface PollOption {
   id: string;
   text: string;
-  votes: string[]; // Array of user IDs
 }
 
 export interface PollContent {
@@ -250,7 +257,8 @@ export type ItemContent =
   | TextContent
   | FrameContent
   | EmbedContent
-  | PollContent;
+  | PollContent
+  | TableContent;
 
 /**
  * Full canvas item (matches database schema)
@@ -408,6 +416,11 @@ export function isEmbedContent(content: ItemContent): content is EmbedContent {
 
 export function isPollContent(content: ItemContent): content is PollContent {
   return "question" in content && "options" in content;
+}
+
+/** IMP-108: type-scoped; use after checking `item.type === ItemType.TABLE`. */
+export function isTableContent(content: unknown): content is TableContent {
+  return isTableContentShape(content);
 }
 
 /**

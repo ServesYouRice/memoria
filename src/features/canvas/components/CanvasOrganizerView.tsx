@@ -56,6 +56,10 @@ interface CanvasOrganizerViewProps {
 }
 
 function getItemSummary(item: CanvasItem) {
+  if (item.type === "TABLE") {
+    const text = (item.content as { text?: string }).text ?? "";
+    return text.slice(0, 140) || "Empty table";
+  }
   if (isNoteContent(item.content)) {
     return item.content.text.slice(0, 140) || "Empty note";
   }

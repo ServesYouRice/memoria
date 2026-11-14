@@ -58,6 +58,8 @@ import { describeSaveStatus } from "@/features/canvas/save-status";
 
 import { useThemeMode } from "@/lib/theme-context";
 import { MeetingTimer } from "./MeetingTimer";
+import type { SharedTimerSnapshot } from "@/lib/hooks/use-collaboration";
+import type { SharedTimerAction } from "@/lib/collaboration/shared-timer";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
 import { PresentToAll } from "@mui/icons-material";
 import { zoomedIn, zoomedOut } from "./CanvasViewControls";
@@ -121,6 +123,10 @@ export interface CanvasHeaderProps {
   offlineChanges?: number;
   /** The device copy could not be written: those edits are only in this tab. */
   deviceCopyFailed?: boolean;
+  /** IMP-105: the shared timer, and whether this person may control it. */
+  timer?: SharedTimerSnapshot | null;
+  onTimerCommand?: (action: SharedTimerAction, durationMs: number) => void;
+  canControlTimer?: boolean;
 }
 
 /**
@@ -179,6 +185,9 @@ export function CanvasHeader({
   saveError,
   offlineChanges,
   deviceCopyFailed,
+  timer = null,
+  onTimerCommand,
+  canControlTimer = false,
 }: CanvasHeaderProps) {
   const router = useRouter();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -483,7 +492,7 @@ export function CanvasHeader({
       },
       {
         key: "timer",
-        label: "Personal meeting timer",
+        label: "Shared timer",
         icon: <TimerIcon fontSize="small" />,
         onClick: () => setTimerAnchor(moreButtonRef.current),
       },
@@ -631,7 +640,10 @@ export function CanvasHeader({
             ))}
           </Menu>
           <MeetingTimer
-            hideTrigger
+            timer={timer}
+            onCommand={onTimerCommand}
+            canControl={canControlTimer}
+            connected={collaborationConnected}
             externalAnchor={timerAnchor}
             onExternalClose={() => setTimerAnchor(null)}
           />
@@ -673,7 +685,7 @@ export function CanvasHeader({
     })),
     {
       key: "timer",
-      label: "Personal meeting timer",
+      label: "Shared timer",
       icon: <TimerIcon fontSize="small" />,
       onClick: () => setTimerAnchor(moreButtonRef.current),
     },
@@ -950,7 +962,10 @@ export function CanvasHeader({
           ))}
         </Menu>
         <MeetingTimer
-          hideTrigger
+          timer={timer}
+          onCommand={onTimerCommand}
+          canControl={canControlTimer}
+          connected={collaborationConnected}
           externalAnchor={timerAnchor}
           onExternalClose={() => setTimerAnchor(null)}
         />

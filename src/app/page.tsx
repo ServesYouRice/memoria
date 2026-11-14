@@ -72,6 +72,34 @@ const ABILITIES = [
   },
 ];
 
+/**
+ * IMP-111: what Memoria does that a visitor may not expect. Each line is
+ * true in the code today; the limits come from the same constants the
+ * product enforces.
+ */
+const STRENGTHS = [
+  {
+    title: "A large free allowance",
+    text: `Up to ${LAUNCH_LIMITS.canvasesPerUser} canvases, each with up to ${LAUNCH_LIMITS.itemsPerCanvas.toLocaleString("en-US")} items.`,
+  },
+  {
+    title: "AI on your own key, no credits",
+    text: "Connect your own AI provider key. Memoria sells no credits and counts no AI quota of its own.",
+  },
+  {
+    title: "Agents suggest, you approve",
+    text: "AI agents you connect propose changes; nothing moves until you approve it, and you can undo it afterwards.",
+  },
+  {
+    title: "Keeps working offline",
+    text: "Lose your connection and keep editing. Your changes are kept on your device and sent when you are back online.",
+  },
+  {
+    title: "Runs on your own server",
+    text: "Host your own copy. Passkeys, two-step codes and exporting everything are part of every copy.",
+  },
+];
+
 type Picture = { name: string; width: number; height: number; alt: string };
 
 function ModePicture({
@@ -251,6 +279,52 @@ export default async function Home() {
                 sx={{ color: "text.secondary", lineHeight: 1.7 }}
               >
                 {ability.text}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Container>
+
+      {/* What sets it apart (IMP-111) */}
+      <Container
+        component="section"
+        aria-labelledby="strengths-heading"
+        maxWidth="lg"
+        sx={{ pb: { xs: 8, md: 12 } }}
+      >
+        <Typography
+          id="strengths-heading"
+          variant="h4"
+          component="h2"
+          sx={{ mb: 4, textAlign: { xs: "center", md: "left" } }}
+        >
+          Yours to keep
+        </Typography>
+        <Box
+          component="ul"
+          sx={{
+            listStyle: "none",
+            p: 0,
+            m: 0,
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+            },
+            gap: { xs: 3, md: 4 },
+          }}
+        >
+          {STRENGTHS.map((strength) => (
+            <Box component="li" key={strength.title} sx={{ minWidth: 0 }}>
+              <Typography variant="h6" component="h3" gutterBottom>
+                {strength.title}
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ color: "text.secondary", lineHeight: 1.7 }}
+              >
+                {strength.text}
               </Typography>
             </Box>
           ))}

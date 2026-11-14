@@ -1,33 +1,57 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
+  Button,
   IconButton,
   Popover,
-  Typography,
-  Button,
-  TextField,
   Stack,
+  TextField,
+  Typography,
 } from "@mui/material";
-import { Timer, PlayArrow, Pause, Refresh, Close } from "@mui/icons-material";
-import { MEETING_TIMER_DISCLOSURE } from "@/lib/product-surfaces";
+import { Close, Pause, PlayArrow, Refresh, Timer } from "@mui/icons-material";
+import {
+  MEETING_TIMER_DISCLOSURE,
+  MEETING_TIMER_VIEWER_NOTE,
+} from "@/lib/product-surfaces";
+import {
+  SHARED_TIMER_DEFAULT_MS,
+  SHARED_TIMER_MAX_MS,
+  formatSharedTimer,
+  sharedTimerRemainingMs,
+  type SharedTimerAction,
+} from "@/lib/collaboration/shared-timer";
+import type { SharedTimerSnapshot } from "@/lib/hooks/use-collaboration";
 
 /**
- * DEC-012: the meeting timer is personal UI. State lives in this component
- * only — it is not persisted, not synchronized, and every collaborator runs
- * their own. The copy below says so rather than implying a shared countdown.
+ * IMP-105: the meeting timer is shared. The server holds the end time; every
+ * screen on the canvas counts down to it, so they agree and a late joiner is
+ * right at once. Editors start, pause and reset it; others only watch.
  */
 export interface MeetingTimerProps {
+  /** The timer as the server last sent it; null before it has. */
+  timer?: SharedTimerSnapshot | null;
+  onCommand?: (action: SharedTimerAction, durationMs: number) => void;
+  /** Whether this person may control the timer (the server checks too). */
+  canControl?: boolean;
+  /** Whether the live connection is up; the timer needs it. */
+  connected?: boolean;
   /**
-   * Opens the timer from another control (the phone "More" menu) instead of
-   * the timer's own button; the timer keeps running while it is closed.
+   * Opens the timer from another control (the "More" menu) instead of the
+   * timer's own button.
    */
   externalAnchor?: HTMLElement | null;
   onExternalClose?: () => void;
-  /** Hide the timer's own button (its state stays mounted). */
+  /** Hide the countdown button that shows while the timer runs. */
   hideTrigger?: boolean;
 }
 
+const MAX_MINUTES = SHARED_TIMER_MAX_MS / 60_000;
+
 export const MeetingTimer: React.FC<MeetingTimerProps> = ({
+  timer = null,
+  onCommand,
+  canControl = false,
+  connected = false,
   externalAnchor = null,
   onExternalClose,
   hideTrigger = false,
@@ -38,169 +62,167 @@ export const MeetingTimer: React.FC<MeetingTimerProps> = ({
     setAnchorEl(null);
     onExternalClose?.();
   };
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [duration, setDuration] = useState(15); // minutes
-  const [isRunning, setIsRunning] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const state = timer?.state ?? null;
+  const offset = timer?.clockOffsetMs ?? 0;
+  const [now, setNow] = useState(() => Date.now());
+  const running = state?.status === "running";
   useEffect(() => {
-    if (isRunning && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            setIsRunning(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning, timeLeft]);
+    if (!running) return;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(interval);
+  }, [running]);
 
-  const handleStart = () => {
-    if (timeLeft === 0) {
-      setTimeLeft(duration * 60);
-    }
-    setIsRunning(true);
-  };
+  const sharedMinutes = Math.round(
+    (state?.durationMs ?? SHARED_TIMER_DEFAULT_MS) / 60_000,
+  );
+  const [minutes, setMinutes] = useState(sharedMinutes);
+  // Follow the duration someone else set.
+  useEffect(() => setMinutes(sharedMinutes), [sharedMinutes]);
 
-  const handlePause = () => {
-    setIsRunning(false);
-  };
-
-  const handleReset = () => {
-    setIsRunning(false);
-    setTimeLeft(duration * 60);
-  };
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  };
+  // Before a start, the minutes field is what a start will run.
+  const remainingMs =
+    state && state.status !== "idle"
+      ? sharedTimerRemainingMs(state, now + offset)
+      : minutes * 60_000;
+  const timeText = formatSharedTimer(remainingMs);
+  const active = state?.status === "running" || state?.status === "paused";
+  const ended = running && remainingMs === 0;
+  const controls = canControl && connected && Boolean(onCommand);
+  const durationMs = minutes * 60_000;
 
   const open = Boolean(anchorEl);
 
   return (
     <>
-      {!hideTrigger && (
-        <IconButton
+      {!hideTrigger && active && (
+        <Button
+          size="small"
+          color={ended ? "error" : running ? "secondary" : "inherit"}
+          startIcon={<Timer />}
           onClick={(e) => setAnchorEl(e.currentTarget)}
-          color={isRunning ? "secondary" : "default"}
-          aria-label="Personal meeting timer (not shared with collaborators)"
+          aria-label={`Shared timer: ${ended ? "time is up" : `${timeText} left`}${running ? "" : ", paused"}`}
+          sx={{ fontFamily: "monospace", fontWeight: "bold" }}
         >
-          <Timer />
-          {isRunning && (
-            <Typography variant="caption" sx={{ ml: 0.5, fontWeight: "bold" }}>
-              {formatTime(timeLeft)}
-            </Typography>
-          )}
-        </IconButton>
+          {timeText}
+        </Button>
       )}
       <Popover
         open={open}
         anchorEl={anchorEl}
         onClose={closeTimer}
-        anchorOrigin={{
-          vertical: "bottom",
-          horizontal: "right",
-        }}
-        transformOrigin={{
-          vertical: "top",
-          horizontal: "right",
-        }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <Box sx={{ p: 2, width: 250 }}>
+        <Box sx={{ p: 2, width: 260 }}>
           <Box
             sx={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              mb: 2,
+              mb: 1,
             }}
           >
-            <Typography variant="h6">Personal timer</Typography>
-            <IconButton size="small" onClick={closeTimer}>
+            <Typography variant="h6">Shared timer</Typography>
+            <IconButton
+              size="small"
+              onClick={closeTimer}
+              aria-label="Close timer"
+            >
               <Close fontSize="small" />
             </IconButton>
           </Box>
 
           <Typography
             variant="caption"
-            sx={{
-              color: "text.secondary",
-              display: "block",
-              mb: 2,
-            }}
+            sx={{ color: "text.secondary", display: "block", mb: 2 }}
           >
             {MEETING_TIMER_DISCLOSURE}
+            {!canControl && ` ${MEETING_TIMER_VIEWER_NOTE}`}
+            {!connected && " It needs a live connection; reconnecting…"}
           </Typography>
 
           <Typography
             variant="h3"
             align="center"
+            data-testid="shared-timer-time"
             sx={{
               fontFamily: "monospace",
-              mb: 2,
-              color: timeLeft < 60 && timeLeft > 0 ? "error.main" : "inherit",
+              mb: 1,
+              color: running && remainingMs < 60_000 ? "error.main" : "inherit",
             }}
           >
-            {formatTime(timeLeft || duration * 60)}
+            {timeText}
+          </Typography>
+          <Typography
+            variant="body2"
+            align="center"
+            sx={{ color: "text.secondary", mb: 2 }}
+          >
+            {ended
+              ? "Time is up"
+              : running
+                ? "Running"
+                : state?.status === "paused"
+                  ? "Paused"
+                  : "Not started"}
           </Typography>
 
-          <Stack
-            direction="row"
-            spacing={1}
-            sx={{
-              justifyContent: "center",
-              mb: 2,
-            }}
-          >
-            {!isRunning ? (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<PlayArrow />}
-                onClick={handleStart}
+          {controls && (
+            <>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ justifyContent: "center", mb: 2 }}
               >
-                Start
-              </Button>
-            ) : (
-              <Button
-                variant="contained"
-                color="warning"
-                startIcon={<Pause />}
-                onClick={handlePause}
-              >
-                Pause
-              </Button>
-            )}
-            <IconButton onClick={handleReset} title="Reset">
-              <Refresh />
-            </IconButton>
-          </Stack>
+                {running && !ended ? (
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    startIcon={<Pause />}
+                    onClick={() => onCommand?.("pause", durationMs)}
+                  >
+                    Pause
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<PlayArrow />}
+                    onClick={() =>
+                      onCommand?.(ended ? "reset" : "start", durationMs)
+                    }
+                  >
+                    {ended ? "Clear" : "Start"}
+                  </Button>
+                )}
+                <IconButton
+                  onClick={() => onCommand?.("reset", durationMs)}
+                  aria-label="Reset timer"
+                  title="Reset"
+                >
+                  <Refresh />
+                </IconButton>
+              </Stack>
 
-          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-            <TextField
-              label="Duration (min)"
-              type="number"
-              size="small"
-              value={duration}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
-                if (!isNaN(val) && val > 0) {
-                  setDuration(val);
-                  if (!isRunning) setTimeLeft(val * 60);
-                }
-              }}
-              disabled={isRunning}
-            />
-          </Box>
+              <TextField
+                label="Minutes"
+                type="number"
+                size="small"
+                value={minutes}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  if (!isNaN(value) && value > 0 && value <= MAX_MINUTES) {
+                    setMinutes(value);
+                  }
+                }}
+                disabled={active}
+                slotProps={{ htmlInput: { min: 1, max: MAX_MINUTES } }}
+                fullWidth
+              />
+            </>
+          )}
         </Box>
       </Popover>
     </>

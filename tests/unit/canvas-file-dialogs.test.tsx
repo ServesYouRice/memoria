@@ -54,15 +54,18 @@ describe(".canvas export (IMP-096)", () => {
     ];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          items,
-          total: 2,
-          limit: 500,
-          hasMore: false,
-          nextCursor: null,
-          truncatedByBytes: false,
-        }),
+      vi.fn(async (url: string) =>
+        // IMP-109: the export also asks for items shown from elsewhere.
+        String(url).includes("/placements")
+          ? Response.json({ placements: [] })
+          : Response.json({
+              items,
+              total: 2,
+              limit: 500,
+              hasMore: false,
+              nextCursor: null,
+              truncatedByBytes: false,
+            }),
       ),
     );
     const onClose = vi.fn();

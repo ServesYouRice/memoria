@@ -27,6 +27,9 @@ model User {
   /// Look saved links up in a public web archive (IMP-094). Off by default;
   /// sends the link address to a third party.
   webArchiveLookup Boolean   @default(false)
+  /// The person's own words on how things are tagged (IMP-106); null means
+  /// the standard behaviour. Sent to the AI as their rules, never page data.
+  taggingRules     String?   @db.VarChar(1000)
   /// Inbox items move to a suggested board on their own when it is a confident match (IMP-066).
   autoFileItems    Boolean   @default(false)
   /// The weekly recap also arrives by email; in-app only by default (IMP-070).
@@ -75,6 +78,8 @@ model User {
   clipBatches             ClipBatch[]
   weeklyRecaps            WeeklyRecap[]
   itemReminders           ItemReminder[]
+  pollVotes               PollVote[]
+  pollClosures            PollClosure[]
 }
 
 enum AccountExportStatus {
@@ -179,6 +184,7 @@ enum ActivityType {
   COMMENT_ADDED
   TEMPLATE_CREATED
   TEMPLATE_USED
+  WORKSPACE_AGENT_NOTES_UPDATED
 }
 
 model Canvas {
@@ -223,6 +229,8 @@ model Canvas {
   canvasViews  CanvasView[]
   connections  ItemConnection[]
   uploadAssets UploadAsset[]
+  /// Items from other canvases shown here too (IMP-109).
+  placements   ItemPlacement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -331,7 +339,11 @@ model CanvasItem {
   pageCopy            ItemPageCopy?
   homeBoardSuggestion HomeBoardSuggestion?
   reminders           ItemReminder[]
+  pollVotes           PollVote[]
+  pollClosure         PollClosure?
   notifications       Notification[]
+  /// The other canvases this item also shows on (IMP-109).
+  placements          ItemPlacement[]
 
   @@index([canvasId, deletedAt])
   @@index([normalizedUrl])
@@ -385,6 +397,7 @@ enum ItemType {
   FRAME
   EMBED
   POLL
+  TABLE
 }
 
 enum ShareRole {
@@ -479,6 +492,32 @@ model ItemReminder {
   @@unique([userId, itemId])
   @@index([remindAt])
   @@index([userId, remindAt])
+}
+
+/// IMP-104: one person's vote for one choice of a poll item. Votes are
+/// written only by the poll vote route; the shared document never holds them.
+model PollVote {
+  id        String     @id @default(cuid())
+  itemId    String
+  item      CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  choiceId  String
+  createdAt DateTime   @default(now())
+
+  @@unique([itemId, userId, choiceId])
+  @@index([itemId, choiceId])
+}
+
+/// IMP-104: the canvas owner closed this poll; it takes no more votes.
+model PollClosure {
+  itemId     String     @id
+  item       CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  closedById String
+  closedBy   User       @relation(fields: [closedById], references: [id], onDelete: Cascade)
+  closedAt   DateTime   @default(now())
+
+  @@index([closedById])
 }
 
 model NotificationPreference {
@@ -638,13 +677,16 @@ model ItemConnection {
 
 // Workspace model - allows users to organize canvases into groups
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  canvases  Canvas[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  /// The owner's standing notes for AI agents working here (IMP-107). Sent to
+  /// agents as the owner's guidance; they never change what agents may do.
+  agentNotes String?  @db.VarChar(2000)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvases   Canvas[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([userId])
 }
@@ -1440,4 +1482,26 @@ model WeeklyRecap {
 
   @@unique([userId, weekStart])
   @@index([userId, createdAt])
+}
+
+/// IMP-109: an item also shown on another canvas. The content lives once on
+/// the item (its home canvas); a placement holds only where it sits here.
+/// Deleting the item deletes its placements; trashing it hides them.
+model ItemPlacement {
+  id          String     @id @default(cuid())
+  itemId      String
+  item        CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  canvasId    String
+  canvas      Canvas     @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  positionX   Float
+  positionY   Float
+  width       Float
+  height      Float
+  zIndex      Int        @default(0)
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([itemId, canvasId])
+  @@index([canvasId])
 }

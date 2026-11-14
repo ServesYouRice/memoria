@@ -31,7 +31,12 @@ import {
   MoreVert as MoreIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  SmartToyOutlined as AgentNotesIcon,
 } from "@mui/icons-material";
+import {
+  AGENT_NOTES_EXAMPLE,
+  AGENT_NOTES_MAX_CHARS,
+} from "@/lib/agents/workspace-notes";
 import {
   useWorkspaces,
   useCreateWorkspace,
@@ -55,6 +60,8 @@ export default function WorkspacesPageClient() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [agentNotes, setAgentNotes] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(
     null,
@@ -101,6 +108,27 @@ export default function WorkspacesPageClient() {
     }
   };
 
+  const handleSaveNotes = async () => {
+    if (!selectedWorkspace) return;
+    try {
+      await updateWorkspace.mutateAsync({
+        workspaceId: selectedWorkspace.id,
+        agentNotes,
+      });
+      setNotesOpen(false);
+      setSelectedWorkspace(null);
+      toast.success(
+        agentNotes.trim()
+          ? "Notes for AI agents saved"
+          : "Notes for AI agents removed",
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save the notes",
+      );
+    }
+  };
+
   const handleDelete = async () => {
     if (!selectedWorkspace) return;
     try {
@@ -132,6 +160,15 @@ export default function WorkspacesPageClient() {
       setSelectedWorkspace(menuWorkspace);
       setWorkspaceName(menuWorkspace.name);
       setEditOpen(true);
+    }
+    handleMenuClose();
+  };
+
+  const openNotesDialog = () => {
+    if (menuWorkspace) {
+      setSelectedWorkspace(menuWorkspace);
+      setAgentNotes(menuWorkspace.agentNotes ?? "");
+      setNotesOpen(true);
     }
     handleMenuClose();
   };
@@ -287,6 +324,12 @@ export default function WorkspacesPageClient() {
           </ListItemIcon>
           <ListItemText>Rename</ListItemText>
         </MenuItem>
+        <MenuItem onClick={openNotesDialog}>
+          <ListItemIcon>
+            <AgentNotesIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Notes for AI agents</ListItemText>
+        </MenuItem>
         <MenuItem onClick={openDeleteDialog} sx={{ color: "error.main" }}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" color="error" />
@@ -364,6 +407,47 @@ export default function WorkspacesPageClient() {
             disabled={!workspaceName.trim() || updateWorkspace.isPending}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Notes for AI agents (IMP-107) */}
+      <Dialog
+        open={notesOpen}
+        onClose={() => setNotesOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontWeight: 600 }}>Notes for AI agents</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            AI apps you connect to Memoria read these notes when they work in “
+            {selectedWorkspace?.name}”. They are guidance only: agents still
+            need the same permissions and your approval as before.
+          </Typography>
+          <TextField
+            autoFocus
+            label="Notes for AI agents"
+            placeholder={`For example: ${AGENT_NOTES_EXAMPLE}`}
+            helperText={`Leave empty for no notes. ${agentNotes.length}/${AGENT_NOTES_MAX_CHARS}`}
+            fullWidth
+            multiline
+            minRows={4}
+            value={agentNotes}
+            onChange={(e) =>
+              setAgentNotes(e.target.value.slice(0, AGENT_NOTES_MAX_CHARS))
+            }
+            slotProps={{ htmlInput: { maxLength: AGENT_NOTES_MAX_CHARS } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={() => setNotesOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => void handleSaveNotes()}
+            disabled={updateWorkspace.isPending}
+          >
+            Save notes
           </Button>
         </DialogActions>
       </Dialog>

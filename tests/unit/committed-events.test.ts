@@ -34,6 +34,7 @@ describe("committed canvas events", () => {
     const publish = vi.fn().mockResolvedValue(1);
     const prisma = {
       canvasEvent: { findUnique: vi.fn().mockResolvedValue(event) },
+      itemPlacement: { findMany: vi.fn().mockResolvedValue([]) },
     } as never;
     const handler = createCanvasEventHandler(prisma, publish);
     await handler({
@@ -43,6 +44,39 @@ describe("committed canvas events", () => {
     expect(publish).toHaveBeenCalledWith(
       `memoria:collaboration:canvas:${event.canvasId}`,
       expect.stringContaining('"type":"event"'),
+    );
+  });
+
+  it("tells the other canvases that show the item to read it again (IMP-109)", async () => {
+    const publish = vi.fn().mockResolvedValue(1);
+    const prisma = {
+      canvasEvent: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ ...event, operation: "updated" }),
+      },
+      itemPlacement: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { canvasId: "clother12345678901234567890" },
+            { canvasId: "clthird12345678901234567890" },
+          ]),
+      },
+    } as never;
+    await createCanvasEventHandler(
+      prisma,
+      publish,
+    )({
+      id: "cljob123456789012345678901",
+      payload: { eventId: event.id },
+    } as never);
+    expect(publish).toHaveBeenCalledTimes(3);
+    expect(publish).toHaveBeenCalledWith(
+      "memoria:collaboration:canvas:clother12345678901234567890",
+      expect.stringContaining(
+        `"payload":{"type":"placement-changed","itemId":"${event.entityId}"}`,
+      ),
     );
   });
 });

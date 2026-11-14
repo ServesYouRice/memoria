@@ -27,8 +27,10 @@ import {
   isNoteContent,
   isPollContent,
   isShapeContent,
+  isTableContent,
   isTextItemContent,
 } from "@/types/canvas";
+import { tableCellKey } from "@/lib/tables/table-content";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { useThemeMode } from "@/lib/theme-context";
 import { DotOverlay } from "@/features/canvas/components/GridOverlay";
@@ -109,6 +111,54 @@ function ReadonlyImageItem({ item }: { item: CanvasItem }) {
   );
 }
 
+function ReadonlyTableItem({ item }: { item: CanvasItem }) {
+  const palette = useCanvasPalette();
+  if (!isTableContent(item.content)) return null;
+  const table = item.content;
+  const rowTop = table.rows.map((_, index) =>
+    table.rows.slice(0, index).reduce((sum, row) => sum + row.height, 0),
+  );
+  const columnLeft = table.columns.map((_, index) =>
+    table.columns
+      .slice(0, index)
+      .reduce((sum, column) => sum + column.width, 0),
+  );
+  return (
+    <Group x={item.positionX} y={item.positionY}>
+      {table.rows.map((row, rowIndex) =>
+        table.columns.map((column, columnIndex) => (
+          <Group
+            key={`${row.id}:${column.id}`}
+            x={columnLeft[columnIndex]}
+            y={rowTop[rowIndex]}
+          >
+            <Rect
+              width={column.width}
+              height={row.height}
+              fill={rowIndex === 0 ? palette.surfaceSubtle : palette.surface}
+              stroke={palette.border}
+              strokeWidth={1}
+            />
+            <Text
+              x={8}
+              y={8}
+              width={Math.max(0, column.width - 16)}
+              height={Math.max(0, row.height - 16)}
+              text={table.cells[tableCellKey(row.id, column.id)] ?? ""}
+              fontSize={14}
+              fontStyle={rowIndex === 0 ? "bold" : "normal"}
+              fill={palette.text}
+              verticalAlign="middle"
+              wrap="word"
+              ellipsis
+            />
+          </Group>
+        )),
+      )}
+    </Group>
+  );
+}
+
 function ReadonlyPollItem({ item }: { item: CanvasItem }) {
   const palette = useCanvasPalette();
   if (!isPollContent(item.content)) {
@@ -120,10 +170,6 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
   const optionHeight = 36;
   const optionGap = 10;
   const headerHeight = 56;
-  const totalVotes = item.content.options.reduce(
-    (sum, option) => sum + option.votes.length,
-    0,
-  );
   const height =
     headerHeight +
     item.content.options.length * (optionHeight + optionGap) +
@@ -152,10 +198,6 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
 
       {item.content.options.map((option, index) => {
         const y = headerHeight + index * (optionHeight + optionGap);
-        const percent =
-          totalVotes > 0
-            ? Math.round((option.votes.length / totalVotes) * 100)
-            : 0;
 
         return (
           <Group key={option.id} x={padding} y={y}>
@@ -167,32 +209,14 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
               strokeWidth={1}
               cornerRadius={8}
             />
-            {percent > 0 && (
-              <Rect
-                width={(width - padding * 2) * (percent / 100)}
-                height={optionHeight}
-                fill={palette.accentSoft}
-                cornerRadius={8}
-                opacity={0.7}
-              />
-            )}
             <Text
               x={10}
               y={10}
-              width={width - padding * 2 - 70}
+              width={width - padding * 2 - 20}
               text={option.text}
               fontSize={14}
               fill={palette.textBody}
               ellipsis
-            />
-            <Text
-              x={width - padding * 2 - 55}
-              y={10}
-              width={45}
-              text={`${percent}%`}
-              fontSize={12}
-              fill={palette.textMuted}
-              align="right"
             />
           </Group>
         );
@@ -202,7 +226,8 @@ function ReadonlyPollItem({ item }: { item: CanvasItem }) {
         x={padding}
         y={height - 20}
         width={width - padding * 2}
-        text={`${totalVotes} votes | ${item.content.multipleChoice ? "Multiple Choice" : "Single Choice"} | Voting unavailable at launch`}
+        // IMP-104: counts are read on the live canvas, never from content.
+        text={`${item.content.multipleChoice ? "Pick any" : "Pick one"} • Results are on the live canvas`}
         fontSize={10}
         fill={palette.textFaint}
         align="center"
@@ -249,7 +274,7 @@ function ReadonlyNoteItem({ item }: { item: CanvasItem }) {
   );
 }
 
-function ReadonlyCanvasItem({
+export function ReadonlyCanvasItem({
   item,
   itemsById,
 }: {
@@ -559,6 +584,10 @@ function ReadonlyCanvasItem({
 
   if (item.type === ItemType.POLL) {
     return <ReadonlyPollItem item={item} />;
+  }
+
+  if (item.type === ItemType.TABLE) {
+    return <ReadonlyTableItem item={item} />;
   }
 
   return null;

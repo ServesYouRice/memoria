@@ -41,6 +41,7 @@ import {
   isNoteContent,
   isPollContent,
   isShapeContent,
+  isTableContent,
   isTextContent,
 } from "@/types/canvas";
 import { notePlainText } from "@/features/canvas/search";
@@ -56,6 +57,10 @@ const NUDGE_STEP_LARGE = 10;
 export function describeItemHeading(item: CanvasItem): string {
   const content = item.content;
 
+  // Tables carry a `text` too, so they are checked before notes.
+  if (item.type === ItemType.TABLE && isTableContent(content)) {
+    return `Table, ${content.rows.length} rows by ${content.columns.length} columns`;
+  }
   if (isNoteContent(content)) {
     const text = notePlainText(content).trim();
     return text ? text.split("\n")[0]!.slice(0, 80) : "Empty note";
@@ -113,6 +118,9 @@ export function describeItemDetail(
       : "Unattached connection.";
   }
 
+  if (item.type === ItemType.TABLE && isTableContent(content)) {
+    return content.text.slice(0, 280) || "Empty table";
+  }
   if (isNoteContent(content)) {
     return notePlainText(content).slice(0, 280);
   }
@@ -120,11 +128,9 @@ export function describeItemDetail(
     return content.description || content.url;
   }
   if (isPollContent(content)) {
-    const votes = content.options.reduce(
-      (sum, option) => sum + option.votes.length,
-      0,
-    );
-    return `${content.options.length} options, ${votes} votes recorded. Voting is unavailable.`;
+    return `Poll with ${content.options.length} choices: ${content.options
+      .map((option) => option.text)
+      .join(", ")}. Vote and see the counts on the canvas.`;
   }
   if (isEmbedContent(content)) {
     return `Link preview for ${content.url}. Opens in a new tab; nothing is loaded inside the canvas.`;

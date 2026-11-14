@@ -70,7 +70,9 @@ describe("ExportDialog full-canvas export", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(page([item("a"), item("b", "server b")], "cur-1"))
-      .mockResolvedValueOnce(page([item("c")], null));
+      .mockResolvedValueOnce(page([item("c")], null))
+      // IMP-109: then the items shown here from other canvases (none).
+      .mockResolvedValueOnce(Response.json({ placements: [] }));
     vi.stubGlobal("fetch", fetchMock);
     const onClose = vi.fn();
     render(

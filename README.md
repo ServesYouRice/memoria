@@ -8,6 +8,7 @@ Memoria is a stateful Node application for visual note organization. It combines
 - Required production services: PostgreSQL, Redis, and upload storage (S3-compatible object storage, or a disk volume in the small set-up)
 - Target platform: the owner's shared k3s cluster (PostgreSQL 18 via CloudNativePG, Valkey, Cloudflare R2); cluster configuration lives in the private `infra` repo
 - Reference self-host stack: Docker Compose, with SeaweedFS serving the S3 API under the `minio` service name; this is for local and self-host use only
+- One app, one version to upgrade: the web app, sync server, workers and scheduler all run from the same image, so upgrading means moving to one new version
 - Non-goal for v1: serverless-first deployment
 
 ## Quick Start
@@ -220,3 +221,17 @@ pnpm gate --list         # stage descriptions
 
 Set `GATE_STRICT_RUNTIME=1` to fail (instead of warn) when the local Node or
 pnpm differs from the pinned versions. Run `pnpm doctor` for environment checks.
+
+## Licence
+
+Memoria is free software under the GNU Affero General Public License v3.0
+(`AGPL-3.0-only`, full text in [`LICENSE`](LICENSE)). In plain words: you
+may use, change and share it, and run it for others, as long as you share
+your changes under the same terms with the people who use your copy.
+
+These features will always stay free and never be put behind a payment:
+
+- Running Memoria on your own server
+- Passkeys and two-step codes
+- Exporting everything you made
+- AI on your own key

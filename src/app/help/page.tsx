@@ -6,6 +6,7 @@ import {
   InfoSection,
   PublicInfoPage,
 } from "@/components/layout/PublicInfoPage";
+import { ALWAYS_FREE, MEMORIA_LICENCE_NAME } from "@/lib/licence/promise";
 
 export const metadata: Metadata = {
   title: "Help",
@@ -37,11 +38,11 @@ export default async function HelpPage() {
       <InfoSection title="Embeds, timer, and AR">
         Embedded links are shown as previews: Memoria displays where the link
         points and opens it in a new tab, and never loads or runs third-party
-        content inside the canvas. The meeting timer is personal — it runs in
-        your own browser only and is not shared with collaborators or restored
-        after a reload. The augmented-reality layer is experimental, is off
-        unless the operator of this installation enables it, and its camera feed
-        stays on your device.
+        content inside the canvas. The meeting timer is shared — everyone on the
+        canvas sees the same countdown, only editors start or stop it, and it
+        ends when the last person leaves. The augmented-reality layer is
+        experimental, is off unless the operator of this installation enables
+        it, and its camera feed stays on your device.
       </InfoSection>
       <InfoSection title="Recovery">
         Use version history to restore a canvas snapshot. Password recovery
@@ -50,10 +51,9 @@ export default async function HelpPage() {
       </InfoSection>
       <InfoSection title="Optional surfaces">
         Embeds are link previews: Memoria does not execute third-party content
-        inside the canvas. The meeting timer is personal to this browser tab and
-        is not shared with collaborators. AR is experimental and only appears
-        when the deployment explicitly opts in after its device matrix has
-        passed.
+        inside the canvas. The meeting timer is shared with everyone on the
+        canvas and is never saved. AR is experimental and only appears when the
+        deployment explicitly opts in after its device matrix has passed.
       </InfoSection>
       <InfoSection title="Save from your phone">
         Send a link from any app on your phone to your Memoria Inbox. You need
@@ -92,6 +92,21 @@ export default async function HelpPage() {
               : undefined
           }
         />
+      </InfoSection>
+      <InfoSection title="Always free">
+        Memoria is free software under the {MEMORIA_LICENCE_NAME}. These
+        features will always stay free and never be put behind a payment:
+        <ul>
+          {ALWAYS_FREE.map((feature) => (
+            <li key={feature}>{feature}</li>
+          ))}
+        </ul>
+      </InfoSection>
+      <InfoSection title="If Memoria ever stops">
+        You are not locked in. Export every canvas as PNG, PDF, Markdown or JSON
+        at any time, and download a copy of your whole account from Settings.
+        Memoria is free software you can run on your own server, so you can keep
+        using your own copy whatever happens to this one.
       </InfoSection>
       <InfoSection title="Troubleshooting">
         Retry a failed canvas load from its error banner. Check the Status page

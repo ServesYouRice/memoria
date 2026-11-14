@@ -116,6 +116,8 @@ vi.mock("@/lib/db", () => {
         },
       ),
     },
+    // IMP-109: no items from other canvases are shown on the Inbox.
+    itemPlacement: { count: vi.fn(async () => 0) },
     canvasItem: {
       count: vi.fn(async () => state.liveItems),
       findMany: vi.fn(async () => []),

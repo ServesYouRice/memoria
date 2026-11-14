@@ -2,17 +2,53 @@
 
 import React from "react";
 import { Group, Rect, Text } from "react-konva";
+import { toast } from "sonner";
 import { isPollContent, type CanvasItemAdapterProps } from "@/types/canvas";
-import { useSession } from "@/lib/auth-client";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
+import {
+  nextPollChoices,
+  usePollClose,
+  usePollResult,
+  usePollVote,
+} from "@/features/canvas/hooks/use-poll-results";
 
 type PollItemProps = CanvasItemAdapterProps;
 
+const PADDING = 20;
+const OPTION_HEIGHT = 40;
+const OPTION_GAP = 10;
+const HEADER_HEIGHT = 60;
+const FOOTER_HEIGHT = 30;
+
+/** The poll card's height for `optionCount` choices. */
+export function pollHeight(optionCount: number): number {
+  return (
+    HEADER_HEIGHT +
+    optionCount * (OPTION_HEIGHT + OPTION_GAP) +
+    FOOTER_HEIGHT +
+    PADDING
+  );
+}
+
+/** "3 people voted • Single choice • Closed" */
+export function pollFooter(
+  voters: number,
+  multipleChoice: boolean,
+  closed: boolean,
+): string {
+  return [
+    voters === 1 ? "1 person voted" : `${voters} people voted`,
+    multipleChoice ? "Pick any" : "Pick one",
+    ...(closed ? ["Closed"] : []),
+  ].join(" • ");
+}
+
 /**
- * DEC-005: voting is gated off until the server owns it. The poll renders its
- * stored results read-only — no role may write a vote from the client, so this
- * component holds no mutation at all and creates no optimistic state.
+ * IMP-104: the question and choices come from the canvas; the counts and
+ * the viewer's own choices come from the server. Clicking a choice records
+ * the signed-in person's vote through the vote route; the owner can close
+ * the poll.
  */
 export function PollItem({
   item,
@@ -23,22 +59,36 @@ export function PollItem({
   onCommitGeometry,
 }: PollItemProps) {
   const palette = useCanvasPalette();
-  const { data: session } = useSession();
-  const userId = session?.user?.id;
+  const result = usePollResult(item.canvasId, item.id);
+  const { vote, isPending: voting } = usePollVote(item.canvasId, item.id);
+  const { setClosed, isPending: closing } = usePollClose(
+    item.canvasId,
+    item.id,
+  );
 
   if (!isPollContent(item.content)) return null;
-  const { question, options, multipleChoice } = item.content;
+  const { question, options } = item.content;
+  const multipleChoice =
+    result?.multipleChoice ?? item.content.multipleChoice === true;
+  const closed = result?.closed ?? false;
+  const mine = result?.myChoiceIds ?? [];
+  const totalVotes = options.reduce(
+    (sum, option) => sum + (result?.counts[option.id] ?? 0),
+    0,
+  );
+  const canVote = capabilities.canVote && !closed && Boolean(result);
 
-  const totalVotes = options.reduce((acc, opt) => acc + opt.votes.length, 0);
   const width = Math.max(item.width || 300, 300);
-  const padding = 20;
-  const optionHeight = 40;
-  const optionGap = 10;
-  const headerHeight = 60; // Approximate for question
+  const height = pollHeight(options.length);
+  const innerWidth = width - PADDING * 2;
 
-  // Simple dynamic height calculation
-  const height =
-    headerHeight + options.length * (optionHeight + optionGap) + padding * 2;
+  const choose = (choiceId: string) => {
+    if (!canVote || voting) return;
+    vote(nextPollChoices(mine, choiceId, multipleChoice)).catch(
+      (error: Error) =>
+        toast.error(error.message || "Your vote was not saved."),
+    );
+  };
 
   return (
     <Group
@@ -59,7 +109,6 @@ export function PollItem({
       }}
       onContextMenu={onContextMenu}
     >
-      {/* Background */}
       <Rect
         width={width}
         height={height}
@@ -73,73 +122,82 @@ export function PollItem({
         strokeWidth={isSelected ? 2 : 1}
       />
 
-      {/* Header / Question */}
       <Text
-        x={padding}
-        y={padding}
-        width={width - padding * 2}
+        x={PADDING}
+        y={PADDING}
+        width={innerWidth}
         text={question}
         fontSize={18}
         fontStyle="bold"
         fill={palette.text}
         wrap="word"
-        height={headerHeight - padding} // limit height
+        height={HEADER_HEIGHT - PADDING}
       />
 
-      {/* Options */}
       {options.map((option, index) => {
-        const y = headerHeight + index * (optionHeight + optionGap);
-        const isVoted = userId ? option.votes.includes(userId) : false;
-        const percent =
-          totalVotes > 0 ? (option.votes.length / totalVotes) * 100 : 0;
+        const y = HEADER_HEIGHT + index * (OPTION_HEIGHT + OPTION_GAP);
+        const count = result?.counts[option.id] ?? 0;
+        const isVoted = mine.includes(option.id);
+        const percent = totalVotes > 0 ? (count / totalVotes) * 100 : 0;
 
         return (
           <Group
             key={option.id}
-            x={padding}
+            name="poll-choice"
+            x={PADDING}
             y={y}
-            width={width - padding * 2}
-            height={optionHeight}
-            listening={false}
+            width={innerWidth}
+            height={OPTION_HEIGHT}
+            listening={canVote}
+            onClick={(e) => {
+              e.cancelBubble = true;
+              choose(option.id);
+            }}
+            onTap={(e) => {
+              e.cancelBubble = true;
+              choose(option.id);
+            }}
+            onMouseEnter={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = "pointer";
+            }}
+            onMouseLeave={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = "";
+            }}
           >
-            {/* Option Background / Progress Bar */}
             <Rect
-              width={width - padding * 2}
-              height={optionHeight}
+              width={innerWidth}
+              height={OPTION_HEIGHT}
               fill={isVoted ? palette.accentSofter : palette.surfaceSubtle}
               cornerRadius={8}
               stroke={isVoted ? palette.selection : palette.borderStrong}
               strokeWidth={1}
             />
-            {/* Progress Fill */}
             {totalVotes > 0 && (
               <Rect
-                width={(width - padding * 2) * (percent / 100)}
-                height={optionHeight}
+                width={innerWidth * (percent / 100)}
+                height={OPTION_HEIGHT}
                 fill={isVoted ? palette.accentSoft : palette.border}
                 cornerRadius={8}
                 opacity={0.5}
               />
             )}
-
-            {/* Option Text */}
             <Text
               x={10}
               y={12}
-              width={width - padding * 2 - 60} // reserve space for percent
-              text={option.text}
+              width={innerWidth - 90}
+              text={`${isVoted ? "✓ " : ""}${option.text}`}
               fontSize={14}
               fill={isVoted ? palette.accentText : palette.textBody}
               wrap="none"
               ellipsis={true}
             />
-
-            {/* Vote Count / Percent */}
             <Text
-              x={width - padding * 2 - 50}
+              x={innerWidth - 80}
               y={12}
-              width={40}
-              text={`${Math.round(percent)}%`}
+              width={70}
+              text={`${count} · ${Math.round(percent)}%`}
               fontSize={12}
               fill={palette.textMuted}
               align="right"
@@ -148,16 +206,41 @@ export function PollItem({
         );
       })}
 
-      {/* Footer Info */}
       <Text
-        x={padding}
-        y={height - 20}
-        width={width - padding * 2}
-        text={`${totalVotes} votes • ${multipleChoice ? "Multiple Choice" : "Single Choice"} • Voting unavailable`}
-        fontSize={10}
+        x={PADDING}
+        y={height - FOOTER_HEIGHT}
+        width={capabilities.canManageCanvas ? innerWidth - 90 : innerWidth}
+        text={pollFooter(result?.voters ?? 0, multipleChoice, closed)}
+        fontSize={11}
         fill={palette.textFaint}
-        align="center"
       />
+      {capabilities.canManageCanvas && result && (
+        <Text
+          name="poll-close"
+          x={width - PADDING - 90}
+          y={height - FOOTER_HEIGHT}
+          width={90}
+          text={closed ? "Reopen poll" : "Close poll"}
+          fontSize={11}
+          fontStyle="bold"
+          fill={palette.accentText}
+          align="right"
+          onClick={(e) => {
+            e.cancelBubble = true;
+            if (closing) return;
+            setClosed(!closed).catch((error: Error) =>
+              toast.error(error.message || "The poll was not changed."),
+            );
+          }}
+          onTap={(e) => {
+            e.cancelBubble = true;
+            if (closing) return;
+            setClosed(!closed).catch((error: Error) =>
+              toast.error(error.message || "The poll was not changed."),
+            );
+          }}
+        />
+      )}
     </Group>
   );
 }

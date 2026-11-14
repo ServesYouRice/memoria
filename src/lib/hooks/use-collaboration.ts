@@ -15,6 +15,11 @@ import {
   collaborationCloseDisposition,
   reconnectDelayMs,
 } from "@/lib/collaboration/transport-policy";
+import {
+  parseSharedTimerState,
+  type SharedTimerAction,
+  type SharedTimerState,
+} from "@/lib/collaboration/shared-timer";
 
 const logger = createLogger("collaboration");
 
@@ -83,6 +88,17 @@ export type CollaborationOutgoingMessage =
       position: { x: number; y: number };
     };
 
+/**
+ * IMP-105: the canvas timer as the server last sent it, with the difference
+ * between the server's clock and this device's, so the countdown is right
+ * even when this device's clock is off.
+ */
+export interface SharedTimerSnapshot {
+  state: SharedTimerState | null;
+  /** Server time minus local time when the state arrived. */
+  clockOffsetMs: number;
+}
+
 export interface UseCollaborationResult {
   users: CollaborationUser[];
   cursors: CursorPosition[];
@@ -97,6 +113,10 @@ export interface UseCollaborationResult {
   connectionMessage: string | null;
   updateCursor: (x: number, y: number) => void;
   broadcastMessage: (payload: CollaborationOutgoingMessage) => void;
+  /** The shared timer; null until the server has sent it. */
+  timer: SharedTimerSnapshot | null;
+  /** Start, pause or reset the shared timer (the server checks access). */
+  sendTimerCommand: (action: SharedTimerAction, durationMs: number) => void;
 }
 
 /**
@@ -119,6 +139,7 @@ export function useCollaboration(
 
   const [users, setUsers] = useState<CollaborationUser[]>([]);
   const [cursors, setCursors] = useState<CursorPosition[]>([]);
+  const [timer, setTimer] = useState<SharedTimerSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<
     | "idle"
@@ -217,6 +238,15 @@ export function useCollaboration(
         case "cursors":
           // Update cursor positions
           setCursors(message.cursors || []);
+          break;
+
+        case "timer":
+          if (typeof message.serverNow === "number") {
+            setTimer({
+              state: parseSharedTimerState(message.timer),
+              clockOffsetMs: message.serverNow - Date.now(),
+            });
+          }
           break;
 
         case "message":
@@ -586,6 +616,7 @@ export function useCollaboration(
         setConnected(false);
         setUsers([]);
         setCursors([]);
+        setTimer(null);
         // The next open replays from the last cursor; nothing held for the
         // closed socket's gap is still needed.
         resetReplay();
@@ -658,6 +689,7 @@ export function useCollaboration(
       setConnectionMessage(null);
       setUsers([]);
       setCursors([]);
+      setTimer(null);
     };
   }, [
     canvasId,
@@ -700,6 +732,17 @@ export function useCollaboration(
     [],
   );
 
+  const sendTimerCommand = useCallback(
+    (action: SharedTimerAction, durationMs: number) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: "timer", action, durationMs }),
+        );
+      }
+    },
+    [],
+  );
+
   return {
     users,
     cursors,
@@ -708,6 +751,8 @@ export function useCollaboration(
     connectionMessage,
     updateCursor,
     broadcastMessage,
+    timer,
+    sendTimerCommand,
   };
 }
 
