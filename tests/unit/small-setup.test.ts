@@ -4,7 +4,7 @@
  */
 
 import { readFileSync } from "fs";
-import { mkdtempSync, readdirSync, rmSync } from "fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -98,7 +98,11 @@ describe("uploads on disk in production (IMP-100)", () => {
       vi.stubEnv("UPLOAD_LOCAL_DIR", dir);
       await expect(checkPrivateUploadStorage()).resolves.toBeUndefined();
       expect(readdirSync(dir)).toEqual([]);
-      vi.stubEnv("UPLOAD_LOCAL_DIR", "/proc/memoria-cannot-write-here");
+      // A folder below a plain file can never be created, also not as root.
+      // (A path under /proc hung mkdir on some kernels instead of failing.)
+      const blocker = path.join(dir, "blocker");
+      writeFileSync(blocker, "");
+      vi.stubEnv("UPLOAD_LOCAL_DIR", path.join(blocker, "uploads"));
       await expect(checkPrivateUploadStorage()).rejects.toThrow();
     } finally {
       rmSync(dir, { recursive: true, force: true });
