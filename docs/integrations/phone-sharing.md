@@ -29,7 +29,7 @@ Inbox. Setting it up takes a couple of minutes.
 
 ### 1. Create an API key
 
-In Memoria, open **API Keys** and tap **Create a key for my iPhone**. Copy
+In Memoria, open **Settings**, then **API keys**, and tap **Create a key for my iPhone**. Copy
 the server address and the key it shows; the key is shown only once. The key
 can save to your account, so keep the Shortcut on your own devices only.
 

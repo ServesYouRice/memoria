@@ -127,7 +127,7 @@ describe("API key expiry date", () => {
     ).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Sign in again" }).getAttribute("href"),
-    ).toBe("/auth/login?callbackUrl=%2Fapi-keys");
+    ).toBe("/auth/login?callbackUrl=%2Fsettings%2Fapi-keys");
     expect(screen.getByLabelText("Key name")).toBeTruthy();
     expect(toastError).not.toHaveBeenCalled();
   });

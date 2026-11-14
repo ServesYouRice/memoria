@@ -113,7 +113,6 @@ describe("authenticated application shell", () => {
       ["Reminders", "/reminders"],
       ["Weekly recap", "/recap"],
       ["Help", "/help"],
-      ["API Keys", "/api-keys"],
       ["Sign out", null],
     ]);
   });

@@ -5,6 +5,7 @@ import { getCredentialPasswordHash } from "@/lib/auth/credentials";
 import { AppShell } from "@/components/layout/AppShell";
 import { SettingsContent } from "../SettingsContent";
 import { settingsSectionFromSegments } from "../sections";
+import { iosShortcutUrl, memoriaAddress } from "@/lib/guides/phone-sharing";
 
 interface SettingsPageProps {
   params: Promise<{ section?: string[] }>;
@@ -37,6 +38,11 @@ export default async function SettingsPage({ params }: SettingsPageProps) {
       <SettingsContent
         user={{ ...session.user, hasPassword }}
         section={section.id}
+        apiKeys={
+          section.id === "api-keys"
+            ? { serverAddress: memoriaAddress(), shortcutUrl: iosShortcutUrl() }
+            : undefined
+        }
       />
     </AppShell>
   );

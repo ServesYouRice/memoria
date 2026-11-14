@@ -37,7 +37,6 @@ import {
   PeopleAltOutlined as SharedIcon,
   NotificationsNoneOutlined as NotificationsIcon,
   SettingsOutlined as SettingsIcon,
-  KeyOutlined as ApiKeysIcon,
   LogoutOutlined as LogoutIcon,
   DeleteOutlineOutlined as TrashIcon,
   InboxOutlined as InboxIcon,
@@ -416,16 +415,6 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                   {item.label}
                 </MenuItem>
               ))}
-              <MenuItem
-                component={Link}
-                href="/api-keys"
-                onClick={closeAccountMenu}
-              >
-                <ListItemIcon>
-                  <ApiKeysIcon fontSize="small" />
-                </ListItemIcon>
-                API Keys
-              </MenuItem>
               <Divider sx={{ my: 0.5 }} />
               <MenuItem
                 onClick={() => {
