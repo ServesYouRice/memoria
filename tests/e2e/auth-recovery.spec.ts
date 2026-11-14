@@ -22,8 +22,8 @@ test("password reset revokes every existing production session", async ({
   await signIn(secondPage, email);
 
   await page.goto("/auth/forgot-password");
-  await page.getByLabel("Email Address").fill(email);
-  await page.getByRole("button", { name: "Send Reset Instructions" }).click();
+  await page.getByLabel("Email address").fill(email);
+  await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "If an account exists" }),
   ).toBeVisible();
@@ -37,11 +37,8 @@ test("password reset revokes every existing production session", async ({
   const resetContext = await browser.newContext({ baseURL });
   const resetPage = await resetContext.newPage();
   await resetPage.goto(`${resetUrl.pathname}${resetUrl.search}`);
-  await resetPage.getByLabel("New Password", { exact: true }).fill(newPassword);
-  await resetPage
-    .getByLabel("Confirm New Password", { exact: true })
-    .fill(newPassword);
-  await resetPage.getByRole("button", { name: "Reset Password" }).click();
+  await resetPage.getByLabel("New password", { exact: true }).fill(newPassword);
+  await resetPage.getByRole("button", { name: "Save new password" }).click();
   await expect(
     resetPage
       .getByRole("alert")
