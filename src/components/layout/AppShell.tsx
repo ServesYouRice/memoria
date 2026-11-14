@@ -40,6 +40,10 @@ import {
   KeyOutlined as ApiKeysIcon,
   LogoutOutlined as LogoutIcon,
   DeleteOutlineOutlined as TrashIcon,
+  InboxOutlined as InboxIcon,
+  AlarmOutlined as RemindersIcon,
+  EventNoteOutlined as RecapIcon,
+  HelpOutlineOutlined as HelpIcon,
 } from "@mui/icons-material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -48,11 +52,30 @@ import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { AskLauncher } from "@/features/command-palette/AskPalette";
 
 const NAV_ITEMS = [
-  { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
-  { label: "Shared with me", href: "/shared", icon: SharedIcon },
+  { label: "Canvases", href: "/dashboard", icon: DashboardIcon },
+  { label: "Inbox", href: "/inbox", icon: InboxIcon },
+  {
+    label: "Shared with me",
+    // Shown below 1200px so five entries fit the top bar at 1024px.
+    shortLabel: "Shared",
+    href: "/shared",
+    icon: SharedIcon,
+  },
   { label: "Workspaces", href: "/workspaces", icon: WorkspacesIcon },
   { label: "Trash", href: "/trash", icon: TrashIcon },
 ];
+
+/** Pages reached from the account menu; the phone drawer lists them too. */
+const ACCOUNT_ITEMS = [
+  { label: "Settings", href: "/settings", icon: SettingsIcon },
+  { label: "Reminders", href: "/reminders", icon: RemindersIcon },
+  { label: "Weekly recap", href: "/recap", icon: RecapIcon },
+  { label: "Help", href: "/help", icon: HelpIcon },
+];
+
+const DRAWER_ACCOUNT_ITEMS = ["/reminders", "/recap", "/settings", "/help"].map(
+  (href) => ACCOUNT_ITEMS.find((item) => item.href === href)!,
+);
 
 function getInitials(name?: string | null, email?: string | null) {
   if (name) return name.charAt(0).toUpperCase();
@@ -193,10 +216,12 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                   component={Link}
                   href={item.href}
                   aria-current={isActive(item.href) ? "page" : undefined}
+                  aria-label={item.shortLabel ? item.label : undefined}
                   size="small"
                   startIcon={<item.icon />}
                   sx={{
                     px: 1.5,
+                    whiteSpace: "nowrap",
                     color: isActive(item.href)
                       ? "primary.main"
                       : "text.secondary",
@@ -211,7 +236,24 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                     },
                   }}
                 >
-                  {item.label}
+                  {item.shortLabel ? (
+                    <>
+                      <Box
+                        component="span"
+                        sx={{ display: { xs: "inline", lg: "none" } }}
+                      >
+                        {item.shortLabel}
+                      </Box>
+                      <Box
+                        component="span"
+                        sx={{ display: { xs: "none", lg: "inline" } }}
+                      >
+                        {item.label}
+                      </Box>
+                    </>
+                  ) : (
+                    item.label
+                  )}
                 </Button>
               ))}
             </Box>
@@ -229,7 +271,8 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                 display: { xs: "none", lg: "flex" },
                 alignItems: "center",
                 gap: 1,
-                width: 240,
+                // Narrower until 1536px, so five nav entries still fit.
+                width: { lg: 200, xl: 240 },
                 height: 40,
                 px: 1.5,
                 borderRadius: 2,
@@ -355,16 +398,19 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                 </Typography>
               </Box>
               <Divider sx={{ mb: 0.5 }} />
-              <MenuItem
-                component={Link}
-                href="/settings"
-                onClick={closeAccountMenu}
-              >
-                <ListItemIcon>
-                  <SettingsIcon fontSize="small" />
-                </ListItemIcon>
-                Settings
-              </MenuItem>
+              {ACCOUNT_ITEMS.map((item) => (
+                <MenuItem
+                  key={item.href}
+                  component={Link}
+                  href={item.href}
+                  onClick={closeAccountMenu}
+                >
+                  <ListItemIcon>
+                    <item.icon fontSize="small" />
+                  </ListItemIcon>
+                  {item.label}
+                </MenuItem>
+              ))}
               <MenuItem
                 component={Link}
                 href="/api-keys"
@@ -417,6 +463,8 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                 href: "/notifications",
                 icon: NotificationsIcon,
               },
+              // Same places as the account menu; Settings sits before Help.
+              ...DRAWER_ACCOUNT_ITEMS,
             ].map((item) => (
               <ListItem key={item.href} disablePadding>
                 <ListItemButton

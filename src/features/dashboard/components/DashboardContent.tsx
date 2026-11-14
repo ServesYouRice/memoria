@@ -77,6 +77,15 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
+  // `/templates` lands here with `?new=1`: open "New canvas" once, then
+  // drop the parameter so a refresh does not reopen it (IMP-126).
+  const openNewCanvas = searchParams.get("new") === "1";
+  useEffect(() => {
+    if (!openNewCanvas) return;
+    setCreateDialogOpen(true);
+    router.replace("/dashboard");
+  }, [openNewCanvas, router]);
+
   const {
     data: canvasesData,
     isLoading,

@@ -14,7 +14,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ params: new URLSearchParams() }));
+const state = vi.hoisted(() => ({
+  params: new URLSearchParams(),
+  replace: vi.fn(),
+  router: {} as { push: () => void; replace: (href: string) => void },
+}));
+// Next's router is stable across renders; so is this one.
+state.router = { push: vi.fn(), replace: state.replace };
 
 const CANVASES: Record<string, Array<{ id: string; name: string }>> = {
   A: [
@@ -25,7 +31,7 @@ const CANVASES: Record<string, Array<{ id: string; name: string }>> = {
 };
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => state.router,
   useSearchParams: () => state.params,
 }));
 vi.mock("@tanstack/react-query", () => ({
@@ -87,6 +93,7 @@ const fetchMock = vi.fn(
 
 beforeEach(() => {
   fetchMock.mockClear();
+  state.replace.mockClear();
   vi.stubGlobal("fetch", fetchMock);
   state.params = new URLSearchParams("workspace=A");
 });
@@ -120,5 +127,17 @@ describe("dashboard selection across workspace filters", () => {
       String((call as unknown[])[0]),
     );
     expect(urls).toEqual(["/api/v1/canvases/b-1"]);
+  });
+});
+
+describe("dashboard opened from /templates", () => {
+  it("opens the New canvas dialog once and drops ?new=1", async () => {
+    state.params = new URLSearchParams("new=1");
+    render(<DashboardContent />);
+    expect(
+      await screen.findByRole("dialog", { name: "Create new canvas" }),
+    ).toBeTruthy();
+    expect(state.replace).toHaveBeenCalledTimes(1);
+    expect(state.replace).toHaveBeenCalledWith("/dashboard");
   });
 });
