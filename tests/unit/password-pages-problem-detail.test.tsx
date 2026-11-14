@@ -44,10 +44,7 @@ async function submitReset() {
   fireEvent.change(await screen.findByLabelText(/^new password/i), {
     target: { value: "correct horse battery" },
   });
-  fireEvent.change(screen.getByLabelText(/confirm/i), {
-    target: { value: "correct horse battery" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: /reset password/i }));
+  fireEvent.click(screen.getByRole("button", { name: /save new password/i }));
 }
 
 async function submitForgot() {

@@ -122,7 +122,15 @@ export function InvitationResponseContent({ token }: { token: string }) {
         subtitle="Review access before joining the canvas"
       />
       {error ? (
-        <Alert severity="error">{error}</Alert>
+        <>
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+          {/* This page redirects signed-out visitors, so the person is signed in. */}
+          <Button component={Link} href="/dashboard" variant="contained">
+            Go to my canvases
+          </Button>
+        </>
       ) : details ? (
         <Paper
           variant="outlined"

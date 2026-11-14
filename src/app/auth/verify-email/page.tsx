@@ -1,19 +1,20 @@
 "use client";
 
 import React, { useEffect, useState, Suspense } from "react";
-import Link from "next/link";
+import NextLink from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Box,
   Button,
-  Container,
   Typography,
   Alert,
-  Paper,
   CircularProgress,
 } from "@mui/material";
 import { CheckCircle } from "@mui/icons-material";
+import { AuthLayout } from "@/features/auth/components/AuthLayout";
 import { VerificationResendForm } from "@/features/auth/components/VerificationResendForm";
+
+const HEADLINE = "One quick check, then you are in.";
 
 type VerificationState =
   | "loading"
@@ -94,102 +95,79 @@ function VerifyEmailContent() {
 
   if (state === "loading") {
     return (
-      <Container maxWidth="sm">
-        <Box
-          sx={{
-            minHeight: "100vh",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Paper
-            variant="outlined"
-            sx={{ p: 4, borderRadius: 3, width: "100%", textAlign: "center" }}
-          >
-            <CircularProgress sx={{ mb: 2 }} />
-            <Typography variant="h6">Verifying your email…</Typography>
-          </Paper>
+      <AuthLayout headline={HEADLINE}>
+        <Box sx={{ textAlign: "center" }}>
+          <CircularProgress sx={{ mb: 2 }} />
+          <Typography variant="h6" component="h1">
+            Verifying your email…
+          </Typography>
         </Box>
-      </Container>
+      </AuthLayout>
     );
   }
 
   return (
-    <Container maxWidth="sm">
-      <Box
-        sx={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Paper
-          variant="outlined"
-          sx={{ p: 4, borderRadius: 3, width: "100%", textAlign: "center" }}
-        >
-          {state === "success" ? (
-            <>
-              <CheckCircle
-                sx={{ fontSize: 80, color: "success.main", mb: 2 }}
-              />
-              <Typography
-                variant="h4"
-                gutterBottom
-                sx={{
-                  fontWeight: 600,
-                }}
-              >
-                Email verified
-              </Typography>
-              <Typography
-                variant="body1"
-                sx={{
-                  color: "text.secondary",
-                  mb: 3,
-                }}
-              >
-                Your email is verified. Taking you to sign in…
-              </Typography>
-              <Button
-                component={Link}
-                href="/auth/login?verified=1"
-                variant="contained"
-                size="large"
-              >
-                Continue to sign in
-              </Button>
-            </>
-          ) : (
-            <>
-              <Typography
-                variant="h4"
-                gutterBottom
-                color="error"
-                sx={{
-                  fontWeight: 600,
-                }}
-              >
-                Verification unavailable
-              </Typography>
-              <Alert severity="error" sx={{ mb: 3, textAlign: "left" }}>
-                {stateCopy(state)}
-              </Alert>
-              <VerificationResendForm />
-              <Button
-                component={Link}
-                href="/auth/login"
-                variant="text"
-                sx={{ mt: 2 }}
-              >
-                Back to sign in
-              </Button>
-            </>
-          )}
-        </Paper>
+    <AuthLayout headline={HEADLINE}>
+      <Box sx={{ textAlign: "center" }}>
+        {state === "success" ? (
+          <>
+            <CheckCircle sx={{ fontSize: 80, color: "success.main", mb: 2 }} />
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{
+                fontWeight: 600,
+              }}
+            >
+              Email verified
+            </Typography>
+            <Typography
+              variant="body1"
+              sx={{
+                color: "text.secondary",
+                mb: 3,
+              }}
+            >
+              Your email is verified. Taking you to sign in…
+            </Typography>
+            <Button
+              component={NextLink}
+              href="/auth/login?verified=1"
+              variant="contained"
+              size="large"
+            >
+              Continue to sign in
+            </Button>
+          </>
+        ) : (
+          <>
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{
+                fontWeight: 600,
+              }}
+            >
+              Verification unavailable
+            </Typography>
+            <Alert severity="error" sx={{ mb: 3, textAlign: "left" }}>
+              {stateCopy(state)}
+            </Alert>
+            <VerificationResendForm />
+            <Button
+              component={NextLink}
+              href="/auth/login"
+              variant="text"
+              sx={{ mt: 2 }}
+            >
+              Back to sign in
+            </Button>
+          </>
+        )}
       </Box>
-    </Container>
+    </AuthLayout>
   );
 }
 
