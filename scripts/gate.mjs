@@ -60,11 +60,12 @@ const generate = {
 // Order matters for `all`: it mirrors the old job dependency graph.
 export const STAGES = {
   fast: {
-    summary: 'install, prisma generate, lint, type-check, unit tests + coverage, route coverage',
+    summary: 'install, prisma generate, lint, migration rule, type-check, unit tests + coverage, route coverage',
     steps: [
       pnpm('install', '--frozen-lockfile'),
       generate,
       pnpm('lint'),
+      pnpm('check-migrations'),
       pnpm('type-check'),
       pnpm('test:coverage'),
       pnpm('test:coverage:routes'), // evidence: coverage/routes/

@@ -56,6 +56,7 @@
     "audit": "pnpm audit --audit-level=moderate",
     "check-bundle": "node scripts/check-bundle-size.mjs",
     "check-schema-drift": "node scripts/check-schema-drift.mjs",
+    "check-migrations": "node scripts/check-migrations.mjs",
     "gate": "node scripts/gate.mjs",
     "release": "node scripts/release.mjs",
     "lint-staged": "lint-staged",
