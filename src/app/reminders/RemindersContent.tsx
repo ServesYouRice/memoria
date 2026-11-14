@@ -92,7 +92,9 @@ export function RemindersContent() {
         <EmptyState
           icon={ReminderIcon}
           title="No reminders"
-          description='Right-click an item on a canvas and choose "Remind me…" to see it again on a day you pick.'
+          description={
+            'Open an item\'s menu on a canvas (right-click, or press and hold on a phone) and choose "Remind me…" to see it again on a day you pick.'
+          }
         />
       )}
       <ReminderDialog itemId={changing} onClose={() => setChanging(null)} />
