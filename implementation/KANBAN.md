@@ -38,6 +38,7 @@ to RUN-ME-3).
 | [IMP-150](tasks/IMP-150.md) | Expand/contract rule for migrations; `DEPLOYMENT.md` | - |
 | [IMP-151](tasks/IMP-151.md) | OpenTelemetry; drop `@vercel/analytics`; runtime browser Sentry address | - |
 | [IMP-152](tasks/IMP-152.md) | Direct browser uploads; password-reset mail through the outbox | - |
+| [IMP-153](tasks/IMP-153.md) | Owner invite tool (Settings page and command) for invite-only sign-up | DEC-024 |
 
 ## WAITING
 
@@ -47,7 +48,6 @@ to RUN-ME-3).
 | [IMP-110](tasks/IMP-110.md) | Optional full copy of saved pages (built; needs a real-browser run) | DEC-020 |
 | [IMP-119](tasks/IMP-119.md) | Settings page shows one copy of each field while it loads | DEC-022 |
 | [IMP-140](tasks/IMP-140.md) | Press and hold opens an item's menu on touch screens (built; needs a real iPhone check) | DEC-021 |
-| [IMP-153](tasks/IMP-153.md) | A way to issue sign-up invites in production | DEC-024 |
 | [IMP-115](tasks/IMP-115.md) | A hosted paid plan people can sign up and pay for | DEC-019 |
 
 ## USER DECISIONS
@@ -64,9 +64,9 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | DEC-016 | Which single word does the app use for a user's space: "canvas" or "board"? | "canvas" (already used on the dashboard and in most screens) | "canvas" (owner, 2026-11-11) | IMP-088 |
 | DEC-017 | Which licence does Memoria publish under, and which features are promised to stay free? | AGPL-3.0 (used by comparable self-hosted tools); always free: self-hosting, passkeys and two-step codes, export, AI on your own key | AGPL-3.0; always free: self-hosting, passkeys and two-step codes, export, AI on your own key (owner, 2026-11-11) | IMP-112 |
 | DEC-018 | May Memoria fetch video transcripts automatically? YouTube has no open official way to read captions of other people's videos; unofficial tools work but can break and sit in a grey area of its terms | No automatic fetching: ship time-stamped notes and pasted transcripts only | Yes, as an opt-in switch: off by default, switched on per deployment (owner, 2026-11-11) | IMP-114 |
-| DEC-019 | Hosted paid plan: what does the paid plan add, what does it cost, and who takes the payments? | One paid plan next to a free one; it sells hosting, more storage and included AI, never the features promised free in DEC-017; a payment company that also handles sales tax | | IMP-115 |
+| DEC-019 | Hosted paid plan: what does the paid plan add, what does it cost, and who takes the payments? | One paid plan next to a free one; it sells hosting, more storage and included AI, never the features promised free in DEC-017; a payment company that also handles sales tax | Not at launch; decide later (owner, 2026-11-14) | IMP-115 |
 | DEC-020 | Run the page-capture worker once with a real browser: `COMPOSE_PROFILES=capture PAGE_CAPTURE=true docker compose up --build capture-worker`, save a link, and confirm a picture and PDF appear | Run on the dev machine | Owner runs it on the dev machine (owner, 2026-11-14) | IMP-110 |
 | DEC-021 | On a real iPhone or iPad: hold a note ~0.5 s, the item menu opens at the finger with no text-selection bubble; drag, pinch, tap and double-tap still work; on Android the menu opens once | Check on a real device | Owner checks on a real iPhone (owner, 2026-11-14) | IMP-140 |
 | DEC-022 | Duplicate Settings fields come from React re-rendering the `loading.tsx` boundary while the server copy is still hidden; the trigger is unknown. Either debug against a production build on the dev machine, or delete `src/app/settings/loading.tsx` (Settings loses its loading placeholder) | Debug on a production build first | Debug against a production build (owner, 2026-11-14) | IMP-119 |
 | DEC-023 | Run `pnpm build`, `pnpm gate integration` and `pnpm gate e2e` on Node 26 on the dev machine for the 2026-11-14 batch (agent sessions had no disk for a build, no browser stack and no Redis) | Run on the dev machine | Merge without them (owner, 2026-11-14) | IMP-110, IMP-140 |
-| DEC-024 | Production sign-up: how do new people get in? Today `REGISTRATION_MODE=invite` and nothing creates an invite (handbook INF-32) | Keep `invite`; build an owner-only invite command and Settings page | | IMP-153 |
+| DEC-024 | Production sign-up: how do new people get in? Today `REGISTRATION_MODE=invite` and nothing creates an invite (handbook INF-32) | Keep `invite`; build an owner-only invite command and Settings page | Invite-only with an owner invite page and command (owner, 2026-11-14) | IMP-153 |
