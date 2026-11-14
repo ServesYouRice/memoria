@@ -1,5 +1,9 @@
 # Connect AI apps to Memoria
 
+**Agents suggest, you approve.** An AI app you connect can read your
+canvases and propose changes, but nothing moves until you approve it, and
+you can undo any change afterwards.
+
 Memoria has one connection point for AI assistants and agents:
 
 ```

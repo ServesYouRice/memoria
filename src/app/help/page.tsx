@@ -102,6 +102,12 @@ export default async function HelpPage() {
           ))}
         </ul>
       </InfoSection>
+      <InfoSection title="If Memoria ever stops">
+        You are not locked in. Export every canvas as PNG, PDF, Markdown or JSON
+        at any time, and download a copy of your whole account from Settings.
+        Memoria is free software you can run on your own server, so you can keep
+        using your own copy whatever happens to this one.
+      </InfoSection>
       <InfoSection title="Troubleshooting">
         Retry a failed canvas load from its error banner. Check the Status page
         for database, cache, and process readiness. If the problem persists,
