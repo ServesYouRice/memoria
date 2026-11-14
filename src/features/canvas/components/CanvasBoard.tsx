@@ -67,6 +67,17 @@ import { toast } from "sonner";
 import { isPollChangedMessage } from "@/lib/polls/shared";
 import { pollKeys } from "@/features/canvas/hooks/use-poll-results";
 import {
+  fetchPlacementsElsewhere,
+  placementKeys,
+  useCanvasPlacements,
+  useMovePlacement,
+  useRemovePlacement,
+} from "@/features/canvas/hooks/use-placements";
+import { isPlacementChangedMessage } from "@/lib/placements/shared";
+import type { PlacedItem } from "@/lib/placements/shared";
+import { PlacementLayer } from "@/features/canvas/components/PlacementLayer";
+import { PlacementMenu } from "@/features/canvas/components/PlacementMenu";
+import {
   BoardExportCaptureContext,
   type BoardExportCapture,
   fetchAllCanvasItems,
@@ -351,6 +362,20 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const [pendingAutopilotItems, setPendingAutopilotItems] = useState<
     AutopilotItem[]
   >([]);
+  // IMP-109: items from other canvases shown here, and their menu.
+  const placements = useCanvasPlacements(canvasId);
+  const movePlacement = useMovePlacement(canvasId);
+  const removePlacement = useRemovePlacement();
+  const [placementMenu, setPlacementMenu] = useState<{
+    placed: PlacedItem;
+    x: number;
+    y: number;
+  } | null>(null);
+  // IMP-109: deleting items also shown on other canvases asks first.
+  const [pendingSharedDelete, setPendingSharedDelete] = useState<{
+    message: string;
+    run: () => Promise<void>;
+  } | null>(null);
   const [pendingRestoreVersionId, setPendingRestoreVersionId] = useState<
     string | null
   >(null);
@@ -423,6 +448,39 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     setSelectedItemId,
   });
 
+  /**
+   * IMP-109: run a delete, first saying where else the items will
+   * disappear when some are also shown on other canvases.
+   */
+  const deleteWithWarning = async (
+    targets: CanvasItem[],
+    run: () => Promise<void>,
+  ) => {
+    let elsewhere: Awaited<ReturnType<typeof fetchPlacementsElsewhere>> = {};
+    try {
+      elsewhere = await fetchPlacementsElsewhere(
+        canvasId,
+        targets.map((item) => item.id),
+      );
+    } catch {
+      // Without the answer, delete as before: the trash can restore it.
+    }
+    const shown = Object.values(elsewhere);
+    if (shown.length === 0) {
+      await run();
+      return;
+    }
+    const names = Array.from(new Set(shown.flatMap((e) => e.canvasNames)));
+    const count = shown.reduce((sum, e) => sum + e.count, 0);
+    setPendingSharedDelete({
+      message:
+        names.length > 0
+          ? `It will also disappear from: ${names.join(", ")}. It goes to the trash once, and restoring it brings it back everywhere.`
+          : `It will also disappear from ${count} other ${count === 1 ? "canvas" : "canvases"}. It goes to the trash once, and restoring it brings it back everywhere.`,
+      run,
+    });
+  };
+
   // Keyboard Hook
   const [isSpacePressed, setIsSpacePressed] = useState(false);
 
@@ -434,16 +492,18 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           const itemsToDelete = allItems.filter((item) =>
             selectedItemIds.has(item.id),
           );
-          await Promise.all(
-            itemsToDelete.map((item) =>
-              deleteItem({
-                itemId: item.id,
-                version: item.version,
-                canvasId: item.canvasId,
-              }),
-            ),
-          );
-          setSelectedItemIds(new Set());
+          await deleteWithWarning(itemsToDelete, async () => {
+            await Promise.all(
+              itemsToDelete.map((item) =>
+                deleteItem({
+                  itemId: item.id,
+                  version: item.version,
+                  canvasId: item.canvasId,
+                }),
+              ),
+            );
+            setSelectedItemIds(new Set());
+          });
         } catch (err) {
           console.error("Failed to bulk delete items:", err);
         }
@@ -453,12 +513,14 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         );
         if (selectedItem) {
           try {
-            await deleteItem({
-              itemId: selectedItem.id,
-              version: selectedItem.version,
-              canvasId: selectedItem.canvasId,
+            await deleteWithWarning([selectedItem], async () => {
+              await deleteItem({
+                itemId: selectedItem.id,
+                version: selectedItem.version,
+                canvasId: selectedItem.canvasId,
+              });
+              setSelectedItemId(null);
             });
-            setSelectedItemId(null);
           } catch (err) {
             console.error("Failed to delete item:", err);
           }
@@ -620,6 +682,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     (message: unknown) => {
       if (!message || typeof message !== "object") return;
       // IMP-104: a vote changed a poll's counts; read them again.
+      // IMP-109: an item shown here changed on its home canvas.
+      if (isPlacementChangedMessage(message)) {
+        void queryClient.invalidateQueries({
+          queryKey: placementKeys.canvas(canvasId),
+        });
+        return;
+      }
       if (isPollChangedMessage(message)) {
         void queryClient.invalidateQueries({
           queryKey: pollKeys.canvas(canvasId),
@@ -932,11 +1001,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   const handleDeleteItem = (item: CanvasItem) => {
     if (!capabilities.canDeleteItems) return;
     // The hook rolls back and shows the failure toast.
-    deleteItem({
-      itemId: item.id,
-      version: item.version,
-      canvasId: item.canvasId,
-    }).catch(() => {});
+    void deleteWithWarning([item], () =>
+      deleteItem({
+        itemId: item.id,
+        version: item.version,
+        canvasId: item.canvasId,
+      })
+        .then(() => undefined)
+        .catch(() => {}),
+    );
   };
 
   const generateThumbnail = useCallback(
@@ -1041,11 +1114,15 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     if (!selectedItemId) return;
     const selectedItem = allItems.find((item) => item.id === selectedItemId);
     if (selectedItem) {
-      deleteItem({
-        itemId: selectedItemId,
-        version: selectedItem.version,
-        canvasId: selectedItem.canvasId,
-      }).catch(() => {});
+      void deleteWithWarning([selectedItem], () =>
+        deleteItem({
+          itemId: selectedItem.id,
+          version: selectedItem.version,
+          canvasId: selectedItem.canvasId,
+        })
+          .then(() => undefined)
+          .catch(() => {}),
+      );
     }
   };
 
@@ -1733,6 +1810,22 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               searchActive={!exportItems && Boolean(searchQuery.trim())}
               searchMatchIds={searchMatchIds}
             />
+            <PlacementLayer
+              canvasId={canvasId}
+              // An export draws its own full list, shown items included.
+              placed={exportItems ? [] : (placements.data ?? [])}
+              canMove={canEdit}
+              onMove={(placementId, x, y) =>
+                movePlacement.mutate(
+                  { placementId, positionX: x, positionY: y },
+                  {
+                    onError: () =>
+                      toast.error("The item could not be moved here."),
+                  },
+                )
+              }
+              onMenu={(placed, x, y) => setPlacementMenu({ placed, x, y })}
+            />
             <DrawingPreview
               currentPath={currentPath}
               currentCreation={currentCreation}
@@ -2003,6 +2096,37 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           onApplied={() => setFitAfterSortFrom(boundsKey)}
         />
       )}
+      <PlacementMenu
+        state={placementMenu}
+        canRemove={canEdit}
+        onClose={() => setPlacementMenu(null)}
+        onRemove={(placed) =>
+          removePlacement.mutate(
+            {
+              canvasId,
+              placementId: placed.placementId,
+              itemId: placed.item.id,
+            },
+            {
+              onError: () =>
+                toast.error("The item could not be taken off this canvas."),
+            },
+          )
+        }
+      />
+      <ConfirmDialog
+        open={pendingSharedDelete !== null}
+        title="Delete an item shown on other canvases?"
+        message={pendingSharedDelete?.message ?? ""}
+        confirmLabel="Delete everywhere"
+        destructive
+        onClose={() => setPendingSharedDelete(null)}
+        onConfirm={async () => {
+          const pending = pendingSharedDelete;
+          setPendingSharedDelete(null);
+          await pending?.run();
+        }}
+      />
       <ConfirmDialog
         open={pendingAutopilotActions.length > 0}
         title="Apply automatic layout?"

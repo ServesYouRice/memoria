@@ -229,6 +229,8 @@ model Canvas {
   canvasViews  CanvasView[]
   connections  ItemConnection[]
   uploadAssets UploadAsset[]
+  /// Items from other canvases shown here too (IMP-109).
+  placements   ItemPlacement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -340,6 +342,8 @@ model CanvasItem {
   pollVotes           PollVote[]
   pollClosure         PollClosure?
   notifications       Notification[]
+  /// The other canvases this item also shows on (IMP-109).
+  placements          ItemPlacement[]
 
   @@index([canvasId, deletedAt])
   @@index([normalizedUrl])
@@ -1478,4 +1482,26 @@ model WeeklyRecap {
 
   @@unique([userId, weekStart])
   @@index([userId, createdAt])
+}
+
+/// IMP-109: an item also shown on another canvas. The content lives once on
+/// the item (its home canvas); a placement holds only where it sits here.
+/// Deleting the item deletes its placements; trashing it hides them.
+model ItemPlacement {
+  id          String     @id @default(cuid())
+  itemId      String
+  item        CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  canvasId    String
+  canvas      Canvas     @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  positionX   Float
+  positionY   Float
+  width       Float
+  height      Float
+  zIndex      Int        @default(0)
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([itemId, canvasId])
+  @@index([canvasId])
 }

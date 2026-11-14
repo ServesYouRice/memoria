@@ -20,6 +20,7 @@ import { apiFetch } from "@/lib/api/fetch-client";
 import type { PollResult } from "@/lib/polls/shared";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { tableToMarkdown } from "@/lib/tables/table-content";
+import { placedAsCanvasItem, type PlacedItem } from "@/lib/placements/shared";
 
 /** A canvas larger than this many listing pages fails the export loudly. */
 const MAX_EXPORT_PAGES = 200;
@@ -72,7 +73,27 @@ export async function fetchAllCanvasItems(
   for (const item of liveItems) {
     if (!seen.has(item.id)) merged.push(item);
   }
-  return merged;
+  return [...merged, ...(await fetchPlacedItems(canvasId, seen))];
+}
+
+/**
+ * IMP-109: items from other canvases shown on this one, where they sit
+ * here, so an export holds everything the canvas shows.
+ */
+async function fetchPlacedItems(
+  canvasId: string,
+  ownIds: ReadonlySet<string>,
+): Promise<CanvasItem[]> {
+  const response = await apiFetch(
+    `/api/v1/canvases/${encodeURIComponent(canvasId)}/placements`,
+  );
+  const body = (await response.json()) as { placements?: PlacedItem[] };
+  if (!Array.isArray(body.placements)) {
+    throw new Error("Unexpected placement listing response");
+  }
+  return body.placements
+    .filter((placed) => !ownIds.has(placed.item.id))
+    .map((placed) => placedAsCanvasItem(placed, canvasId));
 }
 
 /** A poll's question and its result as the server counted it (IMP-104). */

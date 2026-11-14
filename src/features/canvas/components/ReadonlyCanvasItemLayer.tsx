@@ -274,7 +274,7 @@ function ReadonlyNoteItem({ item }: { item: CanvasItem }) {
   );
 }
 
-function ReadonlyCanvasItem({
+export function ReadonlyCanvasItem({
   item,
   itemsById,
 }: {

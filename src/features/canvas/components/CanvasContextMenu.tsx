@@ -20,6 +20,7 @@ import {
   ChromeReaderMode as SavedCopyIcon,
   Check as CheckIcon,
   NotificationsActive as ReminderIcon,
+  DynamicFeed as AlsoShowOnIcon,
 } from "@mui/icons-material";
 import {
   ItemType,
@@ -37,6 +38,8 @@ import {
 import { useThemeMode } from "@/lib/theme-context";
 import { SavedCopyDialog } from "./SavedCopyDialog";
 import { ReminderDialog } from "./ReminderDialog";
+import { AlsoShowOnDialog } from "./AlsoShowOnDialog";
+import { isPlaceableType } from "@/lib/placements/shared";
 
 export interface ContextMenuPosition {
   x: number;
@@ -147,6 +150,12 @@ export function CanvasContextMenu({
   const [reminderItemId, setReminderItemId] = React.useState<string | null>(
     null,
   );
+  // IMP-109: "Also show on…", for the canvas owner.
+  const [placeItemId, setPlaceItemId] = React.useState<string | null>(null);
+  const canPlace =
+    item !== undefined &&
+    capabilities.canManageCanvas &&
+    isPlaceableType(item.type);
   const canRemind =
     item !== undefined &&
     item.type !== ItemType.ARROW &&
@@ -240,6 +249,14 @@ export function CanvasContextMenu({
             <ListItemText>Remind me…</ListItemText>
           </MenuItem>
         )}
+        {canPlace && item && (
+          <MenuItem onClick={() => handleAction(() => setPlaceItemId(item.id))}>
+            <ListItemIcon>
+              <AlsoShowOnIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Also show on…</ListItemText>
+          </MenuItem>
+        )}
         {capabilities.canComment && (
           <MenuItem onClick={() => handleAction(onComments)}>
             <ListItemIcon>
@@ -264,6 +281,10 @@ export function CanvasContextMenu({
           </MenuItem>,
         ]}
       </Menu>
+      <AlsoShowOnDialog
+        itemId={placeItemId}
+        onClose={() => setPlaceItemId(null)}
+      />
       <ReminderDialog
         itemId={reminderItemId}
         onClose={() => setReminderItemId(null)}

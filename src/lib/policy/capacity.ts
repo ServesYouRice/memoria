@@ -36,6 +36,19 @@ export async function assertWorkspaceCapacity(tx: Store, userId: string) {
   )
     exceeded("workspaces", LAUNCH_LIMITS.workspacesPerUser);
 }
+/**
+ * Items on a canvas: its own live items and the live items from other
+ * canvases placed on it (IMP-109), since each placement takes a place too.
+ */
+async function canvasItemCount(tx: Store, canvasId: string) {
+  const [own, placed] = await Promise.all([
+    tx.canvasItem.count({ where: { canvasId, deletedAt: null } }),
+    tx.itemPlacement.count({
+      where: { canvasId, item: { deletedAt: null } },
+    }),
+  ]);
+  return own + placed;
+}
 export async function assertCanvasItemCapacity(
   tx: Store,
   canvasId: string,
@@ -43,8 +56,7 @@ export async function assertCanvasItemCapacity(
 ) {
   await lock(tx, "canvas-item", canvasId);
   if (
-    (await tx.canvasItem.count({ where: { canvasId, deletedAt: null } })) +
-      additionalItems >
+    (await canvasItemCount(tx, canvasId)) + additionalItems >
     LAUNCH_LIMITS.itemsPerCanvas
   )
     exceeded("canvas items", LAUNCH_LIMITS.itemsPerCanvas);
@@ -56,9 +68,7 @@ export async function assertCanvasItemCapacity(
  */
 export async function canvasItemRoom(tx: Store, canvasId: string) {
   await lock(tx, "canvas-item", canvasId);
-  const count = await tx.canvasItem.count({
-    where: { canvasId, deletedAt: null },
-  });
+  const count = await canvasItemCount(tx, canvasId);
   return Math.max(0, LAUNCH_LIMITS.itemsPerCanvas - count);
 }
 export async function assertCanvasShareCapacity(
