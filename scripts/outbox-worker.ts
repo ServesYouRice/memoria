@@ -82,6 +82,11 @@ import {
   createUploadCopyHandler,
 } from "../src/lib/uploads/copy-upload";
 import {
+  PDF_READ_JOB,
+  PDF_READ_TIMEOUT_MS,
+  createPdfReadHandler,
+} from "../src/lib/pdf/outbox-handler";
+import {
   REMINDER_EMAIL_JOB,
   REMINDER_FIRE_JOB,
   REMINDER_SWEEP_JOB,
@@ -133,6 +138,7 @@ await runOutboxWorker({
     [REMINDER_SWEEP_JOB]: createReminderSweepHandler(prisma),
     [REMINDER_FIRE_JOB]: createReminderFireHandler(prisma),
     [REMINDER_EMAIL_JOB]: createReminderEmailHandler(prisma),
+    [PDF_READ_JOB]: createPdfReadHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
@@ -147,6 +153,7 @@ await runOutboxWorker({
     [BOOKMARK_IMPORT_JOB]: BOOKMARK_IMPORT_TIMEOUT_MS,
     [RECAP_USER_JOB]: RECAP_USER_TIMEOUT_MS,
     [UPLOAD_COPY_JOB]: UPLOAD_COPY_TIMEOUT_MS,
+    [PDF_READ_JOB]: PDF_READ_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

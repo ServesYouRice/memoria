@@ -135,11 +135,16 @@ export const GET = withAuth(async (request, session) => {
   // This is much faster than ILIKE and provides relevance ranking
   // FTS filter - uses the generated searchVector column when available
   // A saved link also matches words that appear only in its saved page
-  // text (IMP-094); that table always has its own indexed search vector.
+  // text (IMP-094), and a PDF card words only inside its file (IMP-113);
+  // that table always has its own indexed search vector.
   const pageCopyMatch = Prisma.sql`
     OR EXISTS (
       SELECT 1 FROM "ItemPageCopy" p
       WHERE p."itemId" = i."id" AND p."searchVector" @@ ${tsQuery}
+    )
+    OR (
+      i."type" = 'PDF'::"ItemType"
+      AND i."content"->>'filename' ILIKE ${searchTerm} ESCAPE '\\'
     )
   `;
   const searchFilter = useFts
@@ -254,7 +259,9 @@ export const GET = withAuth(async (request, session) => {
 
   const pageExcerpts = await pageCopyExcerpts(
     prisma,
-    items.filter((item) => item.type === "BOOKMARK").map((item) => item.id),
+    items
+      .filter((item) => item.type === "BOOKMARK" || item.type === "PDF")
+      .map((item) => item.id),
     [query],
   );
 
@@ -291,6 +298,15 @@ export const GET = withAuth(async (request, session) => {
       const excerpt = pageExcerpts.get(item.id);
       // When only the saved page text matched, show where (IMP-094). The
       // excerpt is untrusted web text; the client renders it as plain text.
+      snippet =
+        excerpt && !label.toLowerCase().includes(queryLower)
+          ? `${label} — …${excerpt}…`
+          : label;
+    } else if (item.type === "PDF") {
+      const label = (content.filename as string) || "PDF";
+      const excerpt = pageExcerpts.get(item.id);
+      // Words found only inside the file (IMP-113): untrusted file text,
+      // rendered by the client as plain text.
       snippet =
         excerpt && !label.toLowerCase().includes(queryLower)
           ? `${label} — …${excerpt}…`

@@ -8,6 +8,7 @@ import {
   isTextContent,
   isBookmarkContent,
   isImageContent,
+  isPdfContent,
   isPollContent,
   isTableContent,
   type NoteContent,
@@ -20,6 +21,7 @@ import { apiFetch } from "@/lib/api/fetch-client";
 import type { PollResult } from "@/lib/polls/shared";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { tableToMarkdown } from "@/lib/tables/table-content";
+import { pdfFileUrl } from "@/lib/pdf/pdf-content";
 import { placedAsCanvasItem, type PlacedItem } from "@/lib/placements/shared";
 
 /** A canvas larger than this many listing pages fails the export loudly. */
@@ -212,6 +214,12 @@ export async function exportToMarkdown(
       case ItemType.TABLE:
         if (isTableContent(item.content)) {
           md += `${tableToMarkdown(item.content)}\n\n`;
+        }
+        break;
+      case ItemType.PDF:
+        if (isPdfContent(item.content)) {
+          const name = item.content.filename.replace(/[[\]\\]/g, "\\$&");
+          md += `[PDF: ${name}](${pdfFileUrl(item.content.assetId)})\n\n`;
         }
         break;
       // Add other types as needed

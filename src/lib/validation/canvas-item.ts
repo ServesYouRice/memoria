@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { POLL_MAX_CHOICES } from "@/lib/polls/limits";
 import { tableContentSchema } from "@/lib/tables/table-content";
+import { pdfContentSchema } from "@/lib/pdf/pdf-content";
 import { ItemType } from "@/types/canvas";
 import { sanitizeUrl } from "@/lib/sanitization";
 import {
@@ -274,6 +275,7 @@ export const canvasItemContentSchemas = {
   [ItemType.EMBED]: embedContentSchema,
   [ItemType.POLL]: pollContentSchema,
   [ItemType.TABLE]: tableContentSchema,
+  [ItemType.PDF]: pdfContentSchema,
 } as const;
 
 export function parseCanvasItemContent(

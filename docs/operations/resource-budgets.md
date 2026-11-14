@@ -20,6 +20,8 @@ silently truncated.
 | Export retention | 24 hours | durable delete job removes the private object |
 | Saved page text | 256 KiB per link, 64 MiB per account (UTF-8) | `storePageCopy` cuts a page at the link budget and keeps no text once the account budget is full; `RESOURCE_BUDGETS.pageCopy` |
 | Page picture and PDF (optional) | 3 MiB picture, 8 MiB PDF, 40 MiB download, 250 requests, 75 s per capture; at most half of the account's upload quota | the capture browser reaches the network only through a proxy that refuses internal addresses; `RESOURCE_BUDGETS.pageCapture`; see [page-capture.md](page-capture.md) |
+| PDF file | 20 MiB per file, counted in the upload allowance (500 files, 100 MiB per account) | the upload route caps the request body before reading it and refuses larger files with 413; `RESOURCE_BUDGETS.pdf.maxFileBytes` |
+| PDF text reading | files up to 10 MiB and 300 pages; 30 s and a 256 MiB heap per file; one file at a time per worker; up to 1 MiB of text per file, inside the 64 MiB saved-text budget | `readPdfText` runs pdf.js in a worker thread that is stopped at the time limit; larger or longer files are stored but say they were not read; `RESOURCE_BUDGETS.pdf` |
 
 The deterministic regression suite is `tests/unit/resource-budgets.test.ts`.
 It serializes representative geometry at every advertised canvas size, checks
@@ -35,6 +37,16 @@ account could otherwise hold gigabytes of web text, so the account budget
 caps it at 64 MiB; that also keeps it well inside the account export's input
 budget. Links saved after the budget is full keep their title and summary
 but no page text.
+
+PDF cards (IMP-113) keep their text in the same store and budget. A PDF is
+stored when it is at most 20 MiB; its text is read by the `pdf.read` outbox
+job only when the file is at most 10 MiB and 300 pages, and the read stops
+after 30 seconds. pdf.js runs in a worker thread with a 256 MiB heap cap,
+with script evaluation and font loading off, and a worker process reads one
+PDF at a time (others wait their turn), so a hostile file costs at most one
+thread for 30 seconds. A file over a reading limit, with no readable text
+(scanned pages are not read), or over the saved-text budget is still kept,
+and its card says why its words are not searchable.
 
 AI has separate per-user token, cost, prompt-byte, and concurrency ceilings.
 Those limits are configured with the `AI_*` environment variables and exposed

@@ -16,6 +16,7 @@ import { chargeUploadQuota } from "@/lib/uploads/lifecycle";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
 import { newItemId } from "@/lib/canvas-formats/import-canvas";
 import { NotFoundError, ValidationError } from "@/lib/errors";
+import { enqueuePdfReads } from "@/lib/pdf/pdf-items";
 
 /**
  * "Duplicate canvas" (IMP-098). The owner gets a private copy of every live
@@ -23,7 +24,8 @@ import { NotFoundError, ValidationError } from "@/lib/errors";
  * Shares, comments, versions and embeds stay with the original. Each picture
  * gets its own upload in the copy, charged to the owner's storage, and an
  * outbox job copies the stored file, so the copy keeps its pictures when the
- * original is deleted.
+ * original is deleted. PDF cards (IMP-113) get their own copy of the file
+ * the same way, and their text is read again for the copy.
  */
 
 const UPLOAD_URL = /^\/api\/v1\/uploads\/(c[a-z0-9]{20,})$/i;
@@ -34,6 +36,11 @@ export function copyName(name: string) {
 
 function uploadIdOf(url: unknown) {
   return typeof url === "string" ? (UPLOAD_URL.exec(url)?.[1] ?? null) : null;
+}
+
+function pdfAssetIdOf(content: unknown) {
+  const assetId = (content as { assetId?: unknown } | null)?.assetId;
+  return typeof assetId === "string" ? assetId : null;
 }
 
 /** A fresh key beside the original, keeping its extension. */
@@ -93,11 +100,16 @@ export async function duplicateCanvas(
 
       const newIds = new Map(states.map((state) => [state.id, newItemId()]));
 
-      // Pictures uploaded to this canvas get their own upload in the copy.
+      // Pictures and PDFs uploaded to this canvas get their own upload in
+      // the copy.
       const pictureIds = new Set<string>();
       for (const state of states) {
-        if (state.type !== ItemType.IMAGE) continue;
-        const id = uploadIdOf((state.content as { url?: unknown })?.url);
+        const id =
+          state.type === ItemType.IMAGE
+            ? uploadIdOf((state.content as { url?: unknown })?.url)
+            : state.type === ItemType.PDF
+              ? pdfAssetIdOf(state.content)
+              : null;
         if (id) pictureIds.add(id);
       }
       const assets = pictureIds.size
@@ -159,6 +171,15 @@ export async function duplicateCanvas(
           if (target)
             content = { ...content, url: `/api/v1/uploads/${target}` };
         }
+        if (state.type === ItemType.PDF) {
+          const id = pdfAssetIdOf(content);
+          const target = id ? copiedAsset.get(id) : undefined;
+          // The copy's text is read again from its own file.
+          if (target) {
+            content = { ...content, assetId: target };
+            delete content.textStatus;
+          }
+        }
         rows.push({
           id: newIds.get(state.id)!,
           canvasId: copy.id,
@@ -179,9 +200,10 @@ export async function duplicateCanvas(
       const items = rows.length
         ? await tx.canvasItem.createManyAndReturn({
             data: rows,
-            select: { id: true, version: true },
+            select: { id: true, version: true, type: true },
           })
         : [];
+      await enqueuePdfReads(tx, items);
       await recordCanvasItemEventsBatch(
         tx,
         items.map((item) => ({

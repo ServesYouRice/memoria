@@ -21,12 +21,16 @@ import {
   Check as CheckIcon,
   NotificationsActive as ReminderIcon,
   DynamicFeed as AlsoShowOnIcon,
+  Download as DownloadIcon,
 } from "@mui/icons-material";
 import {
   ItemType,
+  isPdfContent,
   type CanvasCapabilities,
   type CanvasItem,
 } from "@/types/canvas";
+import { pdfFileUrl } from "@/lib/pdf/pdf-content";
+import { openPdf } from "./PdfItem";
 import { pileTransformMenuItems, usePileTransform } from "./PileTransformMenu";
 import { openSavedLink, openableUrl } from "@/lib/bookmarks/open-link";
 import { noteColorOf, type NoteColorName } from "@/lib/note-colors";
@@ -174,6 +178,12 @@ export function CanvasContextMenu({
       ? openableUrl((item.content as { url?: unknown }).url)
       : null;
 
+  // IMP-113: a PDF opens in the browser's own viewer, or downloads.
+  const pdf =
+    item?.type === ItemType.PDF && isPdfContent(item.content)
+      ? item.content
+      : null;
+
   const showNoteColors =
     item?.type === ItemType.NOTE &&
     capabilities.canEditItems &&
@@ -201,6 +211,27 @@ export function CanvasContextMenu({
           />
         )}
         {showNoteColors && <Divider />}
+        {pdf && (
+          <MenuItem onClick={() => handleAction(() => openPdf(pdf))}>
+            <ListItemIcon>
+              <OpenLinkIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Open PDF</ListItemText>
+          </MenuItem>
+        )}
+        {pdf && (
+          <MenuItem
+            component="a"
+            href={pdfFileUrl(pdf.assetId, { download: true })}
+            download={pdf.filename}
+            onClick={onClose}
+          >
+            <ListItemIcon>
+              <DownloadIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Download PDF</ListItemText>
+          </MenuItem>
+        )}
         {linkUrl && item && (
           <MenuItem
             onClick={() =>

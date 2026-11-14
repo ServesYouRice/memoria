@@ -27,6 +27,7 @@ import {
   BallotOutlined as PollIcon,
   TableChartOutlined as TableIcon,
   MoreHoriz as MoreIcon,
+  PictureAsPdfOutlined as PdfIcon,
 } from "@mui/icons-material";
 import { useCanvasStore, type CanvasTool } from "@/stores/canvasStore";
 import { TOUCH_TARGET } from "@/lib/theme";
@@ -39,6 +40,8 @@ export interface CanvasAddBarProps {
   onAddPoll?: () => void;
   /** Adds a 3 by 3 table (IMP-108). */
   onAddTable?: () => void;
+  /** Chooses PDFs to put on the canvas (IMP-113). */
+  onAddPdf?: () => void;
 }
 
 type BarEntry = {
@@ -111,6 +114,7 @@ export function CanvasAddBar({
   onAddImage,
   onAddPoll,
   onAddTable,
+  onAddPdf,
 }: CanvasAddBarProps) {
   const { activeTool, setActiveTool } = useCanvasStore();
   // Below `sm` only five tools fit; the rest sit under "More".
@@ -155,6 +159,17 @@ export function CanvasAddBar({
       icon: <ImageIcon fontSize="small" />,
       onClick: onAddImage,
     },
+    ...(onAddPdf
+      ? [
+          {
+            key: "pdf",
+            label: "PDF",
+            hint: "Add a PDF you can open, search and ask about",
+            icon: <PdfIcon fontSize="small" />,
+            onClick: onAddPdf,
+          },
+        ]
+      : []),
     {
       key: "text",
       label: "Text",

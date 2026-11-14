@@ -9,7 +9,10 @@ import {
   type TableContent,
 } from "@/lib/tables/table-content";
 
+import { isPdfContentShape, type PdfContent } from "@/lib/pdf/pdf-content";
+
 export type { TableContent } from "@/lib/tables/table-content";
+export type { PdfContent } from "@/lib/pdf/pdf-content";
 
 export enum ItemType {
   NOTE = "NOTE",
@@ -23,6 +26,7 @@ export enum ItemType {
   EMBED = "EMBED",
   POLL = "POLL",
   TABLE = "TABLE",
+  PDF = "PDF",
 }
 
 /**
@@ -258,7 +262,8 @@ export type ItemContent =
   | FrameContent
   | EmbedContent
   | PollContent
-  | TableContent;
+  | TableContent
+  | PdfContent;
 
 /**
  * Full canvas item (matches database schema)
@@ -421,6 +426,11 @@ export function isPollContent(content: ItemContent): content is PollContent {
 /** IMP-108: type-scoped; use after checking `item.type === ItemType.TABLE`. */
 export function isTableContent(content: unknown): content is TableContent {
   return isTableContentShape(content);
+}
+
+/** IMP-113: type-scoped; use after checking `item.type === ItemType.PDF`. */
+export function isPdfContent(content: unknown): content is PdfContent {
+  return isPdfContentShape(content);
 }
 
 /**

@@ -38,6 +38,7 @@ import {
   isEmbedContent,
   isFrameContent,
   isImageContent,
+  isPdfContent,
   isNoteContent,
   isPollContent,
   isShapeContent,
@@ -45,6 +46,11 @@ import {
   isTextContent,
 } from "@/types/canvas";
 import { notePlainText } from "@/features/canvas/search";
+import {
+  describePdfFile,
+  describePdfText,
+  pdfFileUrl,
+} from "@/lib/pdf/pdf-content";
 import {
   EMBED_PREVIEW_LABEL,
   describeEmbedTarget,
@@ -60,6 +66,9 @@ export function describeItemHeading(item: CanvasItem): string {
   // Tables carry a `text` too, so they are checked before notes.
   if (item.type === ItemType.TABLE && isTableContent(content)) {
     return `Table, ${content.rows.length} rows by ${content.columns.length} columns`;
+  }
+  if (item.type === ItemType.PDF && isPdfContent(content)) {
+    return `PDF: ${content.filename}`;
   }
   if (isNoteContent(content)) {
     const text = notePlainText(content).trim();
@@ -120,6 +129,9 @@ export function describeItemDetail(
 
   if (item.type === ItemType.TABLE && isTableContent(content)) {
     return content.text.slice(0, 280) || "Empty table";
+  }
+  if (item.type === ItemType.PDF && isPdfContent(content)) {
+    return `${describePdfFile(content)}. ${describePdfText(content.textStatus)}`;
   }
   if (isNoteContent(content)) {
     return notePlainText(content).slice(0, 280);
@@ -423,6 +435,19 @@ export function CanvasItemListView({
                 )}
 
                 <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                  {item.type === ItemType.PDF && isPdfContent(item.content) && (
+                    // Anyone who can see the canvas can open the file, in
+                    // the browser's own viewer in a new tab (IMP-113).
+                    <Button
+                      size="small"
+                      component="a"
+                      href={pdfFileUrl(item.content.assetId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open PDF
+                    </Button>
+                  )}
                   {capabilities.canEditItems && onActivateItem && (
                     <Button
                       size="small"

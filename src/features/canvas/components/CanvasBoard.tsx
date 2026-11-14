@@ -50,6 +50,12 @@ import {
 } from "@/lib/ai/autopilot-service";
 import { useObservedStageSize } from "@/features/canvas/components/use-observed-stage-size";
 import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
+import { openPdf } from "@/features/canvas/components/PdfItem";
+import {
+  looksLikePdf,
+  pdfCardInput,
+  uploadPdf,
+} from "@/features/canvas/hooks/use-pdf-upload";
 import { TableCellDialog } from "@/features/canvas/components/TableCellDialog";
 import {
   createTable,
@@ -94,6 +100,7 @@ import type { UpdateCanvasItemInput } from "@/lib/validation/canvas-item";
 import {
   ItemType,
   isNoteContent,
+  isPdfContent,
   resolveCanvasCapabilities,
 } from "@/types/canvas";
 
@@ -950,6 +957,54 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
   };
 
+  /**
+   * IMP-113: put dropped or chosen PDFs on the canvas, side by side from
+   * `at` (world coordinates). Anything else is left to its own flow.
+   */
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const handleAddPdfFiles = async (
+    files: File[],
+    at: { x: number; y: number },
+  ) => {
+    if (!capabilities.canCreateItems) return;
+    let zIndex = Math.max(0, ...allItems.map((item) => item.zIndex)) + 1;
+    for (const [index, file] of files.entries()) {
+      const toastId = toast.loading(`Adding ${file.name}…`);
+      try {
+        const content = await uploadPdf(canvasId, file);
+        await createItem(
+          pdfCardInput(
+            canvasId,
+            content,
+            { x: at.x + index * 280, y: at.y },
+            zIndex++,
+          ),
+        );
+        toast.success(`${file.name} is on the canvas.`, { id: toastId });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "The PDF was not added.",
+          { id: toastId },
+        );
+      }
+    }
+  };
+  const handleDropFiles = (event: React.DragEvent<HTMLDivElement>) => {
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (!capabilities.canCreateItems || files.length === 0) return;
+    event.preventDefault();
+    const pdfs = files.filter(looksLikePdf);
+    if (pdfs.length < files.length) {
+      toast.error("Only PDFs can be dropped here. Add pictures with Image.");
+    }
+    if (pdfs.length === 0) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    void handleAddPdfFiles(pdfs, {
+      x: (event.clientX - box.left - position.x) / zoom,
+      y: (event.clientY - box.top - position.y) / zoom,
+    });
+  };
+
   const handleWhisperSend = async (text: string) => {
     const center = viewportCenterWorld(position, stageSize, zoom);
     await createItem({
@@ -980,6 +1035,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   /** Double-click / Enter activation, gated by the same contract. */
   const handleActivateItem = (item: CanvasItem) => {
+    // Anyone who can see a PDF card can open its file (IMP-113).
+    if (item.type === ItemType.PDF && isPdfContent(item.content)) {
+      openPdf(item.content);
+      return;
+    }
     if (!capabilities.canEditItems) return;
     if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
       handleNoteDoubleClick(item);
@@ -1769,6 +1829,16 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           ref={stageContainerRef}
           role="region"
           aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list is available from the skip control."
+          onDragOver={(event) => {
+            if (
+              capabilities.canCreateItems &&
+              event.dataTransfer?.types.includes("Files")
+            ) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDrop={handleDropFiles}
           sx={{
             flexGrow: 1,
             position: "relative",
@@ -1824,8 +1894,31 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                   : undefined
               }
               onAddTable={() => void handleAddTable()}
+              onAddPdf={
+                capabilities.canCreateItems
+                  ? () => pdfInputRef.current?.click()
+                  : undefined
+              }
             />
           )}
+          <input
+            ref={pdfInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            multiple
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              event.target.value = "";
+              if (files.length === 0) return;
+              void handleAddPdfFiles(
+                files,
+                viewportCenterWorld(position, stageSize, zoom),
+              );
+            }}
+          />
           {!isPresentationMode && (
             <CanvasViewControls
               zoom={zoom}

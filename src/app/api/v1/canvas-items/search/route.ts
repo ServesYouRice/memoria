@@ -25,7 +25,13 @@ export const GET = withApiHandler(async (request: Request) => {
       AND "deletedAt" IS NULL
       AND "type" <> 'POLL'::"ItemType"
       AND ("content"::text ILIKE ${pattern} ESCAPE '\\'
-        OR array_to_string("tags", ' ') ILIKE ${pattern} ESCAPE '\\')
+        OR array_to_string("tags", ' ') ILIKE ${pattern} ESCAPE '\\'
+        -- A PDF card also matches words inside its file (IMP-113).
+        OR ("type" = 'PDF'::"ItemType" AND EXISTS (
+          SELECT 1 FROM "ItemPageCopy" p
+          WHERE p."itemId" = "CanvasItem"."id"
+            AND p."searchVector" @@ plainto_tsquery('english', ${q})
+        )))
     ORDER BY "zIndex" ASC, "id" ASC
     LIMIT ${LAUNCH_LIMITS.itemsPerCanvas}
   `);

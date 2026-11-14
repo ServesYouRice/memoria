@@ -4,10 +4,11 @@
  *
  * Images are accepted for every upload. Audio is accepted only for voice
  * notes (IMP-071): the canvas has no audio item, so an audio upload exists to
- * be transcribed into a note that links back to it.
+ * be transcribed into a note that links back to it. PDFs are accepted only
+ * for PDF cards (IMP-113).
  */
 
-export type UploadKind = "image" | "audio";
+export type UploadKind = "image" | "audio" | "pdf";
 
 export interface DetectedUploadType {
   kind: UploadKind;
@@ -31,6 +32,9 @@ export const ALLOWED_AUDIO_MIME_TYPES = [
   "audio/wav",
 ] as const;
 
+export const PDF_MIME_TYPE = "application/pdf";
+export const ALLOWED_PDF_MIME_TYPES = [PDF_MIME_TYPE] as const;
+
 /**
  * Client-declared types that name the same container as the detected type.
  * Browsers label MediaRecorder output and saved recordings inconsistently.
@@ -41,6 +45,7 @@ const DECLARED_ALIASES: Record<string, string[]> = {
   "audio/mp4": ["audio/mp4", "audio/m4a", "audio/x-m4a", "audio/aac"],
   "audio/mpeg": ["audio/mpeg", "audio/mp3"],
   "audio/wav": ["audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"],
+  "application/pdf": ["application/pdf", "application/x-pdf"],
 };
 
 const HEIF_BRANDS = new Set([
@@ -66,6 +71,16 @@ export function detectUploadType(
   buffer: Uint8Array,
 ): DetectedUploadType | null {
   if (buffer.length < 12) return null;
+
+  // PDF: "%PDF-" and a version digit at the very start. Readers also accept
+  // a header after leading junk; Memoria does not.
+  if (
+    ascii(buffer, 0, 5) === "%PDF-" &&
+    buffer[5]! >= 0x30 &&
+    buffer[5]! <= 0x39
+  ) {
+    return { kind: "pdf", mime: PDF_MIME_TYPE, extension: ".pdf" };
+  }
 
   // JPEG: FF D8 FF
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
