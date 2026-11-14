@@ -248,7 +248,11 @@ describe("Canvas Items API (IMP-062)", () => {
         updatedById: userId,
       };
 
-      const mockTxCreate = vi.fn().mockResolvedValue(mockCreated);
+      // IMP-138: the create also reads the canvas name for the activity.
+      const mockTxCreate = vi.fn().mockResolvedValue({
+        ...mockCreated,
+        canvas: { name: "Lisbon weekend" },
+      });
       prismaMocks.$transaction.mockImplementation(async (callback: any) => {
         const tx = {
           canvasItem: { create: mockTxCreate },
@@ -275,6 +279,7 @@ describe("Canvas Items API (IMP-062)", () => {
       expect(res.status).toBe(201);
       const json = await res.json();
       expect(json.id).toBe(validItemId);
+      expect(json).not.toHaveProperty("canvas");
 
       expect(mutationLockMocks.lockCanvasForMutation).toHaveBeenCalledWith(
         expect.anything(),
@@ -303,6 +308,7 @@ describe("Canvas Items API (IMP-062)", () => {
           createdById: userId,
           updatedById: userId,
         },
+        include: { canvas: { select: { name: true } } },
       });
       expect(committedEventsMocks.recordCanvasItemEvent).toHaveBeenCalledWith(
         expect.anything(),
@@ -321,6 +327,7 @@ describe("Canvas Items API (IMP-062)", () => {
         userId,
         type: "ITEM_CREATED",
         canvasId: validCanvasId,
+        canvasName: "Lisbon weekend",
         itemId: validItemId,
       });
     });
@@ -415,6 +422,7 @@ describe("Canvas Items API (IMP-062)", () => {
     it("successfully updates item with version check, increments version, and invalidates cache", async () => {
       prismaMocks.canvasItemFindUnique.mockResolvedValue({
         canvasId: validCanvasId,
+        canvas: { name: "Lisbon weekend" },
       });
 
       const mockUpdatedItem = {
@@ -493,6 +501,7 @@ describe("Canvas Items API (IMP-062)", () => {
         userId,
         type: "ITEM_UPDATED",
         canvasId: validCanvasId,
+        canvasName: "Lisbon weekend",
         itemId: validItemId,
       });
     });

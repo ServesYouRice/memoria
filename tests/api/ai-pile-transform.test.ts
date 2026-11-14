@@ -91,6 +91,7 @@ const frame = {
   width: 400,
   height: 300,
   content: { title: "Laptops" },
+  canvas: { name: "Shopping" },
 };
 const pileItems = [
   {
@@ -179,6 +180,14 @@ describe("POST /api/v1/ai/summarize/pile (IMP-069)", () => {
       user.id,
       user.email,
       "EDIT",
+    );
+    // IMP-138: the activity line names the canvas.
+    expect(mocks.logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "ITEM_CREATED",
+        canvasId,
+        canvasName: "Shopping",
+      }),
     );
 
     const prompt = mocks.generateText.mock.calls[0][0];

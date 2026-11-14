@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       await requireCanvasAccess(data.canvasId, userId, email, "EDIT");
 
       // Create item
-      const item = await prisma.$transaction(async (tx) => {
+      const { canvas, ...item } = await prisma.$transaction(async (tx) => {
         await lockCanvasForMutation(tx, data.canvasId);
         await assertCanvasItemCapacity(tx, data.canvasId);
         const created = await tx.canvasItem.create({
@@ -77,6 +77,8 @@ export async function POST(request: NextRequest) {
             createdById: userId,
             updatedById: userId,
           },
+          // IMP-138: the canvas name goes into the activity line.
+          include: { canvas: { select: { name: true } } },
         });
         await recordCanvasItemEvent(tx, {
           canvasId: data.canvasId,
@@ -95,6 +97,7 @@ export async function POST(request: NextRequest) {
         userId,
         type: ActivityType.ITEM_CREATED,
         canvasId: data.canvasId,
+        canvasName: canvas?.name,
         itemId: item.id,
       });
 
