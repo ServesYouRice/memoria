@@ -344,6 +344,8 @@ export async function transformPileIntoNote(input: {
       width: true,
       height: true,
       content: true,
+      // IMP-138: the canvas name goes into the activity line.
+      canvas: { select: { name: true } },
     },
   });
   if (!frame) throw notFoundError("Frame", frameId);
@@ -443,6 +445,7 @@ export async function transformPileIntoNote(input: {
     userId,
     type: ActivityType.ITEM_CREATED,
     canvasId,
+    canvasName: frame.canvas?.name,
     itemId: item.id,
     metadata: { source: "ai-pile", kind, frameId },
   });
