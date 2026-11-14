@@ -1,8 +1,5 @@
 FROM node:26.13.0-alpine AS source
 
-ARG NEXT_PUBLIC_SENTRY_DSN
-ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-
 WORKDIR /app
 RUN npm install --global pnpm@11.13.1
 
@@ -35,7 +32,9 @@ ENV NODE_ENV=production \
     S3_ACCESS_KEY_ID=build \
     S3_SECRET_ACCESS_KEY=build-secret
 
-RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts
+# RUN-ME-2 (IMP-144): webpack's build cache (~1 GB) is not needed at runtime.
+RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts \
+  && rm -rf .next/cache
 
 FROM node:26.13.0-alpine AS runtime
 

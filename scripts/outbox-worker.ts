@@ -1,12 +1,20 @@
 import "../src/lib/env";
+import { shutdownTelemetry, startTelemetry } from "../src/lib/telemetry/otel";
 import { prisma } from "../src/lib/db";
 import { runOutboxWorker } from "../src/lib/outbox/worker";
 import { createUploadDeleteHandler } from "../src/lib/uploads/outbox-handler";
 import {
+  DIRECT_UPLOAD_EXPIRE_JOB,
+  createDirectUploadExpireHandler,
+} from "../src/lib/uploads/direct-upload";
+import {
   createDeliveryProbeEmailHandler,
+  createRegistrationInviteEmailHandler,
   createShareDecisionEmailHandler,
   createShareInvitationEmailHandler,
+  createPasswordResetEmailHandler,
   createVerificationEmailHandler,
+  PASSWORD_RESET_EMAIL_JOB,
 } from "../src/lib/email/outbox-handler";
 import {
   createCanvasEventHandler,
@@ -100,6 +108,9 @@ import {
   createVideoTranscriptHandler,
 } from "../src/lib/video/video-items";
 
+// IMP-151: OTLP traces and metrics, off unless an endpoint is set.
+await startTelemetry("memoria-worker");
+
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
 process.once("SIGTERM", () => controller.abort());
@@ -109,10 +120,13 @@ await runOutboxWorker({
   handlers: {
     "upload.delete": createUploadDeleteHandler(prisma),
     [UPLOAD_COPY_JOB]: createUploadCopyHandler(prisma),
+    [DIRECT_UPLOAD_EXPIRE_JOB]: createDirectUploadExpireHandler(prisma),
     "email.delivery-probe": createDeliveryProbeEmailHandler(),
     "email.verification": createVerificationEmailHandler(prisma),
+    [PASSWORD_RESET_EMAIL_JOB]: createPasswordResetEmailHandler(prisma),
     "email.share-invitation": createShareInvitationEmailHandler(prisma),
     "email.share-decision": createShareDecisionEmailHandler(prisma),
+    "email.registration-invite": createRegistrationInviteEmailHandler(prisma),
     "canvas.event.publish": createCanvasEventHandler(prisma),
     "canvas.restore.publish": createCanvasRestoreEventHandler(prisma),
     "retention.trash": createTrashRetentionHandler(prisma),
@@ -166,3 +180,4 @@ await runOutboxWorker({
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });
 await prisma.$disconnect();
+await shutdownTelemetry();

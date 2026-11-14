@@ -106,6 +106,13 @@ names the fix for anything that fails. Then create the first owner account. That
 - `pnpm stack:logs`
 - `pnpm build`
 - `pnpm start`
+- `pnpm invite <email> [--days 1-30] [--no-email]`
+
+With `REGISTRATION_MODE=invite`, new people need an invite. The owner (the
+first account, made in `/setup`) makes one in Settings → Invites, or with
+`pnpm invite`, which prints a single-use sign-up link (7 days by default). The
+link is shown once; only its hash is stored. When a mail provider is set, the
+outbox worker also emails it.
 
 `pnpm doctor` validates the current env file, database reachability, Redis reachability, object storage reachability, Prisma migration status, pgvector availability, and, when the app is reachable, the live HTTP/WebSocket smoke path, including a live editing connection opened through the public address (`AUTH_URL`). Each failure prints a `Fix:` line in plain words. `pnpm smoke` runs the live app checks directly.
 

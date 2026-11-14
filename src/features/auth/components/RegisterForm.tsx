@@ -58,6 +58,8 @@ export function RegisterForm({ mode = "open" }: RegisterFormProps) {
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
+    // An invite link carries the invited address (IMP-153).
+    defaultValues: { email: searchParams.get("email") ?? "" },
   });
 
   const password = watch("password", "");

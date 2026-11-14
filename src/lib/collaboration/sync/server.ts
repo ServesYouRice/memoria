@@ -69,6 +69,7 @@ import {
   SYNC_CLOSE_REASONS,
 } from "./protocol";
 import { InvalidDocumentUpdateError } from "./validation";
+import { withSpan } from "@/lib/telemetry/tracing";
 
 const MAX_UPGRADES_PER_CLIENT_PER_MINUTE = 60;
 const MAX_CONNECTIONS = 5_000;
@@ -351,11 +352,13 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
     }) {
       let authorization: SyncAuthorization;
       try {
-        authorization = await authorizeSyncConnection(prisma, {
-          documentName,
-          headers: requestHeaders,
-          token,
-        });
+        authorization = await withSpan("sync.authorize", {}, () =>
+          authorizeSyncConnection(prisma, {
+            documentName,
+            headers: requestHeaders,
+            token,
+          }),
+        );
       } catch (error) {
         // A failed session or canvas lookup (pool timeout, failover) is not a
         // lost grant: tell the client to retry and keep its device copy,
@@ -449,7 +452,9 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
 
     async onLoadDocument({ documentName }) {
       try {
-        return await engine.load(documentName);
+        return await withSpan("sync.load_document", {}, () =>
+          engine.load(documentName),
+        );
       } catch (error) {
         // Hocuspocus reports a failed load as an authentication failure;
         // the reason tells the client to retry rather than give up.
@@ -484,12 +489,17 @@ export function createSyncServer(options: SyncServerOptions): SyncServer {
         );
       }
       try {
-        await engine.applyClientUpdate({
-          canvasId: documentName,
-          actorId: context.principalId,
-          update: payload,
-          origin: { source: "connection", connection },
-        });
+        await withSpan(
+          "sync.apply_update",
+          { "memoria.sync.update_bytes": payload.byteLength },
+          () =>
+            engine.applyClientUpdate({
+              canvasId: documentName,
+              actorId: context.principalId,
+              update: payload,
+              origin: { source: "connection", connection },
+            }),
+        );
       } catch (error) {
         if (error instanceof InvalidDocumentUpdateError) {
           logger.warn(

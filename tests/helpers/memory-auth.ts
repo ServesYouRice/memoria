@@ -19,6 +19,7 @@ export function buildMemoryAuth(
     requireEmailVerification?: boolean;
     sso?: SsoConfig | null;
     ssoSignUp?: boolean;
+    passkeys?: boolean;
     onUserCreated?: (userId: string) => Promise<void>;
   } = {},
 ) {
@@ -38,6 +39,7 @@ export function buildMemoryAuth(
     generateId: () => crypto.randomUUID(),
     sso: options.sso ?? null,
     ssoSignUp: options.ssoSignUp ?? false,
+    passkeys: options.passkeys,
     onUserCreated: options.onUserCreated,
   });
   return { auth, db };

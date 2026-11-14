@@ -137,3 +137,37 @@ describe("uploads on disk in production (IMP-100)", () => {
     expect(named.ok).toBe(true);
   });
 });
+
+describe("mail in production only (IMP-145)", () => {
+  const noMail = {
+    EMAIL_PROVIDER: "console",
+    EMAIL_FROM: undefined,
+    EMAIL_SENDER_VERIFIED: undefined,
+    EMAIL_DELIVERY_PROBE_TO: undefined,
+  };
+
+  it("refuses to start production without a mail provider", async () => {
+    const result = await loadEnv(noMail);
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("EMAIL_PROVIDER");
+  });
+
+  it("starts staging without a mail provider and warns", async () => {
+    const warnings: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args) => {
+      warnings.push(args.map(String).join(" "));
+    });
+    const result = await loadEnv({ ...noMail, DEPLOYMENT_STAGE: "staging" });
+    expect(result).toMatchObject({ ok: true });
+    expect(warnings.join("\n")).toContain("DEPLOYMENT_STAGE=staging");
+  });
+
+  it("still enforces every other production check on staging", async () => {
+    const result = await loadEnv({
+      ...noMail,
+      DEPLOYMENT_STAGE: "staging",
+      REDIS_URL: undefined,
+    });
+    expect(result.ok).toBe(false);
+  });
+});

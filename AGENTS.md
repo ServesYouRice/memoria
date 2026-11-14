@@ -64,6 +64,9 @@ real, non-duplicate, and outside the active card.
   action. UI capability checks are not a security boundary.
 - Schema changes require a Prisma migration. Test database behavior against
   PostgreSQL when constraints, transactions, cascades, or raw SQL matter.
+- Migrations are expand-only; drops, renames, type changes and new required
+  columns wait for a later, marked contract migration (`DEPLOYMENT.md`,
+  `pnpm check-migrations`).
 - Keep the supported topology explicit. Serverless stays out. A second replica
   of any process is switched on only after its shared event, lease, and job
   semantics are implemented and tested (see the Kanban).

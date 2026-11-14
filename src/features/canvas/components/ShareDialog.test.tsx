@@ -6,7 +6,14 @@
  */
 
 import React from "react";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/stores/confirmStore", () => ({
@@ -31,8 +38,20 @@ beforeEach(() => {
   statusRequests = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (
+        url === `/api/v1/canvases/${CANVAS}/share` &&
+        init?.method === "POST"
+      ) {
+        return json(
+          {
+            message: "Mail is not set up here.",
+            invitationUrl: "https://memoria.example/share-invitations/tok",
+          },
+          202,
+        );
+      }
       if (url === `/api/v1/canvases/${CANVAS}`) {
         return new Promise<Response>((resolve) => statusRequests.push(resolve));
       }
@@ -98,5 +117,22 @@ describe("ShareDialog public status", () => {
     expect(
       (screen.getByLabelText("Public share link") as HTMLInputElement).value,
     ).toContain("/share/tok-new");
+  });
+});
+
+describe("ShareDialog invitation link (IMP-145)", () => {
+  it("shows the link to copy when the server returns one", async () => {
+    render(dialog(true));
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "friend@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    const field = (await screen.findByLabelText(
+      "Invitation link",
+    )) as HTMLInputElement;
+    expect(field.value).toBe("https://memoria.example/share-invitations/tok");
+    expect(
+      screen.getByRole("button", { name: "Copy invitation link" }),
+    ).toBeTruthy();
   });
 });

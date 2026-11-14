@@ -10,6 +10,7 @@ import {
 } from "./repository";
 import { OutboxDeferError, type OutboxHandlers } from "./types";
 import { incrementOperationalCounter } from "@/lib/operations/runtime-metrics";
+import { withSpan } from "@/lib/telemetry/tracing";
 
 const logger = createLogger("outbox-worker");
 
@@ -208,7 +209,14 @@ export async function runOutboxWorker(options: {
   const start = (job: ClaimedJob) => {
     // A failed state write (complete/fail) must never end the worker: the
     // job keeps its lease until it expires, and normal reclaim retries it.
-    const run: Promise<void> = processJob(job)
+    const run: Promise<void> = withSpan(
+      "outbox.job",
+      {
+        "memoria.outbox.job_type": job.type,
+        "memoria.outbox.attempts": job.attempts,
+      },
+      () => processJob(job),
+    )
       .catch((error: unknown) => {
         incrementOperationalCounter("outbox_poll_failures_total");
         logger.error(

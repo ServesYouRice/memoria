@@ -180,6 +180,12 @@ export async function register() {
     const logger = createLogger("global-error-handler");
 
     await import("./lib/env");
+    // IMP-151: OTLP traces and metrics, off unless an endpoint is set. It
+    // registers its tracer provider before Sentry so Next's spans reach it.
+    if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+      const { startTelemetry } = await import("./lib/telemetry/otel");
+      await startTelemetry("memoria-web");
+    }
     if (sentryEnabled) await import("../sentry.server.config");
 
     validateCorsConfig();

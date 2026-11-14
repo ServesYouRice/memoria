@@ -31,6 +31,10 @@ import { useCreateCanvasItem } from "@/lib/hooks/use-canvas-items";
 import { ItemType } from "@/types/canvas";
 import { TagInput } from "./TagInput";
 import {
+  PROXIED_IMAGE_MAX_BYTES,
+  uploadFileDirect,
+} from "@/lib/uploads/direct-upload-client";
+import {
   announceUploadNote,
   requestUploadNote,
   uploadAssetIdFromUrl,
@@ -143,15 +147,20 @@ export function CreateImageDialog({
       setUploadedImage(null);
       setUploading(true);
 
-      // Create form data
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("canvasId", canvasId);
-
-      // Upload to server
-      const response = await fetch("/api/v1/upload", {
-        method: "POST",
-        body: formData,
+      // Straight to storage when the server offers it (IMP-152); otherwise
+      // through the app's upload route.
+      const response = await uploadFileDirect(file, {
+        canvasId,
+        fallbackMaxBytes: PROXIED_IMAGE_MAX_BYTES,
+        fallback: () => {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("canvasId", canvasId);
+          return fetch("/api/v1/upload", {
+            method: "POST",
+            body: formData,
+          });
+        },
       });
 
       if (!response.ok) {

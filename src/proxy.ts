@@ -38,6 +38,9 @@ export function isUploadWriteRequest(
     // Bookmark file imports (IMP-091) and canvas files (IMP-096) are
     // uploads too.
     (pathname === "/api/v1/upload" ||
+      // A direct upload (IMP-152) is counted once, at its presign; its
+      // confirm only completes that reservation.
+      pathname === "/api/v1/upload/direct" ||
       pathname.startsWith("/api/v1/imports") ||
       pathname === "/api/v1/canvases/import")
   );

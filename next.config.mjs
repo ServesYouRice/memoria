@@ -31,6 +31,19 @@ const nextConfig = {
     },
   },
 
+  // IMP-151: the OpenTelemetry SDK loads from node_modules at runtime, only
+  // when OTEL_EXPORTER_OTLP_ENDPOINT is set; it is never bundled.
+  serverExternalPackages: [
+    '@opentelemetry/api',
+    '@opentelemetry/context-async-hooks',
+    '@opentelemetry/core',
+    '@opentelemetry/exporter-metrics-otlp-http',
+    '@opentelemetry/exporter-trace-otlp-http',
+    '@opentelemetry/resources',
+    '@opentelemetry/sdk-metrics',
+    '@opentelemetry/sdk-trace',
+  ],
+
   // Optimize bundle size (ADR-0007: Performance Budgets)
   experimental: {
     optimizePackageImports: ['@mui/material', '@mui/icons-material'],

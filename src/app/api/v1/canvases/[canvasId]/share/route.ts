@@ -7,6 +7,8 @@ import { errorResponse, ForbiddenError } from "@/lib/errors";
 import { assertCanvasShareCapacity } from "@/lib/policy/capacity";
 import { encryptSecret, fingerprintSecret } from "@/lib/agents/crypto";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { env } from "@/lib/env";
+import { getEmailConfig } from "@/lib/email";
 import { withApiHandler } from "@/lib/api/route-handler";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -91,6 +93,20 @@ export const POST = withApiHandler(
           dedupeKey: `email.share-invitation:${invitation.id}`,
         });
       });
+
+      // IMP-145: without a mail provider (staging, home copies) the owner
+      // gets the invitation link to send it themselves. Only the canvas owner
+      // reaches this point, and the link works only for the invited address.
+      if (getEmailConfig().provider === "console") {
+        return NextResponse.json(
+          {
+            message:
+              "Mail is not set up here. Copy the invitation link and send it yourself.",
+            invitationUrl: `${env.AUTH_URL}/share-invitations/${rawToken}`,
+          },
+          { status: 202 },
+        );
+      }
 
       return NextResponse.json(
         {

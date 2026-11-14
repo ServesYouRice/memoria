@@ -43,6 +43,8 @@ for (const [entrypoint, output] of [
   [join('scripts', 'outbox-worker.ts'), 'outbox-worker.mjs'],
   [join('scripts', 'capture-worker.ts'), 'capture-worker.mjs'],
   [join('scripts', 'sync-server.ts'), 'sync-server.mjs'],
+  // `pnpm invite` in the production image, which has no tsx (IMP-153).
+  [join('scripts', 'create-invite.ts'), 'create-invite.mjs'],
 ]) {
   await run(
     esbuildBinary,

@@ -51,11 +51,15 @@ vi.mock("@/lib/hooks/use-api-keys", () => ({
 vi.mock("@/app/settings/WeeklyRecapSettings", () => ({
   WeeklyRecapSettings: () => <div>Weekly recap</div>,
 }));
+vi.mock("@/app/settings/RegistrationInviteSettings", () => ({
+  RegistrationInviteSettings: () => <div>Invite choices</div>,
+}));
 
 import { SettingsContent } from "@/app/settings/SettingsContent";
 import {
   SETTINGS_SECTIONS,
   settingsSectionFromSegments,
+  visibleSettingsSections,
 } from "@/app/settings/sections";
 
 const user = { id: "u1", name: "Ada", email: "a@x.io" };
@@ -74,7 +78,7 @@ afterEach(() => {
 });
 
 describe("settings groups", () => {
-  it("has eight groups, each with its own address", () => {
+  it("has its groups, each with its own address", () => {
     expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
       "Account",
       "Sign-in and security",
@@ -84,6 +88,7 @@ describe("settings groups", () => {
       "AI assistant",
       "Import",
       "API keys",
+      "Invites",
       "Your data",
     ]);
     expect(settingsSectionFromSegments(undefined)?.id).toBe("account");
@@ -96,7 +101,7 @@ describe("settings groups", () => {
   });
 
   it("links every group from the menu and marks the open one", () => {
-    render(<SettingsContent user={user} section="notifications" />);
+    render(<SettingsContent user={user} section="notifications" isOwner />);
     const nav = screen.getAllByRole("navigation", { name: "Settings" })[0];
     const links = Array.from(nav.querySelectorAll("a"));
     expect(links.map((link) => link.getAttribute("href"))).toEqual(
@@ -106,6 +111,33 @@ describe("settings groups", () => {
       links.find((link) => link.getAttribute("aria-current") === "page")
         ?.textContent,
     ).toBe("Notifications");
+  });
+
+  it("shows Invites to the owner alone (IMP-153)", () => {
+    expect(visibleSettingsSections(false).map((s) => s.id)).not.toContain(
+      "invites",
+    );
+    expect(visibleSettingsSections(true).map((s) => s.id)).toContain("invites");
+
+    render(<SettingsContent user={user} section="notifications" />);
+    for (const nav of screen.getAllByRole("navigation", { name: "Settings" })) {
+      const hrefs = Array.from(nav.querySelectorAll("a")).map((link) =>
+        link.getAttribute("href"),
+      );
+      expect(hrefs).not.toContain("/settings/invites");
+      expect(hrefs).toContain("/settings/data");
+    }
+    cleanup();
+
+    render(<SettingsContent user={user} section="invites" />);
+    expect(screen.queryByText("Invite choices")).toBeNull();
+    cleanup();
+
+    render(<SettingsContent user={user} section="invites" isOwner />);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Invites" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Invite choices")).toBeTruthy();
   });
 
   it("shows only the open group, with its one-line intro", () => {

@@ -9,6 +9,10 @@ const versionIntervalMs = Number(
   process.env.VERSION_HISTORY_INTERVAL_MS || 5 * 60 * 1000,
 );
 
+// RUN-ME-3 (IMP-147): a failed call is retried soon instead of a full
+// interval later, e.g. while the web pod is still starting.
+const retryMs = Number(process.env.SCHEDULER_RETRY_MS || 30_000);
+
 if (!cronSecret) {
   throw new Error("CRON_SECRET is required for the scheduler");
 }
@@ -17,6 +21,9 @@ if (!Number.isFinite(intervalMs) || intervalMs < 60_000) {
 }
 if (!Number.isFinite(versionIntervalMs) || versionIntervalMs < 60_000) {
   throw new Error("VERSION_HISTORY_INTERVAL_MS must be at least 60000");
+}
+if (!Number.isFinite(retryMs) || retryMs < 1_000) {
+  throw new Error("SCHEDULER_RETRY_MS must be at least 1000");
 }
 
 let stopping = false;
@@ -51,12 +58,15 @@ async function call(path) {
     });
     if (!response.ok) {
       console.error(`${path} failed with HTTP ${response.status}`);
+      return false;
     }
+    return true;
   } catch (error) {
     console.error(
       `${path} failed:`,
       error instanceof Error ? error.message : "unknown error",
     );
+    return false;
   }
 }
 
@@ -64,8 +74,13 @@ while (!stopping) {
   const now = Date.now();
   for (const task of tasks) {
     if (task.dueAt > now) continue;
-    for (const path of task.paths) await call(path);
-    task.dueAt = Date.now() + task.everyMs;
+    let failed = false;
+    for (const path of task.paths) {
+      if (!(await call(path))) failed = true;
+    }
+    // Every cron route is safe to run twice, so retrying the whole task is fine.
+    task.dueAt =
+      Date.now() + (failed ? Math.min(retryMs, task.everyMs) : task.everyMs);
   }
   const nextDueAt = Math.min(...tasks.map((task) => task.dueAt));
   // Wake at least every second so a stop signal is noticed promptly.

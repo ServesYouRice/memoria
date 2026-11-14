@@ -129,10 +129,28 @@ const envSchema = z
     // DEC-013: the AR canvas layer stays off until the real-device matrix
     // passes. Deployments opt in explicitly.
     NEXT_PUBLIC_ENABLE_AR_CANVAS: z.enum(["true", "false"]).optional(),
-    NEXT_PUBLIC_SENTRY_DSN: optionalString,
     SENTRY_DSN: optionalString,
+    // IMP-151: the browser reads these at request time (root layout), so one
+    // image serves every environment. Browser Sentry stays off unless set.
+    SENTRY_BROWSER_DSN: optionalUrl,
+    SENTRY_ENVIRONMENT: optionalString,
+    SENTRY_RELEASE: optionalString,
+    // IMP-151: OTLP/HTTP traces and metrics; off unless an endpoint is set.
+    OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
+    OTEL_SERVICE_NAME: optionalString,
     SENTRY_AUTH_TOKEN: optionalString,
     CRON_SECRET: optionalString,
+    /**
+     * IMP-145 (handbook OWN-14): "staging" runs with production settings but
+     * starts without a mail provider; mail checks then warn instead of fail.
+     * Anything else is production.
+     */
+    /**
+     * IMP-146 (handbook ME-08, OWN-07): passkeys are bound to the domain they
+     * were made on, so they stay off until the app has its final domain.
+     */
+    PASSKEYS_ENABLED: z.enum(["true", "false"]).default("true"),
+    DEPLOYMENT_STAGE: z.enum(["production", "staging"]).default("production"),
     EMAIL_PROVIDER: z
       .enum(["console", "smtp", "sendgrid", "resend"])
       .default("console"),
@@ -177,6 +195,10 @@ const envSchema = z
     S3_BUCKET: optionalString,
     S3_REGION: optionalString,
     S3_ENDPOINT: optionalUrl,
+    // IMP-152: direct browser uploads (src/lib/uploads/direct-upload-config).
+    S3_PUBLIC_ENDPOINT: optionalUrl,
+    UPLOAD_DIRECT_UPLOADS: z.enum(["true", "false"]).default("true"),
+    UPLOAD_DIRECT_MAX_BYTES: optionalPositiveInt,
     S3_ACCESS_KEY_ID: optionalString,
     S3_SECRET_ACCESS_KEY: optionalString,
     BACKUP_BUCKET: optionalString,
@@ -230,6 +252,10 @@ const envSchema = z
     const validateProductionRuntime =
       data.NODE_ENV === "production" &&
       process.env.MEMORIA_BUILD_PHASE !== "true";
+
+    // Mail is required in production only; staging warns after parsing.
+    const requireMail =
+      validateProductionRuntime && data.DEPLOYMENT_STAGE !== "staging";
 
     if (validateProductionRuntime) {
       const securitySecrets = [
@@ -350,7 +376,7 @@ const envSchema = z
     }
 
     if (
-      validateProductionRuntime &&
+      requireMail &&
       data.EMAIL_PROVIDER !== "sendgrid" &&
       data.EMAIL_PROVIDER !== "resend" &&
       data.EMAIL_PROVIDER !== "smtp"
@@ -363,7 +389,7 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && !data.EMAIL_FROM) {
+    if (requireMail && !data.EMAIL_FROM) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_FROM"],
@@ -372,7 +398,7 @@ const envSchema = z
     }
 
     if (
-      validateProductionRuntime &&
+      requireMail &&
       data.MEMORIA_E2E_MODE !== "true" &&
       data.EMAIL_FROM &&
       /@(localhost|[^@]+\.local)$/i.test(data.EMAIL_FROM)
@@ -384,7 +410,7 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && data.EMAIL_SENDER_VERIFIED !== "true") {
+    if (requireMail && data.EMAIL_SENDER_VERIFIED !== "true") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_SENDER_VERIFIED"],
@@ -393,7 +419,7 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && !data.EMAIL_DELIVERY_PROBE_TO) {
+    if (requireMail && !data.EMAIL_DELIVERY_PROBE_TO) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_DELIVERY_PROBE_TO"],
@@ -476,6 +502,16 @@ if (!parsed.success) {
   console.error("Invalid environment variables:");
   console.error(JSON.stringify(parsed.error.format(), null, 2));
   throw new Error("Invalid environment variables");
+}
+
+if (
+  parsed.data.NODE_ENV === "production" &&
+  parsed.data.DEPLOYMENT_STAGE === "staging" &&
+  parsed.data.EMAIL_PROVIDER === "console"
+) {
+  console.warn(
+    "DEPLOYMENT_STAGE=staging without a mail provider: no mail is sent; canvas invitations return a link to copy instead.",
+  );
 }
 
 export const env = {

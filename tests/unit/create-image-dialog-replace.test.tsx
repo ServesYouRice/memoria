@@ -39,6 +39,10 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") return new Response("{}");
+      // Local-disk storage: no direct upload path (IMP-152).
+      if (url === "/api/v1/upload/direct") {
+        return new Response("{}", { status: 404 });
+      }
       uploads += 1;
       return new Response(
         JSON.stringify({

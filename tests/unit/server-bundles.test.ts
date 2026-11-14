@@ -18,6 +18,7 @@ const BUNDLES = [
   "outbox-worker.mjs",
   "capture-worker.mjs",
   "sync-server.mjs",
+  "create-invite.mjs",
 ];
 
 let outDir: string;
