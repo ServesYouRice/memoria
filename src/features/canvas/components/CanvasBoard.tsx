@@ -134,6 +134,10 @@ import {
 } from "@/features/canvas/lib/arrow-attachment";
 import { ArrowLabelDialog } from "@/features/canvas/components/ArrowLabelDialog";
 import { LinkedItemsPanel } from "@/features/canvas/components/LinkedItemsPanel";
+import {
+  CanvasEmptyHint,
+  showsCanvasEmptyHint,
+} from "@/features/canvas/components/CanvasEmptyHint";
 import { NoteInlineEditor } from "@/features/canvas/components/NoteInlineEditor";
 import { liveNoteFragment } from "@/features/canvas/lib/live-note";
 import {
@@ -234,6 +238,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     geometry,
     canvasBounds,
     totalItemCount,
+    itemCountLoaded,
     canvasRevision,
     canvasName,
     zoom,
@@ -892,6 +897,10 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       });
     }
   };
+
+  // The toolbar and the empty-canvas hint (IMP-141) start items the same way.
+  const handleAddNote = () => setNoteDialogOpen(true);
+  const handleAddLink = () => setBookmarkDialogOpen(true);
 
   const handleAddTable = async () => {
     const center = viewportCenterWorld(position, stageSize, zoom);
@@ -1725,10 +1734,24 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               {totalItemCount} remain indexed for navigation and accessibility.
             </Box>
           )}
+          {showsCanvasEmptyHint({
+            viewMode,
+            // A time-machine preview shows a past state, not this count.
+            presenting: isPresentationMode || isTimeMachineActive,
+            itemsLoaded: itemCountLoaded,
+            // The board shows a new item before the index count follows.
+            itemCount: Math.max(totalItemCount, allItems.length),
+          }) && (
+            <CanvasEmptyHint
+              canEdit={canEdit}
+              onAddNote={handleAddNote}
+              onAddLink={handleAddLink}
+            />
+          )}
           {!isPresentationMode && canEdit && (
             <CanvasAddBar
-              onAddNote={() => setNoteDialogOpen(true)}
-              onAddLink={() => setBookmarkDialogOpen(true)}
+              onAddNote={handleAddNote}
+              onAddLink={handleAddLink}
               onAddImage={() => setImageDialogOpen(true)}
               onAddPoll={
                 isLaunchCapabilityEnabled("polls")

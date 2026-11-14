@@ -411,6 +411,9 @@ export function useCanvasData({ canvasId, viewportSize }: UseCanvasDataProps) {
     geometry: geometryData?.items ?? [],
     canvasBounds: summaryData?.bounds ?? null,
     totalItemCount: summaryData?.count ?? data?.total ?? allItems.length,
+    // IMP-141: a source of the count has answered; before that the count
+    // reads 0 on every canvas.
+    itemCountLoaded: summaryData !== undefined || data !== undefined,
     canvasRevision: summaryData?.revision ?? "0",
     accessLevel:
       canvas?.accessLevel ||
