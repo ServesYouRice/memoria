@@ -29,7 +29,6 @@ to RUN-ME-3).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-145](tasks/IMP-145.md) | Mail required in production only; staging warns and sharing still works | - |
 | [IMP-146](tasks/IMP-146.md) | A switch that keeps passkeys off until the final domain | - |
 | [IMP-148](tasks/IMP-148.md) | Release command: build, tag, push, digest; stop on high findings | - |
 | [IMP-149](tasks/IMP-149.md) | Least-privilege runtime database role | - |

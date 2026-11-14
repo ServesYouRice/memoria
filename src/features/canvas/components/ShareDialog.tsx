@@ -98,6 +98,8 @@ export function ShareDialog({
   // Sharing by email sends an invitation; it stays here until it is answered.
   const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
   const [sharingWithUser, setSharingWithUser] = useState(false);
+  // IMP-145: where mail is not set up, the server hands back the link.
+  const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
   const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
 
   // Load existing shares
@@ -202,6 +204,17 @@ export function ShareDialog({
     }
   };
 
+  const handleCopyInvitation = async () => {
+    if (!invitationUrl) return;
+    try {
+      await navigator.clipboard.writeText(invitationUrl);
+      setSuccess("Invitation link copied");
+      setError(null);
+    } catch (err) {
+      setError(formatShareError(err, "Clipboard access was denied"));
+    }
+  };
+
   const handleRotateLink = async () => {
     const confirmed = await confirmDialog({
       title: "Make a new link?",
@@ -251,7 +264,9 @@ export function ShareDialog({
 
       const data = (await response.json().catch(() => null)) as {
         message?: string;
+        invitationUrl?: string;
       } | null;
+      setInvitationUrl(data?.invitationUrl ?? null);
       setSuccess(
         data?.message ||
           "If the address can receive invitations, delivery has been queued.",
@@ -349,6 +364,31 @@ export function ShareDialog({
             <Alert severity="success" onClose={() => setSuccess(null)}>
               {success}
             </Alert>
+          )}
+          {invitationUrl && (
+            <TextField
+              fullWidth
+              size="small"
+              label="Invitation link"
+              value={invitationUrl}
+              helperText="Only the invited address can use it. It expires in 7 days."
+              slotProps={{
+                input: {
+                  readOnly: true,
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={handleCopyInvitation}
+                        edge="end"
+                        aria-label="Copy invitation link"
+                      >
+                        <ContentCopy />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
           )}
           {error && (
             <Alert severity="error" onClose={() => setError(null)}>

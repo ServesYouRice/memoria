@@ -133,6 +133,12 @@ const envSchema = z
     SENTRY_DSN: optionalString,
     SENTRY_AUTH_TOKEN: optionalString,
     CRON_SECRET: optionalString,
+    /**
+     * IMP-145 (handbook OWN-14): "staging" runs with production settings but
+     * starts without a mail provider; mail checks then warn instead of fail.
+     * Anything else is production.
+     */
+    DEPLOYMENT_STAGE: z.enum(["production", "staging"]).default("production"),
     EMAIL_PROVIDER: z
       .enum(["console", "smtp", "sendgrid", "resend"])
       .default("console"),
@@ -230,6 +236,10 @@ const envSchema = z
     const validateProductionRuntime =
       data.NODE_ENV === "production" &&
       process.env.MEMORIA_BUILD_PHASE !== "true";
+
+    // Mail is required in production only; staging warns after parsing.
+    const requireMail =
+      validateProductionRuntime && data.DEPLOYMENT_STAGE !== "staging";
 
     if (validateProductionRuntime) {
       const securitySecrets = [
@@ -350,7 +360,7 @@ const envSchema = z
     }
 
     if (
-      validateProductionRuntime &&
+      requireMail &&
       data.EMAIL_PROVIDER !== "sendgrid" &&
       data.EMAIL_PROVIDER !== "resend" &&
       data.EMAIL_PROVIDER !== "smtp"
@@ -363,7 +373,7 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && !data.EMAIL_FROM) {
+    if (requireMail && !data.EMAIL_FROM) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_FROM"],
@@ -372,7 +382,7 @@ const envSchema = z
     }
 
     if (
-      validateProductionRuntime &&
+      requireMail &&
       data.MEMORIA_E2E_MODE !== "true" &&
       data.EMAIL_FROM &&
       /@(localhost|[^@]+\.local)$/i.test(data.EMAIL_FROM)
@@ -384,7 +394,7 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && data.EMAIL_SENDER_VERIFIED !== "true") {
+    if (requireMail && data.EMAIL_SENDER_VERIFIED !== "true") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_SENDER_VERIFIED"],
@@ -393,7 +403,7 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && !data.EMAIL_DELIVERY_PROBE_TO) {
+    if (requireMail && !data.EMAIL_DELIVERY_PROBE_TO) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["EMAIL_DELIVERY_PROBE_TO"],
@@ -476,6 +486,16 @@ if (!parsed.success) {
   console.error("Invalid environment variables:");
   console.error(JSON.stringify(parsed.error.format(), null, 2));
   throw new Error("Invalid environment variables");
+}
+
+if (
+  parsed.data.NODE_ENV === "production" &&
+  parsed.data.DEPLOYMENT_STAGE === "staging" &&
+  parsed.data.EMAIL_PROVIDER === "console"
+) {
+  console.warn(
+    "DEPLOYMENT_STAGE=staging without a mail provider: no mail is sent; canvas invitations return a link to copy instead.",
+  );
 }
 
 export const env = {
