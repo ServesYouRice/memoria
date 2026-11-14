@@ -37,22 +37,45 @@ import {
   PeopleAltOutlined as SharedIcon,
   NotificationsNoneOutlined as NotificationsIcon,
   SettingsOutlined as SettingsIcon,
-  KeyOutlined as ApiKeysIcon,
   LogoutOutlined as LogoutIcon,
   DeleteOutlineOutlined as TrashIcon,
+  InboxOutlined as InboxIcon,
+  AlarmOutlined as RemindersIcon,
+  EventNoteOutlined as RecapIcon,
+  HelpOutlineOutlined as HelpIcon,
 } from "@mui/icons-material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUnreadNotifications } from "@/lib/hooks/use-notifications";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { AskLauncher } from "@/features/command-palette/AskPalette";
+import { SEARCH_INPUT_ID } from "@/app/search/search-input-id";
 
 const NAV_ITEMS = [
-  { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
-  { label: "Shared with me", href: "/shared", icon: SharedIcon },
+  { label: "Canvases", href: "/dashboard", icon: DashboardIcon },
+  { label: "Inbox", href: "/inbox", icon: InboxIcon },
+  {
+    label: "Shared with me",
+    // Shown below 1200px so five entries fit the top bar at 1024px.
+    shortLabel: "Shared",
+    href: "/shared",
+    icon: SharedIcon,
+  },
   { label: "Workspaces", href: "/workspaces", icon: WorkspacesIcon },
   { label: "Trash", href: "/trash", icon: TrashIcon },
 ];
+
+/** Pages reached from the account menu; the phone drawer lists them too. */
+const ACCOUNT_ITEMS = [
+  { label: "Settings", href: "/settings", icon: SettingsIcon },
+  { label: "Reminders", href: "/reminders", icon: RemindersIcon },
+  { label: "Weekly recap", href: "/recap", icon: RecapIcon },
+  { label: "Help", href: "/help", icon: HelpIcon },
+];
+
+const DRAWER_ACCOUNT_ITEMS = ["/reminders", "/recap", "/settings", "/help"].map(
+  (href) => ACCOUNT_ITEMS.find((item) => item.href === href)!,
+);
 
 function getInitials(name?: string | null, email?: string | null) {
   if (name) return name.charAt(0).toUpperCase();
@@ -102,19 +125,23 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
     if (/Mac|iPhone|iPad/.test(navigator.platform)) setShortcutLabel("⌘ K");
   }, []);
 
-  // Ctrl/Cmd+K opens search, unless the page already used it (the
-  // dashboard opens its command palette, which also offers search).
+  // Ctrl/Cmd+K is the one way into search (IMP-134): it opens the Search
+  // page, or on that page puts the cursor back in its field.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        router.push("/search");
+        if (pathname === "/search") {
+          document.getElementById(SEARCH_INPUT_ID)?.focus();
+        } else {
+          router.push("/search");
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [router]);
+  }, [pathname, router]);
 
   return (
     <Box
@@ -193,10 +220,12 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                   component={Link}
                   href={item.href}
                   aria-current={isActive(item.href) ? "page" : undefined}
+                  aria-label={item.shortLabel ? item.label : undefined}
                   size="small"
                   startIcon={<item.icon />}
                   sx={{
                     px: 1.5,
+                    whiteSpace: "nowrap",
                     color: isActive(item.href)
                       ? "primary.main"
                       : "text.secondary",
@@ -211,7 +240,24 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                     },
                   }}
                 >
-                  {item.label}
+                  {item.shortLabel ? (
+                    <>
+                      <Box
+                        component="span"
+                        sx={{ display: { xs: "inline", lg: "none" } }}
+                      >
+                        {item.shortLabel}
+                      </Box>
+                      <Box
+                        component="span"
+                        sx={{ display: { xs: "none", lg: "inline" } }}
+                      >
+                        {item.label}
+                      </Box>
+                    </>
+                  ) : (
+                    item.label
+                  )}
                 </Button>
               ))}
             </Box>
@@ -229,7 +275,8 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                 display: { xs: "none", lg: "flex" },
                 alignItems: "center",
                 gap: 1,
-                width: 240,
+                // Narrower until 1536px, so five nav entries still fit.
+                width: { lg: 200, xl: 240 },
                 height: 40,
                 px: 1.5,
                 borderRadius: 2,
@@ -355,26 +402,19 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                 </Typography>
               </Box>
               <Divider sx={{ mb: 0.5 }} />
-              <MenuItem
-                component={Link}
-                href="/settings"
-                onClick={closeAccountMenu}
-              >
-                <ListItemIcon>
-                  <SettingsIcon fontSize="small" />
-                </ListItemIcon>
-                Settings
-              </MenuItem>
-              <MenuItem
-                component={Link}
-                href="/api-keys"
-                onClick={closeAccountMenu}
-              >
-                <ListItemIcon>
-                  <ApiKeysIcon fontSize="small" />
-                </ListItemIcon>
-                API Keys
-              </MenuItem>
+              {ACCOUNT_ITEMS.map((item) => (
+                <MenuItem
+                  key={item.href}
+                  component={Link}
+                  href={item.href}
+                  onClick={closeAccountMenu}
+                >
+                  <ListItemIcon>
+                    <item.icon fontSize="small" />
+                  </ListItemIcon>
+                  {item.label}
+                </MenuItem>
+              ))}
               <Divider sx={{ my: 0.5 }} />
               <MenuItem
                 onClick={() => {
@@ -417,6 +457,8 @@ export function AppShell({ children, readingWidth }: AppShellProps) {
                 href: "/notifications",
                 icon: NotificationsIcon,
               },
+              // Same places as the account menu; Settings sits before Help.
+              ...DRAWER_ACCOUNT_ITEMS,
             ].map((item) => (
               <ListItem key={item.href} disablePadding>
                 <ListItemButton

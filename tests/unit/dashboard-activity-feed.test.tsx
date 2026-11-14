@@ -47,12 +47,6 @@ vi.mock("@/lib/theme-context", async (importOriginal) => ({
 vi.mock("@/features/dashboard/components/ActivityFeed", () => ({
   ActivityFeed: () => <div>Recent activity</div>,
 }));
-vi.mock("@/components/GlobalSearchDialog", () => ({
-  GlobalSearchDialog: () => null,
-}));
-vi.mock("@/components/CommandPalette", () => ({
-  CommandPalette: () => null,
-}));
 vi.mock("@/components/layout/PageHeader", () => ({
   PageHeader: () => null,
 }));

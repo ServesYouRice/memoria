@@ -44,7 +44,6 @@ import {
   Keyboard as KeyboardIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
-  KeyOutlined as ApiKeysIcon,
   DownloadOutlined as DownloadIcon,
   NotificationsActiveOutlined as NotificationsIcon,
   AutoAwesomeOutlined as AiUsageIcon,
@@ -65,6 +64,7 @@ import { LinkEnrichmentSettings } from "./LinkEnrichmentSettings";
 import { AutoFileSettings } from "./AutoFileSettings";
 import { WeeklyRecapSettings } from "./WeeklyRecapSettings";
 import { BookmarkImportSettings } from "./BookmarkImportSettings";
+import { ApiKeysContent } from "../api-keys/ApiKeysContent";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 import { DisabledReason } from "@/components/DisabledReason";
 import {
@@ -87,6 +87,8 @@ interface SettingsContentProps {
   user: SettingsUser;
   /** IMP-086: the open group; `/settings` opens Account. */
   section?: SettingsSectionId;
+  /** The API keys group's phone details (IMP-127), set by the server. */
+  apiKeys?: { serverAddress: string; shortcutUrl: string | null };
 }
 
 interface AiUsage {
@@ -103,7 +105,7 @@ interface AiUsage {
 
 // Keyboard shortcuts data
 const keyboardShortcuts = [
-  { keys: ["Ctrl", "K"], description: "Open Command Palette" },
+  { keys: ["Ctrl", "K"], description: "Search all canvases" },
   { keys: ["Ctrl", "S"], description: "Save (auto-saved)" },
   { keys: ["Delete"], description: "Delete selected item" },
   { keys: ["Escape"], description: "Deselect / Close dialog" },
@@ -234,6 +236,7 @@ function useLegacyAnchorRedirect(section: SettingsSectionId) {
 export function SettingsContent({
   user,
   section = "account",
+  apiKeys,
 }: SettingsContentProps) {
   useLegacyAnchorRedirect(section);
   const info =
@@ -282,6 +285,13 @@ export function SettingsContent({
             {section === "notifications" && <NotificationsGroup />}
             {section === "ai" && <AiGroup />}
             {section === "import" && <BookmarkImportSettings />}
+            {section === "api-keys" && apiKeys && (
+              <ApiKeysContent
+                embedded
+                serverAddress={apiKeys.serverAddress}
+                shortcutUrl={apiKeys.shortcutUrl}
+              />
+            )}
             {section === "data" && <DataGroup />}
           </Stack>
         </Box>
@@ -790,7 +800,6 @@ function AiAdvanced({ children }: { children: React.ReactNode }) {
 }
 
 function AiGroup() {
-  const router = useRouter();
   const usage = useAiUsage();
   return (
     <>
@@ -815,32 +824,6 @@ function AiGroup() {
         {usage.aiUsage && <AiUsageDetails aiUsage={usage.aiUsage} />}
 
         <AgentControlCenter />
-
-        <SettingsSection
-          icon={<ApiKeysIcon color="primary" />}
-          title="Developer settings"
-        >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 2,
-            }}
-          >
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                API keys
-              </Typography>
-              <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                Manage API keys for external access and extensions
-              </Typography>
-            </Box>
-            <Button variant="outlined" onClick={() => router.push("/api-keys")}>
-              Manage keys
-            </Button>
-          </Box>
-        </SettingsSection>
       </AiAdvanced>
     </>
   );

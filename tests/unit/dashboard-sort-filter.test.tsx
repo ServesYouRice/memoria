@@ -73,12 +73,6 @@ vi.mock("@/lib/theme-context", () => ({
 vi.mock("@/features/dashboard/components/ActivityFeed", () => ({
   ActivityFeed: () => null,
 }));
-vi.mock("@/components/GlobalSearchDialog", () => ({
-  GlobalSearchDialog: () => null,
-}));
-vi.mock("@/components/CommandPalette", () => ({
-  CommandPalette: () => null,
-}));
 
 import { DashboardContent } from "@/features/dashboard/components/DashboardContent";
 

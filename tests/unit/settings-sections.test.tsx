@@ -9,6 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const replace = vi.hoisted(() => vi.fn());
 const Stub = vi.hoisted(() => () => null);
+const apiKeys = vi.hoisted(() => ({
+  keys: [] as Array<Record<string, unknown>>,
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace, refresh: vi.fn() }),
@@ -36,6 +39,15 @@ vi.mock("@/app/settings/LinkEnrichmentSettings", () => ({
   LinkEnrichmentSettings: Stub,
 }));
 vi.mock("@/app/settings/AutoFileSettings", () => ({ AutoFileSettings: Stub }));
+vi.mock("@/lib/hooks/use-api-keys", () => ({
+  useApiKeys: () => ({
+    data: { keys: apiKeys.keys },
+    isLoading: false,
+    error: null,
+  }),
+  useCreateApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRevokeApiKey: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock("@/app/settings/WeeklyRecapSettings", () => ({
   WeeklyRecapSettings: () => <div>Weekly recap</div>,
 }));
@@ -71,6 +83,7 @@ describe("settings groups", () => {
       "Notifications",
       "AI assistant",
       "Import",
+      "API keys",
       "Your data",
     ]);
     expect(settingsSectionFromSegments(undefined)?.id).toBe("account");
@@ -124,12 +137,12 @@ describe("settings groups", () => {
       screen.getByRole("heading", { level: 2, name: "Keyboard shortcuts" }),
     ).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Shortcut list" })).toBeTruthy();
-    expect(screen.getByText("Open Command Palette")).toBeTruthy();
+    expect(screen.getByText("Search all canvases")).toBeTruthy();
     cleanup();
 
     render(<SettingsContent user={user} section="appearance" />);
     expect(screen.queryByText("Shortcut list")).toBeNull();
-    expect(screen.queryByText("Open Command Palette")).toBeNull();
+    expect(screen.queryByText("Search all canvases")).toBeNull();
   });
 
   it("keeps sign out out of settings", () => {
@@ -155,6 +168,50 @@ describe("settings groups", () => {
   it("says why Change password is greyed out", () => {
     render(<SettingsContent user={user} section="security" />);
     expect(screen.getByText("Fill in both fields first.")).toBeTruthy();
+  });
+
+  it("shows API keys in Settings with one Create API key button (IMP-127)", () => {
+    const phone = {
+      serverAddress: "https://memoria.example",
+      shortcutUrl: null,
+    };
+    const createButtons = () =>
+      screen.getAllByRole("button", { name: "Create API key" });
+
+    apiKeys.keys = [];
+    const view = render(
+      <SettingsContent user={user} section="api-keys" apiKeys={phone} />,
+    );
+    expect(
+      screen.getByRole("heading", { level: 2, name: "API keys" }),
+    ).toBeTruthy();
+    // Settings shows the title; the keys page adds no second header.
+    expect(screen.queryByRole("heading", { name: "API Keys" })).toBeNull();
+    expect(screen.getByText("No API keys yet")).toBeTruthy();
+    expect(createButtons()).toHaveLength(1);
+    view.unmount();
+
+    apiKeys.keys = [
+      {
+        id: "k1",
+        name: "Extension",
+        keyPreview: "mk_abcd…",
+        createdAt: "2026-11-01T00:00:00.000Z",
+        lastUsedAt: null,
+        expiresAt: null,
+        revokedAt: null,
+      },
+    ];
+    render(<SettingsContent user={user} section="api-keys" apiKeys={phone} />);
+    expect(screen.getByText("Extension")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeTruthy();
+    expect(createButtons()).toHaveLength(1);
+  });
+
+  it("no longer links to API keys from the AI group", () => {
+    render(<SettingsContent user={user} section="ai" />);
+    expect(screen.queryByText("Developer settings")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Manage keys" })).toBeNull();
   });
 
   it("sends old one-page anchors to their new group", () => {

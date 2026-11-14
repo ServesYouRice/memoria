@@ -49,6 +49,12 @@ export const SETTINGS_SECTIONS = [
       "Bring your saved links from a browser, Pocket or Raindrop. Links you already have are skipped.",
   },
   {
+    id: "api-keys",
+    path: "/settings/api-keys",
+    label: "API keys",
+    intro: "Create keys for browser extensions and webhooks. Keep them secret.",
+  },
+  {
     id: "data",
     path: "/settings/data",
     label: "Your data",

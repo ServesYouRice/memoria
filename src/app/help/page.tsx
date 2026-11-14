@@ -54,7 +54,7 @@ export default async function HelpPage() {
       </InfoSection>
       <InfoSection title="Save from your phone">
         Send a link from any app on your phone to your Memoria Inbox. You need
-        an API key for the iPhone: create one on the API Keys page with{" "}
+        an API key for the iPhone: create one in Settings, under API keys, with{" "}
         <strong>Create a key for my iPhone</strong>.
         <GuideContent
           sections={phone.sections}

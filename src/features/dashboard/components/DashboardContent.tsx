@@ -51,11 +51,8 @@ import { BLANK_TEMPLATE, TemplatePicker } from "./TemplatePicker";
 import { useCreateFromTemplate, useTemplates } from "@/lib/hooks/use-templates";
 import { CanvasCard, CanvasCardSkeleton, CardGrid } from "./CanvasCard";
 import { CanvasCardMenu } from "./CanvasCardMenu";
-import { GlobalSearchDialog } from "@/components/GlobalSearchDialog";
-import { CommandPalette } from "@/components/CommandPalette";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
-import { useThemeMode } from "@/lib/theme-context";
 import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
 import { apiFetch } from "@/lib/api/fetch-client";
 import { deleteCanvasesBounded, removeCanvasesFromPages } from "./bulk-delete";
@@ -85,9 +82,16 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // `/templates` lands here with `?new=1`: open "New canvas" once, then
+  // drop the parameter so a refresh does not reopen it (IMP-126).
+  const openNewCanvas = searchParams.get("new") === "1";
+  useEffect(() => {
+    if (!openNewCanvas) return;
+    setCreateDialogOpen(true);
+    router.replace("/dashboard");
+  }, [openNewCanvas, router]);
 
   // IMP-136: sort and name filter run on the server, so they reach canvases
   // that are not loaded yet.
@@ -164,7 +168,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       );
     }
   };
-  const { mode, toggleTheme } = useThemeMode();
 
   const canvases = useMemo(() => {
     return canvasesData?.pages.flatMap((page) => page.canvases) ?? [];
@@ -214,19 +217,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       createInFlightRef.current = false;
     }
   };
-
-  // Command palette keyboard shortcut
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen(true);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
 
   const toggleCanvasSelection = (canvasId: string) => {
     setSelectedCanvasIds((prev) => {
@@ -721,20 +711,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           </Button>
         </DialogActions>
       </Dialog>
-
-      <GlobalSearchDialog
-        open={searchDialogOpen}
-        onClose={() => setSearchDialogOpen(false)}
-      />
-
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        onCreateCanvas={() => setCreateDialogOpen(true)}
-        onSearch={() => setSearchDialogOpen(true)}
-        onToggleTheme={toggleTheme}
-        isDarkMode={mode === "dark"}
-      />
     </>
   );
 }

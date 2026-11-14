@@ -1,14 +1,12 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { AppShell } from "@/components/layout/AppShell";
-import { ApiKeysContent } from "./ApiKeysContent";
-import { iosShortcutUrl, memoriaAddress } from "@/lib/guides/phone-sharing";
 
 export const metadata = {
   title: "API Keys",
   description: "Manage API keys for external access and extensions",
 };
 
+/** API keys live in Settings (IMP-127); the old address still works. */
 export default async function ApiKeysPage() {
   const session = await auth();
 
@@ -16,12 +14,5 @@ export default async function ApiKeysPage() {
     redirect("/auth/login");
   }
 
-  return (
-    <AppShell readingWidth="md">
-      <ApiKeysContent
-        serverAddress={memoriaAddress()}
-        shortcutUrl={iosShortcutUrl()}
-      />
-    </AppShell>
-  );
+  redirect("/settings/api-keys");
 }
