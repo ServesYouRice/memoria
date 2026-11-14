@@ -29,7 +29,6 @@ to RUN-ME-3).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-144](tasks/IMP-144.md) | Container image under 1 GB (drop webpack's build cache) | - |
 | [IMP-145](tasks/IMP-145.md) | Mail required in production only; staging warns and sharing still works | - |
 | [IMP-146](tasks/IMP-146.md) | A switch that keeps passkeys off until the final domain | - |
 | [IMP-147](tasks/IMP-147.md) | Scheduler retries within a minute; `server.ts` drops `url.parse` | - |
