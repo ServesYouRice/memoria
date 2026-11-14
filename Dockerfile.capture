@@ -1,0 +1,14 @@
+# Optional page-capture worker (IMP-110): the Memoria image plus a headless
+# browser. Built only for the `capture` compose profile; the standard image
+# carries no browser.
+ARG MEMORIA_IMAGE=memoria:local
+FROM ${MEMORIA_IMAGE}
+
+USER root
+# Alpine's own Chromium build (Playwright's downloaded browsers need glibc)
+# and fonts for Latin, symbols and emoji.
+RUN apk add --no-cache chromium font-noto font-noto-emoji ttf-freefont
+ENV CAPTURE_BROWSER_PATH=/usr/bin/chromium
+USER memoria
+
+CMD ["pnpm", "worker:capture"]

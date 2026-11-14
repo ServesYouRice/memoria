@@ -19,6 +19,7 @@ silently truncated.
 | Account export | 384 MiB uncompressed input, 256 MiB compressed archive | streaming meter fails closed; output is private and checksummed; see [account-exports.md](account-exports.md) |
 | Export retention | 24 hours | durable delete job removes the private object |
 | Saved page text | 256 KiB per link, 64 MiB per account (UTF-8) | `storePageCopy` cuts a page at the link budget and keeps no text once the account budget is full; `RESOURCE_BUDGETS.pageCopy` |
+| Page picture and PDF (optional) | 3 MiB picture, 8 MiB PDF, 40 MiB download, 250 requests, 75 s per capture; at most half of the account's upload quota | the capture browser reaches the network only through a proxy that refuses internal addresses; `RESOURCE_BUDGETS.pageCapture`; see [page-capture.md](page-capture.md) |
 
 The deterministic regression suite is `tests/unit/resource-budgets.test.ts`.
 It serializes representative geometry at every advertised canvas size, checks

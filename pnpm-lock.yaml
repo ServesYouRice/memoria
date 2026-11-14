@@ -159,6 +159,9 @@ importers:
       pino:
         specifier: ^10.4.0
         version: 10.4.0
+      playwright-core:
+        specifier: 1.64.1
+        version: 1.64.1
       prisma:
         specifier: 7.10.1
         version: 7.10.1(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@5.9.3)

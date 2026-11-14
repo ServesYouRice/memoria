@@ -11,6 +11,31 @@ import {
   wantsArchiveLookup,
 } from "@/lib/services/page-copy";
 
+/** The capture's files that are still stored, as links the page can use. */
+async function liveCapture(
+  itemId: string,
+  capture: {
+    imageAssetId: string | null;
+    pdfAssetId: string | null;
+    capturedAt: Date;
+  },
+) {
+  const ids = [capture.imageAssetId, capture.pdfAssetId].filter(
+    (id): id is string => id !== null,
+  );
+  const live = await prisma.uploadAsset.findMany({
+    where: { id: { in: ids }, status: "ACTIVE" },
+    select: { id: true },
+  });
+  const has = (id: string | null) =>
+    id !== null && live.some((asset) => asset.id === id);
+  const base = `/api/v1/canvas-items/${encodeURIComponent(itemId)}/page-capture`;
+  const imageUrl = has(capture.imageAssetId) ? `${base}/image` : null;
+  const pdfUrl = has(capture.pdfAssetId) ? `${base}/pdf` : null;
+  if (!imageUrl && !pdfUrl) return null;
+  return { capturedAt: capture.capturedAt.toISOString(), imageUrl, pdfUrl };
+}
+
 interface RouteContext {
   params: Promise<{ itemId: string }>;
 }
@@ -19,7 +44,8 @@ interface RouteContext {
  * GET /api/v1/canvas-items/{itemId}/page-copy (IMP-094): the saved readable
  * text of a link's page and when it was read, plus any web-archive link.
  * Anyone who may view the canvas may read it. The text is untrusted web
- * content and is returned as plain text for display as plain text.
+ * content and is returned as plain text for display as plain text. When the
+ * deployment keeps page pictures (IMP-110), the links to the picture and PDF.
  */
 export const GET = withAuth<unknown, RouteContext>(
   async (_request, session, { params }) => {
@@ -33,7 +59,12 @@ export const GET = withAuth<unknown, RouteContext>(
 
     const item = await prisma.canvasItem.findFirst({
       where: { id: itemId, deletedAt: null },
-      select: { type: true, content: true, pageCopy: true },
+      select: {
+        type: true,
+        content: true,
+        pageCopy: true,
+        pageCapture: true,
+      },
     });
     if (!item || item.type !== ItemType.BOOKMARK) {
       throw new NotFoundError("Saved link not found");
@@ -42,6 +73,13 @@ export const GET = withAuth<unknown, RouteContext>(
     // A copy of an address the link no longer points to is not offered.
     const copy =
       item.pageCopy && item.pageCopy.url === url ? item.pageCopy : null;
+
+    // The picture and PDF of the page (IMP-110), when the deployment keeps
+    // them: offered only while the files exist and the address is unchanged.
+    const capture =
+      item.pageCapture && item.pageCapture.url === url
+        ? await liveCapture(itemId, item.pageCapture)
+        : null;
 
     // Links saved before the owner turned the archive lookup on are looked
     // up the first time the owner opens their copy.
@@ -71,6 +109,8 @@ export const GET = withAuth<unknown, RouteContext>(
               archiveUrl: copy.archiveUrl,
             }
           : null,
+        // Only present when a capture exists: nothing changes with it off.
+        ...(capture ? { capture } : {}),
         archivePending,
       },
       { headers: { "Cache-Control": "private, no-store" } },

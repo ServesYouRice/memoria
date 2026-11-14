@@ -23,6 +23,8 @@ Included record types:
 - `workspace`, `canvas`, `canvasItem`, and `canvasVersion`
 - `itemPageCopy`: the saved readable text of a link's page, with the address
   that was read, when it was read and any web-archive link (IMP-094)
+- `itemPageCapture`: which uploads are the picture and PDF of a saved link's
+  page, when page capture is on (IMP-110); the files are upload records
 - `canvasShare`, `comment`, `activity`, and `notificationPreference`
 - `uploadMetadata`
 - `uploadObjectStart`, ordered `uploadObjectChunk` records, and
