@@ -116,7 +116,7 @@ import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
 import { CanvasAddBar } from "@/features/canvas/components/CanvasAddBar";
 import { CanvasViewControls } from "@/features/canvas/components/CanvasViewControls";
-import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
+import { CanvasOrganisedList } from "@/features/canvas/components/CanvasOrganisedList";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   isArCanvasEnabled,
@@ -1631,10 +1631,18 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         activeTool === "draw" && <DrawingToolbar />}
 
       {viewMode === "organizer" ? (
-        <CanvasOrganizerView
+        <CanvasOrganisedList
           canvasId={canvasId}
           items={allItems}
           itemCount={totalItemCount}
+          capabilities={capabilities}
+          selectedItemIds={selectedItemIds}
+          onSelectItem={(itemId) => handleSelectItem(itemId, false)}
+          onActivateItem={handleActivateItem}
+          onNudgeItem={handleNudgeItem}
+          onDeleteItem={handleDeleteItem}
+          onCreateItem={() => setNoteDialogOpen(true)}
+          canvasName={canvasName}
         />
       ) : (
         <Box
