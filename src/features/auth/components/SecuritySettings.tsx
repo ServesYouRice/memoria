@@ -61,8 +61,11 @@ function secretFromUri(totpURI: string): string {
 export function SecuritySettings({
   twoFactorEnabled,
   hasPassword = true,
+  passkeysOffered = true,
 }: {
   twoFactorEnabled: boolean;
+  /** IMP-146: false while passkeys are switched off for this deployment. */
+  passkeysOffered?: boolean;
   /** False for someone who only signs in with a login system (IMP-099). */
   hasPassword?: boolean;
 }) {
@@ -92,8 +95,8 @@ export function SecuritySettings({
   }, []);
 
   useEffect(() => {
-    void loadPasskeys();
-  }, [loadPasskeys]);
+    if (passkeysOffered) void loadPasskeys();
+  }, [loadPasskeys, passkeysOffered]);
 
   const startEnrolment = async () => {
     setBusy(true);
@@ -372,60 +375,64 @@ export function SecuritySettings({
         )}
       </Box>
 
-      <Divider />
+      {passkeysOffered && (
+        <>
+          <Divider />
 
-      <Box>
-        <Typography
-          variant="subtitle1"
-          sx={{ fontWeight: 600, display: "flex", gap: 1, mb: 1 }}
-        >
-          <FingerprintIcon fontSize="small" /> Passkeys
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          Sign in with your device&apos;s screen lock or a security key instead
-          of your password.
-        </Typography>
-        {passkeys.length > 0 && (
-          <List dense aria-label="Passkeys">
-            {passkeys.map((key) => (
-              <ListItem
-                key={key.id}
-                secondaryAction={
-                  <IconButton
-                    edge="end"
-                    aria-label={`Remove passkey ${key.name || ""}`.trim()}
-                    onClick={() => deletePasskey(key.id)}
-                    disabled={busy}
+          <Box>
+            <Typography
+              variant="subtitle1"
+              sx={{ fontWeight: 600, display: "flex", gap: 1, mb: 1 }}
+            >
+              <FingerprintIcon fontSize="small" /> Passkeys
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Sign in with your device&apos;s screen lock or a security key
+              instead of your password.
+            </Typography>
+            {passkeys.length > 0 && (
+              <List dense aria-label="Passkeys">
+                {passkeys.map((key) => (
+                  <ListItem
+                    key={key.id}
+                    secondaryAction={
+                      <IconButton
+                        edge="end"
+                        aria-label={`Remove passkey ${key.name || ""}`.trim()}
+                        onClick={() => deletePasskey(key.id)}
+                        disabled={busy}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    }
                   >
-                    <DeleteIcon />
-                  </IconButton>
-                }
-              >
-                <ListItemText
-                  primary={key.name || "Passkey"}
-                  secondary={
-                    key.createdAt
-                      ? `Added ${new Date(key.createdAt).toLocaleDateString()}`
-                      : undefined
-                  }
-                />
-              </ListItem>
-            ))}
-          </List>
-        )}
-        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-          <TextField
-            label="Passkey name"
-            size="small"
-            value={passkeyName}
-            onChange={(e) => setPasskeyName(e.target.value)}
-            slotProps={{ htmlInput: { maxLength: 64 } }}
-          />
-          <Button variant="outlined" onClick={addPasskey} disabled={busy}>
-            Add passkey
-          </Button>
-        </Stack>
-      </Box>
+                    <ListItemText
+                      primary={key.name || "Passkey"}
+                      secondary={
+                        key.createdAt
+                          ? `Added ${new Date(key.createdAt).toLocaleDateString()}`
+                          : undefined
+                      }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+              <TextField
+                label="Passkey name"
+                size="small"
+                value={passkeyName}
+                onChange={(e) => setPasskeyName(e.target.value)}
+                slotProps={{ htmlInput: { maxLength: 64 } }}
+              />
+              <Button variant="outlined" onClick={addPasskey} disabled={busy}>
+                Add passkey
+              </Button>
+            </Stack>
+          </Box>
+        </>
+      )}
 
       <Divider />
 

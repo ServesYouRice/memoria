@@ -1,6 +1,7 @@
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { env } from "@/lib/env";
 import { ssoConfigFromEnv } from "@/lib/auth/sso";
+import { passkeysEnabled } from "@/lib/auth/server";
 
 export const metadata = {
   title: "Sign in",
@@ -11,6 +12,10 @@ export default function LoginPage() {
   // Only the button label reaches the browser; the secret stays here.
   const sso = ssoConfigFromEnv(env);
   return (
-    <LoginForm mode={env.REGISTRATION_MODE} ssoLabel={sso?.label ?? null} />
+    <LoginForm
+      mode={env.REGISTRATION_MODE}
+      ssoLabel={sso?.label ?? null}
+      passkeys={passkeysEnabled()}
+    />
   );
 }

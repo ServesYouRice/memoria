@@ -73,3 +73,15 @@ describe("Sign in with an existing login system (IMP-099)", () => {
     );
   });
 });
+
+describe("Passkey switch on the sign-in page (IMP-146)", () => {
+  it("offers a passkey by default", () => {
+    render(<LoginForm />);
+    expect(screen.getByRole("button", { name: "Use a passkey" })).toBeTruthy();
+  });
+
+  it("hides the passkey button when passkeys are off", () => {
+    render(<LoginForm passkeys={false} />);
+    expect(screen.queryByRole("button", { name: "Use a passkey" })).toBeNull();
+  });
+});

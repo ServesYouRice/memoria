@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getCredentialPasswordHash } from "@/lib/auth/credentials";
+import { passkeysEnabled } from "@/lib/auth/server";
 import { AppShell } from "@/components/layout/AppShell";
 import { SettingsContent } from "../SettingsContent";
 import { settingsSectionFromSegments } from "../sections";
@@ -38,6 +39,7 @@ export default async function SettingsPage({ params }: SettingsPageProps) {
       <SettingsContent
         user={{ ...session.user, hasPassword }}
         section={section.id}
+        passkeys={passkeysEnabled()}
         apiKeys={
           section.id === "api-keys"
             ? { serverAddress: memoriaAddress(), shortcutUrl: iosShortcutUrl() }

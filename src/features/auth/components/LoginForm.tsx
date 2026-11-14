@@ -39,6 +39,8 @@ interface LoginFormProps {
   mode?: RegistrationMode;
   /** IMP-099: the existing login system's name; absent when it is off. */
   ssoLabel?: string | null;
+  /** IMP-146: false while passkeys are switched off for this deployment. */
+  passkeys?: boolean;
 }
 
 const loginSchema = z.object({
@@ -114,7 +116,11 @@ export function secondFactorErrorMessage(
   }
 }
 
-export function LoginForm({ mode = "open", ssoLabel = null }: LoginFormProps) {
+export function LoginForm({
+  mode = "open",
+  ssoLabel = null,
+  passkeys = true,
+}: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
@@ -446,18 +452,20 @@ export function LoginForm({ mode = "open", ssoLabel = null }: LoginFormProps) {
               Sign in with {ssoLabel}
             </Button>
           )}
-          <Button
-            type="button"
-            variant="outlined"
-            fullWidth
-            size="large"
-            disabled={isLoading}
-            startIcon={<Fingerprint />}
-            onClick={onPasskeySignIn}
-            sx={{ mt: 1 }}
-          >
-            Use a passkey
-          </Button>
+          {passkeys && (
+            <Button
+              type="button"
+              variant="outlined"
+              fullWidth
+              size="large"
+              disabled={isLoading}
+              startIcon={<Fingerprint />}
+              onClick={onPasskeySignIn}
+              sx={{ mt: 1 }}
+            >
+              Use a passkey
+            </Button>
+          )}
 
           <Divider sx={{ mt: 3, mb: 1 }}>or use your email</Divider>
 

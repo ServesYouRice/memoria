@@ -138,6 +138,11 @@ const envSchema = z
      * starts without a mail provider; mail checks then warn instead of fail.
      * Anything else is production.
      */
+    /**
+     * IMP-146 (handbook ME-08, OWN-07): passkeys are bound to the domain they
+     * were made on, so they stay off until the app has its final domain.
+     */
+    PASSKEYS_ENABLED: z.enum(["true", "false"]).default("true"),
     DEPLOYMENT_STAGE: z.enum(["production", "staging"]).default("production"),
     EMAIL_PROVIDER: z
       .enum(["console", "smtp", "sendgrid", "resend"])

@@ -89,6 +89,8 @@ interface SettingsContentProps {
   section?: SettingsSectionId;
   /** The API keys group's phone details (IMP-127), set by the server. */
   apiKeys?: { serverAddress: string; shortcutUrl: string | null };
+  /** IMP-146: false while passkeys are switched off for this deployment. */
+  passkeys?: boolean;
 }
 
 interface AiUsage {
@@ -237,6 +239,7 @@ export function SettingsContent({
   user,
   section = "account",
   apiKeys,
+  passkeys = true,
 }: SettingsContentProps) {
   useLegacyAnchorRedirect(section);
   const info =
@@ -279,7 +282,9 @@ export function SettingsContent({
           </Typography>
           <Stack spacing={3}>
             {section === "account" && <AccountGroup user={user} />}
-            {section === "security" && <SecurityGroup user={user} />}
+            {section === "security" && (
+              <SecurityGroup user={user} passkeys={passkeys} />
+            )}
             {section === "appearance" && <AppearanceGroup />}
             {section === "shortcuts" && <ShortcutsGroup />}
             {section === "notifications" && <NotificationsGroup />}
@@ -427,7 +432,13 @@ function PasswordVisibilityToggle({
   );
 }
 
-function SecurityGroup({ user }: { user: SettingsUser }) {
+function SecurityGroup({
+  user,
+  passkeys,
+}: {
+  user: SettingsUser;
+  passkeys: boolean;
+}) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -537,11 +548,16 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
 
       <SettingsSection
         icon={<SecurityIcon color="primary" />}
-        title="Passkeys, two-step codes and sessions"
+        title={
+          passkeys
+            ? "Passkeys, two-step codes and sessions"
+            : "Two-step codes and sessions"
+        }
       >
         <SecuritySettings
           twoFactorEnabled={Boolean(user.twoFactorEnabled)}
           hasPassword={user.hasPassword !== false}
+          passkeysOffered={passkeys}
         />
       </SettingsSection>
     </>

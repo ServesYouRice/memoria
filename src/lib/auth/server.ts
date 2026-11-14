@@ -103,10 +103,26 @@ export const ALLOWED_AUTH_PATHS: ReadonlySet<string> = new Set([
   "/passkey/delete-passkey",
 ]);
 
-/** With a login system configured, its sign-in start and return paths too. */
-export function allowedAuthPaths(ssoEnabled: boolean): ReadonlySet<string> {
-  if (!ssoEnabled) return ALLOWED_AUTH_PATHS;
-  return new Set([...ALLOWED_AUTH_PATHS, SSO_SIGN_IN_PATH, SSO_CALLBACK_PATH]);
+/**
+ * With a login system configured, its sign-in start and return paths too.
+ * With passkeys switched off (IMP-146), none of the passkey paths.
+ */
+export function allowedAuthPaths(
+  ssoEnabled: boolean,
+  passkeysEnabled = true,
+): ReadonlySet<string> {
+  if (ssoEnabled && passkeysEnabled)
+    return new Set([
+      ...ALLOWED_AUTH_PATHS,
+      SSO_SIGN_IN_PATH,
+      SSO_CALLBACK_PATH,
+    ]);
+  if (passkeysEnabled) return ALLOWED_AUTH_PATHS;
+  const paths = [...ALLOWED_AUTH_PATHS].filter(
+    (path) => !path.startsWith("/passkey/"),
+  );
+  if (ssoEnabled) paths.push(SSO_SIGN_IN_PATH, SSO_CALLBACK_PATH);
+  return new Set(paths);
 }
 
 /** Path below the auth base path, without a trailing slash. */
@@ -145,6 +161,8 @@ export interface MemoriaAuthConfig {
    * "open" registration allows it; "invite" and "closed" never do.
    */
   ssoSignUp?: boolean;
+  /** IMP-146: passkeys on (default) or off until the final domain. */
+  passkeys?: boolean;
   /** Gives a newly created account its starting workspace and Inbox. */
   onUserCreated?: (userId: string) => Promise<void>;
 }
@@ -204,8 +222,8 @@ async function runLockoutStep<T>(step: () => Promise<T>): Promise<T> {
  * accounts, so neither existence nor verification state leaks to a caller
  * without the right password.
  */
-function credentialPolicy(ssoEnabled: boolean) {
-  const allowed = allowedAuthPaths(ssoEnabled);
+function credentialPolicy(ssoEnabled: boolean, passkeysEnabled: boolean) {
+  const allowed = allowedAuthPaths(ssoEnabled, passkeysEnabled);
   return {
     id: "memoria-credential-policy",
     onRequest: async (request: Request) => {
@@ -315,6 +333,7 @@ export function createMemoriaAuth(config: MemoriaAuthConfig) {
   const rpID = new URL(publicOrigin).hostname;
   const sso = config.sso ?? null;
   const onUserCreated = config.onUserCreated;
+  const passkeysEnabled = config.passkeys !== false;
 
   return betterAuth({
     appName: "Memoria",
@@ -381,7 +400,7 @@ export function createMemoriaAuth(config: MemoriaAuthConfig) {
       },
     },
     plugins: [
-      credentialPolicy(Boolean(sso)),
+      credentialPolicy(Boolean(sso), passkeysEnabled),
       twoFactor({
         issuer: "Memoria",
         // A person who only signs in with the login system has no password
@@ -408,39 +427,43 @@ export function createMemoriaAuth(config: MemoriaAuthConfig) {
             }),
           ]
         : []),
-      passkey({
-        rpID,
-        rpName: "Memoria",
-        // Pin the ceremony origin to the public address rather than trusting
-        // the request's Origin header.
-        origin: publicOrigin,
-        authenticatorSelection: {
-          residentKey: "preferred",
-          userVerification: "required",
-        },
-        authentication: {
-          afterVerification: ({ verification }) => {
-            // A passkey replaces password and second factor together, so it
-            // must prove possession and user verification (PIN/biometric).
-            if (!verification.authenticationInfo.userVerified) {
-              throw new APIError("UNAUTHORIZED", {
-                code: AUTH_ERROR_CODES.PASSKEY_USER_VERIFICATION_REQUIRED,
-                message: "This passkey did not verify the user.",
-              });
-            }
-          },
-        },
-        registration: {
-          afterVerification: ({ verification }) => {
-            if (!verification.registrationInfo?.userVerified) {
-              throw new APIError("BAD_REQUEST", {
-                code: AUTH_ERROR_CODES.PASSKEY_USER_VERIFICATION_REQUIRED,
-                message: "This passkey did not verify the user.",
-              });
-            }
-          },
-        },
-      }),
+      ...(passkeysEnabled
+        ? [
+            passkey({
+              rpID,
+              rpName: "Memoria",
+              // Pin the ceremony origin to the public address rather than trusting
+              // the request's Origin header.
+              origin: publicOrigin,
+              authenticatorSelection: {
+                residentKey: "preferred",
+                userVerification: "required",
+              },
+              authentication: {
+                afterVerification: ({ verification }) => {
+                  // A passkey replaces password and second factor together, so it
+                  // must prove possession and user verification (PIN/biometric).
+                  if (!verification.authenticationInfo.userVerified) {
+                    throw new APIError("UNAUTHORIZED", {
+                      code: AUTH_ERROR_CODES.PASSKEY_USER_VERIFICATION_REQUIRED,
+                      message: "This passkey did not verify the user.",
+                    });
+                  }
+                },
+              },
+              registration: {
+                afterVerification: ({ verification }) => {
+                  if (!verification.registrationInfo?.userVerified) {
+                    throw new APIError("BAD_REQUEST", {
+                      code: AUTH_ERROR_CODES.PASSKEY_USER_VERIFICATION_REQUIRED,
+                      message: "This passkey did not verify the user.",
+                    });
+                  }
+                },
+              },
+            }),
+          ]
+        : []),
       // Must stay last: forwards Set-Cookie from server-side auth calls.
       nextCookies(),
     ],
@@ -448,6 +471,11 @@ export function createMemoriaAuth(config: MemoriaAuthConfig) {
 }
 
 export type MemoriaAuth = ReturnType<typeof createMemoriaAuth>;
+
+/** IMP-146: whether this deployment offers passkeys (PASSKEYS_ENABLED). */
+export function passkeysEnabled(): boolean {
+  return env.PASSKEYS_ENABLED !== "false";
+}
 
 let authServer: MemoriaAuth | undefined;
 
@@ -460,6 +488,7 @@ export function getAuthServer(): MemoriaAuth {
     requireEmailVerification: process.env.NODE_ENV === "production",
     sso: ssoConfigFromEnv(env),
     ssoSignUp: env.REGISTRATION_MODE === "open",
+    passkeys: passkeysEnabled(),
     onUserCreated: (userId) => ensureStarterResources(prisma, userId),
   });
   return authServer;

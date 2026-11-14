@@ -29,7 +29,6 @@ to RUN-ME-3).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-146](tasks/IMP-146.md) | A switch that keeps passkeys off until the final domain | - |
 | [IMP-148](tasks/IMP-148.md) | Release command: build, tag, push, digest; stop on high findings | - |
 | [IMP-149](tasks/IMP-149.md) | Least-privilege runtime database role | - |
 | [IMP-150](tasks/IMP-150.md) | Expand/contract rule for migrations; `DEPLOYMENT.md` | - |
