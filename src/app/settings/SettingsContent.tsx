@@ -30,6 +30,8 @@ import {
   ListItemButton,
   Tab,
   Tabs,
+  IconButton,
+  InputAdornment,
 } from "@mui/material";
 import {
   Person as PersonIcon,
@@ -45,6 +47,8 @@ import {
   AutoAwesomeOutlined as AiUsageIcon,
   Psychology as AiProviderIcon,
   Shield as SecurityIcon,
+  Visibility,
+  VisibilityOff,
 } from "@mui/icons-material";
 import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
@@ -267,6 +271,7 @@ export function SettingsContent({
             {section === "account" && <AccountGroup user={user} />}
             {section === "security" && <SecurityGroup user={user} />}
             {section === "appearance" && <AppearanceGroup />}
+            {section === "shortcuts" && <ShortcutsGroup />}
             {section === "notifications" && <NotificationsGroup />}
             {section === "ai" && <AiGroup />}
             {section === "import" && <BookmarkImportSettings />}
@@ -384,18 +389,36 @@ function AccountGroup({ user }: { user: SettingsUser }) {
   );
 }
 
+/** Show/hide eye for a password field, as on the sign-in form (IMP-124). */
+function PasswordVisibilityToggle({
+  shown,
+  onToggle,
+}: {
+  shown: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <InputAdornment position="end">
+      <IconButton
+        onClick={onToggle}
+        edge="end"
+        aria-label={shown ? "Hide password" : "Show password"}
+      >
+        {shown ? <VisibilityOff /> : <Visibility />}
+      </IconButton>
+    </InputAdornment>
+  );
+}
+
 function SecurityGroup({ user }: { user: SettingsUser }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
-  const incomplete = !currentPassword || !newPassword || !confirmPassword;
+  const incomplete = !currentPassword || !newPassword;
 
   const handleChangePassword = async () => {
-    if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
     if (newPassword.length < 10) {
       toast.error("Password must be at least 10 characters");
       return;
@@ -414,7 +437,6 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
       }
       setCurrentPassword("");
       setNewPassword("");
-      setConfirmPassword("");
       toast.success("Password changed. Please sign in with your new password.");
       // The server revoked every session, this one included. Leave through
       // sign-out (clears auth state and the offline cache); savingPassword
@@ -437,36 +459,42 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
         <Stack spacing={2.5}>
           <TextField
             label="Current password"
-            type="password"
+            type={showCurrentPassword ? "text" : "password"}
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             fullWidth
             autoComplete="current-password"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <PasswordVisibilityToggle
+                    shown={showCurrentPassword}
+                    onToggle={() =>
+                      setShowCurrentPassword(!showCurrentPassword)
+                    }
+                  />
+                ),
+              },
+            }}
           />
           <TextField
             label="New password"
-            type="password"
+            type={showNewPassword ? "text" : "password"}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             fullWidth
             helperText="Minimum 10 characters"
             autoComplete="new-password"
-          />
-          <TextField
-            label="Confirm new password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            fullWidth
-            autoComplete="new-password"
-            error={
-              confirmPassword.length > 0 && newPassword !== confirmPassword
-            }
-            helperText={
-              confirmPassword.length > 0 && newPassword !== confirmPassword
-                ? "Passwords do not match"
-                : ""
-            }
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <PasswordVisibilityToggle
+                    shown={showNewPassword}
+                    onToggle={() => setShowNewPassword(!showNewPassword)}
+                  />
+                ),
+              },
+            }}
           />
           <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
             <Button
@@ -484,7 +512,7 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
               id="change-password-reason"
               show={!savingPassword && incomplete}
             >
-              Fill in all three fields first.
+              Fill in both fields first.
             </DisabledReason>
           </Stack>
         </Stack>
@@ -531,59 +559,63 @@ function AppearanceGroup() {
           </ListItem>
         </List>
       </SettingsSection>
-
-      <SettingsSection
-        icon={<KeyboardIcon color="primary" />}
-        title="Keyboard shortcuts"
-      >
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-            gap: 1.5,
-          }}
-        >
-          {keyboardShortcuts.map((shortcut, index) => (
-            <Box
-              key={index}
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                p: 1.5,
-                borderRadius: 2,
-                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
-              }}
-            >
-              <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                {shortcut.description}
-              </Typography>
-              <Box sx={{ display: "flex", gap: 0.5 }}>
-                {shortcut.keys.map((key, i) => (
-                  <Box
-                    key={i}
-                    component="kbd"
-                    sx={{
-                      px: 1.25,
-                      py: 0.5,
-                      borderRadius: 1,
-                      bgcolor: "background.paper",
-                      border: 1,
-                      borderColor: "divider",
-                      fontFamily: "monospace",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {key}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          ))}
-        </Box>
-      </SettingsSection>
     </>
+  );
+}
+
+function ShortcutsGroup() {
+  return (
+    <SettingsSection
+      icon={<KeyboardIcon color="primary" />}
+      title="Shortcut list"
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+          gap: 1.5,
+        }}
+      >
+        {keyboardShortcuts.map((shortcut, index) => (
+          <Box
+            key={index}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              p: 1.5,
+              borderRadius: 2,
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+            }}
+          >
+            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+              {shortcut.description}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 0.5 }}>
+              {shortcut.keys.map((key, i) => (
+                <Box
+                  key={i}
+                  component="kbd"
+                  sx={{
+                    px: 1.25,
+                    py: 0.5,
+                    borderRadius: 1,
+                    bgcolor: "background.paper",
+                    border: 1,
+                    borderColor: "divider",
+                    fontFamily: "monospace",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  {key}
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    </SettingsSection>
   );
 }
 
@@ -592,7 +624,7 @@ function NotificationsGroup() {
     <SettingsSection
       id="notifications"
       icon={<NotificationsIcon color="primary" />}
-      title="Notifications"
+      title="What Memoria tells you about"
     >
       <NotificationPreferences />
       <WeeklyRecapSettings />

@@ -83,9 +83,6 @@ async function submitPasswordChange() {
   fireEvent.change(screen.getByLabelText("New password"), {
     target: { value: "new-password-456" },
   });
-  fireEvent.change(screen.getByLabelText("Confirm new password"), {
-    target: { value: "new-password-456" },
-  });
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Change password" }));
   });
@@ -122,5 +119,41 @@ describe("settings password change", () => {
       ),
     );
     expect(mocks.signOutAndRedirect).not.toHaveBeenCalled();
+  });
+
+  it("asks for the new password once, with a show/hide eye on each field (IMP-124)", () => {
+    render(
+      <SettingsContent
+        user={{ id: "u1", name: "Ada", email: "a@x.io" }}
+        section="security"
+      />,
+    );
+    expect(screen.queryByLabelText("Confirm new password")).toBeNull();
+    const current = screen.getByLabelText("Current password");
+    const next = screen.getByLabelText("New password");
+    expect(current.getAttribute("type")).toBe("password");
+    expect(next.getAttribute("type")).toBe("password");
+    expect(screen.getByText("Minimum 10 characters")).toBeTruthy();
+
+    const save = screen.getByRole("button", { name: "Change password" });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(current, { target: { value: "old-password-123" } });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(next, { target: { value: "new-password-456" } });
+    expect(save.hasAttribute("disabled")).toBe(false);
+
+    const [showCurrent, showNew] = screen.getAllByRole("button", {
+      name: "Show password",
+    });
+    fireEvent.click(showNew);
+    expect(next.getAttribute("type")).toBe("text");
+    expect(current.getAttribute("type")).toBe("password");
+    fireEvent.click(showCurrent);
+    expect(current.getAttribute("type")).toBe("text");
+    expect(
+      screen.getAllByRole("button", { name: "Hide password" }),
+    ).toHaveLength(2);
+    fireEvent.click(showNew);
+    expect(next.getAttribute("type")).toBe("password");
   });
 });

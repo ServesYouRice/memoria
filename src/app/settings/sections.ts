@@ -20,7 +20,13 @@ export const SETTINGS_SECTIONS = [
     id: "appearance",
     path: "/settings/appearance",
     label: "Appearance",
-    intro: "Choose light or dark, and see the keyboard shortcuts.",
+    intro: "Choose light or dark.",
+  },
+  {
+    id: "shortcuts",
+    path: "/settings/shortcuts",
+    label: "Keyboard shortcuts",
+    intro: "The keys that make common actions faster.",
   },
   {
     id: "notifications",
