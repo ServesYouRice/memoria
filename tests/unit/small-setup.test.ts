@@ -103,7 +103,9 @@ describe("uploads on disk in production (IMP-100)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+    // Real file writes: in the full suite they queue behind other tests'
+    // hashing and disk work on Node's shared worker pool.
+  }, 20_000);
 });
 
 function healthy() {
