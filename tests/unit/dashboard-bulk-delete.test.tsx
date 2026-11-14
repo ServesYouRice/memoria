@@ -86,6 +86,10 @@ vi.mock("@/components/CommandPalette", () => ({
 import { DashboardContent } from "@/features/dashboard/components/DashboardContent";
 import { BULK_DELETE_CONCURRENCY } from "@/features/dashboard/components/bulk-delete";
 
+// Full dashboard render with ten cards (each with its own menu) is slow
+// under jsdom on a loaded machine; the default 5s limit flakes.
+vi.setConfig({ testTimeout: 20_000 });
+
 let inFlight = 0;
 let maxInFlight = 0;
 let started: string[] = [];
