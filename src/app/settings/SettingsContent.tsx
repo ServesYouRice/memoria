@@ -190,7 +190,8 @@ function SettingsNav({ current }: { current: SettingsSectionId }) {
         <Tabs
           value={current}
           variant="scrollable"
-          scrollButtons={false}
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           aria-label="Settings groups"
         >
           {SETTINGS_SECTIONS.map((section) => (

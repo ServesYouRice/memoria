@@ -8,7 +8,6 @@ import {
   Alert,
   Box,
   Button,
-  ButtonBase,
   CircularProgress,
   Dialog,
   DialogContent,
@@ -24,7 +23,6 @@ import {
   Stack,
   Tooltip,
   Typography,
-  alpha,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
@@ -548,35 +546,11 @@ export function AskLauncher() {
 
   return (
     <>
-      <ButtonBase
-        onClick={() => setOpen(true)}
-        aria-label="Ask Memoria"
-        sx={{
-          display: { xs: "flex", md: "none" },
-          flexGrow: 1,
-          minWidth: 0,
-          justifyContent: "flex-start",
-          gap: 1,
-          px: 1.5,
-          py: 0.75,
-          borderRadius: 999,
-          // Secondary text on this tint can fall below 4.5:1 contrast (axe
-          // flagged it on the dashboard at 768px).
-          color: "text.primary",
-          bgcolor: (theme) => alpha(theme.palette.text.primary, 0.06),
-        }}
-      >
-        <AskIcon fontSize="small" />
-        <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
-          Ask your canvases…
-        </Typography>
-      </ButtonBase>
       <Tooltip title="Ask Memoria (Ctrl+J)">
         <IconButton
           aria-label="Ask Memoria"
           aria-keyshortcuts="Control+J Meta+J"
           onClick={() => setOpen(true)}
-          sx={{ display: { xs: "none", md: "inline-flex" } }}
         >
           <AskIcon />
         </IconButton>

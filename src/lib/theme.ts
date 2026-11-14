@@ -326,6 +326,7 @@ export function createAppTheme() {
             borderRadius: 10,
             padding: "8px 18px",
             transition: `all ${transitions.fast}`,
+            ...touchTarget,
           },
           sizeLarge: {
             padding: "12px 28px",
