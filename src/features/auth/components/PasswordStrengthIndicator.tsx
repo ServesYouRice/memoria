@@ -17,11 +17,11 @@ const SCORE_COLORS = [
   "success",
 ] as const;
 const SCORE_LABELS = [
-  "Very Weak",
+  "Very weak",
   "Weak",
   "Fair",
   "Strong",
-  "Very Strong",
+  "Very strong",
 ] as const;
 
 export function PasswordStrengthIndicator({

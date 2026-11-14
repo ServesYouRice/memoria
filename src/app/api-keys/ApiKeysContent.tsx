@@ -190,7 +190,7 @@ export function ApiKeysContent({
     <>
       {!embedded && (
         <PageHeader
-          title="API Keys"
+          title="API keys"
           subtitle="Create keys for browser extensions and webhooks. Keep them secret."
         />
       )}

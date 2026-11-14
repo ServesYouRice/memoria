@@ -325,7 +325,7 @@ export default function SharePage({ params }: SharePageProps) {
                   <ZoomOut />
                 </Button>
               </Tooltip>
-              <Tooltip title="Fit to Screen">
+              <Tooltip title="Fit to screen">
                 <Button onClick={handleFitToScreen}>
                   <FitScreen />
                 </Button>

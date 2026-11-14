@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-122](tasks/IMP-122.md) | Every label uses sentence case | |
 
 ## WAITING
 

@@ -35,17 +35,17 @@ export const AlignmentToolbar: React.FC<AlignmentToolbarProps> = ({
     >
       <ToggleButtonGroup size="small" exclusive>
         <ToggleButton value="left" onClick={() => onAlign("left")}>
-          <Tooltip title="Align Left">
+          <Tooltip title="Align left">
             <AlignHorizontalLeft fontSize="small" />
           </Tooltip>
         </ToggleButton>
         <ToggleButton value="center" onClick={() => onAlign("center")}>
-          <Tooltip title="Align Center">
+          <Tooltip title="Align center">
             <AlignHorizontalCenter fontSize="small" />
           </Tooltip>
         </ToggleButton>
         <ToggleButton value="right" onClick={() => onAlign("right")}>
-          <Tooltip title="Align Right">
+          <Tooltip title="Align right">
             <AlignHorizontalRight fontSize="small" />
           </Tooltip>
         </ToggleButton>
@@ -53,17 +53,17 @@ export const AlignmentToolbar: React.FC<AlignmentToolbarProps> = ({
 
       <ToggleButtonGroup size="small" exclusive>
         <ToggleButton value="top" onClick={() => onAlign("top")}>
-          <Tooltip title="Align Top">
+          <Tooltip title="Align top">
             <AlignVerticalTop fontSize="small" />
           </Tooltip>
         </ToggleButton>
         <ToggleButton value="middle" onClick={() => onAlign("middle")}>
-          <Tooltip title="Align Middle">
+          <Tooltip title="Align middle">
             <AlignVerticalCenter fontSize="small" />
           </Tooltip>
         </ToggleButton>
         <ToggleButton value="bottom" onClick={() => onAlign("bottom")}>
-          <Tooltip title="Align Bottom">
+          <Tooltip title="Align bottom">
             <AlignVerticalBottom fontSize="small" />
           </Tooltip>
         </ToggleButton>
@@ -74,7 +74,7 @@ export const AlignmentToolbar: React.FC<AlignmentToolbarProps> = ({
           value="distribute-h"
           onClick={() => onDistribute("horizontal")}
         >
-          <Tooltip title="Distribute Horizontally">
+          <Tooltip title="Distribute horizontally">
             <ViewColumn fontSize="small" />
           </Tooltip>
         </ToggleButton>
@@ -82,7 +82,7 @@ export const AlignmentToolbar: React.FC<AlignmentToolbarProps> = ({
           value="distribute-v"
           onClick={() => onDistribute("vertical")}
         >
-          <Tooltip title="Distribute Vertically">
+          <Tooltip title="Distribute vertically">
             <TableRows fontSize="small" />
           </Tooltip>
         </ToggleButton>

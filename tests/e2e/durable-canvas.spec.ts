@@ -83,7 +83,7 @@ test("real S3 uploads, exports, and public-link revocation survive production tr
   expect((await viewportSavePromise).status()).toBe(200);
 
   await page.getByRole("button", { name: "More canvas options" }).click();
-  await page.getByRole("menuitem", { name: "Export Canvas" }).click();
+  await page.getByRole("menuitem", { name: "Export canvas" }).click();
   await page.getByLabel("JSON (Backup)").check();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).click();

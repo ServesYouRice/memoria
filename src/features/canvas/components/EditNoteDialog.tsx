@@ -66,7 +66,7 @@ function SharedNoteDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit Note</DialogTitle>
+      <DialogTitle>Edit note</DialogTitle>
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Typography variant="body2" sx={{ color: "text.secondary" }}>
@@ -289,7 +289,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit Note</DialogTitle>
+      <DialogTitle>Edit note</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -366,7 +366,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
             disabled={isSubmitting || loadFailed}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? "Saving..." : "Save Changes"}
+            {isSubmitting ? "Saving..." : "Save changes"}
           </Button>
         </DialogActions>
       </form>

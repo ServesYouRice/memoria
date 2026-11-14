@@ -186,7 +186,9 @@ describe("settings groups", () => {
       screen.getByRole("heading", { level: 2, name: "API keys" }),
     ).toBeTruthy();
     // Settings shows the title; the keys page adds no second header.
-    expect(screen.queryByRole("heading", { name: "API Keys" })).toBeNull();
+    expect(screen.getAllByRole("heading", { name: "API keys" })).toHaveLength(
+      1,
+    );
     expect(screen.getByText("No API keys yet")).toBeTruthy();
     expect(createButtons()).toHaveLength(1);
     view.unmount();

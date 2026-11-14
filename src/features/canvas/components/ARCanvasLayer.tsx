@@ -174,7 +174,7 @@ export function ARCanvasLayer({ open, onClose, items }: ARCanvasLayerProps) {
         (item.content.text.length > 80 ? "..." : "")
       );
     if (item.content.url) return item.content.url;
-    return "Canvas Item";
+    return "Canvas item";
   };
 
   if (!enabled) return null;

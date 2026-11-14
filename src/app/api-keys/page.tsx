@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 
 export const metadata = {
-  title: "API Keys",
+  title: "API keys",
   description: "Manage API keys for external access and extensions",
 };
 

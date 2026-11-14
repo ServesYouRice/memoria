@@ -282,7 +282,7 @@ export function VersionHistoryDialog({
                 onClick={() => setPendingRestore(true)}
                 disabled={!activeId || restoring}
               >
-                Restore This Version
+                Restore this version
               </Button>
               <Button
                 variant="contained"
@@ -293,7 +293,7 @@ export function VersionHistoryDialog({
                 {isCreating ? (
                   <CircularProgress size={20} />
                 ) : (
-                  "Save Current Version"
+                  "Save current version"
                 )}
               </Button>
             </>

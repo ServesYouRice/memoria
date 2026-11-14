@@ -93,7 +93,7 @@ export function TimeMachineControl({
             startIcon={<Restore />}
             onClick={() => onRestore(currentVersion)}
           >
-            Restore This Version
+            Restore this version
           </Button>
         </Box>
       )}

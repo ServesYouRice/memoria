@@ -155,7 +155,7 @@ describe("VersionHistoryDialog", () => {
     const onClose = renderDialog(true);
     fireEvent.click(screen.getByText("Before the workshop"));
     fireEvent.click(
-      screen.getByRole("button", { name: "Restore This Version" }),
+      screen.getByRole("button", { name: "Restore this version" }),
     );
     const confirm = await screen.findByRole("button", { name: "Restore" });
     fireEvent.click(confirm);
@@ -178,7 +178,7 @@ describe("VersionHistoryDialog", () => {
     const onClose = renderDialog(true);
     fireEvent.click(screen.getByText("Before the workshop"));
     fireEvent.click(
-      screen.getByRole("button", { name: "Restore This Version" }),
+      screen.getByRole("button", { name: "Restore this version" }),
     );
     const confirm = await screen.findByRole("button", { name: "Restore" });
     fireEvent.click(confirm);
@@ -195,7 +195,7 @@ describe("VersionHistoryDialog", () => {
     hooks.restore.mockRejectedValue(new Error("Restore refused"));
     const onClose = renderDialog(true);
     fireEvent.click(
-      screen.getByRole("button", { name: "Restore This Version" }),
+      screen.getByRole("button", { name: "Restore this version" }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
     expect(await screen.findByText("Restore refused")).toBeTruthy();
@@ -209,7 +209,7 @@ describe("VersionHistoryDialog", () => {
     );
     renderDialog(true);
     fireEvent.click(
-      screen.getByRole("button", { name: "Restore This Version" }),
+      screen.getByRole("button", { name: "Restore this version" }),
     );
     const confirm = await screen.findByRole("button", { name: "Restore" });
     fireEvent.click(confirm);
@@ -225,10 +225,10 @@ describe("VersionHistoryDialog", () => {
     renderDialog(false);
     expect(screen.getByRole("img", { name: /Read-only preview/ })).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: "Restore This Version" }),
+      screen.queryByRole("button", { name: "Restore this version" }),
     ).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Save Current Version" }),
+      screen.queryByRole("button", { name: "Save current version" }),
     ).toBeNull();
     expect(
       screen.getByText("Only owners and editors can restore a version."),

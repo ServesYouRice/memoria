@@ -158,7 +158,7 @@ export function ExportDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Export Canvas</DialogTitle>
+      <DialogTitle>Export canvas</DialogTitle>
       <DialogContent>
         {exportError && (
           <Alert severity="error" sx={{ mb: 1 }}>
@@ -166,7 +166,7 @@ export function ExportDialog({
           </Alert>
         )}
         <FormControl component="fieldset" fullWidth sx={{ mt: 1 }}>
-          <FormLabel component="legend">Choose Format</FormLabel>
+          <FormLabel component="legend">Choose format</FormLabel>
           <RadioGroup
             value={format}
             onChange={(e) => setFormat(e.target.value as ExportFormat)}

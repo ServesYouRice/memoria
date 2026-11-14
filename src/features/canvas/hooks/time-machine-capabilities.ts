@@ -20,7 +20,7 @@ export function resolveBoardCapabilities(
 /**
  * While a historical version is previewed, the board shows snapshot items
  * that carry the live item IDs, so any move, edit or delete would land on the
- * live item. The preview is read-only; "Restore This Version" is the only way
+ * live item. The preview is read-only; "Restore this version" is the only way
  * to apply history. Copying and commenting are left as they are.
  */
 export function resolveTimeMachineCapabilities(

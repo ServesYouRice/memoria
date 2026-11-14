@@ -330,7 +330,7 @@ export function RichTextEditor({
               onClick={() => editor.chain().focus().toggleCode().run()}
               selected={editor.isActive("code")}
             >
-              <Tooltip title="Inline Code">
+              <Tooltip title="Inline code">
                 <Code fontSize="small" />
               </Tooltip>
             </ToggleButton>
@@ -384,7 +384,7 @@ export function RichTextEditor({
               onClick={() => editor.chain().focus().toggleBulletList().run()}
               selected={editor.isActive("bulletList")}
             >
-              <Tooltip title="Bullet List">
+              <Tooltip title="Bullet list">
                 <FormatListBulleted fontSize="small" />
               </Tooltip>
             </ToggleButton>
@@ -393,7 +393,7 @@ export function RichTextEditor({
               onClick={() => editor.chain().focus().toggleOrderedList().run()}
               selected={editor.isActive("orderedList")}
             >
-              <Tooltip title="Numbered List">
+              <Tooltip title="Numbered list">
                 <FormatListNumbered fontSize="small" />
               </Tooltip>
             </ToggleButton>
@@ -417,9 +417,9 @@ export function RichTextEditor({
             size="small"
             onClick={addLink}
             color={editor.isActive("link") ? "primary" : "default"}
-            aria-label="Add Link"
+            aria-label="Add link"
           >
-            <Tooltip title="Add Link">
+            <Tooltip title="Add link">
               <LinkIcon
                 sx={{
                   fontSize: "small",

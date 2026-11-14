@@ -35,7 +35,7 @@ interface ShortcutCategory {
 
 const shortcuts: ShortcutCategory[] = [
   {
-    title: "Canvas Navigation",
+    title: "Canvas navigation",
     shortcuts: [
       { keys: ["Space", "+", "Drag"], description: "Pan canvas" },
       { keys: ["Scroll"], description: "Zoom in/out" },
@@ -43,7 +43,7 @@ const shortcuts: ShortcutCategory[] = [
     ],
   },
   {
-    title: "Canvas Actions",
+    title: "Canvas actions",
     shortcuts: [
       { keys: ["Delete"], description: "Delete selected items" },
       { keys: ["Ctrl/Cmd", "+", "A"], description: "Select all" },

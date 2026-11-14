@@ -128,7 +128,7 @@ describe("EditNoteDialog load failures", () => {
     expect(await screen.findByText("old-tag")).toBeTruthy();
     rerender(<EditNoteDialog open onClose={vi.fn()} item={brokenNote} />);
 
-    const save = await screen.findByRole("button", { name: "Save Changes" });
+    const save = await screen.findByRole("button", { name: "Save changes" });
     await waitFor(() =>
       expect((save as HTMLButtonElement).disabled).toBe(true),
     );

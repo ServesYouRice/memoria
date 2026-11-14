@@ -85,7 +85,7 @@ describe("CreateImageDialog replacement", () => {
     act(() => images[0]!.onerror?.());
     const add = () =>
       screen.getByRole("button", {
-        name: "Add to Canvas",
+        name: "Add to canvas",
       }) as HTMLButtonElement;
     await waitFor(() => expect(add().disabled).toBe(false));
 
@@ -114,7 +114,7 @@ describe("CreateImageDialog replacement", () => {
     act(() => images[1]!.onerror?.());
     act(() => images[0]!.onerror?.());
     const add = screen.getByRole("button", {
-      name: "Add to Canvas",
+      name: "Add to canvas",
     }) as HTMLButtonElement;
     await waitFor(() => expect(add.disabled).toBe(false));
     fireEvent.click(add);
