@@ -44,6 +44,7 @@
     "test:visual": "percy exec -- playwright test tests/e2e/visual/",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
+    "db:grant-runtime-role": "prisma db execute --file prisma/migrations/20261114200000_runtime_role_grants/migration.sql",
     "db:migrate:dev": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",

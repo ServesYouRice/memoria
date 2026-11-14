@@ -32,6 +32,16 @@ Without a mail provider (staging), sharing a canvas shows the owner an
 invitation link to copy. `node scripts/validate-env.mjs` (or starting the app) refuses
 anything else that production needs.
 
+## Database logins
+
+The migration Job connects as the database owner (`memoria`). The web, sync,
+worker and scheduler processes connect as `memoria_app`, which can read and
+write rows but cannot create, change or drop tables. The cluster must create
+`memoria_app` before the first release that carries the
+`runtime_role_grants` migration; if it was created later, run
+`pnpm db:grant-runtime-role` once as the owner. A setup without that role
+(development, the small self-host set-up) keeps using one login.
+
 ## Release
 
 1. Commit and push the change to `main` after `pnpm gate` passes (and the
