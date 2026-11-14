@@ -2,7 +2,11 @@ import { z } from "zod";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { OutboxHandler } from "@/lib/outbox/types";
 import { decryptSecret } from "@/lib/agents/crypto";
-import { sendEmail, sendEmailVerification } from "@/lib/email";
+import {
+  sendEmail,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+} from "@/lib/email";
 import { env } from "@/lib/env";
 import {
   registrationInviteTemplate,
@@ -71,6 +75,70 @@ export function createVerificationEmailHandler(
       job.id,
       context?.signal,
     );
+  };
+}
+
+export const PASSWORD_RESET_EMAIL_JOB = "email.password-reset";
+/** Matches the forgot-password route's token lifetime. */
+const PASSWORD_RESET_EXPIRES_IN = "1 hour";
+
+const passwordResetPayloadSchema = z
+  .object({ resetTokenId: z.string().cuid() })
+  .strict();
+
+/**
+ * Password-reset mail (IMP-152). The job names the token row; the raw token
+ * is kept encrypted on it (deliverySecret) until delivery and never enters
+ * the payload. A delivered, used or expired token is a finished job. The
+ * provider gets the job id as its idempotency key, which covers a retry
+ * after a send whose `deliveredAt` write was lost.
+ */
+export function createPasswordResetEmailHandler(
+  prisma: PrismaClient,
+  send = sendPasswordResetEmail,
+): OutboxHandler {
+  return async (job, context) => {
+    const { resetTokenId } = passwordResetPayloadSchema.parse(job.payload);
+    const reset = await prisma.passwordResetToken.findUnique({
+      where: { id: resetTokenId },
+      select: {
+        email: true,
+        expiresAt: true,
+        usedAt: true,
+        deliveredAt: true,
+        deliverySecret: true,
+      },
+    });
+    if (
+      !reset ||
+      reset.deliveredAt ||
+      reset.usedAt ||
+      reset.expiresAt <= new Date()
+    )
+      return;
+    if (!reset.deliverySecret)
+      throw new Error("Password reset delivery secret is unavailable.");
+    const user = await prisma.user.findUnique({
+      where: { email: reset.email },
+      select: { name: true },
+    });
+    if (!user) return;
+    const raw = decryptSecret(reset.deliverySecret);
+    await send(
+      { email: reset.email, name: user.name || undefined },
+      {
+        userName: user.name || "User",
+        resetUrl: `${env.AUTH_URL}/auth/reset-password?token=${raw}`,
+        expiresIn: PASSWORD_RESET_EXPIRES_IN,
+      },
+      job.id,
+      context?.signal,
+    );
+    // A repeated run finds it delivered; the raw token is no longer needed.
+    await prisma.passwordResetToken.updateMany({
+      where: { id: resetTokenId, deliveredAt: null },
+      data: { deliveredAt: new Date(), deliverySecret: null },
+    });
   };
 }
 

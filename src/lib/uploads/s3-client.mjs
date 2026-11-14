@@ -1,6 +1,9 @@
 // Plain .mjs so both the app and Node scripts (scripts/lib/runtime.mjs) share
 // one S3 client factory.
 import { S3Client } from "@aws-sdk/client-s3";
+import { isR2Endpoint } from "./s3-endpoint.mjs";
+
+export { isR2Endpoint };
 
 /**
  * @typedef {object} S3ClientConfig
@@ -9,16 +12,6 @@ import { S3Client } from "@aws-sdk/client-s3";
  * @property {string} accessKeyId
  * @property {string} secretAccessKey
  */
-
-/** @param {string | undefined} endpoint */
-export function isR2Endpoint(endpoint) {
-  if (!endpoint) return false;
-  try {
-    return new URL(endpoint).hostname.endsWith(".r2.cloudflarestorage.com");
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Single S3 client factory. Checksums are only sent or validated when an

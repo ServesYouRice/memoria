@@ -188,6 +188,10 @@ const envSchema = z
     S3_BUCKET: optionalString,
     S3_REGION: optionalString,
     S3_ENDPOINT: optionalUrl,
+    // IMP-152: direct browser uploads (src/lib/uploads/direct-upload-config).
+    S3_PUBLIC_ENDPOINT: optionalUrl,
+    UPLOAD_DIRECT_UPLOADS: z.enum(["true", "false"]).default("true"),
+    UPLOAD_DIRECT_MAX_BYTES: optionalPositiveInt,
     S3_ACCESS_KEY_ID: optionalString,
     S3_SECRET_ACCESS_KEY: optionalString,
     BACKUP_BUCKET: optionalString,

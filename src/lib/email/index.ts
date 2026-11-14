@@ -238,6 +238,8 @@ export async function sendEmail(
 export async function sendPasswordResetEmail(
   to: EmailAddress,
   data: PasswordResetEmailData,
+  deliveryId?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const template = passwordResetTemplate(data);
 
@@ -246,6 +248,8 @@ export async function sendPasswordResetEmail(
     subject: template.subject,
     text: template.text,
     html: template.html,
+    deliveryId,
+    signal,
   });
 
   logger.info({ email: to.email }, "Password reset email sent");

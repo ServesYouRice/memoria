@@ -8,6 +8,7 @@
  */
 
 import { RESOURCE_BUDGETS } from "@/lib/policy/resource-budgets";
+import { uploadFileDirect } from "@/lib/uploads/direct-upload-client";
 import {
   PDF_CARD_HEIGHT,
   PDF_CARD_WIDTH,
@@ -50,13 +51,20 @@ export async function uploadPdf(
       `This PDF is larger than ${MAX_MB} MB, the most Memoria keeps.`,
     );
   }
-  const form = new FormData();
-  form.append("canvasId", canvasId);
-  form.append("purpose", "pdf");
-  form.append("file", file);
-  const response = await fetch("/api/v1/upload?purpose=pdf", {
-    method: "POST",
-    body: form,
+  // Straight to storage when the server offers it (IMP-152).
+  const response = await uploadFileDirect(file, {
+    canvasId,
+    fallbackMaxBytes: RESOURCE_BUDGETS.pdf.maxFileBytes,
+    fallback: () => {
+      const form = new FormData();
+      form.append("canvasId", canvasId);
+      form.append("purpose", "pdf");
+      form.append("file", file);
+      return fetch("/api/v1/upload?purpose=pdf", {
+        method: "POST",
+        body: form,
+      });
+    },
   });
   if (!response.ok) throw new Error(await uploadError(response));
   const data = (await response.json()) as {

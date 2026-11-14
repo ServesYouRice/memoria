@@ -37,6 +37,7 @@ import { RESOURCE_BUDGETS } from "@/lib/policy/resource-budgets";
 import { createLogger } from "@/lib/logger";
 import { boundRequestBody, payloadTooLarge } from "@/lib/uploads/body-limit";
 import { checkImageBounds } from "@/lib/uploads/image-bounds";
+import { runMalwareScan } from "@/lib/uploads/malware-scan";
 import {
   ALLOWED_AUDIO_MIME_TYPES,
   ALLOWED_IMAGE_MIME_TYPES,
@@ -66,8 +67,6 @@ const MAX_TOTAL_BYTES_PER_USER = LAUNCH_LIMITS.uploadBytesPerUser;
 // Voice notes (IMP-071): an audio upload is only accepted together with a
 // request to transcribe it into a note, since the canvas has no audio item.
 const VOICE_NOTE_PURPOSE = "voice-note";
-
-const DEFAULT_SCAN_TIMEOUT_MS = 10000;
 
 const uploadLogger = createLogger("upload");
 let s3Client: S3Client | null = null;
@@ -203,130 +202,6 @@ async function withUploadLock<T>(
   } finally {
     uploadLockWaiters.delete(userId);
     releaseLock();
-  }
-}
-
-async function runMalwareScan(
-  buffer: Buffer,
-  filename: string,
-  contentType: string,
-): Promise<void> {
-  const scanUrl = process.env.UPLOAD_SCAN_URL;
-  const scanRequired = process.env.UPLOAD_SCAN_REQUIRED === "true";
-
-  if (!scanUrl) {
-    if (scanRequired) {
-      throw new ApiError(
-        503,
-        "https://memoria.local/errors/upload-scan",
-        "Malware scan unavailable",
-        "UPLOAD_SCAN_URL is not configured",
-      );
-    }
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([new Uint8Array(buffer)], { type: contentType }),
-    filename,
-  );
-
-  const timeoutMs = Number(
-    process.env.UPLOAD_SCAN_TIMEOUT_MS || DEFAULT_SCAN_TIMEOUT_MS,
-  );
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const unavailable = (detail: string) =>
-    new ApiError(
-      503,
-      "https://memoria.local/errors/upload-scan",
-      "Malware scan unavailable",
-      detail,
-    );
-
-  // fetch resolves once headers arrive, so the deadline must also cover the
-  // body: a scanner that sends 200 and then stalls would otherwise hold the
-  // upload forever.
-  let response: Response;
-  let bodyText: string;
-  try {
-    try {
-      response = await fetch(scanUrl, {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      throw unavailable(
-        error instanceof Error ? error.message : "Scan service unavailable",
-      );
-    }
-
-    if (!response.ok) {
-      void response.body?.cancel().catch(() => undefined);
-      throw new ApiError(
-        503,
-        "https://memoria.local/errors/upload-scan",
-        "Malware scan failed",
-        `Scan service returned ${response.status}`,
-      );
-    }
-
-    const body = response;
-    bodyText = await new Promise<string>((resolve, reject) => {
-      const onAbort = () => {
-        void body.body?.cancel().catch(() => undefined);
-        reject(unavailable("Scan service response timed out"));
-      };
-      if (controller.signal.aborted) return onAbort();
-      controller.signal.addEventListener("abort", onAbort, { once: true });
-      body.text().then(
-        (text) => {
-          controller.signal.removeEventListener("abort", onAbort);
-          resolve(text);
-        },
-        (error: unknown) => {
-          controller.signal.removeEventListener("abort", onAbort);
-          reject(
-            controller.signal.aborted
-              ? unavailable("Scan service response timed out")
-              : unavailable(
-                  error instanceof Error
-                    ? error.message
-                    : "Scan service unavailable",
-                ),
-          );
-        },
-      );
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  let scanResult: { clean?: boolean; reason?: string } | null;
-  try {
-    scanResult = JSON.parse(bodyText) as {
-      clean?: boolean;
-      reason?: string;
-    } | null;
-  } catch {
-    scanResult = null;
-  }
-  if (!scanResult || typeof scanResult.clean !== "boolean") {
-    throw new ApiError(
-      502,
-      "https://memoria.local/errors/upload-scan",
-      "Malware scan failed",
-      "Scan service response was invalid",
-    );
-  }
-
-  if (!scanResult.clean) {
-    throw new UnprocessableEntityError(
-      scanResult.reason || "File failed malware scan",
-    );
   }
 }
 

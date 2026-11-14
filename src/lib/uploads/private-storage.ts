@@ -7,6 +7,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   type S3Client,
 } from "@aws-sdk/client-s3";
@@ -160,6 +161,32 @@ export async function readPrivateUploadObject(
           : undefined,
     etag: `W/\"${metadata.size.toString(16)}-${Math.trunc(metadata.mtimeMs).toString(16)}\"`,
   };
+}
+
+/**
+ * Size and type of an S3 object, or null when it does not exist. Direct
+ * uploads (IMP-152) check what the browser stored before reading it.
+ */
+export async function headPrivateUploadObject(
+  storageKey: string,
+  signal?: AbortSignal,
+): Promise<{ contentLength?: number; contentType?: string } | null> {
+  const bucket = process.env.S3_BUCKET;
+  if (!bucket) throw new Error("Private upload bucket is not configured");
+  try {
+    const head = await getS3Client().send(
+      new HeadObjectCommand({ Bucket: bucket, Key: storageKey }),
+      { abortSignal: signal },
+    );
+    return { contentLength: head.ContentLength, contentType: head.ContentType };
+  } catch (error) {
+    const status = (error as { $metadata?: { httpStatusCode?: number } })
+      .$metadata?.httpStatusCode;
+    if (status === 404 || (error as { name?: string }).name === "NotFound") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function deletePrivateUploadObject(

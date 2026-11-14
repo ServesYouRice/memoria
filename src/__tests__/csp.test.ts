@@ -114,6 +114,65 @@ describe("CSP Middleware", () => {
       ]);
     });
 
+    describe("direct upload bucket (IMP-152)", () => {
+      function s3(endpoint: string) {
+        vi.stubEnv("AUTH_URL", "https://memoria.example.com");
+        vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "");
+        vi.stubEnv("UPLOAD_STORAGE", "s3");
+        vi.stubEnv("UPLOAD_DIRECT_UPLOADS", "");
+        vi.stubEnv("S3_BUCKET", "memoria-uploads");
+        vi.stubEnv("S3_REGION", "eu-central-1");
+        vi.stubEnv("S3_ENDPOINT", endpoint);
+        vi.stubEnv("S3_PUBLIC_ENDPOINT", "");
+      }
+
+      it("lets the browser PUT to an R2 bucket's own host", () => {
+        s3("https://0123abcd.r2.cloudflarestorage.com");
+        expect(directive(buildCSP("n"), "connect-src")).toEqual([
+          "'self'",
+          "wss://memoria.example.com",
+          "https://memoria-uploads.0123abcd.r2.cloudflarestorage.com",
+        ]);
+      });
+
+      it("uses the endpoint origin of a path-style store", () => {
+        s3("https://s3.memoria.example.com/");
+        expect(directive(buildCSP("n"), "connect-src")).toContain(
+          "https://s3.memoria.example.com",
+        );
+      });
+
+      it("prefers the browser-facing S3_PUBLIC_ENDPOINT", () => {
+        s3("http://seaweedfs:8333");
+        vi.stubEnv("S3_PUBLIC_ENDPOINT", "https://files.memoria.example.com");
+        const connect = directive(buildCSP("n"), "connect-src");
+        expect(connect).toContain("https://files.memoria.example.com");
+        expect(connect).not.toContain("http://seaweedfs:8333");
+      });
+
+      it("names the regional AWS bucket host without an endpoint", () => {
+        s3("");
+        expect(directive(buildCSP("n"), "connect-src")).toContain(
+          "https://memoria-uploads.s3.eu-central-1.amazonaws.com",
+        );
+      });
+
+      it("adds nothing with local storage or direct uploads off", () => {
+        s3("https://s3.memoria.example.com");
+        vi.stubEnv("UPLOAD_DIRECT_UPLOADS", "false");
+        expect(directive(buildCSP("n"), "connect-src")).toEqual([
+          "'self'",
+          "wss://memoria.example.com",
+        ]);
+        vi.stubEnv("UPLOAD_DIRECT_UPLOADS", "");
+        vi.stubEnv("UPLOAD_STORAGE", "local");
+        expect(directive(buildCSP("n"), "connect-src")).toEqual([
+          "'self'",
+          "wss://memoria.example.com",
+        ]);
+      });
+    });
+
     it("names the public upload bucket in img-src", () => {
       vi.stubEnv("UPLOADS_PUBLIC_URL", "https://cdn.memoria.example.com/up");
 
