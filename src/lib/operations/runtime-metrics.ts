@@ -1,4 +1,5 @@
 import { getRedisClient } from "@/lib/cache/redis-client";
+import { addCounter } from "@/lib/telemetry/tracing";
 
 export const OPERATIONAL_COUNTERS = [
   "http_4xx_total",
@@ -67,6 +68,12 @@ export function incrementOperationalCounter(
 ): void {
   const counters = inMemoryCounters();
   counters[name] += amount;
+  try {
+    // IMP-151: the same counter over OTLP; a no-op unless export is on.
+    addCounter(`memoria.${name}`, amount);
+  } catch {
+    // Telemetry must never replace the operational failure being measured.
+  }
   const redis = getRedisClient();
   if (redis) {
     try {

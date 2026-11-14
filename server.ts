@@ -18,6 +18,7 @@ import { nanoid } from "nanoid";
 import { runWithRequestContext } from "./src/lib/api/request-context";
 import { recordHttpStatus } from "./src/lib/operations/runtime-metrics";
 import { createGracefulShutdown } from "./src/lib/operations/graceful-shutdown";
+import { shutdownTelemetry } from "./src/lib/telemetry/otel";
 import { disconnectDatabase } from "./src/lib/db";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -90,7 +91,11 @@ app
         new Promise<void>((resolvePromise) =>
           server.close(() => resolvePromise()),
         ),
-      disconnect: disconnectDatabase,
+      disconnect: async () => {
+        await disconnectDatabase();
+        // Flush buffered OpenTelemetry spans and metrics (IMP-151).
+        await shutdownTelemetry();
+      },
       exit: (code) => process.exit(code),
       deadlineMs: 20_000,
       logger,

@@ -22,6 +22,10 @@ Sentry.init({
   // Useful for debugging issues
   debug: false,
 
+  // IMP-151: with OTLP export on, Memoria's own OpenTelemetry provider
+  // (src/lib/telemetry/otel.ts) owns tracing; Sentry still reports errors.
+  enableOpenTelemetrySetup: !process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+
   // No beforeSend filter: connection errors such as ECONNREFUSED are how a
   // dependency outage (Redis, SMTP, an AI provider) shows up, so they are
   // reported like any other error.

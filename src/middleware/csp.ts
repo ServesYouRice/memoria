@@ -29,9 +29,12 @@ function appSocketOrigin(): string | null {
   return origin ? origin.replace(/^http/, "ws") : null;
 }
 
-/** The Sentry ingest host the browser SDK posts envelopes to, if enabled. */
+/**
+ * The Sentry ingest host the browser SDK posts envelopes to, if enabled. Read
+ * at request time from the same variable the root layout renders (IMP-151).
+ */
 function sentryIngestOrigin(): string | null {
-  return originOf(process.env.NEXT_PUBLIC_SENTRY_DSN);
+  return originOf(process.env.SENTRY_BROWSER_DSN);
 }
 
 /** A public upload bucket (S3/R2) that serves images straight to browsers. */

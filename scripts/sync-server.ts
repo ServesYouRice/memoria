@@ -7,6 +7,7 @@
  * share one database and Redis; production runs one until a second is needed.
  */
 import "../src/lib/env";
+import { shutdownTelemetry, startTelemetry } from "../src/lib/telemetry/otel";
 import { prisma } from "../src/lib/db";
 import { createLogger } from "../src/lib/logger";
 import { getRedisClient } from "../src/lib/cache/redis-client";
@@ -17,6 +18,9 @@ import {
   getCanvasConnectionCount,
   getConnectionCount,
 } from "../src/lib/collaboration/websocket-server";
+
+// IMP-151: OTLP traces and metrics, off unless an endpoint is set.
+await startTelemetry("memoria-sync");
 
 const logger = createLogger("sync-server");
 const sync = createSyncServer({
@@ -68,6 +72,7 @@ async function shutdown(signal: NodeJS.Signals) {
   presence.close();
   await sync.destroy();
   await prisma.$disconnect();
+  await shutdownTelemetry();
   clearTimeout(deadline);
   logger.info("Sync server shutdown complete");
   process.exit(0);

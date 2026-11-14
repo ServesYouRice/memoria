@@ -1,8 +1,5 @@
 FROM node:26.13.0-alpine AS source
 
-ARG NEXT_PUBLIC_SENTRY_DSN
-ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-
 WORKDIR /app
 RUN npm install --global pnpm@11.13.1
 
