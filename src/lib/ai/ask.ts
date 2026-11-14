@@ -30,6 +30,7 @@ import {
 } from "@/lib/ai/ask-schema";
 import { proposeAskCommand } from "@/lib/ai/ask-commands";
 import { pageCopyExcerpts } from "@/lib/services/page-copy";
+import { transcriptExcerpts } from "@/lib/video/video-items";
 import { loadItemLinks } from "@/lib/canvas/arrow-links";
 
 const logger = createLogger("ai-ask");
@@ -152,12 +153,17 @@ export async function searchOwnedItems(
   // Terms are letters and digits only (extractSearchTerms), so OR-joining
   // them is a valid tsquery.
   const tsQuery = Prisma.sql`to_tsquery('english', ${terms.join(" | ")})`;
-  // Words found only in a link's saved page text count too (IMP-094).
+  // Words found only in a link's saved page text (IMP-094) or a video's
+  // transcript (IMP-114) count too.
   const ftsMatch = Prisma.sql`
     ${useFts ? Prisma.sql`OR i."searchVector" @@ ${tsQuery}` : Prisma.empty}
     OR EXISTS (
       SELECT 1 FROM "ItemPageCopy" p
       WHERE p."itemId" = i."id" AND p."searchVector" @@ ${tsQuery}
+    )
+    OR EXISTS (
+      SELECT 1 FROM "ItemTranscript" t
+      WHERE t."itemId" = i."id" AND t."searchVector" @@ ${tsQuery}
     )
   `;
   const ftsRank = useFts
@@ -322,6 +328,15 @@ export async function retrieveOwnedItems(
     extractSearchTerms(question),
     { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
   );
+  // And of each video's transcript (IMP-114).
+  const transcripts = await transcriptExcerpts(
+    prisma,
+    merged
+      .filter((row) => row.type === "BOOKMARK" || row.type === "EMBED")
+      .map((row) => row.id),
+    extractSearchTerms(question),
+    { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
+  );
   // What each item is linked to (IMP-095): "what is connected to this?".
   const links = await loadItemLinks(
     prisma,
@@ -331,6 +346,8 @@ export async function retrieveOwnedItems(
   for (const item of retrieved) {
     const excerpt = excerpts.get(item.id);
     if (excerpt) item.pageText = excerpt;
+    const transcript = transcripts.get(item.id);
+    if (transcript) item.transcript = transcript;
     const itemLinks = links.get(item.id);
     if (itemLinks) item.links = itemLinks;
   }
