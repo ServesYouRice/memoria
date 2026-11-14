@@ -138,3 +138,31 @@ test("two browsers co-edit the same note and converge", async ({
 
   await collaboratorContext.close();
 });
+
+test("Note drops a note in view, ready to type (IMP-143)", async ({ page }) => {
+  await registerAndVerify(page, uniqueEmail("note-in-place"));
+  const canvas = await createCanvas(page, "Note In Place Canvas");
+  await page.goto(`/canvas/${canvas.id}`);
+
+  const addBar = page.getByRole("toolbar", { name: "Add to canvas" });
+  const inPlace = page.getByRole("group", { name: "Editing note" });
+  // Until the canvas document has synced, "Note" opens the note dialog.
+  await expect(async () => {
+    if (await page.getByRole("dialog").first().isVisible()) {
+      await page.keyboard.press("Escape");
+    }
+    await addBar.getByRole("button", { name: "Note" }).click();
+    await expect(inPlace).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  const editor = inPlace.locator(".ProseMirror");
+  await expect(editor).toBeFocused();
+  await page.keyboard.type("hello");
+  await page.keyboard.press("Escape");
+  await expect(inPlace).toHaveCount(0);
+
+  await expect(
+    itemList(page, canvas.name).getByLabel("note: hello"),
+  ).toBeAttached({ timeout: 20_000 });
+});

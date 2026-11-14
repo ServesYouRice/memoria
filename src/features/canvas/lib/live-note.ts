@@ -13,6 +13,14 @@ import type {
   CanvasDocumentSnapshot,
 } from "@/lib/collaboration/sync/client-session";
 
+/** Notes can be edited (and started) live: the document is open and writable. */
+export function liveEditingAvailable(
+  session: CanvasDocumentSession | null,
+  snapshot: CanvasDocumentSnapshot,
+): boolean {
+  return Boolean(session?.acceptsWrites && snapshot.writable);
+}
+
 /**
  * The note's shared text while the canvas document is open and writable and
  * holds the item; otherwise null (edit through the HTTP form instead).
@@ -22,9 +30,9 @@ export function liveNoteFragment(
   snapshot: CanvasDocumentSnapshot,
   itemId: string,
 ): Y.XmlFragment | null {
-  return snapshot.items.get(itemId) &&
-    session?.acceptsWrites &&
-    snapshot.writable
+  return session &&
+    snapshot.items.get(itemId) &&
+    liveEditingAvailable(session, snapshot)
     ? session.noteFragment(itemId)
     : null;
 }

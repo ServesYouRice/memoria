@@ -139,7 +139,14 @@ import {
   showsCanvasEmptyHint,
 } from "@/features/canvas/components/CanvasEmptyHint";
 import { NoteInlineEditor } from "@/features/canvas/components/NoteInlineEditor";
-import { liveNoteFragment } from "@/features/canvas/lib/live-note";
+import {
+  liveEditingAvailable,
+  liveNoteFragment,
+} from "@/features/canvas/lib/live-note";
+import {
+  NEW_NOTE_SIZE,
+  useAddNote,
+} from "@/features/canvas/hooks/use-add-note";
 import {
   editsNoteInPlace,
   noteScreenRect,
@@ -413,6 +420,10 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   // IMP-142: the note typed on in place, and where focus goes back after.
   const [inlineNote, setInlineNote] = useState<CanvasItem | null>(null);
   const inlineReturnFocusRef = useRef<HTMLElement | null>(null);
+  // IMP-143: a new note waiting for its shared text before it is typed on.
+  const [pendingInlineNoteId, setPendingInlineNoteId] = useState<string | null>(
+    null,
+  );
 
   // Selection & Context Menu
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -898,8 +909,25 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
   };
 
-  // The toolbar and the empty-canvas hint (IMP-141) start items the same way.
-  const handleAddNote = () => setNoteDialogOpen(true);
+  // The toolbar, the item list and the empty-canvas hint (IMP-141) start
+  // items the same way. IMP-143: "Note" drops a note in view, ready to type.
+  const addNote = useAddNote({
+    canvasId,
+    canCreateItems: capabilities.canCreateItems,
+    liveEditing: liveEditingAvailable(documentSession, documentState),
+    position,
+    stageSize,
+    zoom,
+    items: allItems,
+    createItem,
+    openDialog: () => setNoteDialogOpen(true),
+    onCreated: (item, inPlace) => {
+      setSelectedItemId(item.id);
+      setSelectedItemIds(new Set([item.id]));
+      if (inPlace && viewMode === "manual") setPendingInlineNoteId(item.id);
+    },
+  });
+  const handleAddNote = () => void addNote();
   const handleAddLink = () => setBookmarkDialogOpen(true);
 
   const handleAddTable = async () => {
@@ -1448,6 +1476,35 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   useEffect(() => {
     if (inlineNote && !inlineNoteFragment) closeInlineNote();
   }, [closeInlineNote, inlineNote, inlineNoteFragment]);
+  // IMP-143: the fallback note dialog also creates its note in view.
+  const viewCenter = viewportCenterWorld(position, stageSize, zoom);
+  const noteDialogPosition = {
+    x: viewCenter.x - NEW_NOTE_SIZE / 2,
+    y: viewCenter.y - NEW_NOTE_SIZE / 2,
+  };
+  // IMP-143: a new note opens in place as soon as its shared text is ready.
+  const pendingInlineItem = pendingInlineNoteId
+    ? allItems.find((candidate) => candidate.id === pendingInlineNoteId)
+    : undefined;
+  const pendingInlineReady =
+    pendingInlineItem !== undefined &&
+    canEdit &&
+    liveNoteFragment(documentSession, documentState, pendingInlineItem.id) !==
+      null;
+  useEffect(() => {
+    if (!pendingInlineItem || !pendingInlineReady) return;
+    const active = document.activeElement;
+    inlineReturnFocusRef.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+    setPendingInlineNoteId(null);
+    setInlineNote(pendingInlineItem);
+  }, [pendingInlineItem, pendingInlineReady]);
+  useEffect(() => {
+    // Never open an editor long after the press.
+    if (!pendingInlineNoteId) return;
+    const timer = window.setTimeout(() => setPendingInlineNoteId(null), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [pendingInlineNoteId]);
 
   const fitToScreen = useCallback(() => {
     if (
@@ -1684,7 +1741,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onActivateItem={handleActivateItem}
         onNudgeItem={handleNudgeItem}
         onDeleteItem={handleDeleteItem}
-        onCreateItem={() => setNoteDialogOpen(true)}
+        onCreateItem={handleAddNote}
         canvasName={canvasName}
       />
 
@@ -2114,6 +2171,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         collaborators={collaborators}
         noteDialogOpen={noteDialogOpen}
         setNoteDialogOpen={setNoteDialogOpen}
+        noteDialogPosition={noteDialogPosition}
         bookmarkDialogOpen={bookmarkDialogOpen}
         setBookmarkDialogOpen={setBookmarkDialogOpen}
         imageDialogOpen={imageDialogOpen}
