@@ -65,17 +65,21 @@ test("real S3 uploads, exports, and public-link revocation survive production tr
   });
   expect(imageResponse.status()).toBe(201);
 
-  const viewportSavePromise = page.waitForResponse(
-    (response) =>
-      response.url().endsWith(`/api/v1/canvases/${canvas.id}`) &&
-      response.request().method() === "PATCH",
-  );
   await page.goto(`/canvas/${canvas.id}`);
   const itemRegion = page.getByRole("region", {
     name: `Items on ${canvas.name}`,
   });
   await expect(itemRegion).toContainText("Durable production note");
   await expect(itemRegion).toContainText("Private S3 pixel");
+
+  // Opening a canvas no longer saves an unchanged viewport (TASK-044), so
+  // change it: zooming in is saved through the production proxy.
+  const viewportSavePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/v1/canvases/${canvas.id}`) &&
+      response.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "Zoom in" }).click();
   expect((await viewportSavePromise).status()).toBe(200);
 
   await page.getByRole("button", { name: "More canvas options" }).click();
