@@ -839,10 +839,10 @@ function DataGroup() {
         title="Download your data"
       >
         <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
-          Build a versioned, checksummed JSON Lines archive of your profile,
+          Download one file with everything you have stored: your profile,
           workspaces, canvases, items, sharing settings, comments, activity,
-          preferences, and authorized upload objects. Large exports run in the
-          background and expire after 24 hours.
+          preferences and uploaded files. A large download is prepared in the
+          background, and the file is removed after 24 hours.
         </Typography>
         <Stack direction="row" spacing={1}>
           <Button

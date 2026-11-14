@@ -188,7 +188,7 @@ export function EmbedManager({ canvasId }: EmbedManagerProps) {
         <TextField
           value={label}
           onChange={(event) => setLabel(event.target.value)}
-          label="Embed label"
+          label="Name for this embed"
           size="small"
           fullWidth
           disabled={creating}
@@ -197,9 +197,9 @@ export function EmbedManager({ canvasId }: EmbedManagerProps) {
         <TextField
           value={origins}
           onChange={(event) => setOrigins(event.target.value)}
-          label="Allowed origins"
+          label="Websites that may show it"
           placeholder="https://example.com"
-          helperText="Separate multiple origins with spaces or commas."
+          helperText="Type each website address in full, for example https://example.com. Separate several with spaces or commas."
           size="small"
           fullWidth
           disabled={creating}

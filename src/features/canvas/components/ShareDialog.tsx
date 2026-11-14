@@ -204,9 +204,9 @@ export function ShareDialog({
 
   const handleRotateLink = async () => {
     const confirmed = await confirmDialog({
-      title: "Rotate public link?",
+      title: "Make a new link?",
       message: "The previous URL will be permanently invalidated.",
-      confirmText: "Rotate link",
+      confirmText: "Make a new link",
       destructive: true,
     });
     if (!confirmed) return;
@@ -223,11 +223,9 @@ export function ShareDialog({
         throw new Error("The server did not return a share URL");
       setIsPublic(true);
       setShareUrl(data.shareUrl);
-      setSuccess(
-        "Public link rotated. The previous URL is permanently invalid.",
-      );
+      setSuccess("New link made. The old link no longer works.");
     } catch (err) {
-      setError(formatShareError(err, "Failed to rotate public link"));
+      setError(formatShareError(err, "Could not make a new link"));
     } finally {
       setRotatingLink(false);
     }
@@ -384,8 +382,8 @@ export function ShareDialog({
             </Typography>
 
             <Alert severity="info" sx={{ mt: 1 }}>
-              Disabling sharing or rotating this link permanently invalidates
-              the old URL.
+              If you turn sharing off or make a new link, the old link stops
+              working for good.
             </Alert>
 
             {isPublic && shareUrl && (
@@ -420,7 +418,7 @@ export function ShareDialog({
                 disabled={rotatingLink || generatingLink || publicStatusLoading}
                 sx={{ mt: 1 }}
               >
-                {rotatingLink ? "Rotating…" : "Rotate public link"}
+                {rotatingLink ? "Making a new link…" : "Make a new link"}
               </Button>
             )}
           </Box>

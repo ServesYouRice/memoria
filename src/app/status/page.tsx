@@ -11,7 +11,7 @@ export default function StatusPage() {
   return (
     <PublicInfoPage
       title="Service status"
-      description="A public summary reports availability without exposing dependency names, credentials, or connection details."
+      description="Shows whether Memoria is working right now."
     >
       <StatusSummary />
     </PublicInfoPage>

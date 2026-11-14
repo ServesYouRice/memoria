@@ -28,12 +28,15 @@ export default async function HelpPage() {
         keyboard-shortcut reference.
       </InfoSection>
       <InfoSection title="Sharing roles">
-        Viewers can read and can preview earlier versions in Version History,
-        commenters can participate in comments, editors can change items and
-        restore or save versions, and owners manage sharing, thumbnails, and
-        deletion. Memoria saves an automatic snapshot of a canvas you are
-        editing at most every ten minutes, and thins out old automatic snapshots
-        over time; versions you save yourself are kept.
+        <ul>
+          <li>Viewers can read a canvas and look at earlier versions.</li>
+          <li>Commenters can also add comments.</li>
+          <li>Editors can also change items, and save or restore versions.</li>
+          <li>Owners can also manage sharing and delete the canvas.</li>
+        </ul>
+        Memoria saves an automatic snapshot of a canvas you are editing at most
+        every ten minutes, and thins out old automatic snapshots over time;
+        versions you save yourself are kept.
       </InfoSection>
       <InfoSection title="Embeds, timer, and AR">
         Embedded links are shown as previews: Memoria displays where the link
@@ -45,15 +48,9 @@ export default async function HelpPage() {
         it, and its camera feed stays on your device.
       </InfoSection>
       <InfoSection title="Recovery">
-        Use version history to restore a canvas snapshot. Password recovery
-        requires a configured production email provider. Account and credential
+        Use version history to restore a canvas snapshot. Resetting a password
+        needs email to be set up on this installation. Account and credential
         controls are available in Settings.
-      </InfoSection>
-      <InfoSection title="Optional surfaces">
-        Embeds are link previews: Memoria does not execute third-party content
-        inside the canvas. The meeting timer is shared with everyone on the
-        canvas and is never saved. AR is experimental and only appears when the
-        deployment explicitly opts in after its device matrix has passed.
       </InfoSection>
       <InfoSection title="Save from your phone">
         Send a link from any app on your phone to your Memoria Inbox. You need
@@ -110,9 +107,9 @@ export default async function HelpPage() {
       </InfoSection>
       <InfoSection title="Troubleshooting">
         Retry a failed canvas load from its error banner. Check the Status page
-        for database, cache, and process readiness. If the problem persists,
-        contact the operator of this installation with the request identifier
-        shown in the response.
+        to see whether Memoria is working. If the problem persists, contact
+        whoever runs this installation and give them the request ID shown in the
+        error message.
       </InfoSection>
     </PublicInfoPage>
   );

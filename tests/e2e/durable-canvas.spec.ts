@@ -122,12 +122,12 @@ test("real S3 uploads, exports, and public-link revocation survive production tr
       response.url().endsWith(`/api/v1/canvases/${canvas.id}/public`) &&
       response.request().method() === "PUT",
   );
-  await page.getByRole("button", { name: "Rotate public link" }).click();
+  await page.getByRole("button", { name: "Make a new link" }).click();
   const rotateDialog = page.getByRole("dialog", {
-    name: "Rotate public link?",
+    name: "Make a new link?",
   });
   await expect(rotateDialog).toBeVisible();
-  await rotateDialog.getByRole("button", { name: "Rotate link" }).click();
+  await rotateDialog.getByRole("button", { name: "Make a new link" }).click();
   const rotateResponse = await rotateResponsePromise;
   expect(rotateResponse.status()).toBe(200);
   const rotated = (await rotateResponse.json()) as { shareUrl: string };
