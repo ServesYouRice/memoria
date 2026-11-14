@@ -157,14 +157,14 @@ async function folderCanvas(
   const remembered = known[name];
   if (remembered) {
     const still = await tx.canvas.findFirst({
-      where: { id: remembered, userId },
+      where: { id: remembered, userId, deletedAt: null },
       select: { id: true },
     });
     if (still) return still.id;
   }
   const find = () =>
     tx.canvas.findFirst({
-      where: { userId, name },
+      where: { userId, name, deletedAt: null },
       orderBy: { createdAt: "asc" },
       select: { id: true },
     });

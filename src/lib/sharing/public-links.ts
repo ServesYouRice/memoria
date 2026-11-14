@@ -8,7 +8,7 @@ async function requireOwnedCanvas(
   userId: string,
 ) {
   const canvas = await prisma.canvas.findFirst({
-    where: { id: canvasId, userId },
+    where: { id: canvasId, userId, deletedAt: null },
   });
   if (!canvas) throw new ForbiddenError("You do not own this canvas");
   return canvas;
@@ -51,7 +51,7 @@ export async function rotatePublicCanvasLink(
 ) {
   return prisma.$transaction(async (tx) => {
     const canvas = await tx.canvas.findFirst({
-      where: { id: canvasId, userId },
+      where: { id: canvasId, userId, deletedAt: null },
     });
     if (!canvas) throw new ForbiddenError("You do not own this canvas");
     if (!canvas.isPublic) {

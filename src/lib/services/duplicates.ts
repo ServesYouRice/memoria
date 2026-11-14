@@ -135,6 +135,7 @@ export async function findExistingLinks(
     FROM "CanvasItem" i
     JOIN "Canvas" c ON c."id" = i."canvasId"
     WHERE c."userId" = ${userId}
+      AND c."deletedAt" IS NULL
       AND i."deletedAt" IS NULL
       AND i."type" = 'BOOKMARK'
       AND (
@@ -213,7 +214,10 @@ export async function findSimilarLinks(
       provider: input.provider,
       model: input.model,
       itemId: { not: input.itemId },
-      item: { deletedAt: null, canvas: { userId: input.userId } },
+      item: {
+        deletedAt: null,
+        canvas: { userId: input.userId, deletedAt: null },
+      },
     },
     orderBy: { updatedAt: "desc" },
     take: MAX_COMPARED_EMBEDDINGS,

@@ -58,7 +58,12 @@ export async function duplicateCanvas(
     async (tx) => {
       await lockCanvasForMutation(tx, input.canvasId);
       const source = await tx.canvas.findFirst({
-        where: { id: input.canvasId, userId: input.userId, isTemplate: false },
+        where: {
+          id: input.canvasId,
+          userId: input.userId,
+          isTemplate: false,
+          deletedAt: null,
+        },
         select: {
           id: true,
           name: true,

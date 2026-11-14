@@ -37,7 +37,7 @@ export const POST = withApiHandler(
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
       await prisma.$transaction(async (tx) => {
         const canvas = await tx.canvas.findUnique({
-          where: { id: canvasId },
+          where: { id: canvasId, deletedAt: null },
           select: { userId: true },
         });
         if (!canvas || canvas.userId !== userId) {
@@ -111,7 +111,7 @@ export const GET = withApiHandler(
       const { userId } = await requireAuth();
       const { canvasId } = await params;
       const canvas = await prisma.canvas.findUnique({
-        where: { id: canvasId },
+        where: { id: canvasId, deletedAt: null },
         select: { userId: true },
       });
       if (!canvas || canvas.userId !== userId) {

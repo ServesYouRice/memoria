@@ -77,6 +77,33 @@ export async function deleteCanvasesBounded(
   return result;
 }
 
+export interface BulkRestoreResult {
+  restored: string[];
+  /** Failed or never sent (after a 429): these are still in Trash. */
+  stillInTrash: string[];
+  rateLimited: boolean;
+}
+
+/**
+ * Undo of a bulk delete (IMP-133): restore canvases from Trash with the same
+ * bound on requests in flight and the same stop after a 429.
+ */
+export async function restoreCanvasesBounded(
+  ids: readonly string[],
+  restoreOne: (id: string) => Promise<unknown>,
+  concurrency: number = BULK_DELETE_CONCURRENCY,
+): Promise<BulkRestoreResult> {
+  const result = await deleteCanvasesBounded(ids, restoreOne, concurrency);
+  return {
+    restored: result.deleted,
+    stillInTrash: [
+      ...result.failed.map((failure) => failure.id),
+      ...result.notAttempted,
+    ],
+    rateLimited: result.rateLimited,
+  };
+}
+
 interface CanvasListPage {
   canvases: Array<{ id: string }>;
   pagination: { total: number };

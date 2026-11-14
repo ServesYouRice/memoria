@@ -48,7 +48,9 @@ describe("empty Trash", () => {
 
     expect(await screen.findByText("Trash is empty")).toBeTruthy();
     expect(
-      screen.getByText(new RegExp(`${LAUNCH_LIMITS.trashRetentionDays} days`)),
+      screen.getByText(
+        new RegExp(`wait here for ${LAUNCH_LIMITS.trashRetentionDays} days`),
+      ),
     ).toBeTruthy();
     const next = screen.getByRole("link", { name: "Back to the dashboard" });
     expect(next.getAttribute("href")).toBe("/dashboard");

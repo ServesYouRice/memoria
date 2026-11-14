@@ -185,7 +185,7 @@ describe("recap weeks", () => {
     expect(staleLinkWhere("user-1", cutoff)).toEqual({
       type: "BOOKMARK",
       deletedAt: null,
-      canvas: { userId: "user-1", isTemplate: false },
+      canvas: { userId: "user-1", isTemplate: false, deletedAt: null },
       updatedAt: { lt: cutoff },
       OR: [{ lastOpenedAt: null }, { lastOpenedAt: { lt: cutoff } }],
     });

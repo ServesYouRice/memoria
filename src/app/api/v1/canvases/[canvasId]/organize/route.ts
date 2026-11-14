@@ -47,7 +47,7 @@ export const POST = withApiHandler(
     const body = organizeSchema.parse(await request.json().catch(() => ({})));
 
     const canvas = await prisma.canvas.findFirst({
-      where: { id: canvasId, userId },
+      where: { id: canvasId, userId, deletedAt: null },
       select: { id: true },
     });
     if (!canvas) {

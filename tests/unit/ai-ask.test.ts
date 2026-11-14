@@ -323,7 +323,7 @@ describe("retrieval is scoped to the requesting user", () => {
         where: expect.objectContaining({
           item: {
             deletedAt: null,
-            canvas: { userId: "user-1", isTemplate: false },
+            canvas: { userId: "user-1", isTemplate: false, deletedAt: null },
           },
         }),
       }),
@@ -331,7 +331,7 @@ describe("retrieval is scoped to the requesting user", () => {
     expect(mocks.canvasItemFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          canvas: { userId: "user-1", isTemplate: false },
+          canvas: { userId: "user-1", isTemplate: false, deletedAt: null },
         }),
       }),
     );
@@ -557,7 +557,12 @@ describe("Ask scope (IMP-101)", () => {
 
     expect(mocks.canvasFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "canvas-k", userId: "user-1", isTemplate: false },
+        where: {
+          id: "canvas-k",
+          userId: "user-1",
+          isTemplate: false,
+          deletedAt: null,
+        },
       }),
     );
     const sql = searchSql();
@@ -568,7 +573,7 @@ describe("Ask scope (IMP-101)", () => {
     expect(mocks.itemEmbeddingFindMany.mock.calls[0]![0].where.item).toEqual(
       expect.objectContaining({
         canvasId: "canvas-k",
-        canvas: { userId: "user-1", isTemplate: false },
+        canvas: { userId: "user-1", isTemplate: false, deletedAt: null },
       }),
     );
     expect(result.scope).toEqual({ kind: "canvas", label: "Canvas “Kitchen”" });

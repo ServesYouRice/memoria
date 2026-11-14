@@ -58,6 +58,7 @@ async function verifyCanvasOwnership(userId: string, canvasId: string) {
     where: {
       id: canvasId,
       userId,
+      deletedAt: null,
     },
     select: { id: true },
   });

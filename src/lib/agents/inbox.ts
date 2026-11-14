@@ -96,13 +96,18 @@ export async function saveToInbox(input: {
 
   const inbox = data.canvasId
     ? await prisma.canvas.findFirst({
-        where: { id: data.canvasId, userId: input.actor.userId },
+        where: {
+          id: data.canvasId,
+          userId: input.actor.userId,
+          deletedAt: null,
+        },
         select: { id: true, name: true },
       })
     : await prisma.canvas.findFirst({
         where: {
           userId: input.actor.userId,
           name: INBOX_CANVAS_NAME,
+          deletedAt: null,
           ...(input.agentProfile.allowedCanvasIds.length > 0
             ? { id: { in: input.agentProfile.allowedCanvasIds } }
             : {}),

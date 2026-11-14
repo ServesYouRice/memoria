@@ -24,6 +24,7 @@ vi.mock("@/lib/uploads/private-storage", () => ({
 import { DELETE as deleteCanvas } from "@/app/api/v1/canvases/[canvasId]/route";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 import { createUploadDeleteHandler } from "@/lib/uploads/outbox-handler";
+import { purgeCanvas } from "@/lib/canvas/purge-canvas";
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -70,7 +71,7 @@ const quotaOf = async (userId: string) => {
 };
 
 describe("upload deletion lifecycle", () => {
-  it("releases quota when the canvas delete moves assets to DELETING", async () => {
+  it("releases quota when purging a trashed canvas moves assets to DELETING", async () => {
     const { user, canvas } = await fixture(2, 30);
     const active = await asset(
       user.id,
@@ -94,6 +95,9 @@ describe("upload deletion lifecycle", () => {
       { params: Promise.resolve({ canvasId: canvas.id }) },
     );
     expect(response.status).toBe(200);
+    // DELETE only moves the canvas to Trash (IMP-132): nothing is released.
+    expect(await quotaOf(user.id)).toEqual([2, 30n]);
+    await prisma.$transaction((tx) => purgeCanvas(tx, canvas.id));
     expect(await quotaOf(user.id)).toEqual([0, 0n]);
 
     const jobs = await prisma.outboxJob.findMany({

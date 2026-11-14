@@ -114,6 +114,7 @@ async function canStillSee(
   const canvas = await client.canvas.findFirst({
     where: {
       id: item.canvasId,
+      deletedAt: null,
       OR: [{ userId }, { shares: { some: { recipientId: userId } } }],
     },
     select: { id: true },
@@ -311,7 +312,7 @@ export async function pickSomethingOld(
   const where: Prisma.CanvasItemWhereInput = {
     deletedAt: null,
     type: { notIn: NOT_OLD_TYPES },
-    canvas: { userId: input.userId, isTemplate: false },
+    canvas: { userId: input.userId, isTemplate: false, deletedAt: null },
     ...(input.exclude?.length ? { id: { notIn: input.exclude } } : {}),
     OR: [
       { lastOpenedAt: { lt: cutoff } },

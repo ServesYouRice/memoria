@@ -84,7 +84,7 @@ export async function archiveItems(input: {
       where: {
         id: { in: itemIds },
         deletedAt: null,
-        canvas: { userId, isTemplate: false },
+        canvas: { userId, isTemplate: false, deletedAt: null },
       },
       select: { canvasId: true },
     });
@@ -104,7 +104,7 @@ export async function archiveItems(input: {
       where: {
         id: { in: itemIds },
         deletedAt: null,
-        canvas: { userId, isTemplate: false },
+        canvas: { userId, isTemplate: false, deletedAt: null },
         ...(eligibleWhere ? { AND: [eligibleWhere] } : {}),
       },
       orderBy: { id: "asc" },

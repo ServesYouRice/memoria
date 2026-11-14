@@ -2,6 +2,7 @@
 /**
  * TASK-243 — bulk delete keeps few DELETEs in flight, stops on a 429, shows
  * the server's reason and keeps failed or unsent canvases selected.
+ * IMP-133 — deleting moves canvases to Trash, and the toast offers Undo.
  */
 
 import React from "react";
@@ -87,7 +88,9 @@ vi.setConfig({ testTimeout: 20_000 });
 let inFlight = 0;
 let maxInFlight = 0;
 let started: string[] = [];
+let restored: string[] = [];
 let respond: (id: string) => Response;
+let respondRestore: (id: string) => Response;
 
 function problem(status: number, detail: string, headers = {}) {
   return new Response(JSON.stringify({ status, detail }), {
@@ -96,21 +99,33 @@ function problem(status: number, detail: string, headers = {}) {
   });
 }
 
-const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-  const id = String(input).split("/").pop()!;
-  started.push(id);
-  inFlight += 1;
-  maxInFlight = Math.max(maxInFlight, inFlight);
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  inFlight -= 1;
-  return respond(id);
-});
+const fetchMock = vi.fn(
+  async (input: RequestInfo | URL, init?: RequestInit) => {
+    const parts = String(input).split("/");
+    const isRestore = parts.at(-1) === "restore";
+    const id = (isRestore ? parts.at(-2) : parts.at(-1))!;
+    if (isRestore) {
+      expect(init?.method).toBe("POST");
+      restored.push(id);
+    } else {
+      expect(init?.method).toBe("DELETE");
+      started.push(id);
+    }
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    inFlight -= 1;
+    return isRestore ? respondRestore(id) : respond(id);
+  },
+);
 
 beforeEach(() => {
   inFlight = 0;
   maxInFlight = 0;
   started = [];
+  restored = [];
   respond = () => new Response(JSON.stringify({ success: true }));
+  respondRestore = (id) => new Response(JSON.stringify({ id }));
   fetchMock.mockClear();
   state.setQueriesData.mockClear();
   state.invalidateQueries.mockClear();
@@ -127,19 +142,98 @@ async function deleteAll() {
   fireEvent.click(screen.getByRole("button", { name: "Select" }));
   fireEvent.click(screen.getByRole("button", { name: "Select all" }));
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-  await screen.findByText(/delete 10 canvases\?/);
-  const buttons = screen.getAllByRole("button", { name: "Delete" });
-  fireEvent.click(buttons[buttons.length - 1]);
+  await screen.findByText("Move 10 canvases to Trash?");
+  fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
+}
+
+/** The options of the toast that announced the delete. */
+function undoOptions(kind: "success" | "warning") {
+  const call = state.toast[kind].mock.calls[0] as unknown[];
+  return call[1] as {
+    duration: number;
+    action: { label: string; onClick: () => void };
+  };
 }
 
 describe("dashboard bulk delete", () => {
+  it("says the canvases go to Trash for 30 days, never that it cannot be undone", async () => {
+    render(<DashboardContent />);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("Move 10 canvases to Trash?");
+    expect(dialog.textContent).toContain(
+      "You can restore them from Trash for 30 days.",
+    );
+    expect(dialog.textContent).not.toMatch(/cannot be undone/i);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Move to Trash" })).toBeTruthy();
+  });
+
   it("bounds in-flight deletes and clears the selection on success", async () => {
     await deleteAll();
     await waitFor(() => expect(state.toast.success).toHaveBeenCalled());
     expect(started).toHaveLength(10);
     expect(maxInFlight).toBeLessThanOrEqual(BULK_DELETE_CONCURRENCY);
-    expect(state.toast.success.mock.calls[0][0]).toBe("Deleted 10 canvases");
+    expect(state.toast.success.mock.calls[0][0]).toBe(
+      "10 canvases moved to Trash",
+    );
+    const options = undoOptions("success");
+    expect(options.action.label).toBe("Undo");
+    expect(options.duration).toBeGreaterThanOrEqual(8_000);
     expect(state.setQueriesData).toHaveBeenCalled();
+  });
+
+  it("Undo restores every moved canvas, a few at a time, and refreshes the list", async () => {
+    await deleteAll();
+    await waitFor(() => expect(state.toast.success).toHaveBeenCalled());
+    maxInFlight = 0;
+    state.invalidateQueries.mockClear();
+    undoOptions("success").action.onClick();
+    await waitFor(() =>
+      expect(state.toast.success).toHaveBeenCalledWith("Restored"),
+    );
+    expect([...restored].sort()).toEqual(CANVASES.map((c) => c.id).sort());
+    expect(maxInFlight).toBeLessThanOrEqual(BULK_DELETE_CONCURRENCY);
+    expect(state.invalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["canvases"] }),
+    );
+    expect(state.invalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["trash"] }),
+    );
+  });
+
+  it("Undo says how many canvases are still in Trash when some restores fail", async () => {
+    respondRestore = (id) =>
+      id === "c3" || id === "c7"
+        ? problem(500, "Database unavailable")
+        : new Response(JSON.stringify({ id }));
+    await deleteAll();
+    await waitFor(() => expect(state.toast.success).toHaveBeenCalled());
+    undoOptions("success").action.onClick();
+    await waitFor(() => expect(state.toast.warning).toHaveBeenCalled());
+    expect(state.toast.warning.mock.calls[0][0]).toBe(
+      "Restored 8 canvases. 2 canvases could not be restored and are still in Trash.",
+    );
+  });
+
+  it("offers Undo for the canvases that did move when others did not", async () => {
+    respond = (id) =>
+      id === "c4"
+        ? problem(500, "Database unavailable")
+        : new Response(JSON.stringify({ success: true }));
+    await deleteAll();
+    await waitFor(() => expect(state.toast.warning).toHaveBeenCalled());
+    expect(String(state.toast.warning.mock.calls[0][0])).toContain(
+      "9 canvases moved to Trash, 1 not moved.",
+    );
+    undoOptions("warning").action.onClick();
+    await waitFor(() =>
+      expect(state.toast.success).toHaveBeenCalledWith("Restored"),
+    );
+    expect(restored).toHaveLength(9);
+    expect(restored).not.toContain("c4");
   });
 
   it("stops after a 429, hints at Retry-After and keeps unsent canvases selected", async () => {

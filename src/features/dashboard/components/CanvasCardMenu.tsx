@@ -40,7 +40,7 @@ export interface CanvasCardMenuProps {
   /** Moves the canvas; `null` takes it out of its workspace. */
   onMove: (workspaceId: string | null) => Promise<unknown>;
   onDelete: () => void;
-  /** "Delete" until moving to the Trash exists (IMP-133). */
+  /** The dashboard says "Move to Trash" (IMP-133). */
   deleteLabel?: string;
   disabled?: boolean;
 }

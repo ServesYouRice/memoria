@@ -178,6 +178,7 @@ export async function searchOwnedItems(
     JOIN "Canvas" c ON i."canvasId" = c."id"
     WHERE c."userId" = ${userId}
       AND c."isTemplate" = false
+      AND c."deletedAt" IS NULL
       AND i."deletedAt" IS NULL
       ${scopeSql(scope)}
       AND (
@@ -215,7 +216,7 @@ export async function nearestOwnedItemIds(
       model: query.model,
       item: {
         deletedAt: null,
-        canvas: { userId, isTemplate: false },
+        canvas: { userId, isTemplate: false, deletedAt: null },
         ...scopeWhere(scope),
       },
     },
@@ -245,7 +246,7 @@ async function loadOwnedItemRows(
     where: {
       id: { in: itemIds },
       deletedAt: null,
-      canvas: { userId, isTemplate: false },
+      canvas: { userId, isTemplate: false, deletedAt: null },
       ...scopeWhere(scope),
     },
     select: {
@@ -360,7 +361,7 @@ export async function retrieveOwnedItems(
 
 export async function listOwnedBoards(userId: string): Promise<AskBoard[]> {
   return prisma.canvas.findMany({
-    where: { userId, isTemplate: false },
+    where: { userId, isTemplate: false, deletedAt: null },
     orderBy: { updatedAt: "desc" },
     take: ASK_BOARD_LIMIT,
     select: { id: true, name: true },
@@ -378,7 +379,7 @@ export async function resolveAskScope(
 ): Promise<{ filter: AskScopeFilter; used: AskScopeUsed }> {
   if (scope.kind === "canvas") {
     const canvas = await prisma.canvas.findFirst({
-      where: { id: scope.canvasId, userId, isTemplate: false },
+      where: { id: scope.canvasId, userId, isTemplate: false, deletedAt: null },
       select: { id: true, name: true },
     });
     if (!canvas) throw notFoundError("Canvas", scope.canvasId);
@@ -406,6 +407,7 @@ export async function listAskScopeChoices(userId: string) {
       unnest(i."tags") tag
       WHERE c."userId" = ${userId}
         AND c."isTemplate" = false
+        AND c."deletedAt" IS NULL
         AND i."deletedAt" IS NULL
       GROUP BY tag ORDER BY COUNT(*) DESC, tag ASC
       LIMIT ${ASK_SCOPE_TAG_LIMIT}

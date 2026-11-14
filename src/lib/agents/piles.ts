@@ -466,7 +466,11 @@ export async function applyCanvasPiles(input: {
   const result = await prisma.$transaction(async (tx) => {
     await lockCanvasForMutation(tx, input.canvasId);
     const canvas = await tx.canvas.findFirst({
-      where: { id: input.canvasId, userId: input.actor.userId },
+      where: {
+        id: input.canvasId,
+        userId: input.actor.userId,
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (!canvas) {

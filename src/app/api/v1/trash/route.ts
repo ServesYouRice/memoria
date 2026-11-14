@@ -8,6 +8,7 @@ import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
+import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 
 const restoreSchema = z
   .object({
@@ -23,8 +24,13 @@ export async function GET(request: NextRequest) {
       defaultLimit: 50,
       maxLimit: 100,
     });
-    const where = { deletedAt: { not: null }, canvas: { userId } };
-    const [items, total] = await prisma.$transaction([
+    // Items on a canvas that is itself in Trash (IMP-132) come back with it,
+    // so they are listed under `canvases`, not here.
+    const where = {
+      deletedAt: { not: null },
+      canvas: { userId, deletedAt: null },
+    };
+    const [items, total, trashedCanvases] = await prisma.$transaction([
       prisma.canvasItem.findMany({
         where,
         orderBy: { deletedAt: "desc" },
@@ -41,9 +47,24 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.canvasItem.count({ where }),
+      prisma.canvas.findMany({
+        where: { userId, deletedAt: { not: null } },
+        orderBy: [{ deletedAt: "desc" }, { id: "asc" }],
+        take: LAUNCH_LIMITS.canvasesPerUser,
+        select: {
+          id: true,
+          name: true,
+          deletedAt: true,
+          _count: { select: { items: { where: { deletedAt: null } } } },
+        },
+      }),
     ]);
     return NextResponse.json({
       items,
+      canvases: trashedCanvases.map(({ _count, ...canvas }) => ({
+        ...canvas,
+        itemCount: _count.items,
+      })),
       pagination: {
         limit,
         offset,

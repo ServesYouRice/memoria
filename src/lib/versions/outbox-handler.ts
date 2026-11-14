@@ -69,7 +69,10 @@ export async function snapshotCanvasIfChanged(
       if (latest && now.getTime() - latest.createdAt.getTime() < intervalMs) {
         return "recent";
       }
-      const exists = await tx.canvas.count({ where: { id: canvasId } });
+      // A canvas in Trash (IMP-132) gets no new snapshots.
+      const exists = await tx.canvas.count({
+        where: { id: canvasId, deletedAt: null },
+      });
       if (!exists) return "missing";
       const captured = await captureCanvasSnapshot(tx, canvasId);
       if (latest ? latest.contentHash === captured.contentHash : false) {
@@ -134,6 +137,7 @@ export async function findAutoSnapshotCandidates(
       ) AS "since"
     ) change
     WHERE (latest."createdAt" IS NULL OR latest."createdAt" <= ${dueBefore}::timestamp)
+      AND canvas."deletedAt" IS NULL
       AND (
         EXISTS (
           SELECT 1 FROM "CanvasItem" item

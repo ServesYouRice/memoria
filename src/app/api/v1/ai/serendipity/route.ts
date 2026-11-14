@@ -10,7 +10,7 @@ export const POST = withAuthValidation(
   serendipitySchema,
   async ({ canvasId, keywords }, _req, session) => {
     const owned = await prisma.canvas.findFirst({
-      where: { id: canvasId, userId: session.user.id },
+      where: { id: canvasId, userId: session.user.id, deletedAt: null },
       select: { id: true },
     });
     if (!owned)
@@ -19,8 +19,7 @@ export const POST = withAuthValidation(
     const budgeted = await runBudgetedAi(
       session.user.id,
       { prompt: safeKeywords.join("\n") || "serendipity", maxOutputTokens: 1 },
-      () =>
-        findSerendipitousItems(session.user.id, canvasId, safeKeywords),
+      () => findSerendipitousItems(session.user.id, canvasId, safeKeywords),
     );
 
     return NextResponse.json({

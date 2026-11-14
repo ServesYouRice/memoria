@@ -48,6 +48,7 @@ async function findScopedBoardByName(
     where: {
       userId,
       isTemplate: false,
+      deletedAt: null,
       id: { in: allowedCanvasIds },
       name: { equals: name, mode: "insensitive" },
     },
@@ -70,6 +71,7 @@ export async function listAgentBoards(input: {
     where: {
       userId: input.userId,
       isTemplate: false,
+      deletedAt: null,
       ...(input.agentProfile
         ? { id: { in: input.agentProfile.allowedCanvasIds } }
         : {}),

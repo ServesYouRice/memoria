@@ -112,11 +112,8 @@ describe("dashboard selection across workspace filters", () => {
 
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(
-      await screen.findByText(/delete 1 canvas\? This action cannot be undone/),
-    ).toBeTruthy();
-    const dialogButtons = screen.getAllByRole("button", { name: "Delete" });
-    fireEvent.click(dialogButtons[dialogButtons.length - 1]);
+    expect(await screen.findByText("Move 1 canvas to Trash?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Move to Trash" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const urls = fetchMock.mock.calls.map((call) =>

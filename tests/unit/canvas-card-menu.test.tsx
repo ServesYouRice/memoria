@@ -106,13 +106,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("canvas card menu (IMP-137)", () => {
-  it("lists Rename, Duplicate, Move to workspace and Delete in order", () => {
+  it("lists Rename, Duplicate, Move to workspace and Move to Trash in order", () => {
     const menu = openMenu("Lisbon weekend");
     expect(
       within(menu)
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
-    ).toEqual(["Rename", "Duplicate", "Move to workspace", "Delete"]);
+    ).toEqual(["Rename", "Duplicate", "Move to workspace", "Move to Trash"]);
   });
 
   it("does not follow the card link", () => {
@@ -242,13 +242,17 @@ describe("canvas card menu (IMP-137)", () => {
     expect(state.duplicate).toHaveBeenCalledWith("c2");
   });
 
-  it("asks to delete exactly that canvas", async () => {
+  it("asks to move exactly that canvas to Trash", async () => {
     openMenu("garden plans");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
-    const dialog = screen.getByRole("dialog", { name: "Delete canvases?" });
-    expect(dialog.textContent).toContain("delete 1 canvas?");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move to Trash" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "Move 1 canvas to Trash?",
+    });
+    expect(dialog.textContent).toContain("You can restore it from Trash");
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Move to Trash" }),
+      );
     });
     await waitFor(() => expect(state.apiFetch).toHaveBeenCalledTimes(1));
     expect(state.apiFetch).toHaveBeenCalledWith("/api/v1/canvases/c2", {

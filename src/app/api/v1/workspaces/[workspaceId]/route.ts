@@ -25,6 +25,7 @@ export const GET = withApiHandler(
       where: { id: workspaceId },
       include: {
         canvases: {
+          where: { deletedAt: null },
           orderBy: { updatedAt: "desc" },
           select: {
             id: true,

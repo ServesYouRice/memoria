@@ -102,7 +102,7 @@ async function loadOwnedItems(
     where: {
       id: { in: itemIds },
       deletedAt: null,
-      canvas: { userId, isTemplate: false },
+      canvas: { userId, isTemplate: false, deletedAt: null },
     },
   });
   if (items.length !== new Set(itemIds).size) {
@@ -178,7 +178,12 @@ export async function proposeAskCommand(input: {
   let boardName: string | undefined;
   if (command.type === "move_items") {
     const board = await prisma.canvas.findFirst({
-      where: { id: command.boardId, userId: input.userId, isTemplate: false },
+      where: {
+        id: command.boardId,
+        userId: input.userId,
+        isTemplate: false,
+        deletedAt: null,
+      },
       select: { name: true },
     });
     if (!board) throw new NotFoundError("Canvas not found.");
@@ -321,7 +326,12 @@ export async function executeAskCommandSuggestion(input: {
     let createdBoardId: string | null = null;
     if (command.type === "move_items") {
       target = await tx.canvas.findFirst({
-        where: { id: command.boardId, userId, isTemplate: false },
+        where: {
+          id: command.boardId,
+          userId,
+          isTemplate: false,
+          deletedAt: null,
+        },
         select: { id: true, name: true },
       });
       if (!target) throw new NotFoundError("Canvas not found.");

@@ -32,7 +32,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   }
 
   const canvases = await prisma.canvas.findMany({
-    where: { userId: authResult.user.id },
+    where: { userId: authResult.user.id, deletedAt: null },
     select: { id: true, name: true },
     orderBy: { updatedAt: "desc" },
     take: LAUNCH_LIMITS.canvasesPerUser,

@@ -44,7 +44,7 @@ export const POST = withApiHandler(
       if (!targetCanvasId) {
         // Find "Inbox" or "Unsorted" or first canvas
         const inbox = await prisma.canvas.findFirst({
-          where: { userId: user.id, name: "Inbox" },
+          where: { userId: user.id, name: "Inbox", deletedAt: null },
         });
 
         if (inbox) {
@@ -52,7 +52,7 @@ export const POST = withApiHandler(
         } else {
           // Find first
           const first = await prisma.canvas.findFirst({
-            where: { userId: user.id },
+            where: { userId: user.id, deletedAt: null },
             orderBy: { createdAt: "asc" },
           });
           if (first) {
@@ -73,7 +73,7 @@ export const POST = withApiHandler(
       // Verify canvas ownership if ID provided
       if (canvasId) {
         const canvas = await prisma.canvas.findUnique({
-          where: { id: canvasId },
+          where: { id: canvasId, deletedAt: null },
         });
         if (!canvas || canvas.userId !== user.id) {
           throw notFoundError("Canvas", canvasId);

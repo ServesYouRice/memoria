@@ -108,8 +108,9 @@ export const GET = withAuth(async (request, session) => {
    * prisma/fts-migration.sql
    */
 
+  // A canvas in Trash (IMP-132) is searched by nobody.
   const accessFilter = Prisma.sql`
-    (
+    c."deletedAt" IS NULL AND (
       c."userId" = ${userId}
       OR EXISTS (
         SELECT 1 FROM "CanvasShare" s

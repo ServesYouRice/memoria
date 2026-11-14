@@ -153,7 +153,7 @@ describe("proposeAskCommand files suggestions only", () => {
       where: {
         id: { in: ["i1", "i2"] },
         deletedAt: null,
-        canvas: { userId: "user-1", isTemplate: false },
+        canvas: { userId: "user-1", isTemplate: false, deletedAt: null },
       },
     });
     expect(mocks.createSuggestionRecord).toHaveBeenCalledWith(
@@ -205,7 +205,12 @@ describe("proposeAskCommand files suggestions only", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(mocks.canvasFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "foreign", userId: "user-1", isTemplate: false },
+        where: {
+          id: "foreign",
+          userId: "user-1",
+          isTemplate: false,
+          deletedAt: null,
+        },
       }),
     );
   });
@@ -339,7 +344,7 @@ describe("executing an approved Ask command", () => {
       where: {
         id: { in: ["i1", "i2"] },
         deletedAt: null,
-        canvas: { userId: "user-1", isTemplate: false },
+        canvas: { userId: "user-1", isTemplate: false, deletedAt: null },
       },
     });
     expect(mocks.tx.canvasItem.update).toHaveBeenCalledWith(
@@ -577,7 +582,7 @@ describe("undoing an Ask move", () => {
     });
 
     expect(mocks.tx.canvasItem.findFirst).toHaveBeenCalledWith({
-      where: { id: "i1", canvas: { userId: "user-1" } },
+      where: { id: "i1", canvas: { userId: "user-1", deletedAt: null } },
     });
     expect(mocks.tx.canvasItem.update).toHaveBeenCalledWith(
       expect.objectContaining({

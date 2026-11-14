@@ -105,6 +105,7 @@ async function getOwnedCanvasTx(
     where: {
       id: canvasId,
       userId,
+      deletedAt: null,
     },
     select: {
       id: true,
@@ -130,6 +131,7 @@ async function getCanvasItemScopeTx(
       deletedAt: null,
       canvas: {
         userId,
+        deletedAt: null,
       },
     },
     select: {
@@ -303,6 +305,7 @@ async function buildCanvasCheckpointSnapshot(
     where: {
       id: input.canvasId,
       userId: input.userId,
+      deletedAt: null,
     },
     select: {
       id: true,
@@ -368,7 +371,7 @@ async function canvasCheckpointFingerprint(
   const liveItem = { canvasId: input.canvasId, deletedAt: null };
   const [canvas, items, comments, links, entities] = await Promise.all([
     tx.canvas.findFirst({
-      where: { id: input.canvasId, userId: input.userId },
+      where: { id: input.canvasId, userId: input.userId, deletedAt: null },
       select: { updatedAt: true },
     }),
     tx.canvasItem.aggregate({
@@ -1543,7 +1546,7 @@ async function applyRevertOperation(
     const existing = await tx.canvasItem.findFirst({
       where: {
         id: changeRecord.targetId,
-        canvas: { userId },
+        canvas: { userId, deletedAt: null },
       },
     });
     if (!existing) {
@@ -1552,7 +1555,7 @@ async function applyRevertOperation(
       );
     }
     const source = await tx.canvas.findFirst({
-      where: { id: snapshot.canvasId, userId },
+      where: { id: snapshot.canvasId, userId, deletedAt: null },
       select: { id: true },
     });
     if (!source) {
@@ -1663,7 +1666,7 @@ async function applyRevertOperation(
       createdAt: string;
     };
     const board = await tx.canvas.findFirst({
-      where: { id: snapshot.canvasId, userId },
+      where: { id: snapshot.canvasId, userId, deletedAt: null },
       select: { id: true },
     });
     if (!board) return;

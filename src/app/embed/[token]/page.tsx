@@ -37,7 +37,7 @@ export default async function EmbedPage({ params }: EmbedPageProps) {
   if (!embed) notFound();
 
   const canvas = await prisma.canvas.findUnique({
-    where: { id: embed.canvasId },
+    where: { id: embed.canvasId, deletedAt: null },
     select: { name: true, zoomLevel: true, panX: true, panY: true },
   });
   if (!canvas) notFound();

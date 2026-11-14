@@ -318,6 +318,7 @@ export async function decideConsent(input: {
     where: {
       userId: input.userId,
       id: { in: input.canvasIds },
+      deletedAt: null,
     },
     select: { id: true },
   });

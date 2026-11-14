@@ -66,8 +66,9 @@ export async function authorizeSyncConnection(
   });
   // Decided before the canvas is read, so it says nothing about the canvas.
   if (!session && !input.token) return { status: "signed-out" };
+  // A canvas in Trash (IMP-132) is refused like a missing one.
   const canvas = await prisma.canvas.findUnique({
-    where: { id: input.documentName },
+    where: { id: input.documentName, deletedAt: null },
     select: {
       userId: true,
       isPublic: true,
@@ -138,8 +139,9 @@ export async function refreshSyncAuthorizations(
     new Set(connections.map(({ canvasId }) => canvasId)),
   );
   const [canvases, sessions] = await Promise.all([
+    // A canvas moved to Trash drops out, so its connections close.
     prisma.canvas.findMany({
-      where: { id: { in: canvasIds } },
+      where: { id: { in: canvasIds }, deletedAt: null },
       select: {
         id: true,
         userId: true,
