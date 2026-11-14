@@ -9,7 +9,7 @@ export default async function InboxPage() {
   if (!userId) redirect("/auth/login");
 
   const inbox = await prisma.canvas.findFirst({
-    where: { userId, name: INBOX_CANVAS_NAME },
+    where: { userId, name: INBOX_CANVAS_NAME, deletedAt: null },
     orderBy: { createdAt: "asc" },
     select: { id: true },
   });

@@ -96,7 +96,7 @@ export async function enqueueHomeBoardProposal(
   event: { itemId: string; canvasId: string; userId: string },
 ): Promise<boolean> {
   const canvas = await tx.canvas.findUnique({
-    where: { id: event.canvasId },
+    where: { id: event.canvasId, deletedAt: null },
     select: { userId: true, name: true, isTemplate: true },
   });
   if (
@@ -325,6 +325,7 @@ async function loadCandidateBoards(
       where: {
         userId: input.userId,
         isTemplate: false,
+        deletedAt: null,
         id: { not: input.sourceCanvasId },
       },
       orderBy: { updatedAt: "desc" },
@@ -419,11 +420,20 @@ export async function proposeHomeBoard(
       deletedAt: true,
       content: true,
       tags: true,
-      canvas: { select: { userId: true, name: true, isTemplate: true } },
+      canvas: {
+        select: {
+          userId: true,
+          name: true,
+          isTemplate: true,
+          deletedAt: true,
+        },
+      },
       homeBoardSuggestion: true,
     },
   });
-  if (!item || item.deletedAt) return { status: "skipped", reason: "gone" };
+  // An item on a canvas in Trash (IMP-132) is gone too.
+  if (!item || item.deletedAt || item.canvas.deletedAt)
+    return { status: "skipped", reason: "gone" };
   const userId = item.canvas.userId;
 
   const existing = item.homeBoardSuggestion;
@@ -607,11 +617,16 @@ async function isStale(
 ) {
   const [item, target] = await Promise.all([
     defaultPrisma.canvasItem.findFirst({
-      where: { id: row.itemId, deletedAt: null },
+      where: { id: row.itemId, deletedAt: null, canvas: { deletedAt: null } },
       select: { canvasId: true },
     }),
     defaultPrisma.canvas.findFirst({
-      where: { id: row.targetCanvasId, userId, isTemplate: false },
+      where: {
+        id: row.targetCanvasId,
+        userId,
+        isTemplate: false,
+        deletedAt: null,
+      },
       select: { id: true },
     }),
   ]);
@@ -716,7 +731,7 @@ export async function acceptHomeBoardSuggestion(input: {
     where: { id: row.suggestionId, userId: input.userId },
   });
   const item = await defaultPrisma.canvasItem.findFirst({
-    where: { id: input.itemId, deletedAt: null },
+    where: { id: input.itemId, deletedAt: null, canvas: { deletedAt: null } },
     select: { canvasId: true },
   });
   const dropStale = async () => {
@@ -984,7 +999,7 @@ export async function listHomeBoardSuggestions(input: {
   recentlyFiled: InboxFiledItem[];
 }> {
   const canvas = await defaultPrisma.canvas.findFirst({
-    where: { id: input.canvasId, userId: input.userId },
+    where: { id: input.canvasId, userId: input.userId, deletedAt: null },
     select: { id: true },
   });
   if (!canvas) throw new NotFoundError("Canvas not found.");

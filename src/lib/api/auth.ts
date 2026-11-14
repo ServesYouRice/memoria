@@ -52,8 +52,10 @@ export async function getCanvasAccess(
   // A transaction client, for a check that must see what the caller's lock holds.
   client: Pick<Prisma.TransactionClient, "canvas"> = prisma,
 ): Promise<CanvasAccessLevel> {
+  // A canvas in Trash (IMP-132) reads as missing: only its owner's Trash and
+  // restore routes look past `deletedAt`.
   const canvas = await client.canvas.findUnique({
-    where: { id: canvasId },
+    where: { id: canvasId, deletedAt: null },
     select: {
       userId: true,
       shares: {
@@ -122,7 +124,7 @@ export async function requireCanvasAccess(
  */
 export async function requireCanvasOwnership(canvasId: string, userId: string) {
   const canvas = await prisma.canvas.findUnique({
-    where: { id: canvasId },
+    where: { id: canvasId, deletedAt: null },
     select: { userId: true },
   });
 
@@ -150,12 +152,13 @@ export async function requireItemOwnership(itemId: string, userId: string) {
       id: true,
       canvasId: true,
       canvas: {
-        select: { userId: true },
+        select: { userId: true, deletedAt: true },
       },
     },
   });
 
-  if (!item) {
+  // An item on a canvas in Trash reads as missing (IMP-132).
+  if (!item || item.canvas.deletedAt) {
     throw new ForbiddenError("Item not found or access denied");
   }
 

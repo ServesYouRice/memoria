@@ -1,5 +1,7 @@
 import type { OutboxJob, PrismaClient } from "@/generated/prisma/client";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { purgeCanvas } from "@/lib/canvas/purge-canvas";
 import { pruneCompletedOutboxJobs } from "@/lib/outbox/repository";
 import type { OutboxHandler, OutboxHandlerContext } from "@/lib/outbox/types";
 import {
@@ -107,8 +109,50 @@ export function createTrashRetentionHandler(
       `,
       { deadlineAt: retentionDeadline(context), signal: context?.signal },
     );
-    if (remains) await enqueueContinuation(prisma, job);
+    const canvasesRemain = await purgeTrashedCanvases(prisma, cutoff, {
+      deadlineAt: retentionDeadline(context),
+      signal: context?.signal,
+    });
+    if (remains || canvasesRemain) await enqueueContinuation(prisma, job);
   };
+}
+
+/** Canvases one trash sweep batch purges; each is its own transaction. */
+export const CANVAS_PURGE_BATCH_SIZE = 20;
+
+/**
+ * Purges canvases that have been in Trash since before the cutoff (IMP-132).
+ * Each canvas is re-checked under its row lock, so one restored meanwhile is
+ * kept, and a purged one is gone: a second run finds nothing to do. Returns
+ * whether work may remain.
+ */
+export async function purgeTrashedCanvases(
+  prisma: PrismaClient,
+  cutoff: Date,
+  options: { deadlineAt: number; signal?: AbortSignal },
+) {
+  return runBatchedRetention(
+    async () => {
+      const doomed = await prisma.canvas.findMany({
+        where: { deletedAt: { lt: cutoff } },
+        orderBy: [{ deletedAt: "asc" }, { id: "asc" }],
+        take: CANVAS_PURGE_BATCH_SIZE,
+        select: { id: true },
+      });
+      for (const { id } of doomed) {
+        await prisma.$transaction(async (tx) => {
+          await lockCanvasForMutation(tx, id);
+          const still = await tx.canvas.findFirst({
+            where: { id, deletedAt: { lt: cutoff } },
+            select: { id: true },
+          });
+          if (still) await purgeCanvas(tx, id);
+        });
+      }
+      return doomed.length;
+    },
+    { ...options, batchSize: CANVAS_PURGE_BATCH_SIZE },
+  );
 }
 
 export function createVersionRetentionHandler(

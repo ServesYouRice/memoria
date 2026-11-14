@@ -642,7 +642,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
           );
 
           const publicCanvas = await prisma.canvas.findUnique({
-            where: { id: canvasId },
+            where: { id: canvasId, deletedAt: null },
             select: {
               id: true,
               isPublic: true,
@@ -693,7 +693,7 @@ export function createCollaborationServer(server: any): WebSocketServer {
 
           // Check if user has access to canvas
           const canvas = await prisma.canvas.findUnique({
-            where: { id: canvasId },
+            where: { id: canvasId, deletedAt: null },
             include: {
               shares: {
                 where: { recipientId: user.id },
@@ -1020,8 +1020,9 @@ async function revalidateAllConnections(): Promise<void> {
     new Set(clients.map((client) => client.canvasId)),
   );
   const [canvases, sessions] = await Promise.all([
+    // A canvas moved to Trash drops out, so its clients are closed.
     prisma.canvas.findMany({
-      where: { id: { in: canvasIds } },
+      where: { id: { in: canvasIds }, deletedAt: null },
       select: {
         id: true,
         userId: true,

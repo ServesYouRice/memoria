@@ -89,7 +89,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       },
     });
 
-    if (!item || item.deletedAt) {
+    if (!item || item.deletedAt || item.canvas.deletedAt) {
       throw new NotFoundError("Canvas item not found");
     }
 
@@ -171,7 +171,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       },
     });
 
-    if (!item || item.deletedAt) {
+    if (!item || item.deletedAt || item.canvas.deletedAt) {
       throw new NotFoundError("Canvas item not found");
     }
 

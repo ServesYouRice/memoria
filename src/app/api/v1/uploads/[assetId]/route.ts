@@ -17,10 +17,11 @@ async function findAsset(assetId: string) {
   const asset = await prisma.uploadAsset.findUnique({
     where: { id: assetId },
     include: {
-      canvas: { select: { isPublic: true } },
+      canvas: { select: { isPublic: true, deletedAt: true } },
     },
   });
-  if (!asset) throw notFoundError("Upload", assetId);
+  // An upload on a canvas in Trash (IMP-132) reads as missing.
+  if (!asset || asset.canvas.deletedAt) throw notFoundError("Upload", assetId);
   return asset;
 }
 

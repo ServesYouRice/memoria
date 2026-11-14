@@ -27,7 +27,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
     await prisma.$transaction(async (tx) => {
       const canvas = await tx.canvas.findUnique({
-        where: { id: canvasId },
+        where: { id: canvasId, deletedAt: null },
         select: { userId: true },
       });
       if (!canvas || canvas.userId !== userId) {

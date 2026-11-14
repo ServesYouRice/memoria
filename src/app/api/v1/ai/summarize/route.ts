@@ -14,7 +14,7 @@ export const POST = withAuthValidation(
   summarizeSchema,
   async ({ canvasId }, _req, session) => {
     const canvas = await prisma.canvas.findUnique({
-      where: { id: canvasId },
+      where: { id: canvasId, deletedAt: null },
       select: {
         id: true,
         userId: true,

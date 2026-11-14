@@ -68,7 +68,7 @@ export async function listItemPlacements(
   input: { itemId: string; userId: string },
 ): Promise<{ homeCanvasId: string; placements: ItemPlacementSummary[] }> {
   const item = await store.canvasItem.findFirst({
-    where: { id: input.itemId, deletedAt: null },
+    where: { id: input.itemId, deletedAt: null, canvas: { deletedAt: null } },
     select: { canvasId: true, canvas: { select: { userId: true } } },
   });
   if (!item) throw notFoundError("Item", input.itemId);
@@ -77,7 +77,11 @@ export async function listItemPlacements(
       "Only the canvas owner can see where it is shown.",
     );
   const placements = await store.itemPlacement.findMany({
-    where: { itemId: input.itemId, canvasId: { not: item.canvasId } },
+    where: {
+      itemId: input.itemId,
+      canvasId: { not: item.canvasId },
+      canvas: { deletedAt: null },
+    },
     select: { id: true, canvasId: true, canvas: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
@@ -101,7 +105,7 @@ export async function createPlacement(
 ): Promise<ItemPlacementSummary> {
   return store.$transaction(async (tx) => {
     const item = await tx.canvasItem.findFirst({
-      where: { id: input.itemId, deletedAt: null },
+      where: { id: input.itemId, deletedAt: null, canvas: { deletedAt: null } },
       select: {
         canvasId: true,
         type: true,
@@ -124,7 +128,7 @@ export async function createPlacement(
     if (item.canvasId === input.canvasId)
       throw new UnprocessableEntityError("The item is already on this canvas.");
     const target = await tx.canvas.findUnique({
-      where: { id: input.canvasId },
+      where: { id: input.canvasId, deletedAt: null },
       select: { userId: true, name: true },
     });
     // Another person's canvas reads as missing, like any canvas you cannot see.
@@ -217,7 +221,8 @@ export async function listCanvasPlacements(
   canOpen: (homeCanvasId: string) => Promise<boolean>,
 ): Promise<PlacedItem[]> {
   const placements = await store.itemPlacement.findMany({
-    where: { canvasId, item: { deletedAt: null } },
+    // An item whose home canvas is in Trash (IMP-132) is not shown here.
+    where: { canvasId, item: { deletedAt: null, canvas: { deletedAt: null } } },
     orderBy: [{ zIndex: "asc" }, { id: "asc" }],
     select: {
       id: true,
@@ -286,6 +291,7 @@ export async function placementsElsewhere(
       itemId: { in: input.itemIds },
       item: { canvasId: input.canvasId },
       canvasId: { not: input.canvasId },
+      canvas: { deletedAt: null },
     },
     select: { itemId: true, canvas: { select: { name: true } } },
     orderBy: { createdAt: "asc" },

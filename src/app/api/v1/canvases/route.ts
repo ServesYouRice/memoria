@@ -34,6 +34,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   const where = {
     userId,
     isTemplate: false,
+    deletedAt: null,
     ...(workspaceId ? { workspaceId } : {}),
   };
 

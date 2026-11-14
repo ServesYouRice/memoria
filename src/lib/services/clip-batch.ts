@@ -170,7 +170,7 @@ export async function findOrCreateInbox(
 ) {
   const find = () =>
     tx.canvas.findFirst({
-      where: { userId, name: INBOX_CANVAS_NAME },
+      where: { userId, name: INBOX_CANVAS_NAME, deletedAt: null },
       orderBy: { createdAt: "asc" },
       select: { id: true },
     });

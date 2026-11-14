@@ -232,11 +232,18 @@ model Canvas {
   /// Items from other canvases shown here too (IMP-109).
   placements   ItemPlacement[]
 
+  /// Set when the owner moved the canvas to Trash (IMP-132). A trashed canvas
+  /// reads as missing everywhere except its owner's Trash and restore; the
+  /// trash sweep purges it after `LAUNCH_LIMITS.trashRetentionDays`.
+  deletedAt   DateTime?
+  deletedById String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
   @@index([userId, updatedAt])
+  @@index([userId, deletedAt])
   @@index([userId, isTemplate]) // For template listing by user (Issue #12)
   @@index([shareToken])
   @@index([isPublic]) // For public canvas discovery (Issue #12)

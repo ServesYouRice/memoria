@@ -19,7 +19,11 @@ export const GET = withApiHandler(async (request: Request) => {
     defaultLimit: 50,
     maxLimit: 100,
   });
-  const where = { recipientId: userId };
+  // Notes about a canvas in Trash (IMP-132) are hidden with it.
+  const where = {
+    recipientId: userId,
+    OR: [{ canvasId: null }, { canvas: { is: { deletedAt: null } } }],
+  };
   const [notifications, total, unread] = await Promise.all([
     prisma.notification.findMany({
       where,

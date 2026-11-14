@@ -9,14 +9,17 @@ export const GET = withApiHandler(async () => {
   const { userId } = await requireAuth();
   const [canvases, workspaces, items, shares, versions, uploadQuota, ai] =
     await Promise.all([
-      prisma.canvas.count({ where: { userId } }),
+      // Canvases in Trash (IMP-132) and what is on them do not count.
+      prisma.canvas.count({ where: { userId, deletedAt: null } }),
       prisma.workspace.count({ where: { userId } }),
       prisma.canvasItem.count({
-        where: { canvas: { userId }, deletedAt: null },
+        where: { canvas: { userId, deletedAt: null }, deletedAt: null },
       }),
-      prisma.canvasShare.count({ where: { canvas: { userId } } }),
+      prisma.canvasShare.count({
+        where: { canvas: { userId, deletedAt: null } },
+      }),
       prisma.canvasVersion.count({
-        where: { canvas: { userId }, kind: "MANUAL" },
+        where: { canvas: { userId, deletedAt: null }, kind: "MANUAL" },
       }),
       prisma.uploadQuota.findUnique({ where: { userId } }),
       getAiUsage(userId),

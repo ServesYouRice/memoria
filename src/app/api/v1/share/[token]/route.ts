@@ -41,7 +41,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       Object.fromEntries(request.nextUrl.searchParams),
     );
     const canvas = await prisma.canvas.findUnique({
-      where: { shareToken: token },
+      where: { shareToken: token, deletedAt: null },
       select: {
         id: true,
         name: true,

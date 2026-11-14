@@ -69,7 +69,7 @@ export default async function OAuthAuthorizePage({
   }
 
   const canvases = await prisma.canvas.findMany({
-    where: { userId: session.user.id },
+    where: { userId: session.user.id, deletedAt: null },
     select: { id: true, name: true },
     orderBy: { updatedAt: "desc" },
     take: 200,

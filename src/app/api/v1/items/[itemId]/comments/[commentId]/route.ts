@@ -49,6 +49,7 @@ async function getCommentWithAccess(
             select: {
               userId: true,
               isPublic: true,
+              deletedAt: true,
               shares: { select: { recipientId: true, role: true } },
             },
           },
@@ -64,7 +65,8 @@ async function getCommentWithAccess(
     !comment ||
     comment.deletedAt ||
     comment.itemId !== itemId ||
-    comment.item.deletedAt
+    comment.item.deletedAt ||
+    comment.item.canvas.deletedAt
   ) {
     throw notFoundError("Comment", commentId);
   }

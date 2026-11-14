@@ -16,6 +16,7 @@ const prismaMocks = vi.hoisted(() => ({
   workspaceDelete: vi.fn(),
   workspaceCreate: vi.fn(),
   canvasUpdateMany: vi.fn(),
+  canvasFindMany: vi.fn(),
   canvasItemFindMany: vi.fn(),
   canvasItemCount: vi.fn(),
   canvasItemUpdateMany: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock("@/lib/db", () => ({
     },
     canvas: {
       updateMany: prismaMocks.canvasUpdateMany,
+      findMany: prismaMocks.canvasFindMany,
     },
     canvasItem: {
       findMany: prismaMocks.canvasItemFindMany,
@@ -352,7 +354,18 @@ describe("Tenant Scoping for Workspaces, Trash, and Notifications (IMP-060)", ()
         },
       ];
 
-      prismaMocks.$transaction.mockResolvedValue([mockItems, 1]);
+      prismaMocks.$transaction.mockResolvedValue([
+        mockItems,
+        1,
+        [
+          {
+            id: "c-2",
+            name: "Old canvas",
+            deletedAt: new Date("2026-01-02T00:00:00.000Z"),
+            _count: { items: 3 },
+          },
+        ],
+      ]);
 
       const req = createNextRequest(
         "http://localhost/api/v1/trash?limit=20&offset=0",
@@ -362,11 +375,19 @@ describe("Tenant Scoping for Workspaces, Trash, and Notifications (IMP-060)", ()
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.items).toHaveLength(1);
+      expect(json.canvases).toEqual([
+        {
+          id: "c-2",
+          name: "Old canvas",
+          deletedAt: "2026-01-02T00:00:00.000Z",
+          itemCount: 3,
+        },
+      ]);
 
       expect(prismaMocks.canvasItemFindMany).toHaveBeenCalledWith({
         where: {
           deletedAt: { not: null },
-          canvas: { userId: ownerUserId },
+          canvas: { userId: ownerUserId, deletedAt: null },
         },
         orderBy: { deletedAt: "desc" },
         take: 20,
@@ -377,9 +398,14 @@ describe("Tenant Scoping for Workspaces, Trash, and Notifications (IMP-060)", ()
       expect(prismaMocks.canvasItemCount).toHaveBeenCalledWith({
         where: {
           deletedAt: { not: null },
-          canvas: { userId: ownerUserId },
+          canvas: { userId: ownerUserId, deletedAt: null },
         },
       });
+      expect(prismaMocks.canvasFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: ownerUserId, deletedAt: { not: null } },
+        }),
+      );
     });
 
     it("PATCH rejects when requireItemOwnership fails without running a transaction", async () => {
@@ -488,17 +514,21 @@ describe("Tenant Scoping for Workspaces, Trash, and Notifications (IMP-060)", ()
       expect(json.notifications).toHaveLength(1);
       expect(json.unread).toBe(1);
 
+      const live = {
+        recipientId: ownerUserId,
+        OR: [{ canvasId: null }, { canvas: { is: { deletedAt: null } } }],
+      };
       expect(prismaMocks.notificationFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { recipientId: ownerUserId },
+          where: live,
           take: 25,
         }),
       );
       expect(prismaMocks.notificationCount).toHaveBeenCalledWith({
-        where: { recipientId: ownerUserId },
+        where: live,
       });
       expect(prismaMocks.notificationCount).toHaveBeenCalledWith({
-        where: { recipientId: ownerUserId, readAt: null },
+        where: { ...live, readAt: null },
       });
     });
 

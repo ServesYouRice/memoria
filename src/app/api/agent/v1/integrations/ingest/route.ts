@@ -39,12 +39,14 @@ export const POST = withApiHandler(async (request: NextRequest) => {
         where: {
           id: data.canvasId,
           userId: context.userId,
+          deletedAt: null,
         },
       })
     : await prisma.canvas.findFirst({
         where: {
           userId: context.userId,
           name: "Inbox",
+          deletedAt: null,
           ...(context.agentProfile.allowedCanvasIds.length > 0
             ? {
                 id: {

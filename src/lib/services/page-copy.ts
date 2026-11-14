@@ -389,7 +389,11 @@ export function createPageCopyBackfillHandler(
         type: ItemType.BOOKMARK,
         deletedAt: null,
         pageCopy: { is: null },
-        canvas: { isTemplate: false, user: { autoEnrichLinks: true } },
+        canvas: {
+          isTemplate: false,
+          deletedAt: null,
+          user: { autoEnrichLinks: true },
+        },
         ...(after ? { id: { gt: after } } : {}),
       },
       orderBy: { id: "asc" },

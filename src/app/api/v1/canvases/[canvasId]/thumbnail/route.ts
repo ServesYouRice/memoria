@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     const { canvasId } = await params;
     await requireCanvasAccess(canvasId, userId, email, "VIEW");
     const canvas = await prisma.canvas.findUnique({
-      where: { id: canvasId },
+      where: { id: canvasId, deletedAt: null },
       select: { thumbnailKey: true },
     });
     if (!canvas?.thumbnailKey) throw new NotFoundError("Thumbnail not found");
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const { userId } = await requireAuth();
     const { canvasId } = await params;
     const canvas = await prisma.canvas.findUnique({
-      where: { id: canvasId },
+      where: { id: canvasId, deletedAt: null },
       select: { userId: true },
     });
     if (!canvas) throw new NotFoundError("Canvas not found");
@@ -119,7 +119,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     const { canvasId } = await params;
     await prisma.$transaction(async (tx) => {
       const canvas = await tx.canvas.findUnique({
-        where: { id: canvasId },
+        where: { id: canvasId, deletedAt: null },
         select: { userId: true, thumbnailKey: true },
       });
       if (!canvas) throw new NotFoundError("Canvas not found");

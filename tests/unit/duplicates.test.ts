@@ -121,7 +121,10 @@ describe("near-duplicates", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           itemId: { not: "new" },
-          item: { deletedAt: null, canvas: { userId: "u1" } },
+          item: {
+            deletedAt: null,
+            canvas: { userId: "u1", deletedAt: null },
+          },
         }),
       }),
     );

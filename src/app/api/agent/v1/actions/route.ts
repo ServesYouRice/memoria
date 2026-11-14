@@ -92,6 +92,7 @@ async function verifyCanvasOwnership(userId: string, canvasId: string) {
     where: {
       id: canvasId,
       userId,
+      deletedAt: null,
     },
     select: { id: true },
   });
@@ -108,6 +109,7 @@ async function getItemCanvasScope(userId: string, itemId: string) {
       deletedAt: null,
       canvas: {
         userId,
+        deletedAt: null,
       },
     },
     select: {

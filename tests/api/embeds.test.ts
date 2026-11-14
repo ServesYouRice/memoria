@@ -126,7 +126,9 @@ describe("embed routes: owner-only authorization", () => {
   it("checks ownership by userId in the canvas query", async () => {
     await listEmbeds(request(base), ctx);
     expect(db.canvasFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: CANVAS, userId: OUTSIDER } }),
+      expect.objectContaining({
+        where: { id: CANVAS, userId: OUTSIDER, deletedAt: null },
+      }),
     );
   });
 });
@@ -266,7 +268,9 @@ describe("resolveEmbedToken", () => {
       id: "embed-1",
     });
     expect(db.embedFindUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tokenDigest: digest } }),
+      expect.objectContaining({
+        where: { tokenDigest: digest, canvas: { deletedAt: null } },
+      }),
     );
   });
 

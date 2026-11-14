@@ -413,7 +413,7 @@ async function canStillEdit(
   userId: string,
 ): Promise<boolean> {
   const canvas = await prisma.canvas.findUnique({
-    where: { id: canvasId },
+    where: { id: canvasId, deletedAt: null },
     select: {
       userId: true,
       shares: { where: { recipientId: userId }, select: { role: true } },
@@ -438,7 +438,7 @@ async function canStillEditLocked(
   userId: string,
 ): Promise<boolean> {
   const canvas = await tx.canvas.findUnique({
-    where: { id: canvasId },
+    where: { id: canvasId, deletedAt: null },
     select: { userId: true },
   });
   if (!canvas) return false;

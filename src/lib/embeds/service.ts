@@ -33,7 +33,7 @@ async function requireOwnedCanvas(
   userId: string,
 ) {
   const canvas = await prisma.canvas.findFirst({
-    where: { id: canvasId, userId },
+    where: { id: canvasId, userId, deletedAt: null },
     select: { id: true },
   });
   if (!canvas) throw new ForbiddenError("You do not own this canvas");
@@ -122,7 +122,11 @@ export async function resolveEmbedToken(
 ) {
   if (!verifyEmbedTokenSignature(token)) return null;
   const embed = await prisma.canvasEmbed.findUnique({
-    where: { tokenDigest: digestEmbedToken(token) },
+    // An embed of a canvas in Trash (IMP-132) resolves like an unknown token.
+    where: {
+      tokenDigest: digestEmbedToken(token),
+      canvas: { deletedAt: null },
+    },
     select: {
       id: true,
       canvasId: true,

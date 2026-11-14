@@ -144,7 +144,7 @@ async function workspaceNotesForCanvas(
   canvasId: string,
 ): Promise<string | null> {
   const canvas = await prisma.canvas.findFirst({
-    where: { id: canvasId, userId },
+    where: { id: canvasId, userId, deletedAt: null },
     select: {
       workspace: { select: { name: true, agentNotes: true, userId: true } },
     },
@@ -621,6 +621,7 @@ export async function executeMcpTool(
                   userId: context.userId,
                   name: INBOX_CANVAS_NAME,
                   id: { in: agentProfile.allowedCanvasIds },
+                  deletedAt: null,
                 },
                 orderBy: { createdAt: "asc" },
                 select: { id: true },

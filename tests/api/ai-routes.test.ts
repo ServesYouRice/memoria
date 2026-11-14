@@ -486,7 +486,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
         });
 
         expect(prismaMocks.canvasFindUnique).toHaveBeenCalledWith({
-          where: { id: validCanvasId },
+          where: { id: validCanvasId, deletedAt: null },
           select: {
             id: true,
             userId: true,
@@ -523,7 +523,7 @@ describe("AI Route Authorization and Request Boundaries (IMP-064)", () => {
         expect(res.status).toBe(403);
         expect(aiServiceMocks.findSerendipitousItems).not.toHaveBeenCalled();
         expect(prismaMocks.canvasFindFirst).toHaveBeenCalledWith({
-          where: { id: validCanvasId, userId: sessionUser.id },
+          where: { id: validCanvasId, userId: sessionUser.id, deletedAt: null },
           select: { id: true },
         });
       });

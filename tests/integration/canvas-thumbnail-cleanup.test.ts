@@ -30,6 +30,7 @@ vi.mock("@/lib/uploads/private-storage", () => ({
 import { DELETE as deleteCanvas } from "@/app/api/v1/canvases/[canvasId]/route";
 import { DELETE as deleteAccount } from "@/app/api/v1/users/account/route";
 import { createThumbnailDeleteHandler } from "@/lib/thumbnails/outbox-handler";
+import { purgeCanvas } from "@/lib/canvas/purge-canvas";
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -62,7 +63,7 @@ const thumbnailJob = (key: string) =>
   });
 
 describe("thumbnail cleanup on deletion", () => {
-  it("queues the canvas thumbnail when a canvas is deleted", async () => {
+  it("queues the canvas thumbnail when a trashed canvas is purged", async () => {
     const user = await owner();
     const { canvas, thumbnailKey } = await canvasWithThumbnail(user.id);
     const response = await deleteCanvas(
@@ -72,6 +73,9 @@ describe("thumbnail cleanup on deletion", () => {
       { params: Promise.resolve({ canvasId: canvas.id }) },
     );
     expect(response.status).toBe(200);
+    // DELETE only moves the canvas to Trash (IMP-132); the thumbnail stays.
+    expect(await thumbnailJob(thumbnailKey)).toBeNull();
+    await prisma.$transaction((tx) => purgeCanvas(tx, canvas.id));
     const job = await thumbnailJob(thumbnailKey);
     expect(job).toMatchObject({
       type: "thumbnail.delete",
