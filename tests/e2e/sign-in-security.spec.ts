@@ -22,13 +22,13 @@ test("authenticator-app two-factor gates password sign-in", async ({
   await (
     await hydrated(page.getByLabel("Password to confirm"))
   ).fill(DEFAULT_PASSWORD);
-  await page.getByRole("button", { name: "Set up two-factor" }).click();
+  await page.getByRole("button", { name: "Set up two-step codes" }).click();
   const setupKey = await page.getByLabel("Setup key").inputValue();
   expect(setupKey).toMatch(/^[A-Z2-7]+=*$/);
   const totpURI = `otpauth://totp/Memoria?secret=${setupKey}`;
 
   await page.getByLabel("Authentication code").fill(totpFromUri(totpURI));
-  await page.getByRole("button", { name: "Turn on two-factor" }).click();
+  await page.getByRole("button", { name: "Turn on two-step codes" }).click();
   await expect(page.getByTestId("backup-codes")).toBeVisible();
   const backupCodes = (await page.getByTestId("backup-codes").innerText())
     .split("\n")

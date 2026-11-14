@@ -95,7 +95,7 @@ export function TrashContent() {
           title="Trash is empty"
           description={`Items you delete from a canvas wait here for ${LAUNCH_LIMITS.trashRetentionDays} days, so you can restore them before they are removed for good.`}
           action={
-            <Button component={Link} href="/dashboard" variant="contained">
+            <Button component={Link} href="/dashboard" variant="text">
               Back to the dashboard
             </Button>
           }

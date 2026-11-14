@@ -131,6 +131,8 @@ export const appColorTokens = {
     /** IMP-085: the faint dots of the default canvas background. */
     canvasDot: "#c5cbd6",
     focusRing: brand.primary.main,
+    /** IMP-125: "Live" label on its green tint (6.1:1; success.dark is 4.3:1). */
+    liveStatusText: "#166534",
   },
   dark: {
     border: "rgba(241, 245, 249, 0.08)",
@@ -148,6 +150,8 @@ export const appColorTokens = {
     canvasGrid: "#1e293b",
     canvasDot: "#2b3a55",
     focusRing: brand.primary.light,
+    /** IMP-125: success.light on the green tint, 7.8:1. */
+    liveStatusText: brand.success.light,
   },
 } as const;
 

@@ -176,7 +176,6 @@ export function AgentControlCenter() {
 
   return (
     <Paper
-      id="agent-console"
       variant="outlined"
       sx={{
         p: { xs: 2.5, sm: 3.5 },
@@ -210,7 +209,7 @@ export function AgentControlCenter() {
                 fontWeight: 700,
               }}
             >
-              Agent control center
+              AI helpers and history
             </Typography>
           </Stack>
           <Typography
@@ -219,9 +218,8 @@ export function AgentControlCenter() {
               color: "text.secondary",
             }}
           >
-            Review agent profiles, configured BYOK providers, external
-            integrations, pending suggestions, and audited changes before or
-            after the organizer layer touches anything.
+            See your AI helpers, the AI services you connected, suggestions
+            waiting for you, and what AI has changed.
           </Typography>
         </Box>
         <Stack
@@ -233,14 +231,14 @@ export function AgentControlCenter() {
         >
           {profilesQuery.data && (
             <Chip
-              label={`${agentProfiles.length} agents`}
+              label={`${agentProfiles.length} helpers`}
               color="primary"
               variant="outlined"
             />
           )}
           {providersQuery.data && (
             <Chip
-              label={`${credentials.length}/${providerSlots.length} providers configured`}
+              label={`${credentials.length} of ${providerSlots.length} services connected`}
               variant="outlined"
             />
           )}
@@ -287,18 +285,18 @@ export function AgentControlCenter() {
                 fontWeight: 700,
               }}
             >
-              Agent profiles
+              AI helpers
             </Typography>
           </Stack>
           <Stack spacing={1.25}>
             {profilesFailed ? (
               <SectionError
-                message="Agent profiles could not be loaded."
-                retryLabel="Retry loading agent profiles"
+                message="AI helpers could not be loaded."
+                retryLabel="Retry loading AI helpers"
                 onRetry={() => void profilesQuery.refetch()}
               />
             ) : agentProfiles.length === 0 ? (
-              <Alert severity="info">No agent profiles configured yet.</Alert>
+              <Alert severity="info">No AI helpers set up yet.</Alert>
             ) : (
               agentProfiles.map((profile) => (
                 <Paper
@@ -388,13 +386,13 @@ export function AgentControlCenter() {
                 fontWeight: 700,
               }}
             >
-              Provider credentials
+              Connected AI services
             </Typography>
           </Stack>
           <Stack spacing={1.25}>
             {providersFailed && (
               <SectionError
-                message="Provider credentials could not be loaded."
+                message="Connected AI services could not be loaded."
                 retryLabel="Retry loading provider credentials"
                 onRetry={() => void providersQuery.refetch()}
               />
@@ -430,7 +428,7 @@ export function AgentControlCenter() {
                         label={
                           configured.length > 0
                             ? `${configured.length} configured`
-                            : "not configured"
+                            : "not connected"
                         }
                         size="small"
                         color={configured.length > 0 ? "success" : "default"}
@@ -479,9 +477,7 @@ export function AgentControlCenter() {
                 onRetry={() => void integrationsQuery.refetch()}
               />
             ) : integrationAccounts.length === 0 ? (
-              <Alert severity="info">
-                No integration accounts configured yet.
-              </Alert>
+              <Alert severity="info">No integrations connected yet.</Alert>
             ) : (
               integrationAccounts.map((integration) => (
                 <Paper
@@ -561,7 +557,7 @@ export function AgentControlCenter() {
                 fontWeight: 700,
               }}
             >
-              Suggestion queue
+              Suggestions waiting
             </Typography>
           </Stack>
           <Typography
@@ -571,8 +567,8 @@ export function AgentControlCenter() {
               mb: 2,
             }}
           >
-            Approve or reject low-risk proposals first. Execution is separated
-            so higher-risk actions still need an explicit second step.
+            Approve or reject each suggestion. Bigger changes ask you to confirm
+            a second time.
           </Typography>
 
           <Stack spacing={1.5}>
@@ -742,7 +738,7 @@ export function AgentControlCenter() {
                 fontWeight: 700,
               }}
             >
-              Rollback and history
+              Undo and history
             </Typography>
           </Stack>
           <Typography
@@ -752,9 +748,7 @@ export function AgentControlCenter() {
               mb: 2,
             }}
           >
-            Reverts are change-set driven. If an agent write goes wrong, roll
-            back the whole audited change set instead of trying to patch over
-            partial state by hand.
+            If an AI change went wrong, undo the whole change here in one step.
           </Typography>
           <Stack spacing={1.5}>
             {changeSetsFailed ? (
@@ -764,9 +758,7 @@ export function AgentControlCenter() {
                 onRetry={() => void changeSetPages.refetch()}
               />
             ) : changeSets.length === 0 ? (
-              <Alert severity="info">
-                No change sets are waiting to be rolled back.
-              </Alert>
+              <Alert severity="info">Nothing to undo.</Alert>
             ) : (
               changeSets.map((changeSet) => (
                 <Paper

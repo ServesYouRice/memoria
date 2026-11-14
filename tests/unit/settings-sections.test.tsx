@@ -21,7 +21,7 @@ vi.mock("@/lib/theme-context", () => ({
   useThemeMode: () => ({ mode: "light", toggleTheme: vi.fn() }),
 }));
 vi.mock("@/features/agents/components/AgentControlCenter", () => ({
-  AgentControlCenter: () => <div>Agent control center</div>,
+  AgentControlCenter: () => <div>AI helpers and history</div>,
 }));
 vi.mock("@/features/auth/components/SecuritySettings", () => ({
   SecuritySettings: Stub,
@@ -62,11 +62,12 @@ afterEach(() => {
 });
 
 describe("settings groups", () => {
-  it("has seven groups, each with its own address", () => {
+  it("has eight groups, each with its own address", () => {
     expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
       "Account",
       "Sign-in and security",
       "Appearance",
+      "Keyboard shortcuts",
       "Notifications",
       "AI assistant",
       "Import",
@@ -74,6 +75,9 @@ describe("settings groups", () => {
     ]);
     expect(settingsSectionFromSegments(undefined)?.id).toBe("account");
     expect(settingsSectionFromSegments(["ai"])?.id).toBe("ai");
+    expect(settingsSectionFromSegments(["shortcuts"])?.path).toBe(
+      "/settings/shortcuts",
+    );
     expect(settingsSectionFromSegments(["nope"])).toBeNull();
     expect(settingsSectionFromSegments(["ai", "x"])).toBeNull();
   });
@@ -102,6 +106,32 @@ describe("settings groups", () => {
     expect(screen.queryByText("AI provider choices")).toBeNull();
   });
 
+  it("names Notifications once, as the group heading (IMP-124)", () => {
+    render(<SettingsContent user={user} section="notifications" />);
+    expect(
+      screen
+        .getAllByRole("heading")
+        .filter((heading) => heading.textContent?.trim() === "Notifications"),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { name: "What Memoria tells you about" }),
+    ).toBeTruthy();
+  });
+
+  it("lists keyboard shortcuts in their own group, not under Appearance", () => {
+    render(<SettingsContent user={user} section="shortcuts" />);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Keyboard shortcuts" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Shortcut list" })).toBeTruthy();
+    expect(screen.getByText("Open Command Palette")).toBeTruthy();
+    cleanup();
+
+    render(<SettingsContent user={user} section="appearance" />);
+    expect(screen.queryByText("Shortcut list")).toBeNull();
+    expect(screen.queryByText("Open Command Palette")).toBeNull();
+  });
+
   it("keeps sign out out of settings", () => {
     for (const section of SETTINGS_SECTIONS) {
       render(<SettingsContent user={user} section={section.id} />);
@@ -124,7 +154,7 @@ describe("settings groups", () => {
 
   it("says why Change password is greyed out", () => {
     render(<SettingsContent user={user} section="security" />);
-    expect(screen.getByText("Fill in all three fields first.")).toBeTruthy();
+    expect(screen.getByText("Fill in both fields first.")).toBeTruthy();
   });
 
   it("sends old one-page anchors to their new group", () => {

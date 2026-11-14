@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { appColorTokens, createAppTheme } from "@/lib/theme";
+import { appColorTokens, brand, createAppTheme } from "@/lib/theme";
 
 function luminance(hex: string): number {
   const value = hex.replace("#", "");
@@ -81,4 +81,36 @@ describe("home page bottom sign-up button", () => {
     expect(contrast(label!, "#ffffff")).toBeGreaterThanOrEqual(4.5);
     expect(contrast(label!, "#f1f5f9")).toBeGreaterThanOrEqual(4.5);
   });
+});
+
+/** `fg` at `opacity` over the solid `bg`, as a hex colour. */
+function over(fg: string, opacity: number, bg: string): string {
+  const channels = (hex: string) =>
+    [0, 2, 4].map((i) => parseInt(hex.replace("#", "").slice(i, i + 2), 16));
+  const [f, b] = [channels(fg), channels(bg)];
+  return `#${f
+    .map((c, i) =>
+      Math.round(c * opacity + b[i] * (1 - opacity))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+describe("canvas header Live label (IMP-125)", () => {
+  // The header is the glass app bar (80% white or navy) over the page.
+  const header = {
+    light: over("#ffffff", 0.8, "#f0f2f5"),
+    dark: over("#0f172a", 0.8, "#0b1120"),
+  };
+
+  it.each(["light", "dark"] as const)(
+    "reads at 4.5:1 or more on its green tint (%s)",
+    (mode) => {
+      const tint = over(brand.success.main, 0.12, header[mode]);
+      expect(
+        contrast(appColorTokens[mode].liveStatusText, tint),
+      ).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 });

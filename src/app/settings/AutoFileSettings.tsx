@@ -61,7 +61,7 @@ export function AutoFileSettings() {
 
   return (
     <Stack spacing={1} sx={{ mt: 1 }}>
-      <ListItem disablePadding sx={{ px: 1, gap: 2 }}>
+      <ListItem component="div" disablePadding sx={{ px: 1, gap: 2 }}>
         <ListItemText
           primary="File new Inbox items automatically"
           secondary={`When an item's suggested canvas is a clear match (${Math.round(

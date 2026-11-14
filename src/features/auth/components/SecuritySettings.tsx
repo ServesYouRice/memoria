@@ -100,7 +100,9 @@ export function SecuritySettings({
     try {
       const { data, error } = await authClient.twoFactor.enable(confirmation);
       if (error || !data || !("totpURI" in data) || !data.totpURI) {
-        toast.error(failure(error, "Could not start two-factor setup"));
+        toast.error(
+          failure(error, "Could not start setting up two-step codes"),
+        );
         return;
       }
       setEnrolment({
@@ -132,7 +134,7 @@ export function SecuritySettings({
       setEnrolment(null);
       setCode("");
       setEnabled(true);
-      toast.success("Two-factor authentication is on");
+      toast.success("Two-step codes are on");
       router.refresh();
     } finally {
       setBusy(false);
@@ -144,13 +146,13 @@ export function SecuritySettings({
     try {
       const { error } = await authClient.twoFactor.disable(confirmation);
       if (error) {
-        toast.error(failure(error, "Could not turn off two-factor"));
+        toast.error(failure(error, "Could not turn off two-step codes"));
         return;
       }
       setPassword("");
       setEnabled(false);
       setBackupCodes(null);
-      toast.success("Two-factor authentication is off");
+      toast.success("Two-step codes are off");
       router.refresh();
     } finally {
       setBusy(false);
@@ -232,7 +234,7 @@ export function SecuritySettings({
           variant="subtitle1"
           sx={{ fontWeight: 600, display: "flex", gap: 1, mb: 1 }}
         >
-          <AuthenticatorIcon fontSize="small" /> Authenticator app
+          <AuthenticatorIcon fontSize="small" /> Two-step codes
         </Typography>
 
         {backupCodes && (
@@ -290,7 +292,7 @@ export function SecuritySettings({
                 disabled={busy || !code}
                 aria-describedby={!code ? "totp-code-reason" : undefined}
               >
-                Turn on two-factor
+                Turn on two-step codes
               </Button>
               <Button
                 onClick={() => {
@@ -310,8 +312,8 @@ export function SecuritySettings({
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
               {enabled
-                ? "Two-factor authentication is on. Sign-in asks for a code from your authenticator app."
-                : "Require a code from an authenticator app when you sign in with your password."}
+                ? "Two-step codes are on. Sign-in asks for a code from your authenticator app."
+                : "Two-step codes are off. Turn them on to be asked for a code from an authenticator app when you sign in with your password."}
             </Typography>
             {hasPassword && (
               <TextField
@@ -334,7 +336,7 @@ export function SecuritySettings({
                       needsPassword ? "two-factor-password-reason" : undefined
                     }
                   >
-                    Turn off two-factor
+                    Turn off two-step codes
                   </Button>
                   <Button
                     variant="outlined"
@@ -356,7 +358,7 @@ export function SecuritySettings({
                     needsPassword ? "two-factor-password-reason" : undefined
                   }
                 >
-                  Set up two-factor
+                  Set up two-step codes
                 </Button>
               )}
               <DisabledReason

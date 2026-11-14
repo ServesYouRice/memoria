@@ -30,6 +30,11 @@ import {
   ListItemButton,
   Tab,
   Tabs,
+  IconButton,
+  InputAdornment,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import {
   Person as PersonIcon,
@@ -45,6 +50,10 @@ import {
   AutoAwesomeOutlined as AiUsageIcon,
   Psychology as AiProviderIcon,
   Shield as SecurityIcon,
+  Visibility,
+  VisibilityOff,
+  ToggleOnOutlined as AiPermissionsIcon,
+  ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
 import { useThemeMode } from "@/lib/theme-context";
 import { AgentControlCenter } from "@/features/agents/components/AgentControlCenter";
@@ -158,21 +167,22 @@ function SettingsNav({ current }: { current: SettingsSectionId }) {
           {SETTINGS_SECTIONS.map((section) => {
             const selected = section.id === current;
             return (
-              <ListItemButton
-                key={section.id}
-                component={NextLink}
-                href={section.path}
-                selected={selected}
-                aria-current={selected ? "page" : undefined}
-                sx={{ borderRadius: 2, mb: 0.5, minHeight: 44 }}
-              >
-                <ListItemText
-                  primary={section.label}
-                  slotProps={{
-                    primary: { sx: { fontWeight: selected ? 600 : 500 } },
-                  }}
-                />
-              </ListItemButton>
+              <ListItem key={section.id} disablePadding>
+                <ListItemButton
+                  component={NextLink}
+                  href={section.path}
+                  selected={selected}
+                  aria-current={selected ? "page" : undefined}
+                  sx={{ borderRadius: 2, mb: 0.5, minHeight: 44 }}
+                >
+                  <ListItemText
+                    primary={section.label}
+                    slotProps={{
+                      primary: { sx: { fontWeight: selected ? 600 : 500 } },
+                    }}
+                  />
+                </ListItemButton>
+              </ListItem>
             );
           })}
         </List>
@@ -268,6 +278,7 @@ export function SettingsContent({
             {section === "account" && <AccountGroup user={user} />}
             {section === "security" && <SecurityGroup user={user} />}
             {section === "appearance" && <AppearanceGroup />}
+            {section === "shortcuts" && <ShortcutsGroup />}
             {section === "notifications" && <NotificationsGroup />}
             {section === "ai" && <AiGroup />}
             {section === "import" && <BookmarkImportSettings />}
@@ -357,13 +368,13 @@ function AccountGroup({ user }: { user: SettingsUser }) {
         <TextField
           label="Email"
           value={user.email || ""}
-          disabled
           fullWidth
           helperText="Your email address cannot be changed."
           slotProps={{
             input: {
               startAdornment: <EmailIcon color="action" sx={{ mr: 1 }} />,
             },
+            htmlInput: { readOnly: true },
           }}
         />
         <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
@@ -385,18 +396,36 @@ function AccountGroup({ user }: { user: SettingsUser }) {
   );
 }
 
+/** Show/hide eye for a password field, as on the sign-in form (IMP-124). */
+function PasswordVisibilityToggle({
+  shown,
+  onToggle,
+}: {
+  shown: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <InputAdornment position="end">
+      <IconButton
+        onClick={onToggle}
+        edge="end"
+        aria-label={shown ? "Hide password" : "Show password"}
+      >
+        {shown ? <VisibilityOff /> : <Visibility />}
+      </IconButton>
+    </InputAdornment>
+  );
+}
+
 function SecurityGroup({ user }: { user: SettingsUser }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
-  const incomplete = !currentPassword || !newPassword || !confirmPassword;
+  const incomplete = !currentPassword || !newPassword;
 
   const handleChangePassword = async () => {
-    if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
     if (newPassword.length < 10) {
       toast.error("Password must be at least 10 characters");
       return;
@@ -415,7 +444,6 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
       }
       setCurrentPassword("");
       setNewPassword("");
-      setConfirmPassword("");
       toast.success("Password changed. Please sign in with your new password.");
       // The server revoked every session, this one included. Leave through
       // sign-out (clears auth state and the offline cache); savingPassword
@@ -438,36 +466,42 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
         <Stack spacing={2.5}>
           <TextField
             label="Current password"
-            type="password"
+            type={showCurrentPassword ? "text" : "password"}
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             fullWidth
             autoComplete="current-password"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <PasswordVisibilityToggle
+                    shown={showCurrentPassword}
+                    onToggle={() =>
+                      setShowCurrentPassword(!showCurrentPassword)
+                    }
+                  />
+                ),
+              },
+            }}
           />
           <TextField
             label="New password"
-            type="password"
+            type={showNewPassword ? "text" : "password"}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             fullWidth
             helperText="Minimum 10 characters"
             autoComplete="new-password"
-          />
-          <TextField
-            label="Confirm new password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            fullWidth
-            autoComplete="new-password"
-            error={
-              confirmPassword.length > 0 && newPassword !== confirmPassword
-            }
-            helperText={
-              confirmPassword.length > 0 && newPassword !== confirmPassword
-                ? "Passwords do not match"
-                : ""
-            }
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <PasswordVisibilityToggle
+                    shown={showNewPassword}
+                    onToggle={() => setShowNewPassword(!showNewPassword)}
+                  />
+                ),
+              },
+            }}
           />
           <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
             <Button
@@ -485,7 +519,7 @@ function SecurityGroup({ user }: { user: SettingsUser }) {
               id="change-password-reason"
               show={!savingPassword && incomplete}
             >
-              Fill in all three fields first.
+              Fill in both fields first.
             </DisabledReason>
           </Stack>
         </Stack>
@@ -532,59 +566,63 @@ function AppearanceGroup() {
           </ListItem>
         </List>
       </SettingsSection>
-
-      <SettingsSection
-        icon={<KeyboardIcon color="primary" />}
-        title="Keyboard shortcuts"
-      >
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-            gap: 1.5,
-          }}
-        >
-          {keyboardShortcuts.map((shortcut, index) => (
-            <Box
-              key={index}
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                p: 1.5,
-                borderRadius: 2,
-                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
-              }}
-            >
-              <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                {shortcut.description}
-              </Typography>
-              <Box sx={{ display: "flex", gap: 0.5 }}>
-                {shortcut.keys.map((key, i) => (
-                  <Box
-                    key={i}
-                    component="kbd"
-                    sx={{
-                      px: 1.25,
-                      py: 0.5,
-                      borderRadius: 1,
-                      bgcolor: "background.paper",
-                      border: 1,
-                      borderColor: "divider",
-                      fontFamily: "monospace",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {key}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          ))}
-        </Box>
-      </SettingsSection>
     </>
+  );
+}
+
+function ShortcutsGroup() {
+  return (
+    <SettingsSection
+      icon={<KeyboardIcon color="primary" />}
+      title="Shortcut list"
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+          gap: 1.5,
+        }}
+      >
+        {keyboardShortcuts.map((shortcut, index) => (
+          <Box
+            key={index}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              p: 1.5,
+              borderRadius: 2,
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+            }}
+          >
+            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+              {shortcut.description}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 0.5 }}>
+              {shortcut.keys.map((key, i) => (
+                <Box
+                  key={i}
+                  component="kbd"
+                  sx={{
+                    px: 1.25,
+                    py: 0.5,
+                    borderRadius: 1,
+                    bgcolor: "background.paper",
+                    border: 1,
+                    borderColor: "divider",
+                    fontFamily: "monospace",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  {key}
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    </SettingsSection>
   );
 }
 
@@ -593,7 +631,7 @@ function NotificationsGroup() {
     <SettingsSection
       id="notifications"
       icon={<NotificationsIcon color="primary" />}
-      title="Notifications"
+      title="What Memoria tells you about"
     >
       <NotificationPreferences />
       <WeeklyRecapSettings />
@@ -601,7 +639,8 @@ function NotificationsGroup() {
   );
 }
 
-function AiUsageSection() {
+/** Today's AI allowance, read once for the summary and the Advanced details. */
+function useAiUsage() {
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   const [usageUnavailable, setUsageUnavailable] = useState(false);
 
@@ -619,8 +658,34 @@ function AiUsageSection() {
     return () => controller.abort();
   }, []);
 
+  return { aiUsage, usageUnavailable };
+}
+
+/** IMP-131: one plain sentence; the exact numbers live under Advanced. */
+function usedTodaySentence(aiUsage: AiUsage): string {
+  if (!aiUsage.enabled) {
+    return "AI features are currently disabled by the operator.";
+  }
+  if (aiUsage.tokensUsed === 0 && aiUsage.requests === 0) {
+    return "Nothing used today.";
+  }
+  const percent = Math.round(
+    (aiUsage.tokensUsed / Math.max(1, aiUsage.tokenLimit)) * 100,
+  );
+  const requests = `${aiUsage.requests} request${aiUsage.requests === 1 ? "" : "s"}`;
+  return `${percent}% of today's AI allowance used (${requests}).`;
+}
+
+function formatUsd(microUsd: number): string {
+  return `$${(microUsd / 1_000_000).toFixed(4)}`;
+}
+
+function AiUsageSection({
+  aiUsage,
+  usageUnavailable,
+}: ReturnType<typeof useAiUsage>) {
   return (
-    <SettingsSection icon={<AiUsageIcon color="primary" />} title="AI usage">
+    <SettingsSection icon={<AiUsageIcon color="primary" />} title="Used today">
       {usageUnavailable ? (
         <Alert severity="warning">
           AI allowance information is temporarily unavailable.
@@ -628,9 +693,7 @@ function AiUsageSection() {
       ) : aiUsage ? (
         <Stack spacing={1.5}>
           <Typography variant="body2" color="text.secondary">
-            {aiUsage.enabled
-              ? `${aiUsage.tokensUsed.toLocaleString()} of ${aiUsage.tokenLimit.toLocaleString()} worst-case tokens reserved today across ${aiUsage.requests} request${aiUsage.requests === 1 ? "" : "s"}.`
-              : "AI features are currently disabled by the operator."}
+            {usedTodaySentence(aiUsage)}
           </Typography>
           <LinearProgress
             variant="determinate"
@@ -638,14 +701,8 @@ function AiUsageSection() {
               100,
               (aiUsage.tokensUsed / Math.max(1, aiUsage.tokenLimit)) * 100,
             )}
-            aria-label="Daily AI token allowance used"
+            aria-label="Share of today's AI allowance used"
           />
-          <Typography variant="caption" color="text.secondary">
-            Cost allowance: ${(aiUsage.costMicroUsdUsed / 1_000_000).toFixed(4)}{" "}
-            of ${(aiUsage.costMicroUsdLimit / 1_000_000).toFixed(4)}. Concurrent
-            requests: {aiUsage.activeRequests}/{aiUsage.concurrencyLimit}.
-            Rejected today: {aiUsage.rejections}.
-          </Typography>
         </Stack>
       ) : (
         <Typography variant="body2" color="text.secondary">
@@ -656,48 +713,135 @@ function AiUsageSection() {
   );
 }
 
+function AiUsageDetails({ aiUsage }: { aiUsage: AiUsage }) {
+  const lines = [
+    `Tokens set aside today: ${aiUsage.tokensUsed.toLocaleString()} of ${aiUsage.tokenLimit.toLocaleString()}`,
+    `Cost so far today: ${formatUsd(aiUsage.costMicroUsdUsed)} of ${formatUsd(aiUsage.costMicroUsdLimit)}`,
+    `Requests running now: ${aiUsage.activeRequests} of ${aiUsage.concurrencyLimit}`,
+    `Requests refused today: ${aiUsage.rejections}`,
+  ];
+  return (
+    <Box>
+      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+        Details
+      </Typography>
+      {lines.map((line) => (
+        <Typography key={line} variant="body2" color="text.secondary">
+          {line}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
+const AGENT_CONSOLE_HASH = "#agent-console";
+
+/**
+ * IMP-131: agents, more providers and history sit in one closed block. Links
+ * to `/settings/ai#agent-console` open it and scroll to it.
+ */
+function AiAdvanced({ children }: { children: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const openFromHash = () => {
+      if (window.location.hash !== AGENT_CONSOLE_HASH) return;
+      setExpanded(true);
+      ref.current?.scrollIntoView?.({ block: "start" });
+    };
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, []);
+
+  return (
+    <Accordion
+      id="agent-console"
+      ref={ref}
+      variant="outlined"
+      disableGutters
+      expanded={expanded}
+      onChange={(_event, next) => setExpanded(next)}
+      sx={{
+        borderRadius: 3,
+        scrollMarginTop: 80,
+        "&::before": { display: "none" },
+      }}
+    >
+      <AccordionSummary
+        expandIcon={<ExpandMoreIcon />}
+        aria-controls="agent-console-content"
+        id="agent-console-summary"
+        sx={{ px: { xs: 2.5, sm: 3.5 }, minHeight: 56 }}
+      >
+        <Typography sx={{ fontWeight: 600 }}>
+          Advanced: agents, more providers, history
+        </Typography>
+      </AccordionSummary>
+      <AccordionDetails
+        id="agent-console-content"
+        sx={{ px: { xs: 2.5, sm: 3.5 }, pb: 3.5 }}
+      >
+        <Stack spacing={3}>{children}</Stack>
+      </AccordionDetails>
+    </Accordion>
+  );
+}
+
 function AiGroup() {
   const router = useRouter();
+  const usage = useAiUsage();
   return (
     <>
       <SettingsSection
         icon={<AiProviderIcon color="primary" />}
-        title="AI provider"
+        title="Connect your AI"
       >
         <AiProviderSettings />
+      </SettingsSection>
+
+      <SettingsSection
+        icon={<AiPermissionsIcon color="primary" />}
+        title="What AI may do"
+      >
         <LinkEnrichmentSettings />
         <AutoFileSettings />
       </SettingsSection>
 
-      <AiUsageSection />
+      <AiUsageSection {...usage} />
 
-      <AgentControlCenter />
+      <AiAdvanced>
+        {usage.aiUsage && <AiUsageDetails aiUsage={usage.aiUsage} />}
 
-      <SettingsSection
-        icon={<ApiKeysIcon color="primary" />}
-        title="Developer settings"
-      >
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
+        <AgentControlCenter />
+
+        <SettingsSection
+          icon={<ApiKeysIcon color="primary" />}
+          title="Developer settings"
         >
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-              API keys
-            </Typography>
-            <Typography variant="body2" sx={{ color: "text.secondary" }}>
-              Manage API keys for external access and extensions
-            </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+            }}
+          >
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                API keys
+              </Typography>
+              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                Manage API keys for external access and extensions
+              </Typography>
+            </Box>
+            <Button variant="outlined" onClick={() => router.push("/api-keys")}>
+              Manage keys
+            </Button>
           </Box>
-          <Button variant="outlined" onClick={() => router.push("/api-keys")}>
-            Manage keys
-          </Button>
-        </Box>
-      </SettingsSection>
+        </SettingsSection>
+      </AiAdvanced>
     </>
   );
 }
