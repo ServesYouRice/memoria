@@ -19,6 +19,7 @@ export const GET = withApiHandler(async (request: Request) => {
   await requireCanvasAccess(canvasId, userId, email, "VIEW");
 
   const pattern = `%${q.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  // A video card also matches words found only in its transcript (IMP-114).
   const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT "id" FROM "CanvasItem"
     WHERE "canvasId" = ${canvasId}
@@ -31,7 +32,12 @@ export const GET = withApiHandler(async (request: Request) => {
           SELECT 1 FROM "ItemPageCopy" p
           WHERE p."itemId" = "CanvasItem"."id"
             AND p."searchVector" @@ plainto_tsquery('english', ${q})
-        )))
+        ))
+        OR EXISTS (
+          SELECT 1 FROM "ItemTranscript" t
+          WHERE t."itemId" = "CanvasItem"."id"
+            AND t."text" ILIKE ${pattern} ESCAPE '\\'
+        ))
     ORDER BY "zIndex" ASC, "id" ASC
     LIMIT ${LAUNCH_LIMITS.itemsPerCanvas}
   `);

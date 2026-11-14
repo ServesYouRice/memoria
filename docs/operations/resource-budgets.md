@@ -22,6 +22,7 @@ silently truncated.
 | Page picture and PDF (optional) | 3 MiB picture, 8 MiB PDF, 40 MiB download, 250 requests, 75 s per capture; at most half of the account's upload quota | the capture browser reaches the network only through a proxy that refuses internal addresses; `RESOURCE_BUDGETS.pageCapture`; see [page-capture.md](page-capture.md) |
 | PDF file | 20 MiB per file, counted in the upload allowance (500 files, 100 MiB per account) | the upload route caps the request body before reading it and refuses larger files with 413; `RESOURCE_BUDGETS.pdf.maxFileBytes` |
 | PDF text reading | files up to 10 MiB and 300 pages; 30 s and a 256 MiB heap per file; one file at a time per worker; up to 1 MiB of text per file, inside the 64 MiB saved-text budget | `readPdfText` runs pdf.js in a worker thread that is stopped at the time limit; larger or longer files are stored but say they were not read; `RESOURCE_BUDGETS.pdf` |
+| Video transcripts and notes | 256 KiB per video and 64 MiB per account (UTF-8); 500 notes of 2,000 characters per video | a pasted transcript over the video budget is refused, a fetched one is cut to it, and none is kept once the account budget is full; `RESOURCE_BUDGETS.videoTranscript` |
 
 The deterministic regression suite is `tests/unit/resource-budgets.test.ts`.
 It serializes representative geometry at every advertised canvas size, checks

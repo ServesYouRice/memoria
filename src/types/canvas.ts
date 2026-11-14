@@ -232,6 +232,8 @@ export interface FrameContent {
 export interface EmbedContent {
   url: string;
   embedType: "youtube" | "figma" | "loom" | "generic";
+  /** The video's or page's title, shown on the card (IMP-114). */
+  title?: string;
 }
 
 /**

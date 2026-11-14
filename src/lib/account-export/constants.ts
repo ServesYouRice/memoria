@@ -12,6 +12,7 @@ export const ACCOUNT_EXPORT_SCOPES = [
   "ownedCanvasItemsIncludingTrash",
   "savedPageCopies",
   "savedPageCaptures",
+  "videoTranscriptsAndNotes",
   "ownedCanvasVersions",
   "ownedCanvasShares",
   "authoredOrOwnedCanvasComments",

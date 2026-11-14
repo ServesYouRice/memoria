@@ -120,6 +120,11 @@ const envSchema = z
      * needs the optional `capture` worker (compose profile) to do the work.
      */
     PAGE_CAPTURE: z.enum(["true", "false"]).optional(),
+    /**
+     * Read YouTube videos' public captions as transcripts (IMP-114, DEC-018).
+     * Unofficial: it can stop working at any time. Off unless "true".
+     */
+    VIDEO_TRANSCRIPT_FETCH: z.enum(["true", "false"]).optional(),
     BOOKMARK_REFRESH_INTERVAL_MS: optionalPositiveInt,
     // DEC-013: the AR canvas layer stays off until the real-device matrix
     // passes. Deployments opt in explicitly.

@@ -1,10 +1,7 @@
 import React from "react";
 import { Group, Rect, Text } from "react-konva";
 import { type CanvasItemAdapterProps, type EmbedContent } from "@/types/canvas";
-import {
-  EMBED_PREVIEW_LABEL,
-  describeEmbedTarget,
-} from "@/lib/product-surfaces";
+import { EMBED_PREVIEW_LABEL, describeEmbedCard } from "@/lib/product-surfaces";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 
@@ -26,7 +23,8 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
 }) => {
   const palette = useCanvasPalette();
   const content = item.content as EmbedContent;
-  const host = describeEmbedTarget(content.url);
+  // IMP-114: a video card names the video and where it is from.
+  const card = describeEmbedCard(content);
 
   return (
     <Group
@@ -59,7 +57,7 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
         x={0}
         y={12}
         width={item.width}
-        text={`${EMBED_PREVIEW_LABEL} · ${content.embedType.toUpperCase()}`}
+        text={`${EMBED_PREVIEW_LABEL} · ${card.isVideo ? "VIDEO" : content.embedType.toUpperCase()}`}
         align="center"
         fontSize={11}
         fontFamily="Inter, sans-serif"
@@ -71,18 +69,19 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
         x={12}
         y={item.height / 2 - 14}
         width={Math.max(item.width - 24, 0)}
-        text={host}
+        text={card.title}
         align="center"
         fontSize={16}
         fontFamily="Inter, sans-serif"
         fill={palette.text}
+        wrap="none"
         ellipsis
       />
       <Text
         x={12}
         y={item.height / 2 + 8}
         width={Math.max(item.width - 24, 0)}
-        text={content.url}
+        text={card.source}
         align="center"
         fontSize={10}
         fontFamily="Inter, sans-serif"

@@ -235,6 +235,8 @@ export const frameContentSchema = z.object({
 export const embedContentSchema = z.object({
   url: z.string().url().max(2048),
   embedType: z.enum(["youtube", "figma", "loom", "generic"]),
+  /** Shown on the card as plain text (IMP-114). */
+  title: z.string().trim().max(500).optional(),
 });
 
 /**

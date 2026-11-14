@@ -94,6 +94,11 @@ import {
   createReminderFireHandler,
   createReminderSweepHandler,
 } from "../src/lib/reminders/item-reminders";
+import {
+  VIDEO_TRANSCRIPT_JOB,
+  VIDEO_TRANSCRIPT_TIMEOUT_MS,
+  createVideoTranscriptHandler,
+} from "../src/lib/video/video-items";
 
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
@@ -139,6 +144,8 @@ await runOutboxWorker({
     [REMINDER_FIRE_JOB]: createReminderFireHandler(prisma),
     [REMINDER_EMAIL_JOB]: createReminderEmailHandler(prisma),
     [PDF_READ_JOB]: createPdfReadHandler(prisma),
+    // Off unless VIDEO_TRANSCRIPT_FETCH=true (IMP-114, DEC-018).
+    [VIDEO_TRANSCRIPT_JOB]: createVideoTranscriptHandler(prisma),
   },
   signal: controller.signal,
   leaseMs: Number(process.env.OUTBOX_LEASE_MS || 30_000),
@@ -154,6 +161,7 @@ await runOutboxWorker({
     [RECAP_USER_JOB]: RECAP_USER_TIMEOUT_MS,
     [UPLOAD_COPY_JOB]: UPLOAD_COPY_TIMEOUT_MS,
     [PDF_READ_JOB]: PDF_READ_TIMEOUT_MS,
+    [VIDEO_TRANSCRIPT_JOB]: VIDEO_TRANSCRIPT_TIMEOUT_MS,
   },
   concurrency: Number(process.env.OUTBOX_CONCURRENCY || 4),
 });

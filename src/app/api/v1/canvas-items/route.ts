@@ -38,6 +38,7 @@ import {
 } from "@/lib/api/bounded-response";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
 import { enqueuePdfReads } from "@/lib/pdf/pdf-items";
+import { enqueueTranscriptFetch } from "@/lib/video/video-items";
 
 /**
  * POST /api/v1/canvas-items
@@ -90,6 +91,14 @@ export async function POST(request: NextRequest) {
         });
         // A PDF card's text is read in the background (IMP-113).
         await enqueuePdfReads(tx, [created]);
+        // A saved video gets its captions read when the deployment has
+        // that on (IMP-114); a no-op otherwise.
+        await enqueueTranscriptFetch(tx, {
+          itemId: created.id,
+          type: created.type,
+          content: created.content,
+          canvasId: data.canvasId,
+        });
         return created;
       });
 

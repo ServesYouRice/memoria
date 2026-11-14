@@ -345,6 +345,9 @@ model CanvasItem {
   notifications       Notification[]
   /// The other canvases this item also shows on (IMP-109).
   placements          ItemPlacement[]
+  /// Notes tied to moments of a video, and its transcript (IMP-114).
+  videoNotes          ItemVideoNote[]
+  transcript          ItemTranscript?
 
   @@index([canvasId, deletedAt])
   @@index([normalizedUrl])
@@ -1449,6 +1452,53 @@ model ItemPageCapture {
   updatedAt    DateTime   @updatedAt
 
   @@index([userId])
+}
+
+/// A note tied to a moment of a video card (IMP-114). Deleted with its item.
+model ItemVideoNote {
+  id        String     @id @default(cuid())
+  itemId    String
+  item      CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Who wrote it.
+  authorId  String
+  /// The moment, in whole seconds from the start of the video.
+  seconds   Int
+  text      String
+  createdAt DateTime   @default(now())
+
+  @@index([itemId, seconds])
+}
+
+enum TranscriptSource {
+  PASTED
+  FETCHED
+}
+
+/// A video card's transcript (IMP-114): pasted by a person, or read from the
+/// video's public captions when the deployment switches that on. Untrusted
+/// text: shown as plain text only and marked as data wherever AI reads it.
+/// Kept apart from ItemPageCopy because a saved video link has both. Deleted
+/// with its item.
+model ItemTranscript {
+  itemId       String                   @id
+  item         CanvasItem               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the canvas, whose storage budget the transcript counts against.
+  userId       String
+  /// The video address the transcript belongs to.
+  url          String
+  text         String
+  /// UTF-8 size of `text`, summed for the per-account budget.
+  textBytes    Int                      @default(0)
+  source       TranscriptSource
+  language     String?
+  /// When automatic fetching last finished for `url`, with or without text.
+  fetchedAt    DateTime?
+  searchVector Unsupported("tsvector")?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  @@index([userId])
+  @@index([searchVector], type: Gin, map: "idx_item_transcript_fts")
 }
 
 enum HomeBoardSuggestionStatus {

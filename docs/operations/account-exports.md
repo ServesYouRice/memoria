@@ -27,6 +27,9 @@ Included record types:
   (IMP-113)
 - `itemPageCapture`: which uploads are the picture and PDF of a saved link's
   page, when page capture is on (IMP-110); the files are upload records
+- `itemTranscript` and `itemVideoNote`: a video card's transcript (pasted or
+  read from its captions) and the notes kept at moments of the video
+  (IMP-114)
 - `canvasShare`, `comment`, `activity`, and `notificationPreference`
 - `uploadMetadata`
 - `uploadObjectStart`, ordered `uploadObjectChunk` records, and
