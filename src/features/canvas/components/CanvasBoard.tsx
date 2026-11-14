@@ -703,6 +703,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     connectionMessage: collaborationConnectionMessage,
     broadcastMessage,
     updateCursor,
+    timer: sharedTimer,
+    sendTimerCommand,
   } = useCollaboration({
     canvasId,
     name: session?.user?.name || "Anonymous",
@@ -1407,6 +1409,9 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onPresentationMode={() => setPresentationMode((active) => !active)}
         isPresentationMode={isPresentationMode}
         canManageCanvas={isOwner}
+        timer={sharedTimer}
+        onTimerCommand={sendTimerCommand}
+        canControlTimer={canEdit}
         saveStatus={
           updateItemMutation.isPending
             ? "saving"

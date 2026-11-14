@@ -34,6 +34,14 @@ import {
 import { COLLABORATION_SYNC_PATH } from "./sync/protocol";
 import { SharedConnectionAdmission } from "./shared-admission";
 import { canvasChannel, canvasChannelPrefix } from "./channels";
+import {
+  applySharedTimerCommand,
+  canControlSharedTimer,
+  isNewerSharedTimer,
+  parseSharedTimerState,
+  sharedTimerCommandSchema,
+  type SharedTimerState,
+} from "./shared-timer";
 
 export interface CollaborationUser {
   userId: string;
@@ -171,7 +179,7 @@ interface CursorPosition {
 }
 
 interface CollaborationBusMessage {
-  type: "presence" | "cursors" | "message" | "event";
+  type: "presence" | "cursors" | "message" | "event" | "timer";
   canvasId: string;
   instanceId: string;
   payload: unknown;
@@ -204,6 +212,7 @@ const collaborationMessageSchema = z.discriminatedUnion("type", [
       }),
     ]),
   }),
+  sharedTimerCommandSchema,
 ]);
 
 export function parseCollaborationMessage(value: unknown) {
@@ -228,6 +237,9 @@ const connections = new Map<string, Set<ClientConnection>>();
 const subscriptions = new Map<string, number>();
 const remotePresence = new ExpiringCanvasInstances<CollaborationUser[]>();
 const remoteCursors = new ExpiringCanvasInstances<CursorPosition[]>();
+// IMP-105: the shared timer of each canvas with a person on this replica.
+// Memory only; it goes when this replica's last person on the canvas leaves.
+const timers = new Map<string, SharedTimerState>();
 // Shared with the sync server (IMP-042); re-exported for existing callers.
 export { isAllowedCollaborationOrigin, deriveUpgradeClientId };
 
@@ -480,6 +492,7 @@ async function handleRedisMessage(
       if (newInstance) {
         publishPresence(canvasId);
         publishCursors(canvasId);
+        publishTimer(canvasId);
       }
       break;
     }
@@ -496,7 +509,53 @@ async function handleRedisMessage(
     case "event":
       broadcastCommittedEvent(canvasId, message.payload);
       break;
+    case "timer": {
+      // Kept only while someone here is on the canvas.
+      if (!connections.has(canvasId)) break;
+      const payload = message.payload as { state?: unknown; request?: unknown };
+      if (payload?.request === true) {
+        // A replica whose first person just joined asks for the timer.
+        publishTimer(canvasId);
+        break;
+      }
+      const state = parseSharedTimerState(payload?.state);
+      if (state && isNewerSharedTimer(timers.get(canvasId), state)) {
+        timers.set(canvasId, state);
+        broadcastTimer(canvasId);
+      }
+      break;
+    }
   }
+}
+
+function timerFrame(canvasId: string): string {
+  return JSON.stringify({
+    type: "timer",
+    timer: timers.get(canvasId) ?? null,
+    // Lets each screen correct for its own clock.
+    serverNow: Date.now(),
+  });
+}
+
+function broadcastTimer(canvasId: string): void {
+  const clients = connections.get(canvasId);
+  if (!clients) return;
+  const frame = timerFrame(canvasId);
+  clients.forEach((client) => {
+    sendToClient(client, frame, { droppable: false });
+  });
+}
+
+function publishTimer(canvasId: string): void {
+  const state = timers.get(canvasId);
+  if (!state) return;
+  publishMessage({
+    type: "timer",
+    canvasId,
+    instanceId,
+    payload: { state },
+    timestamp: Date.now(),
+  });
 }
 
 const REQUEST_URL_BASE = "http://collaboration.local";
@@ -856,6 +915,7 @@ async function handleConnection(
     if (activeClients.size === 0) {
       connections.delete(canvasId);
       dirtyCursorCanvases.delete(canvasId);
+      timers.delete(canvasId);
     }
     setOperationalGauge("websocket_connections", admission.totalConnections);
     setOperationalGauge("websocket_active_canvases", connections.size);
@@ -881,6 +941,18 @@ async function handleConnection(
 
   broadcastPresence(canvasId);
   publishPresence(canvasId);
+  // A late joiner gets the timer's end time at once; a replica without one
+  // asks the others.
+  sendToClient(connection, timerFrame(canvasId), { droppable: false });
+  if (!timers.has(canvasId)) {
+    publishMessage({
+      type: "timer",
+      canvasId,
+      instanceId,
+      payload: { request: true },
+      timestamp: Date.now(),
+    });
+  }
 
   ws.on("message", async (data: Buffer, isBinary: boolean) => {
     try {
@@ -1102,6 +1174,23 @@ async function handleMessage(
         timestamp,
       });
       break;
+
+    case "timer": {
+      // The screen hides the controls from viewers; this is the check.
+      if (!canControlSharedTimer(connection.accessLevel)) {
+        sendToClient(connection, timerFrame(connection.canvasId), {
+          droppable: false,
+        });
+        return;
+      }
+      const current = timers.get(connection.canvasId) ?? null;
+      const next = applySharedTimerCommand(current, message, Date.now());
+      if (next === current) return;
+      timers.set(connection.canvasId, next);
+      broadcastTimer(connection.canvasId);
+      publishTimer(connection.canvasId);
+      break;
+    }
   }
 }
 
@@ -1118,7 +1207,7 @@ function handleBinaryUpdate(connection: ClientConnection): void {
 
 function applyRateLimit(
   connection: ClientConnection,
-  messageType: z.infer<typeof collaborationMessageSchema>["type"],
+  messageType: "cursor" | "awareness" | "message",
 ): boolean {
   const decision = consumeMessageBudget(connection, messageType, Date.now());
   if (decision === "allow") return true;

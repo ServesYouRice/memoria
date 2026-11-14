@@ -18,14 +18,19 @@ export const EMBED_SURFACE_MODE = "link-preview" as const;
 export const EMBED_PREVIEW_LABEL = "Link preview";
 
 /**
- * DEC-012 — the meeting timer is personal UI. It is local to one browser tab
- * and is never synchronized to collaborators or persisted on the server.
+ * IMP-105 (replaces DEC-012) — the meeting timer is shared: everyone on the
+ * canvas sees the same countdown, and only editors control it. It is a
+ * short-lived signal, never saved, and it ends when the last person leaves.
  */
-export const MEETING_TIMER_SCOPE = "personal" as const;
+export const MEETING_TIMER_SCOPE = "shared" as const;
 
 /** Copy shown wherever the timer appears. */
 export const MEETING_TIMER_DISCLOSURE =
-  "Personal timer — runs only in your browser and is not shared with collaborators.";
+  "Shared timer — everyone on this canvas sees the same countdown.";
+
+/** Shown to people who can see the timer but not control it. */
+export const MEETING_TIMER_VIEWER_NOTE =
+  "Only people who can edit this canvas can start or stop it.";
 
 /**
  * Launch feature registry (IMP-046).
