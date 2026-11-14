@@ -86,7 +86,7 @@ export function ImportCanvasDialog({
 
   return (
     <Dialog open={open} onClose={close} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontWeight: 600 }}>Open a canvas file</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 600 }}>Import a canvas file</DialogTitle>
       <DialogContent sx={{ display: "grid", gap: 2 }}>
         {result ? (
           <>

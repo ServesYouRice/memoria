@@ -50,7 +50,7 @@ async function pickFile(container: HTMLElement) {
   fireEvent.change(input, { target: { files: [file] } });
   const expected = `asset-${uploads}`;
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Change Image" })).toBeTruthy(),
+    expect(screen.getByRole("button", { name: "Change image" })).toBeTruthy(),
   );
   return expected;
 }
@@ -131,7 +131,7 @@ describe("CreateImageDialog upload cleanup", () => {
       <CreateImageDialog open onClose={onClose} canvasId="canvas-1" />,
     );
     await pickFile(container);
-    fireEvent.click(screen.getByRole("button", { name: "Add to Canvas" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to canvas" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
 
     expect(mocks.create).toHaveBeenCalledTimes(1);

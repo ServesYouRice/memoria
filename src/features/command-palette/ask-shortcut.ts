@@ -5,8 +5,8 @@ import {
 } from "@/lib/keyboard/shortcuts";
 
 /**
- * Ctrl/⌘+J opens Ask. Ctrl+K is the command palette and Ctrl+F is search,
- * so J is the free neighbour (and the common "ask AI" key).
+ * Ctrl/⌘+J opens Ask. Ctrl+K opens the Search page and Ctrl+F searches a
+ * canvas, so J is the free neighbour (and the common "ask AI" key).
  */
 export const ASK_SHORTCUT: ShortcutDefinition = getShortcutForAction("ask") ?? {
   key: "j",

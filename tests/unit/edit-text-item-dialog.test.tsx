@@ -94,7 +94,7 @@ async function editAndSave(value: string) {
     target: { value },
   });
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   });
   await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
   return mutateAsync.mock.calls[0]![0] as {

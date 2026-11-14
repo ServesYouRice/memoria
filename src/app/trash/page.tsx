@@ -11,7 +11,7 @@ export const metadata = {
 export default async function TrashPage() {
   if (!(await auth())?.user) redirect("/auth/login");
   return (
-    <AppShell>
+    <AppShell readingWidth="md">
       <TrashContent />
     </AppShell>
   );

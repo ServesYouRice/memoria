@@ -24,6 +24,8 @@ export function getItemTitle(item: TextSourceItem) {
     return text.split("\n")[0]?.slice(0, 120) || "Note";
   }
 
+  if (item.type === "PDF") return readString(content, "filename") || "PDF";
+
   return (
     readString(content, "title") ||
     readString(content, "question") ||
@@ -59,6 +61,10 @@ export function getItemPlainText(item: TextSourceItem) {
       return [readString(content, "alt"), readString(content, "filename")]
         .filter(Boolean)
         .join("\n");
+    case "PDF":
+      // Only the name: the file's own text is untrusted and is quoted
+      // separately, marked as data (IMP-113).
+      return readString(content, "filename");
     default:
       return [
         readString(content, "title"),

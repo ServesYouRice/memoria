@@ -11,6 +11,7 @@ import {
   CircularProgress,
   InputAdornment,
   List,
+  ListItem,
   ListItemButton,
   ListItemIcon,
   ListItemText,
@@ -25,12 +26,18 @@ import {
   ImageOutlined as ImageIcon,
   NotesOutlined as TextIcon,
   CategoryOutlined as OtherIcon,
+  AutoAwesomeOutlined as AskIcon,
 } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import Link from "next/link";
+import {
+  ASK_EVENT,
+  type AskEventDetail,
+} from "@/features/command-palette/ask-event";
+import { SEARCH_INPUT_ID } from "./search-input-id";
 
 interface SearchResult {
   itemId: string;
@@ -152,6 +159,7 @@ export function SearchContent() {
       />
 
       <TextField
+        id={SEARCH_INPUT_ID}
         autoFocus
         fullWidth
         value={query}
@@ -173,6 +181,23 @@ export function SearchContent() {
         }}
         sx={{ mb: 2 }}
       />
+
+      {/* Bridge to Ask: the same words as a question for the AI (IMP-134). */}
+      {query.trim().length >= 2 && (
+        <Button
+          startIcon={<AskIcon />}
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent<AskEventDetail>(ASK_EVENT, {
+                detail: { question: query.trim() },
+              }),
+            )
+          }
+          sx={{ mb: 2 }}
+        >
+          {`Ask AI about "${query.trim()}"`}
+        </Button>
+      )}
 
       {(availableTypes.length > 1 || typeFilter !== null) && (
         <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 3 }}>
@@ -248,82 +273,83 @@ export function SearchContent() {
           >
             <List disablePadding>
               {results.map((result) => (
-                <ListItemButton
-                  key={result.itemId}
-                  divider
-                  onClick={() =>
-                    router.push(
-                      `/canvas/${result.canvasId}?item=${encodeURIComponent(result.itemId)}`,
-                    )
-                  }
-                  sx={{ py: 1.5 }}
-                >
-                  <ListItemIcon sx={{ minWidth: 44, color: "primary.main" }}>
-                    {typeMeta(result.itemType).icon}
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 500 }}
-                        noWrap
-                      >
-                        {result.snippet || "Untitled item"}
-                      </Typography>
+                <ListItem key={result.itemId} disablePadding>
+                  <ListItemButton
+                    divider
+                    onClick={() =>
+                      router.push(
+                        `/canvas/${result.canvasId}?item=${encodeURIComponent(result.itemId)}`,
+                      )
                     }
-                    secondary={
-                      <Box
-                        component="span"
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1,
-                          mt: 0.5,
-                          flexWrap: "wrap",
-                        }}
-                      >
+                    sx={{ py: 1.5 }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 44, color: "primary.main" }}>
+                      {typeMeta(result.itemType).icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={
                         <Typography
+                          variant="body2"
+                          sx={{ fontWeight: 500 }}
+                          noWrap
+                        >
+                          {result.snippet || "Untitled item"}
+                        </Typography>
+                      }
+                      secondary={
+                        <Box
                           component="span"
-                          variant="caption"
                           sx={{
-                            color: "text.secondary",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            mt: 0.5,
+                            flexWrap: "wrap",
                           }}
                         >
-                          in <strong>{result.canvasName}</strong> • updated{" "}
-                          {formatDistanceToNow(new Date(result.updatedAt), {
-                            addSuffix: true,
-                          })}
-                        </Typography>
-                        {result.links && result.links.length > 0 && (
                           <Typography
                             component="span"
                             variant="caption"
-                            sx={{ color: "text.secondary" }}
+                            sx={{
+                              color: "text.secondary",
+                            }}
                           >
-                            linked to{" "}
-                            {result.links
-                              .slice(0, 3)
-                              .map((link) => link.title)
-                              .join(", ")}
-                            {result.links.length > 3 ? "…" : ""}
+                            in <strong>{result.canvasName}</strong> • updated{" "}
+                            {formatDistanceToNow(new Date(result.updatedAt), {
+                              addSuffix: true,
+                            })}
                           </Typography>
-                        )}
-                        {result.tags.slice(0, 4).map((tag) => (
-                          <Chip
-                            key={tag}
-                            label={tag}
-                            size="small"
-                            variant="outlined"
-                            sx={{ height: 18 }}
-                          />
-                        ))}
-                      </Box>
-                    }
-                    slotProps={{
-                      secondary: { component: "div" },
-                    }}
-                  />
-                </ListItemButton>
+                          {result.links && result.links.length > 0 && (
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              sx={{ color: "text.secondary" }}
+                            >
+                              linked to{" "}
+                              {result.links
+                                .slice(0, 3)
+                                .map((link) => link.title)
+                                .join(", ")}
+                              {result.links.length > 3 ? "…" : ""}
+                            </Typography>
+                          )}
+                          {result.tags.slice(0, 4).map((tag) => (
+                            <Chip
+                              key={tag}
+                              label={tag}
+                              size="small"
+                              variant="outlined"
+                              sx={{ height: 18 }}
+                            />
+                          ))}
+                        </Box>
+                      }
+                      slotProps={{
+                        secondary: { component: "div" },
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
               ))}
             </List>
           </Paper>

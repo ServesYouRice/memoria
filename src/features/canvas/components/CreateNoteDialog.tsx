@@ -101,7 +101,7 @@ export function CreateNoteDialog({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Note</DialogTitle>
+      <DialogTitle>Add note</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -172,7 +172,7 @@ export function CreateNoteDialog({
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? "Creating..." : "Create Note"}
+            {isSubmitting ? "Creating..." : "Create note"}
           </Button>
         </DialogActions>
       </form>

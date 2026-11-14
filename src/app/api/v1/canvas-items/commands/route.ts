@@ -14,6 +14,7 @@ import {
 import { recordCanvasItemEvent } from "@/lib/collaboration/committed-events";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { requirePollsEnabled } from "@/lib/polls/availability";
+import { enqueuePdfReads } from "@/lib/pdf/pdf-items";
 
 const updateSchema = z
   .object({
@@ -163,6 +164,7 @@ export const POST = withApiHandler(async (request: NextRequest) => {
             operation: "created",
           });
         }
+        await enqueuePdfReads(tx, created);
         return {
           updated: command.updates.length,
           deleted: command.deletes.length,

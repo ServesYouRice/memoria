@@ -6,6 +6,7 @@ import {
   isFrameContent,
   isImageContent,
   isNoteContent,
+  isPdfContent,
   isPollContent,
   isShapeContent,
   isTextContent,
@@ -41,7 +42,9 @@ export function canvasItemSearchText(item: CanvasItem): string {
   const content = item.content;
   const values: Array<string | undefined> = [...item.tags];
 
-  if (isNoteContent(content)) {
+  if (item.type === ItemType.PDF && isPdfContent(content)) {
+    values.push(content.filename);
+  } else if (isNoteContent(content)) {
     values.push(notePlainText(content));
   } else if (isBookmarkContent(content)) {
     values.push(

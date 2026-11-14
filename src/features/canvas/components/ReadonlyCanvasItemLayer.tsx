@@ -25,6 +25,7 @@ import {
   isFrameItemContent,
   isImageContent,
   isNoteContent,
+  isPdfContent,
   isPollContent,
   isShapeContent,
   isTableContent,
@@ -34,16 +35,14 @@ import { tableCellKey } from "@/lib/tables/table-content";
 import { stripHtmlTags } from "@/lib/utils/html";
 import { useThemeMode } from "@/lib/theme-context";
 import { DotOverlay } from "@/features/canvas/components/GridOverlay";
+import { PdfCardFace } from "@/features/canvas/components/PdfItem";
 import { NOTE_STYLE, noteColorsFor } from "@/features/canvas/lib/note-colors";
 import {
   CANVAS_PALETTE,
   useCanvasPalette,
 } from "@/features/canvas/lib/canvas-palette";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
-import {
-  EMBED_PREVIEW_LABEL,
-  describeEmbedTarget,
-} from "@/lib/product-surfaces";
+import { EMBED_PREVIEW_LABEL, describeEmbedCard } from "@/lib/product-surfaces";
 
 function ReadonlyBookmarkImage({
   src,
@@ -155,6 +154,21 @@ function ReadonlyTableItem({ item }: { item: CanvasItem }) {
           </Group>
         )),
       )}
+    </Group>
+  );
+}
+
+function ReadonlyPdfItem({ item }: { item: CanvasItem }) {
+  const palette = useCanvasPalette();
+  if (!isPdfContent(item.content)) return null;
+  return (
+    <Group x={item.positionX} y={item.positionY}>
+      <PdfCardFace
+        content={item.content}
+        width={item.width}
+        height={item.height}
+        palette={palette}
+      />
     </Group>
   );
 }
@@ -563,7 +577,7 @@ export function ReadonlyCanvasItem({
           x={0}
           y={item.height / 2 - 12}
           width={item.width}
-          text={`${EMBED_PREVIEW_LABEL} · ${describeEmbedTarget(item.content.url)}`}
+          text={`${EMBED_PREVIEW_LABEL} · ${describeEmbedCard(item.content).title}`}
           align="center"
           fontSize={16}
           fill={palette.textMuted}
@@ -588,6 +602,10 @@ export function ReadonlyCanvasItem({
 
   if (item.type === ItemType.TABLE) {
     return <ReadonlyTableItem item={item} />;
+  }
+
+  if (item.type === ItemType.PDF) {
+    return <ReadonlyPdfItem item={item} />;
   }
 
   return null;

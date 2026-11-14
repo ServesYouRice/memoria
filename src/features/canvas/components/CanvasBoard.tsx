@@ -50,6 +50,12 @@ import {
 } from "@/lib/ai/autopilot-service";
 import { useObservedStageSize } from "@/features/canvas/components/use-observed-stage-size";
 import { viewportCenterWorld } from "@/features/canvas/components/viewport-center";
+import { openPdf } from "@/features/canvas/components/PdfItem";
+import {
+  looksLikePdf,
+  pdfCardInput,
+  uploadPdf,
+} from "@/features/canvas/hooks/use-pdf-upload";
 import { TableCellDialog } from "@/features/canvas/components/TableCellDialog";
 import {
   createTable,
@@ -94,6 +100,7 @@ import type { UpdateCanvasItemInput } from "@/lib/validation/canvas-item";
 import {
   ItemType,
   isNoteContent,
+  isPdfContent,
   resolveCanvasCapabilities,
 } from "@/types/canvas";
 
@@ -116,7 +123,7 @@ import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
 import { CanvasAddBar } from "@/features/canvas/components/CanvasAddBar";
 import { CanvasViewControls } from "@/features/canvas/components/CanvasViewControls";
-import { CanvasOrganizerView } from "@/features/canvas/components/CanvasOrganizerView";
+import { CanvasOrganisedList } from "@/features/canvas/components/CanvasOrganisedList";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   isArCanvasEnabled,
@@ -134,6 +141,23 @@ import {
 } from "@/features/canvas/lib/arrow-attachment";
 import { ArrowLabelDialog } from "@/features/canvas/components/ArrowLabelDialog";
 import { LinkedItemsPanel } from "@/features/canvas/components/LinkedItemsPanel";
+import {
+  CanvasEmptyHint,
+  showsCanvasEmptyHint,
+} from "@/features/canvas/components/CanvasEmptyHint";
+import { NoteInlineEditor } from "@/features/canvas/components/NoteInlineEditor";
+import {
+  liveEditingAvailable,
+  liveNoteFragment,
+} from "@/features/canvas/lib/live-note";
+import {
+  NEW_NOTE_SIZE,
+  useAddNote,
+} from "@/features/canvas/hooks/use-add-note";
+import {
+  editsNoteInPlace,
+  noteScreenRect,
+} from "@/features/canvas/lib/note-screen-rect";
 
 interface CanvasBoardProps {
   canvasId: string;
@@ -228,6 +252,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     geometry,
     canvasBounds,
     totalItemCount,
+    itemCountLoaded,
     canvasRevision,
     canvasName,
     zoom,
@@ -397,6 +422,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     useState<CanvasItem | null>(null);
   const [editImageDialogOpen, setEditImageDialogOpen] = useState(false);
   const [editingImageItem, setEditingImageItem] = useState<CanvasItem | null>(
+    null,
+  );
+  // IMP-142: the note typed on in place, and where focus goes back after.
+  const [inlineNote, setInlineNote] = useState<CanvasItem | null>(null);
+  const inlineReturnFocusRef = useRef<HTMLElement | null>(null);
+  // IMP-143: a new note waiting for its shared text before it is typed on.
+  const [pendingInlineNoteId, setPendingInlineNoteId] = useState<string | null>(
     null,
   );
 
@@ -884,6 +916,27 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     }
   };
 
+  // The toolbar, the item list and the empty-canvas hint (IMP-141) start
+  // items the same way. IMP-143: "Note" drops a note in view, ready to type.
+  const addNote = useAddNote({
+    canvasId,
+    canCreateItems: capabilities.canCreateItems,
+    liveEditing: liveEditingAvailable(documentSession, documentState),
+    position,
+    stageSize,
+    zoom,
+    items: allItems,
+    createItem,
+    openDialog: () => setNoteDialogOpen(true),
+    onCreated: (item, inPlace) => {
+      setSelectedItemId(item.id);
+      setSelectedItemIds(new Set([item.id]));
+      if (inPlace && viewMode === "manual") setPendingInlineNoteId(item.id);
+    },
+  });
+  const handleAddNote = () => void addNote();
+  const handleAddLink = () => setBookmarkDialogOpen(true);
+
   const handleAddTable = async () => {
     const center = viewportCenterWorld(position, stageSize, zoom);
     const table = createTable(3, 3);
@@ -902,6 +955,54 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     } catch {
       toast.error("The table was not added.");
     }
+  };
+
+  /**
+   * IMP-113: put dropped or chosen PDFs on the canvas, side by side from
+   * `at` (world coordinates). Anything else is left to its own flow.
+   */
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const handleAddPdfFiles = async (
+    files: File[],
+    at: { x: number; y: number },
+  ) => {
+    if (!capabilities.canCreateItems) return;
+    let zIndex = Math.max(0, ...allItems.map((item) => item.zIndex)) + 1;
+    for (const [index, file] of files.entries()) {
+      const toastId = toast.loading(`Adding ${file.name}…`);
+      try {
+        const content = await uploadPdf(canvasId, file);
+        await createItem(
+          pdfCardInput(
+            canvasId,
+            content,
+            { x: at.x + index * 280, y: at.y },
+            zIndex++,
+          ),
+        );
+        toast.success(`${file.name} is on the canvas.`, { id: toastId });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "The PDF was not added.",
+          { id: toastId },
+        );
+      }
+    }
+  };
+  const handleDropFiles = (event: React.DragEvent<HTMLDivElement>) => {
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (!capabilities.canCreateItems || files.length === 0) return;
+    event.preventDefault();
+    const pdfs = files.filter(looksLikePdf);
+    if (pdfs.length < files.length) {
+      toast.error("Only PDFs can be dropped here. Add pictures with Image.");
+    }
+    if (pdfs.length === 0) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    void handleAddPdfFiles(pdfs, {
+      x: (event.clientX - box.left - position.x) / zoom,
+      y: (event.clientY - box.top - position.y) / zoom,
+    });
   };
 
   const handleWhisperSend = async (text: string) => {
@@ -934,6 +1035,11 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   /** Double-click / Enter activation, gated by the same contract. */
   const handleActivateItem = (item: CanvasItem) => {
+    // Anyone who can see a PDF card can open its file (IMP-113).
+    if (item.type === ItemType.PDF && isPdfContent(item.content)) {
+      openPdf(item.content);
+      return;
+    }
     if (!capabilities.canEditItems) return;
     if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
       handleNoteDoubleClick(item);
@@ -1081,9 +1187,40 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     setSelectedItemId(itemId);
   };
 
+  /** IMP-142: put a text cursor on the note itself, with the board in view. */
+  const openInlineNote = (item: CanvasItem) => {
+    const active = document.activeElement;
+    inlineReturnFocusRef.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+    const rect = noteScreenRect(item, position, zoom);
+    if (
+      rect.left < 0 ||
+      rect.top < 0 ||
+      rect.left + rect.width > stageSize.width ||
+      rect.top + rect.height > stageSize.height
+    ) {
+      setPosition({
+        x: stageSize.width / 2 - (item.positionX + item.width / 2) * zoom,
+        y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
+      });
+    }
+    setInlineNote(item);
+  };
+  const closeInlineNote = useCallback(() => {
+    setInlineNote(null);
+    const returnTo = inlineReturnFocusRef.current;
+    inlineReturnFocusRef.current = null;
+    if (returnTo?.isConnected) returnTo.focus();
+  }, []);
   const handleNoteDoubleClick = (item: CanvasItem) => {
     if (!capabilities.canEditItems) return;
     if (item.type === ItemType.NOTE || item.type === ItemType.TEXT) {
+      const liveEditing =
+        liveNoteFragment(documentSession, documentState, item.id) !== null;
+      if (viewMode === "manual" && editsNoteInPlace(item, zoom, liveEditing)) {
+        openInlineNote(item);
+        return;
+      }
       setEditingNoteItem(item);
       setEditNoteDialogOpen(true);
     }
@@ -1386,6 +1523,49 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
 
   const [isPresentationMode, setPresentationMode] = useState(false);
 
+  // IMP-142: the in-place editor follows the note as it is panned, zoomed or
+  // moved, and closes when the note is deleted or live editing stops.
+  const inlineNoteItem = inlineNote
+    ? (allItems.find((candidate) => candidate.id === inlineNote.id) ??
+      inlineNote)
+    : null;
+  const inlineNoteFragment =
+    inlineNote && canEdit && viewMode === "manual"
+      ? liveNoteFragment(documentSession, documentState, inlineNote.id)
+      : null;
+  useEffect(() => {
+    if (inlineNote && !inlineNoteFragment) closeInlineNote();
+  }, [closeInlineNote, inlineNote, inlineNoteFragment]);
+  // IMP-143: the fallback note dialog also creates its note in view.
+  const viewCenter = viewportCenterWorld(position, stageSize, zoom);
+  const noteDialogPosition = {
+    x: viewCenter.x - NEW_NOTE_SIZE / 2,
+    y: viewCenter.y - NEW_NOTE_SIZE / 2,
+  };
+  // IMP-143: a new note opens in place as soon as its shared text is ready.
+  const pendingInlineItem = pendingInlineNoteId
+    ? allItems.find((candidate) => candidate.id === pendingInlineNoteId)
+    : undefined;
+  const pendingInlineReady =
+    pendingInlineItem !== undefined &&
+    canEdit &&
+    liveNoteFragment(documentSession, documentState, pendingInlineItem.id) !==
+      null;
+  useEffect(() => {
+    if (!pendingInlineItem || !pendingInlineReady) return;
+    const active = document.activeElement;
+    inlineReturnFocusRef.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+    setPendingInlineNoteId(null);
+    setInlineNote(pendingInlineItem);
+  }, [pendingInlineItem, pendingInlineReady]);
+  useEffect(() => {
+    // Never open an editor long after the press.
+    if (!pendingInlineNoteId) return;
+    const timer = window.setTimeout(() => setPendingInlineNoteId(null), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [pendingInlineNoteId]);
+
   const fitToScreen = useCallback(() => {
     if (
       canvasBounds?.minX === null ||
@@ -1621,7 +1801,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         onActivateItem={handleActivateItem}
         onNudgeItem={handleNudgeItem}
         onDeleteItem={handleDeleteItem}
-        onCreateItem={() => setNoteDialogOpen(true)}
+        onCreateItem={handleAddNote}
         canvasName={canvasName}
       />
 
@@ -1631,16 +1811,34 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         activeTool === "draw" && <DrawingToolbar />}
 
       {viewMode === "organizer" ? (
-        <CanvasOrganizerView
+        <CanvasOrganisedList
           canvasId={canvasId}
           items={allItems}
           itemCount={totalItemCount}
+          capabilities={capabilities}
+          selectedItemIds={selectedItemIds}
+          onSelectItem={(itemId) => handleSelectItem(itemId, false)}
+          onActivateItem={handleActivateItem}
+          onNudgeItem={handleNudgeItem}
+          onDeleteItem={handleDeleteItem}
+          onCreateItem={() => setNoteDialogOpen(true)}
+          canvasName={canvasName}
         />
       ) : (
         <Box
           ref={stageContainerRef}
           role="region"
           aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list is available from the skip control."
+          onDragOver={(event) => {
+            if (
+              capabilities.canCreateItems &&
+              event.dataTransfer?.types.includes("Files")
+            ) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDrop={handleDropFiles}
           sx={{
             flexGrow: 1,
             position: "relative",
@@ -1671,10 +1869,24 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               {totalItemCount} remain indexed for navigation and accessibility.
             </Box>
           )}
+          {showsCanvasEmptyHint({
+            viewMode,
+            // A time-machine preview shows a past state, not this count.
+            presenting: isPresentationMode || isTimeMachineActive,
+            itemsLoaded: itemCountLoaded,
+            // The board shows a new item before the index count follows.
+            itemCount: Math.max(totalItemCount, allItems.length),
+          }) && (
+            <CanvasEmptyHint
+              canEdit={canEdit}
+              onAddNote={handleAddNote}
+              onAddLink={handleAddLink}
+            />
+          )}
           {!isPresentationMode && canEdit && (
             <CanvasAddBar
-              onAddNote={() => setNoteDialogOpen(true)}
-              onAddLink={() => setBookmarkDialogOpen(true)}
+              onAddNote={handleAddNote}
+              onAddLink={handleAddLink}
               onAddImage={() => setImageDialogOpen(true)}
               onAddPoll={
                 isLaunchCapabilityEnabled("polls")
@@ -1682,8 +1894,31 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                   : undefined
               }
               onAddTable={() => void handleAddTable()}
+              onAddPdf={
+                capabilities.canCreateItems
+                  ? () => pdfInputRef.current?.click()
+                  : undefined
+              }
             />
           )}
+          <input
+            ref={pdfInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            multiple
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              event.target.value = "";
+              if (files.length === 0) return;
+              void handleAddPdfFiles(
+                files,
+                viewportCenterWorld(position, stageSize, zoom),
+              );
+            }}
+          />
           {!isPresentationMode && (
             <CanvasViewControls
               zoom={zoom}
@@ -1833,6 +2068,22 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               previewStroke={CANVAS_PALETTE[themeMode].ink}
             />
           </Stage>
+
+          {inlineNoteItem && inlineNoteFragment && (
+            <NoteInlineEditor
+              item={inlineNoteItem}
+              fragment={inlineNoteFragment}
+              position={position}
+              zoom={zoom}
+              viewportHeight={stageSize.height}
+              onClose={closeInlineNote}
+              onTags={() => {
+                closeInlineNote();
+                setEditingNoteItem(inlineNoteItem);
+                setEditNoteDialogOpen(true);
+              }}
+            />
+          )}
 
           {chatOpen && (
             <CursorChat
@@ -2021,6 +2272,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         collaborators={collaborators}
         noteDialogOpen={noteDialogOpen}
         setNoteDialogOpen={setNoteDialogOpen}
+        noteDialogPosition={noteDialogPosition}
         bookmarkDialogOpen={bookmarkDialogOpen}
         setBookmarkDialogOpen={setBookmarkDialogOpen}
         imageDialogOpen={imageDialogOpen}
@@ -2129,8 +2381,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       />
       <ConfirmDialog
         open={pendingAutopilotActions.length > 0}
-        title="Apply automatic layout?"
-        message={`Autopilot will reorganize ${pendingAutopilotActions.length} items in one atomic update.`}
+        title="Auto-organise this canvas?"
+        message={`This moves ${pendingAutopilotActions.length} items in one step.`}
         confirmLabel="Apply layout"
         onClose={() => setPendingAutopilotActions([])}
         onConfirm={async () => {

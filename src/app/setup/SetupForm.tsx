@@ -81,7 +81,7 @@ export function SetupForm({ needsToken }: SetupFormProps) {
       }}
     >
       <Stack spacing={2}>
-        <Typography variant="h4">Initial Setup</Typography>
+        <Typography variant="h4">Initial setup</Typography>
         <Typography
           variant="body2"
           sx={{
@@ -94,7 +94,7 @@ export function SetupForm({ needsToken }: SetupFormProps) {
 
         {needsToken && (
           <TextField
-            label="Bootstrap Token"
+            label="Bootstrap token"
             value={token}
             onChange={(event) => setToken(event.target.value)}
             fullWidth
@@ -128,7 +128,7 @@ export function SetupForm({ needsToken }: SetupFormProps) {
         {success && <Alert severity="success">{success}</Alert>}
 
         <Button type="submit" variant="contained" disabled={isDisabled}>
-          {loading ? "Setting up..." : "Create Owner Account"}
+          {loading ? "Setting up..." : "Create owner account"}
         </Button>
       </Stack>
     </Box>

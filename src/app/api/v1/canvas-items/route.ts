@@ -37,6 +37,8 @@ import {
   decodeItemCursor,
 } from "@/lib/api/bounded-response";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { enqueuePdfReads } from "@/lib/pdf/pdf-items";
+import { enqueueTranscriptFetch } from "@/lib/video/video-items";
 
 /**
  * POST /api/v1/canvas-items
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
       await requireCanvasAccess(data.canvasId, userId, email, "EDIT");
 
       // Create item
-      const item = await prisma.$transaction(async (tx) => {
+      const { canvas, ...item } = await prisma.$transaction(async (tx) => {
         await lockCanvasForMutation(tx, data.canvasId);
         await assertCanvasItemCapacity(tx, data.canvasId);
         const created = await tx.canvasItem.create({
@@ -77,6 +79,8 @@ export async function POST(request: NextRequest) {
             createdById: userId,
             updatedById: userId,
           },
+          // IMP-138: the canvas name goes into the activity line.
+          include: { canvas: { select: { name: true } } },
         });
         await recordCanvasItemEvent(tx, {
           canvasId: data.canvasId,
@@ -84,6 +88,16 @@ export async function POST(request: NextRequest) {
           itemId: created.id,
           version: created.version,
           operation: "created",
+        });
+        // A PDF card's text is read in the background (IMP-113).
+        await enqueuePdfReads(tx, [created]);
+        // A saved video gets its captions read when the deployment has
+        // that on (IMP-114); a no-op otherwise.
+        await enqueueTranscriptFetch(tx, {
+          itemId: created.id,
+          type: created.type,
+          content: created.content,
+          canvasId: data.canvasId,
         });
         return created;
       });
@@ -95,6 +109,7 @@ export async function POST(request: NextRequest) {
         userId,
         type: ActivityType.ITEM_CREATED,
         canvasId: data.canvasId,
+        canvasName: canvas?.name,
         itemId: item.id,
       });
 

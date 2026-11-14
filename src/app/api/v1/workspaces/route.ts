@@ -28,7 +28,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     skip: offset,
     include: {
       _count: {
-        select: { canvases: true },
+        select: { canvases: { where: { deletedAt: null } } },
       },
     },
   });

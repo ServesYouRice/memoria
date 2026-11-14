@@ -169,7 +169,7 @@ export function CreateImageDialog({
         if (assetId) discardUpload(assetId);
         return;
       }
-      // "Change Image": the previous upload is no longer wanted.
+      // "Change image": the previous upload is no longer wanted.
       discardPending();
       pendingAssetRef.current = assetId;
 
@@ -258,7 +258,7 @@ export function CreateImageDialog({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Image</DialogTitle>
+      <DialogTitle>Add image</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -290,8 +290,8 @@ export function CreateImageDialog({
                 {uploading
                   ? "Uploading..."
                   : uploadedImage
-                    ? "Change Image"
-                    : "Select Image"}
+                    ? "Change image"
+                    : "Select image"}
               </Button>
               {uploading && <LinearProgress sx={{ mt: 1 }} />}
             </Box>
@@ -343,7 +343,7 @@ export function CreateImageDialog({
               render={({ field }) => (
                 <TextField
                   {...field}
-                  label="Alternative Text (optional)"
+                  label="Alternative text (optional)"
                   placeholder="Describe the image..."
                   fullWidth
                   helperText="Alternative text helps with accessibility"
@@ -397,7 +397,7 @@ export function CreateImageDialog({
             disabled={isSubmitting || uploading || !uploadedImage}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? "Adding..." : "Add to Canvas"}
+            {isSubmitting ? "Adding..." : "Add to canvas"}
           </Button>
         </DialogActions>
       </form>

@@ -58,6 +58,8 @@ export async function reserveUploadAsset(
     size: number;
     maxFiles: number;
     maxBytes: number;
+    /** The saved link a page capture belongs to (IMP-110). */
+    sourceItemId?: string;
   },
 ) {
   return prisma.$transaction(async (tx) => {
@@ -72,6 +74,7 @@ export async function reserveUploadAsset(
         mimeType: input.mimeType,
         size: input.size,
         status: UploadAssetStatus.PENDING,
+        sourceItemId: input.sourceItemId,
       },
     });
   });

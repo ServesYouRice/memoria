@@ -1,11 +1,19 @@
-import type { OutboxJob, PrismaClient } from "@/generated/prisma/client";
+import {
+  Prisma,
+  type OutboxJob,
+  type PrismaClient,
+} from "@/generated/prisma/client";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { purgeCanvas } from "@/lib/canvas/purge-canvas";
 import { pruneCompletedOutboxJobs } from "@/lib/outbox/repository";
 import type { OutboxHandler, OutboxHandlerContext } from "@/lib/outbox/types";
+import { sweepOrphanPageCaptures } from "@/lib/services/page-capture";
 import {
   LAUNCH_LIMITS,
   workspaceCheckpointRetention,
 } from "@/lib/policy/launch-limits";
+import { releasePdfUploadsOf } from "@/lib/pdf/pdf-items";
 
 /** Rows one retention DELETE may remove; each runs as its own statement. */
 export const RETENTION_BATCH_SIZE = 500;
@@ -94,21 +102,80 @@ export function createTrashRetentionHandler(
       Date.now() - LAUNCH_LIMITS.trashRetentionDays * 86_400_000,
     );
     const remains = await runBatchedRetention(
-      () => prisma.$executeRaw`
-        WITH doomed AS (
-          SELECT "id" FROM "CanvasItem"
-          WHERE "deletedAt" < ${cutoff}
-            -- IMP-070: archived items wait in the trash until the user acts.
-            AND "archivedAt" IS NULL
-          ORDER BY "deletedAt" ASC
-          LIMIT ${RETENTION_BATCH_SIZE}
-        )
-        DELETE FROM "CanvasItem" item USING doomed WHERE item."id" = doomed."id"
-      `,
+      () =>
+        prisma.$transaction(async (tx) => {
+          // Locked so a restore cannot slip in after a PDF's file is
+          // released (IMP-113); rows being restored right now are skipped.
+          const doomed = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "CanvasItem"
+            WHERE "deletedAt" < ${cutoff}
+              -- IMP-070: archived items wait in the trash until the user acts.
+              AND "archivedAt" IS NULL
+            ORDER BY "deletedAt" ASC
+            LIMIT ${RETENTION_BATCH_SIZE}
+            FOR UPDATE SKIP LOCKED
+          `;
+          if (doomed.length === 0) return 0;
+          const ids = doomed.map((row) => row.id);
+          await releasePdfUploadsOf(tx, ids);
+          return tx.$executeRaw`
+            DELETE FROM "CanvasItem" WHERE "id" IN (${Prisma.join(ids)})
+          `;
+        }),
       { deadlineAt: retentionDeadline(context), signal: context?.signal },
     );
-    if (remains) await enqueueContinuation(prisma, job);
+    const canvasesRemain = await purgeTrashedCanvases(prisma, cutoff, {
+      deadlineAt: retentionDeadline(context),
+      signal: context?.signal,
+    });
+    // IMP-110: the page pictures and PDFs of the links just deleted. A purged
+    // canvas's own files were already released with its uploads.
+    const capturesRemain = await runBatchedRetention(
+      () => sweepOrphanPageCaptures(prisma, RETENTION_BATCH_SIZE),
+      { deadlineAt: retentionDeadline(context), signal: context?.signal },
+    );
+    if (remains || canvasesRemain || capturesRemain) {
+      await enqueueContinuation(prisma, job);
+    }
   };
+}
+
+/** Canvases one trash sweep batch purges; each is its own transaction. */
+export const CANVAS_PURGE_BATCH_SIZE = 20;
+
+/**
+ * Purges canvases that have been in Trash since before the cutoff (IMP-132).
+ * Each canvas is re-checked under its row lock, so one restored meanwhile is
+ * kept, and a purged one is gone: a second run finds nothing to do. Returns
+ * whether work may remain.
+ */
+export async function purgeTrashedCanvases(
+  prisma: PrismaClient,
+  cutoff: Date,
+  options: { deadlineAt: number; signal?: AbortSignal },
+) {
+  return runBatchedRetention(
+    async () => {
+      const doomed = await prisma.canvas.findMany({
+        where: { deletedAt: { lt: cutoff } },
+        orderBy: [{ deletedAt: "asc" }, { id: "asc" }],
+        take: CANVAS_PURGE_BATCH_SIZE,
+        select: { id: true },
+      });
+      for (const { id } of doomed) {
+        await prisma.$transaction(async (tx) => {
+          await lockCanvasForMutation(tx, id);
+          const still = await tx.canvas.findFirst({
+            where: { id, deletedAt: { lt: cutoff } },
+            select: { id: true },
+          });
+          if (still) await purgeCanvas(tx, id);
+        });
+      }
+      return doomed.length;
+    },
+    { ...options, batchSize: CANVAS_PURGE_BATCH_SIZE },
+  );
 }
 
 export function createVersionRetentionHandler(

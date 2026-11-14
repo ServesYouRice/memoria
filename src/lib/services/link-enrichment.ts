@@ -52,6 +52,7 @@ import {
   storePageCopy,
   wantsArchiveLookup,
 } from "./page-copy";
+import { enqueuePageCapture } from "./page-capture";
 
 const logger = createLogger("link-enrichment");
 
@@ -547,6 +548,8 @@ export function createLinkEnrichmentHandler(
       if (await wantsArchiveLookup(tx, fresh.userId)) {
         await enqueuePageCopy(tx, [itemId]);
       }
+      // A picture and PDF of the page, when the deployment keeps them (IMP-110).
+      await enqueuePageCapture(tx, { itemId, url });
 
       let similarItemIds: string[] = [];
       if (embedding) {

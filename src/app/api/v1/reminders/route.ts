@@ -22,6 +22,7 @@ export const GET = withApiHandler(async () => {
       item: {
         deletedAt: null,
         canvas: {
+          deletedAt: null,
           OR: [{ userId }, { shares: { some: { recipientId: userId } } }],
         },
       },

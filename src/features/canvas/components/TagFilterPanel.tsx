@@ -74,7 +74,7 @@ export function TagFilterPanel({
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <FilterIcon />
-          <Typography variant="h6">Filter by Tags</Typography>
+          <Typography variant="h6">Filter by tags</Typography>
         </Box>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />

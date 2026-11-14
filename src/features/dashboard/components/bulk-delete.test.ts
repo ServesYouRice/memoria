@@ -8,6 +8,7 @@ import {
   BULK_DELETE_CONCURRENCY,
   deleteCanvasesBounded,
   removeCanvasesFromPages,
+  restoreCanvasesBounded,
 } from "./bulk-delete";
 
 function tracker(fail: Record<string, ApiError | Error> = {}) {
@@ -110,5 +111,27 @@ describe("removeCanvasesFromPages", () => {
     const detail = { canvas: { id: "a" } };
     expect(removeCanvasesFromPages(detail, new Set(["a"]))).toBe(detail);
     expect(removeCanvasesFromPages(undefined, new Set(["a"]))).toBeUndefined();
+  });
+});
+
+describe("restoreCanvasesBounded (IMP-133 Undo)", () => {
+  it("restores with the same bound and reports what is still in Trash", async () => {
+    const t = tracker({ c5: new ApiError(500, "Database unavailable") });
+    const result = await restoreCanvasesBounded(ids, t.deleteOne);
+    expect(t.max()).toBeLessThanOrEqual(BULK_DELETE_CONCURRENCY);
+    expect(result.restored).toHaveLength(11);
+    expect(result.stillInTrash).toEqual(["c5"]);
+    expect(result.rateLimited).toBe(false);
+  });
+
+  it("stops after a 429 and counts the unsent canvases as still in Trash", async () => {
+    const t = tracker({ c1: new ApiError(429, "Rate limit exceeded.") });
+    const result = await restoreCanvasesBounded(ids, t.deleteOne);
+    expect(result.rateLimited).toBe(true);
+    expect(t.started.length).toBeLessThan(ids.length);
+    expect(result.restored.length + result.stillInTrash.length).toBe(
+      ids.length,
+    );
+    expect(result.stillInTrash).toContain("c1");
   });
 });

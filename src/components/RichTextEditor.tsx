@@ -28,6 +28,8 @@ import {
   Tooltip,
   ToggleButton,
   ToggleButtonGroup,
+  type SxProps,
+  type Theme,
 } from "@mui/material";
 import {
   FormatBold,
@@ -128,6 +130,20 @@ export interface RichTextEditorProps {
    * editor is created, so key the component by fragment.
    */
   collaboration?: { fragment: Y.XmlFragment };
+  /** Put the cursor at the end of the text once the editor is ready. */
+  autoFocus?: boolean;
+  /**
+   * IMP-142: no border of its own, for an editor drawn as the item it edits
+   * (the in-place note editor). The parent styles the text area through
+   * `contentSx` and may place the formatting bar through `toolbarSx`.
+   */
+  frameless?: boolean;
+  toolbarSx?: SxProps<Theme>;
+  contentSx?: SxProps<Theme>;
+}
+
+function sxList(sx: SxProps<Theme> | undefined) {
+  return Array.isArray(sx) ? sx : sx ? [sx] : [];
 }
 
 export function RichTextEditor({
@@ -137,6 +153,10 @@ export function RichTextEditor({
   minHeight = 200,
   editable = true,
   collaboration,
+  autoFocus = false,
+  frameless = false,
+  toolbarSx,
+  contentSx,
 }: RichTextEditorProps) {
   const [linkDialogOpen, setLinkDialogOpen] = React.useState(false);
   const [linkUrl, setLinkUrl] = React.useState("");
@@ -208,6 +228,16 @@ export function RichTextEditor({
     }
   }, [editor, editable]);
 
+  React.useEffect(() => {
+    if (!editor || !autoFocus) return;
+    // After the shared text has been drawn into the editor, so "end" is the
+    // end of the note rather than of an empty document.
+    const timer = window.setTimeout(() => {
+      if (!editor.isDestroyed) editor.commands.focus("end");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [editor, autoFocus]);
+
   if (!editor) {
     return null;
   }
@@ -235,25 +265,32 @@ export function RichTextEditor({
 
   return (
     <Box
-      sx={{
-        border: 1,
-        borderColor: "divider",
-        borderRadius: 1,
-        overflow: "hidden",
-      }}
+      sx={
+        frameless
+          ? { position: "relative" }
+          : {
+              border: 1,
+              borderColor: "divider",
+              borderRadius: 1,
+              overflow: "hidden",
+            }
+      }
     >
       {editable && (
         <Box
-          sx={{
-            borderBottom: 1,
-            borderColor: "divider",
-            bgcolor: "background.paper",
-            p: 1,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 0.5,
-            alignItems: "center",
-          }}
+          sx={[
+            {
+              borderBottom: 1,
+              borderColor: "divider",
+              bgcolor: "background.paper",
+              p: 1,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 0.5,
+              alignItems: "center",
+            },
+            ...sxList(toolbarSx),
+          ]}
         >
           {/* Text formatting */}
           <ToggleButtonGroup
@@ -293,7 +330,7 @@ export function RichTextEditor({
               onClick={() => editor.chain().focus().toggleCode().run()}
               selected={editor.isActive("code")}
             >
-              <Tooltip title="Inline Code">
+              <Tooltip title="Inline code">
                 <Code fontSize="small" />
               </Tooltip>
             </ToggleButton>
@@ -347,7 +384,7 @@ export function RichTextEditor({
               onClick={() => editor.chain().focus().toggleBulletList().run()}
               selected={editor.isActive("bulletList")}
             >
-              <Tooltip title="Bullet List">
+              <Tooltip title="Bullet list">
                 <FormatListBulleted fontSize="small" />
               </Tooltip>
             </ToggleButton>
@@ -356,7 +393,7 @@ export function RichTextEditor({
               onClick={() => editor.chain().focus().toggleOrderedList().run()}
               selected={editor.isActive("orderedList")}
             >
-              <Tooltip title="Numbered List">
+              <Tooltip title="Numbered list">
                 <FormatListNumbered fontSize="small" />
               </Tooltip>
             </ToggleButton>
@@ -380,9 +417,9 @@ export function RichTextEditor({
             size="small"
             onClick={addLink}
             color={editor.isActive("link") ? "primary" : "default"}
-            aria-label="Add Link"
+            aria-label="Add link"
           >
-            <Tooltip title="Add Link">
+            <Tooltip title="Add link">
               <LinkIcon
                 sx={{
                   fontSize: "small",
@@ -394,76 +431,79 @@ export function RichTextEditor({
       )}
 
       <Box
-        sx={{
-          minHeight,
-          maxHeight: editable ? 600 : "none",
-          overflow: "auto",
-          p: 2,
-          "& .ProseMirror": {
-            outline: "none",
-            minHeight: editable ? minHeight - 32 : "auto",
-            "& p.is-editor-empty:first-of-type::before": {
-              content: "attr(data-placeholder)",
-              float: "left",
-              color: "text.secondary",
-              pointerEvents: "none",
-              height: 0,
-            },
-            "& h1": {
-              fontSize: "2em",
-              fontWeight: "bold",
-              marginTop: "0.67em",
-              marginBottom: "0.67em",
-            },
-            "& h2": {
-              fontSize: "1.5em",
-              fontWeight: "bold",
-              marginTop: "0.75em",
-              marginBottom: "0.75em",
-            },
-            "& h3": {
-              fontSize: "1.17em",
-              fontWeight: "bold",
-              marginTop: "0.83em",
-              marginBottom: "0.83em",
-            },
-            "& ul, & ol": {
-              paddingLeft: "2em",
-              marginTop: "0.5em",
-              marginBottom: "0.5em",
-            },
-            "& blockquote": {
-              borderLeft: "3px solid",
-              borderColor: "divider",
-              paddingLeft: "1em",
-              marginLeft: 0,
-              marginRight: 0,
-              fontStyle: "italic",
-            },
-            "& code": {
-              backgroundColor: "action.hover",
-              padding: "0.2em 0.4em",
-              borderRadius: "3px",
-              fontSize: "0.9em",
-              fontFamily: "monospace",
-            },
-            "& pre": {
-              backgroundColor: "action.hover",
-              borderRadius: "5px",
-              padding: "0.75em 1em",
-              overflow: "auto",
+        sx={[
+          {
+            minHeight,
+            maxHeight: editable ? 600 : "none",
+            overflow: "auto",
+            p: 2,
+            "& .ProseMirror": {
+              outline: "none",
+              minHeight: editable ? minHeight - 32 : "auto",
+              "& p.is-editor-empty:first-of-type::before": {
+                content: "attr(data-placeholder)",
+                float: "left",
+                color: "text.secondary",
+                pointerEvents: "none",
+                height: 0,
+              },
+              "& h1": {
+                fontSize: "2em",
+                fontWeight: "bold",
+                marginTop: "0.67em",
+                marginBottom: "0.67em",
+              },
+              "& h2": {
+                fontSize: "1.5em",
+                fontWeight: "bold",
+                marginTop: "0.75em",
+                marginBottom: "0.75em",
+              },
+              "& h3": {
+                fontSize: "1.17em",
+                fontWeight: "bold",
+                marginTop: "0.83em",
+                marginBottom: "0.83em",
+              },
+              "& ul, & ol": {
+                paddingLeft: "2em",
+                marginTop: "0.5em",
+                marginBottom: "0.5em",
+              },
+              "& blockquote": {
+                borderLeft: "3px solid",
+                borderColor: "divider",
+                paddingLeft: "1em",
+                marginLeft: 0,
+                marginRight: 0,
+                fontStyle: "italic",
+              },
               "& code": {
-                backgroundColor: "transparent",
-                padding: 0,
+                backgroundColor: "action.hover",
+                padding: "0.2em 0.4em",
+                borderRadius: "3px",
+                fontSize: "0.9em",
+                fontFamily: "monospace",
+              },
+              "& pre": {
+                backgroundColor: "action.hover",
+                borderRadius: "5px",
+                padding: "0.75em 1em",
+                overflow: "auto",
+                "& code": {
+                  backgroundColor: "transparent",
+                  padding: 0,
+                },
+              },
+              "& a": {
+                color: "primary.main",
+                textDecoration: "underline",
+                cursor: "pointer",
               },
             },
-            "& a": {
-              color: "primary.main",
-              textDecoration: "underline",
-              cursor: "pointer",
-            },
           },
-        }}
+          ...sxList(contentSx),
+        ]}
       >
         <EditorContent editor={editor} />
       </Box>

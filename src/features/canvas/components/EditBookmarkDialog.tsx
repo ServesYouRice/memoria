@@ -194,7 +194,7 @@ export function EditBookmarkDialog({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit Bookmark</DialogTitle>
+      <DialogTitle>Edit bookmark</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -310,7 +310,7 @@ export function EditBookmarkDialog({
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? "Saving..." : "Save Changes"}
+            {isSubmitting ? "Saving..." : "Save changes"}
           </Button>
         </DialogActions>
       </form>

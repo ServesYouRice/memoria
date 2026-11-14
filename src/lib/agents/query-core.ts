@@ -24,6 +24,7 @@ export async function requireScopedCanvas(
     where: {
       id: canvasId,
       userId: actor.userId,
+      deletedAt: null,
     },
     select: {
       id: true,
@@ -47,6 +48,7 @@ export async function requireScopedItem(actor: ScopedActor, itemId: string) {
       deletedAt: null,
       canvas: {
         userId: actor.userId,
+        deletedAt: null,
       },
     },
     select: {
@@ -133,12 +135,14 @@ export async function listScopedCanvases(
   const where = actor.agentProfile
     ? {
         userId: actor.userId,
+        deletedAt: null,
         id: {
           in: actor.agentProfile.allowedCanvasIds,
         },
       }
     : {
         userId: actor.userId,
+        deletedAt: null,
       };
 
   const canvases = await prisma.canvas.findMany({
@@ -227,6 +231,7 @@ export async function searchScopedItems(
     FROM "CanvasItem" i
     JOIN "Canvas" c ON c."id" = i."canvasId"
     WHERE c."userId" = ${actor.userId}
+      AND c."deletedAt" IS NULL
       AND i."deletedAt" IS NULL
       ${canvasFilter}
       ${Prisma.join(termFilters, " ")}

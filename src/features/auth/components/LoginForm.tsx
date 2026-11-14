@@ -110,7 +110,7 @@ export function secondFactorErrorMessage(
     case "INVALID_BACKUP_CODE":
       return "That backup code is not valid.";
     default:
-      return "That code is not valid. Check your authenticator app and try again.";
+      return "That two-step code did not work. Try again.";
   }
 }
 
@@ -362,8 +362,8 @@ export function LoginForm({ mode = "open", ssoLabel = null }: LoginFormProps) {
         <Box component="form" onSubmit={onSubmitSecondFactor} noValidate>
           <Typography variant="body1" sx={{ mb: 2 }}>
             {useBackupCode
-              ? "Enter one of the backup codes you saved when you set up two-factor authentication."
-              : "Enter the 6-digit code from your authenticator app."}
+              ? "Enter one of the backup codes you saved when you set up two-step codes."
+              : "Enter your two-step code: the 6-digit code your authenticator app shows."}
           </Typography>
           <TextField
             label={useBackupCode ? "Backup code" : "Authentication code"}
@@ -412,7 +412,7 @@ export function LoginForm({ mode = "open", ssoLabel = null }: LoginFormProps) {
               }}
             >
               {useBackupCode
-                ? "Use your authenticator app"
+                ? "Use a two-step code instead"
                 : "Use a backup code instead"}
             </Link>
             <Link

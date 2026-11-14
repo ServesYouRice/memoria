@@ -20,7 +20,13 @@ export const SETTINGS_SECTIONS = [
     id: "appearance",
     path: "/settings/appearance",
     label: "Appearance",
-    intro: "Choose light or dark, and see the keyboard shortcuts.",
+    intro: "Choose light or dark.",
+  },
+  {
+    id: "shortcuts",
+    path: "/settings/shortcuts",
+    label: "Keyboard shortcuts",
+    intro: "The keys that make common actions faster.",
   },
   {
     id: "notifications",
@@ -33,8 +39,7 @@ export const SETTINGS_SECTIONS = [
     id: "ai",
     path: "/settings/ai",
     label: "AI assistant",
-    intro:
-      "Connect your own AI key, see what it used today, and control the AI helpers and agents.",
+    intro: "Connect your own AI key and choose what AI may do for you.",
   },
   {
     id: "import",
@@ -42,6 +47,12 @@ export const SETTINGS_SECTIONS = [
     label: "Import",
     intro:
       "Bring your saved links from a browser, Pocket or Raindrop. Links you already have are skipped.",
+  },
+  {
+    id: "api-keys",
+    path: "/settings/api-keys",
+    label: "API keys",
+    intro: "Create keys for browser extensions and webhooks. Keep them secret.",
   },
   {
     id: "data",

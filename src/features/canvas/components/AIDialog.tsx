@@ -227,7 +227,7 @@ export function AIDialog({
       </DialogTitle>
       <DialogContent>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-          <Tab icon={<NoteAdd />} label="Generate Note" />
+          <Tab icon={<NoteAdd />} label="Generate note" />
           <Tab icon={<Summarize />} label="Summarize" />
           <Tab icon={<ChatIcon />} label="Chat" />
         </Tabs>
@@ -301,7 +301,8 @@ export function AIDialog({
                       mt: 4,
                     }}
                   >
-                    Start a conversation with the {PERSONAS[persona].name}...
+                    Start a conversation with the{" "}
+                    {PERSONAS[persona].name.toLowerCase()}...
                   </Typography>
                 )}
                 {chatMessages.map((msg, idx) => (

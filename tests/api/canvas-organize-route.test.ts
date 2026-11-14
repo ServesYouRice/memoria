@@ -90,7 +90,7 @@ describe("POST /api/v1/canvases/:canvasId/organize", () => {
     const response = await POST(request(), params);
     expect(response.status).toBe(404);
     expect(mocks.canvasFindFirst).toHaveBeenCalledWith({
-      where: { id: "c1", userId: "u1" },
+      where: { id: "c1", userId: "u1", deletedAt: null },
       select: { id: true },
     });
   });

@@ -6,12 +6,10 @@ import {
 } from "@/lib/api/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
-import { NotFoundError } from "@/lib/errors";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { invalidateCanvasCache } from "@/lib/cache/canvas-cache";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { ActivityType, logActivity } from "@/lib/activity";
-import { releaseCanvasUploads } from "@/lib/uploads/lifecycle";
-import { enqueueThumbnailDeletion } from "@/lib/thumbnails/outbox-handler";
 
 const updateCanvasSchema = z
   .object({
@@ -43,7 +41,7 @@ export const GET = withApiHandler(
     // Item pages are loaded by the dedicated, paginated item endpoint. Do not
     // duplicate the full canvas payload in this metadata request.
     const canvasData = await prisma.canvas.findUnique({
-      where: { id: canvasId },
+      where: { id: canvasId, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -137,7 +135,7 @@ export const PATCH = withApiHandler(
 
     // Update canvas
     const updatedCanvas = await prisma.canvas.update({
-      where: { id: canvasId },
+      where: { id: canvasId, deletedAt: null },
       data: {
         ...canvasFields,
         ...(defaultViewport || {}),
@@ -173,18 +171,20 @@ export const DELETE = withApiHandler(
     // Verify canvas ownership
     await requireCanvasOwnership(canvasId, userId);
 
-    // Delete canvas (cascade will delete items, shares, etc.)
+    // Move the canvas to Trash (IMP-132). Nothing is purged now: the trash
+    // sweep calls `purgeCanvas` once the retention window has passed.
     const deletedCanvas = await prisma.$transaction(async (tx) => {
-      // The asset rows cascade away with the canvas, so each charged
-      // asset's quota is released here, once, and every object not yet
-      // DELETED gets a delete job.
-      await releaseCanvasUploads(tx, canvasId);
-      const deleted = await tx.canvas.delete({ where: { id: canvasId } });
-      // Nothing references the stored thumbnail once the row is gone.
-      if (deleted.thumbnailKey) {
-        await enqueueThumbnailDeletion(tx, deleted.thumbnailKey);
+      const trashed = await tx.canvas.updateMany({
+        where: { id: canvasId, userId, deletedAt: null },
+        data: { deletedAt: new Date(), deletedById: userId },
+      });
+      if (trashed.count !== 1) {
+        throw new ForbiddenError("Canvas not found or access denied");
       }
-      return deleted;
+      return tx.canvas.findUniqueOrThrow({
+        where: { id: canvasId },
+        select: { name: true },
+      });
     });
 
     // Invalidate cache
@@ -198,7 +198,7 @@ export const DELETE = withApiHandler(
     });
 
     return NextResponse.json(
-      { message: "Canvas deleted successfully" },
+      { message: "Canvas moved to Trash", trashed: true },
       { status: 200 },
     );
   },

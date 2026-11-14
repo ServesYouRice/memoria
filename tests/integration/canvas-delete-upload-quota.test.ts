@@ -34,6 +34,8 @@ import { prisma } from "@/lib/db";
 import { DELETE as deleteCanvas } from "@/app/api/v1/canvases/[canvasId]/route";
 import { createUploadDeleteHandler } from "@/lib/uploads/outbox-handler";
 import { enqueueOutboxJob } from "@/lib/outbox/enqueue";
+import { createTrashRetentionHandler } from "@/lib/retention/outbox-handler";
+import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 
 type Status = "PENDING" | "ACTIVE" | "DELETING" | "FAILED" | "DELETED";
 
@@ -43,6 +45,38 @@ beforeEach(async () => {
 afterAll(async () => {
   await prisma.$disconnect();
 });
+
+/**
+ * DELETE only moves a canvas to Trash (IMP-132); its uploads are released
+ * when the trash sweep purges it after the retention window.
+ */
+async function deleteAndPurge(canvasId: string) {
+  const response = await deleteCanvas(
+    new NextRequest(`http://localhost/api/v1/canvases/${canvasId}`, {
+      method: "DELETE",
+    }),
+    { params: Promise.resolve({ canvasId }) },
+  );
+  expect(response.status).toBe(200);
+  const trashedAssets = await prisma.uploadAsset.findMany({
+    where: { canvasId },
+    select: { id: true, status: true },
+    orderBy: { id: "asc" },
+  });
+  await prisma.canvas.update({
+    where: { id: canvasId },
+    data: {
+      deletedAt: new Date(
+        Date.now() - (LAUNCH_LIMITS.trashRetentionDays + 1) * 86_400_000,
+      ),
+    },
+  });
+  await createTrashRetentionHandler(prisma as never)({
+    id: `sweep-${canvasId}`,
+    type: "retention.trash",
+  } as never);
+  return trashedAssets;
+}
 
 let counter = 0;
 async function createUser(assetCount: number, totalBytes: number) {
@@ -131,7 +165,7 @@ async function asset(
   });
 }
 
-describe("canvas deletion releases upload quota", () => {
+describe("purging a trashed canvas releases upload quota", () => {
   it("debits each uploader for the canvas's charged assets only", async () => {
     // owner: ACTIVE 10, PENDING 20, DELETING 40, FAILED 80, DELETED 160 on
     // the canvas, ACTIVE 1000 elsewhere. Charged = PENDING/ACTIVE/DELETING.
@@ -160,15 +194,21 @@ describe("canvas deletion releases upload quota", () => {
     );
 
     authState.userId = owner.id;
-    const response = await deleteCanvas(
-      new NextRequest(`http://localhost/api/v1/canvases/${canvas.id}`, {
-        method: "DELETE",
-      }),
-      { params: Promise.resolve({ canvasId: canvas.id }) },
+    // Moving the canvas to Trash keeps every asset and its charge.
+    const trashedAssets = await deleteAndPurge(canvas.id);
+    expect(trashedAssets.map((row) => row.status).sort()).toEqual(
+      [
+        "ACTIVE",
+        "ACTIVE",
+        "DELETED",
+        "DELETING",
+        "FAILED",
+        "FAILED",
+        "PENDING",
+      ].sort(),
     );
-    expect(response.status).toBe(200);
 
-    // Released in the canvas delete transaction itself.
+    // Released in the purge transaction itself.
     expect(await quota(owner.id)).toEqual({ count: 1, bytes: 1000 });
     expect(await quota(collaborator.id)).toEqual({ count: 1, bytes: 3 });
 
@@ -199,13 +239,7 @@ describe("canvas deletion releases upload quota", () => {
     });
     await createAsset(owner.id, canvas.id, "ACTIVE", 10);
     authState.userId = owner.id;
-    const response = await deleteCanvas(
-      new NextRequest(`http://localhost/api/v1/canvases/${canvas.id}`, {
-        method: "DELETE",
-      }),
-      { params: Promise.resolve({ canvasId: canvas.id }) },
-    );
-    expect(response.status).toBe(200);
+    await deleteAndPurge(canvas.id);
     expect(await quota(owner.id)).toEqual({ count: 0, bytes: 0 });
     expect(await prisma.canvas.findUnique({ where: { id: canvas.id } })).toBe(
       null,
@@ -241,13 +275,7 @@ describe("canvas deletion and upload quota", () => {
     authState.userId = owner.id;
     authState.email = owner.email;
 
-    const response = await deleteCanvas(
-      new NextRequest(`http://localhost/api/v1/canvases/${canvas.id}`, {
-        method: "DELETE",
-      }),
-      { params: Promise.resolve({ canvasId: canvas.id }) },
-    );
-    expect(response.status).toBe(200);
+    await deleteAndPurge(canvas.id);
 
     const jobs = await prisma.outboxJob.findMany({
       where: {
@@ -292,13 +320,7 @@ describe("canvas deletion and upload quota", () => {
     await asset(owner.id, canvas.id, 70, UploadAssetStatus.FAILED);
     authState.userId = owner.id;
     authState.email = owner.email;
-    const response = await deleteCanvas(
-      new NextRequest(`http://localhost/api/v1/canvases/${canvas.id}`, {
-        method: "DELETE",
-      }),
-      { params: Promise.resolve({ canvasId: canvas.id }) },
-    );
-    expect(response.status).toBe(200);
+    await deleteAndPurge(canvas.id);
     const quota = await prisma.uploadQuota.findUniqueOrThrow({
       where: { userId: owner.id },
     });

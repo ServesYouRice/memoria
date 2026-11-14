@@ -30,6 +30,7 @@ import {
 } from "@/lib/ai/ask-schema";
 import { proposeAskCommand } from "@/lib/ai/ask-commands";
 import { pageCopyExcerpts } from "@/lib/services/page-copy";
+import { transcriptExcerpts } from "@/lib/video/video-items";
 import { loadItemLinks } from "@/lib/canvas/arrow-links";
 
 const logger = createLogger("ai-ask");
@@ -140,7 +141,8 @@ export async function searchOwnedItems(
   const haystack = Prisma.sql`concat_ws(' ',
     i."content"->>'plainText', i."content"->>'text', i."content"->>'title',
     i."content"->>'description', i."content"->>'url', i."content"->>'question',
-    i."content"->>'alt', array_to_string(i."tags", ' '))`;
+    i."content"->>'alt', i."content"->>'filename',
+    array_to_string(i."tags", ' '))`;
   const patterns = terms.map((term) => `%${term.replace(/[\\%_]/g, "\\$&")}%`);
   const hits = Prisma.join(
     patterns.map(
@@ -152,12 +154,17 @@ export async function searchOwnedItems(
   // Terms are letters and digits only (extractSearchTerms), so OR-joining
   // them is a valid tsquery.
   const tsQuery = Prisma.sql`to_tsquery('english', ${terms.join(" | ")})`;
-  // Words found only in a link's saved page text count too (IMP-094).
+  // Words found only in a link's saved page text (IMP-094), inside a PDF
+  // (IMP-113) or in a video's transcript (IMP-114) count too.
   const ftsMatch = Prisma.sql`
     ${useFts ? Prisma.sql`OR i."searchVector" @@ ${tsQuery}` : Prisma.empty}
     OR EXISTS (
       SELECT 1 FROM "ItemPageCopy" p
       WHERE p."itemId" = i."id" AND p."searchVector" @@ ${tsQuery}
+    )
+    OR EXISTS (
+      SELECT 1 FROM "ItemTranscript" t
+      WHERE t."itemId" = i."id" AND t."searchVector" @@ ${tsQuery}
     )
   `;
   const ftsRank = useFts
@@ -171,6 +178,7 @@ export async function searchOwnedItems(
     JOIN "Canvas" c ON i."canvasId" = c."id"
     WHERE c."userId" = ${userId}
       AND c."isTemplate" = false
+      AND c."deletedAt" IS NULL
       AND i."deletedAt" IS NULL
       ${scopeSql(scope)}
       AND (
@@ -208,7 +216,7 @@ export async function nearestOwnedItemIds(
       model: query.model,
       item: {
         deletedAt: null,
-        canvas: { userId, isTemplate: false },
+        canvas: { userId, isTemplate: false, deletedAt: null },
         ...scopeWhere(scope),
       },
     },
@@ -238,7 +246,7 @@ async function loadOwnedItemRows(
     where: {
       id: { in: itemIds },
       deletedAt: null,
-      canvas: { userId, isTemplate: false },
+      canvas: { userId, isTemplate: false, deletedAt: null },
       ...scopeWhere(scope),
     },
     select: {
@@ -315,10 +323,22 @@ export async function retrieveOwnedItems(
     }
   }
   const retrieved = merged.map(toRetrieved);
-  // A short excerpt of each link's saved page, around the question's words.
+  // A short excerpt of each link's saved page or PDF's text (IMP-113),
+  // around the question's words.
   const excerpts = await pageCopyExcerpts(
     prisma,
-    merged.filter((row) => row.type === "BOOKMARK").map((row) => row.id),
+    merged
+      .filter((row) => row.type === "BOOKMARK" || row.type === "PDF")
+      .map((row) => row.id),
+    extractSearchTerms(question),
+    { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
+  );
+  // And of each video's transcript (IMP-114).
+  const transcripts = await transcriptExcerpts(
+    prisma,
+    merged
+      .filter((row) => row.type === "BOOKMARK" || row.type === "EMBED")
+      .map((row) => row.id),
     extractSearchTerms(question),
     { length: ASK_PAGE_EXCERPT_CHARS, before: 120, fallbackToStart: true },
   );
@@ -331,6 +351,8 @@ export async function retrieveOwnedItems(
   for (const item of retrieved) {
     const excerpt = excerpts.get(item.id);
     if (excerpt) item.pageText = excerpt;
+    const transcript = transcripts.get(item.id);
+    if (transcript) item.transcript = transcript;
     const itemLinks = links.get(item.id);
     if (itemLinks) item.links = itemLinks;
   }
@@ -339,7 +361,7 @@ export async function retrieveOwnedItems(
 
 export async function listOwnedBoards(userId: string): Promise<AskBoard[]> {
   return prisma.canvas.findMany({
-    where: { userId, isTemplate: false },
+    where: { userId, isTemplate: false, deletedAt: null },
     orderBy: { updatedAt: "desc" },
     take: ASK_BOARD_LIMIT,
     select: { id: true, name: true },
@@ -357,7 +379,7 @@ export async function resolveAskScope(
 ): Promise<{ filter: AskScopeFilter; used: AskScopeUsed }> {
   if (scope.kind === "canvas") {
     const canvas = await prisma.canvas.findFirst({
-      where: { id: scope.canvasId, userId, isTemplate: false },
+      where: { id: scope.canvasId, userId, isTemplate: false, deletedAt: null },
       select: { id: true, name: true },
     });
     if (!canvas) throw notFoundError("Canvas", scope.canvasId);
@@ -385,6 +407,7 @@ export async function listAskScopeChoices(userId: string) {
       unnest(i."tags") tag
       WHERE c."userId" = ${userId}
         AND c."isTemplate" = false
+        AND c."deletedAt" IS NULL
         AND i."deletedAt" IS NULL
       GROUP BY tag ORDER BY COUNT(*) DESC, tag ASC
       LIMIT ${ASK_SCOPE_TAG_LIMIT}

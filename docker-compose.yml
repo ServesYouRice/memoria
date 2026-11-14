@@ -199,7 +199,39 @@ services:
       OUTBOX_LEASE_MS: ${OUTBOX_LEASE_MS:-30000}
       OUTBOX_HANDLER_TIMEOUT_MS: ${OUTBOX_HANDLER_TIMEOUT_MS:-15000}
       OUTBOX_CONCURRENCY: ${OUTBOX_CONCURRENCY:-4}
+      PAGE_CAPTURE: ${PAGE_CAPTURE:-false}
     read_only: true
+
+  # Optional (IMP-110): keeps a picture and a PDF of each saved link. Off and
+  # not started unless COMPOSE_PROFILES includes `capture` and PAGE_CAPTURE is
+  # true. It runs a headless browser, so it is its own process and image; the
+  # browser reaches the internet only through a local proxy that refuses
+  # private and internal addresses. See docs/operations/page-capture.md.
+  capture-worker:
+    extends: outbox-worker
+    profiles: ['capture']
+    image: ${MEMORIA_CAPTURE_IMAGE:-memoria-capture:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.capture
+      args:
+        MEMORIA_IMAGE: ${MEMORIA_IMAGE:-memoria:local}
+    command: ['pnpm', 'worker:capture']
+    environment:
+      PAGE_CAPTURE: ${PAGE_CAPTURE:-false}
+      CAPTURE_CONCURRENCY: ${CAPTURE_CONCURRENCY:-1}
+      # The browser's own sandbox needs privileges the container does not
+      # have; the container's limits below stand in for it.
+      CAPTURE_BROWSER_NO_SANDBOX: 'true'
+    tmpfs:
+      - /tmp:size=512m
+    shm_size: 512m
+    mem_limit: ${CAPTURE_MEMORY_LIMIT:-1g}
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   # The realtime process: Yjs document sync (IMP-042) and the presence socket.
   # Replicas share documents through PostgreSQL and announce updates over

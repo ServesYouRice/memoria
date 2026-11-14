@@ -118,7 +118,7 @@ describe("Auth Helpers", () => {
 
       expect(result).toEqual({ userId: "user123" });
       expect(prisma.canvas.findUnique).toHaveBeenCalledWith({
-        where: { id: "canvas123" },
+        where: { id: "canvas123", deletedAt: null },
         select: { userId: true },
       });
     });
@@ -164,10 +164,21 @@ describe("Auth Helpers", () => {
           id: true,
           canvasId: true,
           canvas: {
-            select: { userId: true },
+            select: { userId: true, deletedAt: true },
           },
         },
       });
+    });
+
+    it("should throw when the item's canvas is in Trash", async () => {
+      vi.mocked(prisma.canvasItem.findUnique).mockResolvedValue({
+        id: "item123",
+        canvas: { userId: "user123", deletedAt: new Date() },
+      } as any);
+
+      await expect(requireItemOwnership("item123", "user123")).rejects.toThrow(
+        ForbiddenError,
+      );
     });
 
     it("should throw when item not found", async () => {

@@ -10,5 +10,11 @@
     "expires": "2027-01-31",
     "sql": "ALTER TABLE \"ItemPageCopy\" ALTER COLUMN \"searchVector\" DROP DEFAULT;",
     "reason": "Prisma cannot model the PostgreSQL generated tsvector expression of saved page text (IMP-094); the committed migration remains authoritative."
+  },
+  {
+    "id": "generated-transcript-search-vector",
+    "expires": "2027-01-31",
+    "sql": "ALTER TABLE \"ItemTranscript\" ALTER COLUMN \"searchVector\" DROP DEFAULT;",
+    "reason": "Prisma cannot model the PostgreSQL generated tsvector expression of video transcripts (IMP-114); the committed migration remains authoritative."
   }
 ]

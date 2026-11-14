@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       prisma.canvasShareInvitation.findUnique({
         where: { tokenHash },
         include: {
-          canvas: { select: { name: true } },
+          canvas: { select: { name: true, deletedAt: true } },
           invitedBy: { select: { name: true, email: true } },
         },
       }),
@@ -35,7 +35,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     if (
       !invitation ||
       invitation.respondedAt ||
-      invitation.expiresAt <= new Date()
+      invitation.expiresAt <= new Date() ||
+      invitation.canvas.deletedAt
     ) {
       throw new NotFoundError("Invitation is unavailable");
     }
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       const [invitation, user] = await Promise.all([
         tx.canvasShareInvitation.findUnique({
           where: { tokenHash },
-          include: { canvas: { select: { name: true } } },
+          include: { canvas: { select: { name: true, deletedAt: true } } },
         }),
         tx.user.findUnique({
           where: { id: userId },
@@ -79,7 +80,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       if (
         !invitation ||
         invitation.respondedAt ||
-        invitation.expiresAt <= new Date()
+        invitation.expiresAt <= new Date() ||
+        invitation.canvas.deletedAt
       ) {
         throw new NotFoundError("Invitation is unavailable");
       }

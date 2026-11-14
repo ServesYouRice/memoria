@@ -111,7 +111,7 @@ export function EditImageDialog({ open, onClose, item }: EditImageDialogProps) {
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit Image</DialogTitle>
+      <DialogTitle>Edit image</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -156,7 +156,7 @@ export function EditImageDialog({ open, onClose, item }: EditImageDialogProps) {
               render={({ field }) => (
                 <TextField
                   {...field}
-                  label="Alt Text"
+                  label="Alt text"
                   fullWidth
                   multiline
                   rows={2}
@@ -202,7 +202,7 @@ export function EditImageDialog({ open, onClose, item }: EditImageDialogProps) {
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? "Saving..." : "Save Changes"}
+            {isSubmitting ? "Saving..." : "Save changes"}
           </Button>
         </DialogActions>
       </form>

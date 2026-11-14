@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
     const shares = await prisma.canvasShare.findMany({
       where: {
         recipientId: userId,
+        canvas: { deletedAt: null },
       },
       include: {
         canvas: {
@@ -60,7 +61,9 @@ export async function GET(request: NextRequest) {
       updatedAt: share.canvas.updatedAt,
     }));
 
-    return validatedJson(sharedCanvasResponseSchema, { canvases: sharedCanvases });
+    return validatedJson(sharedCanvasResponseSchema, {
+      canvases: sharedCanvases,
+    });
   } catch (error) {
     return errorResponse(error, request.url);
   }

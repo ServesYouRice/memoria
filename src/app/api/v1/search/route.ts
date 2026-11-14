@@ -16,6 +16,7 @@ import { parsePagination } from "@/lib/api/pagination";
 import { BadRequestError } from "@/lib/errors";
 import { withAuth } from "@/lib/api/route-handler";
 import { pageCopyExcerpts } from "@/lib/services/page-copy";
+import { transcriptExcerpts } from "@/lib/video/video-items";
 import { loadItemLinks, type ItemLinkSummary } from "@/lib/canvas/arrow-links";
 
 const SEARCH_LINKS_PER_ITEM = 5;
@@ -107,8 +108,9 @@ export const GET = withAuth(async (request, session) => {
    * prisma/fts-migration.sql
    */
 
+  // A canvas in Trash (IMP-132) is searched by nobody.
   const accessFilter = Prisma.sql`
-    (
+    c."deletedAt" IS NULL AND (
       c."userId" = ${userId}
       OR EXISTS (
         SELECT 1 FROM "CanvasShare" s
@@ -135,11 +137,21 @@ export const GET = withAuth(async (request, session) => {
   // This is much faster than ILIKE and provides relevance ranking
   // FTS filter - uses the generated searchVector column when available
   // A saved link also matches words that appear only in its saved page
-  // text (IMP-094); that table always has its own indexed search vector.
+  // text (IMP-094), a PDF card words only inside its file (IMP-113), and a
+  // video card words found only in its transcript (IMP-114). Both tables
+  // always have their own indexed search vector.
   const pageCopyMatch = Prisma.sql`
     OR EXISTS (
       SELECT 1 FROM "ItemPageCopy" p
       WHERE p."itemId" = i."id" AND p."searchVector" @@ ${tsQuery}
+    )
+    OR (
+      i."type" = 'PDF'::"ItemType"
+      AND i."content"->>'filename' ILIKE ${searchTerm} ESCAPE '\\'
+    )
+    OR EXISTS (
+      SELECT 1 FROM "ItemTranscript" t
+      WHERE t."itemId" = i."id" AND t."searchVector" @@ ${tsQuery}
     )
   `;
   const searchFilter = useFts
@@ -252,11 +264,18 @@ export const GET = withAuth(async (request, session) => {
       LIMIT ${limit} OFFSET ${offset};
     `;
 
+  const linkIds = items
+    .filter((item) => item.type === "BOOKMARK" || item.type === "EMBED")
+    .map((item) => item.id);
   const pageExcerpts = await pageCopyExcerpts(
     prisma,
-    items.filter((item) => item.type === "BOOKMARK").map((item) => item.id),
+    [
+      ...linkIds,
+      ...items.filter((item) => item.type === "PDF").map((item) => item.id),
+    ],
     [query],
   );
+  const videoExcerpts = await transcriptExcerpts(prisma, linkIds, [query]);
 
   const links = await loadItemLinks(
     prisma,
@@ -286,11 +305,21 @@ export const GET = withAuth(async (request, session) => {
       } else {
         snippet = plainText.substring(0, 100) + "...";
       }
-    } else if (item.type === "BOOKMARK") {
+    } else if (item.type === "BOOKMARK" || item.type === "EMBED") {
       const label = (content.title as string) || (content.url as string) || "";
+      const excerpt = pageExcerpts.get(item.id) ?? videoExcerpts.get(item.id);
+      // When only the saved page text or a video's transcript matched, show
+      // where (IMP-094, IMP-114). The excerpt is untrusted text; the client
+      // renders it as plain text.
+      snippet =
+        excerpt && !label.toLowerCase().includes(queryLower)
+          ? `${label} — …${excerpt}…`
+          : label;
+    } else if (item.type === "PDF") {
+      const label = (content.filename as string) || "PDF";
       const excerpt = pageExcerpts.get(item.id);
-      // When only the saved page text matched, show where (IMP-094). The
-      // excerpt is untrusted web text; the client renders it as plain text.
+      // Words found only inside the file (IMP-113): untrusted file text,
+      // rendered by the client as plain text.
       snippet =
         excerpt && !label.toLowerCase().includes(queryLower)
           ? `${label} — …${excerpt}…`

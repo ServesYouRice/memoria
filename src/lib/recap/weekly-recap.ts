@@ -71,7 +71,7 @@ export function staleLinkWhere(
   return {
     type: ItemType.BOOKMARK,
     deletedAt: null,
-    canvas: { userId, isTemplate: false },
+    canvas: { userId, isTemplate: false, deletedAt: null },
     updatedAt: { lt: cutoff },
     OR: [{ lastOpenedAt: null }, { lastOpenedAt: { lt: cutoff } }],
   };
@@ -114,7 +114,7 @@ export function createWeeklyRecapSweepHandler(
     for (;;) {
       if (context?.signal.aborted) throw context.signal.reason;
       const users = await prisma.user.findMany({
-        where: { canvases: { some: { isTemplate: false } } },
+        where: { canvases: { some: { isTemplate: false, deletedAt: null } } },
         select: { id: true },
         orderBy: { id: "asc" },
         take: SWEEP_PAGE_SIZE,
@@ -224,7 +224,7 @@ export async function writeWeeklyRecap(
   const savedWhere: Prisma.CanvasItemWhereInput = {
     type: ItemType.BOOKMARK,
     deletedAt: null,
-    canvas: { userId: user.id, isTemplate: false },
+    canvas: { userId: user.id, isTemplate: false, deletedAt: null },
     createdAt: { gte: periodStart, lte: now },
   };
   const staleWeeks = user.staleLinkWeeks;

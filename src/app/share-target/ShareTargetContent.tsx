@@ -142,7 +142,7 @@ export function ShareTargetContent({
           >
             Show me how
           </Button>
-          <Button component={Link} href="/api-keys" variant="outlined">
+          <Button component={Link} href="/settings/api-keys" variant="outlined">
             Create a key for my iPhone
           </Button>
         </Stack>

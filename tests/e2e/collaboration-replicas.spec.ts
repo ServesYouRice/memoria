@@ -137,13 +137,21 @@ test("browsers on different realtime replicas see each other", async ({
   const row = itemList(collaboratorPage, canvas.name).getByLabel(
     "note: Replica note",
   );
-  await row.focus();
-  await row.press("Enter");
-  const dialog = collaboratorPage.getByRole("dialog", { name: "Edit Note" });
-  await expect(dialog.getByText("Changes save as you type")).toBeVisible({
+  // IMP-142: the note is typed on in place once the canvas document has
+  // synced; before that it opens in the note dialog, which is closed again.
+  const inPlace = collaboratorPage.getByRole("group", { name: "Editing note" });
+  await expect(async () => {
+    if (await collaboratorPage.getByRole("dialog").first().isVisible()) {
+      await collaboratorPage.keyboard.press("Escape");
+    }
+    await row.focus();
+    await row.press("Enter");
+    await expect(inPlace).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(inPlace.getByText("Changes save as you type")).toBeVisible({
     timeout: 20_000,
   });
-  const editor = dialog.locator(".ProseMirror");
+  const editor = inPlace.locator(".ProseMirror");
   await editor.click();
   await editor.press("Control+End");
   await editor.pressSequentially(" from replica two", { delay: 20 });

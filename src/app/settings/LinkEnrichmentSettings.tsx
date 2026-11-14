@@ -90,7 +90,7 @@ export function LinkEnrichmentSettings() {
 
   return (
     <Stack spacing={1} sx={{ mt: 2 }}>
-      <ListItem disablePadding sx={{ px: 1, gap: 2 }}>
+      <ListItem component="div" disablePadding sx={{ px: 1, gap: 2 }}>
         <ListItemText
           primary="Name, tag and explain saved links"
           secondary={
@@ -112,7 +112,7 @@ export function LinkEnrichmentSettings() {
         />
       </ListItem>
       {data.webArchiveAvailable && (
-        <ListItem disablePadding sx={{ px: 1, gap: 2 }}>
+        <ListItem component="div" disablePadding sx={{ px: 1, gap: 2 }}>
           <ListItemText
             primary="Find web-archive copies of saved links"
             secondary="Asks the Internet Archive (archive.org) whether it has a copy of each link you save, so you can open it if the site goes away. This sends the link's address to archive.org."

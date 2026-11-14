@@ -29,6 +29,7 @@ export const POST = withApiHandler(
         AND item."deletedAt" IS NULL
         AND canvas."id" = item."canvasId"
         AND canvas."userId" = ${userId}
+        AND canvas."deletedAt" IS NULL
     `;
     if (updated === 0) throw new NotFoundError("Item not found.");
     return new NextResponse(null, { status: 204 });

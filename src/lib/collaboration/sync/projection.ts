@@ -23,6 +23,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { ApiError } from "@/lib/errors";
 import { assertCanvasItemCapacity } from "@/lib/policy/capacity";
 import { recordCanvasItemEventsBatch } from "@/lib/collaboration/committed-events";
+import { enqueuePdfReads } from "@/lib/pdf/pdf-items";
 import {
   InvalidDocumentUpdateError,
   type DocumentItemChange,
@@ -135,6 +136,7 @@ export async function projectDocumentChanges(
     }
   }
 
+  const createdRows: Array<{ id: string; type: string }> = [];
   for (const change of changes) {
     if (change.kind === "create") {
       const { state } = change;
@@ -162,6 +164,7 @@ export async function projectDocumentChanges(
           },
           select: { id: true },
         });
+        createdRows.push({ id: state.id, type: state.type });
         events.push({
           canvasId,
           actorId,
@@ -221,5 +224,7 @@ export async function projectDocumentChanges(
   }
 
   await recordCanvasItemEventsBatch(tx, events);
+  // New PDF cards get their text read in the background (IMP-113).
+  await enqueuePdfReads(tx, createdRows);
   return result;
 }

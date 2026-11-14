@@ -231,7 +231,7 @@ export function CreateBookmarkDialog({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Bookmark</DialogTitle>
+      <DialogTitle>Add bookmark</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -372,7 +372,7 @@ export function CreateBookmarkDialog({
             disabled={isSubmitting}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? "Creating..." : "Create Bookmark"}
+            {isSubmitting ? "Creating..." : "Create bookmark"}
           </Button>
         </DialogActions>
       </form>

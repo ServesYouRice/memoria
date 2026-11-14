@@ -109,8 +109,11 @@ test.describe("truthful and accessible launch surface", () => {
         });
         await expect(primary).toBeVisible();
         await expect(
-          primary.getByRole("link", { name: /Dashboard/i }),
+          primary.getByRole("link", { name: "Canvases" }),
         ).toHaveAttribute("aria-current", "page");
+        // Five entries on one line: the bar neither wraps nor overflows.
+        const navBox = await primary.boundingBox();
+        expect(navBox?.height ?? 0).toBeLessThanOrEqual(40);
       }
 
       await expectNoSeriousAxeViolations(page, `dashboard at ${width}px`);
@@ -130,6 +133,14 @@ test.describe("truthful and accessible launch surface", () => {
     await expect(skipLink).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("main")).toBeFocused();
+
+    // The old templates page opens "New canvas" on the dashboard (IMP-126).
+    await page.goto("/templates");
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(
+      page.getByRole("dialog", { name: "Create new canvas" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
 
     const codeColors: string[] = [];
     for (const combination of [

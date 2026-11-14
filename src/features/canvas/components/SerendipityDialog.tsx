@@ -112,7 +112,7 @@ export function SerendipityDialog({
               onClick={handleScan}
               disabled={loading}
             >
-              {loading ? "Scanning..." : "Surprise Me"}
+              {loading ? "Scanning..." : "Surprise me"}
             </Button>
           </Box>
         ) : (

@@ -82,7 +82,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     const itemScope = await prisma.canvasItem.findUnique({
       where: { id: itemId },
-      select: { canvasId: true },
+      // IMP-138: the canvas name goes into the activity line.
+      select: { canvasId: true, canvas: { select: { name: true } } },
     });
     if (!itemScope) throw new NotFoundError("Item not found");
     const updatedItem = await prisma.$transaction(async (tx) => {
@@ -141,6 +142,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       userId,
       type: ActivityType.ITEM_UPDATED,
       canvasId: updatedItem.canvasId,
+      canvasName: itemScope.canvas?.name,
       itemId: updatedItem.id,
     });
 
@@ -169,7 +171,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
     const itemScope = await prisma.canvasItem.findUnique({
       where: { id: itemId },
-      select: { canvasId: true },
+      // IMP-138: the canvas name goes into the activity line.
+      select: { canvasId: true, canvas: { select: { name: true } } },
     });
     if (!itemScope) throw new NotFoundError("Item not found");
     const deletedItem = await prisma.$transaction(async (tx) => {
@@ -217,6 +220,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       userId,
       type: ActivityType.ITEM_DELETED,
       canvasId: deletedItem.canvasId,
+      canvasName: itemScope.canvas?.name,
       itemId,
     });
 

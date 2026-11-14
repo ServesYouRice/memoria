@@ -21,12 +21,17 @@ import {
   Check as CheckIcon,
   NotificationsActive as ReminderIcon,
   DynamicFeed as AlsoShowOnIcon,
+  Download as DownloadIcon,
+  OndemandVideo as VideoNotesIcon,
 } from "@mui/icons-material";
 import {
   ItemType,
+  isPdfContent,
   type CanvasCapabilities,
   type CanvasItem,
 } from "@/types/canvas";
+import { pdfFileUrl } from "@/lib/pdf/pdf-content";
+import { openPdf } from "./PdfItem";
 import { pileTransformMenuItems, usePileTransform } from "./PileTransformMenu";
 import { openSavedLink, openableUrl } from "@/lib/bookmarks/open-link";
 import { noteColorOf, type NoteColorName } from "@/lib/note-colors";
@@ -40,6 +45,8 @@ import { SavedCopyDialog } from "./SavedCopyDialog";
 import { ReminderDialog } from "./ReminderDialog";
 import { AlsoShowOnDialog } from "./AlsoShowOnDialog";
 import { isPlaceableType } from "@/lib/placements/shared";
+import { parseVideoLink } from "@/lib/video/video-link";
+import { VideoNotesDialog } from "./VideoNotesDialog";
 
 export interface ContextMenuPosition {
   x: number;
@@ -173,6 +180,18 @@ export function CanvasContextMenu({
     item?.type === ItemType.BOOKMARK
       ? openableUrl((item.content as { url?: unknown }).url)
       : null;
+  // IMP-114: a saved video (a link or a link preview) keeps notes at
+  // moments and a transcript.
+  const isVideo =
+    (item?.type === ItemType.BOOKMARK || item?.type === ItemType.EMBED) &&
+    parseVideoLink((item.content as { url?: unknown }).url) !== null;
+  const [videoItemId, setVideoItemId] = React.useState<string | null>(null);
+
+  // IMP-113: a PDF opens in the browser's own viewer, or downloads.
+  const pdf =
+    item?.type === ItemType.PDF && isPdfContent(item.content)
+      ? item.content
+      : null;
 
   const showNoteColors =
     item?.type === ItemType.NOTE &&
@@ -201,6 +220,27 @@ export function CanvasContextMenu({
           />
         )}
         {showNoteColors && <Divider />}
+        {pdf && (
+          <MenuItem onClick={() => handleAction(() => openPdf(pdf))}>
+            <ListItemIcon>
+              <OpenLinkIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Open PDF</ListItemText>
+          </MenuItem>
+        )}
+        {pdf && (
+          <MenuItem
+            component="a"
+            href={pdfFileUrl(pdf.assetId, { download: true })}
+            download={pdf.filename}
+            onClick={onClose}
+          >
+            <ListItemIcon>
+              <DownloadIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Download PDF</ListItemText>
+          </MenuItem>
+        )}
         {linkUrl && item && (
           <MenuItem
             onClick={() =>
@@ -221,6 +261,14 @@ export function CanvasContextMenu({
               <SavedCopyIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>Read saved copy</ListItemText>
+          </MenuItem>
+        )}
+        {isVideo && item && (
+          <MenuItem onClick={() => handleAction(() => setVideoItemId(item.id))}>
+            <ListItemIcon>
+              <VideoNotesIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Video notes and transcript…</ListItemText>
           </MenuItem>
         )}
         {capabilities.canCopyItems && (
@@ -292,6 +340,10 @@ export function CanvasContextMenu({
       <SavedCopyDialog
         itemId={savedCopyItemId}
         onClose={() => setSavedCopyItemId(null)}
+      />
+      <VideoNotesDialog
+        itemId={videoItemId}
+        onClose={() => setVideoItemId(null)}
       />
     </>
   );

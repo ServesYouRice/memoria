@@ -35,23 +35,12 @@ import {
   normalizeNoteContent,
   type VersionedNoteContent,
 } from "@/lib/rich-text/note-format";
+import { fragmentKey, liveNoteFragment } from "@/features/canvas/lib/live-note";
 
 interface EditNoteDialogProps {
   open: boolean;
   onClose: () => void;
   item: CanvasItem | null;
-}
-
-// One editor per shared fragment: a reloaded document brings new fragments.
-const fragmentKeys = new WeakMap<Y.XmlFragment, number>();
-let nextFragmentKey = 0;
-function fragmentKey(fragment: Y.XmlFragment): number {
-  let key = fragmentKeys.get(fragment);
-  if (key === undefined) {
-    key = ++nextFragmentKey;
-    fragmentKeys.set(fragment, key);
-  }
-  return key;
 }
 
 /**
@@ -77,7 +66,7 @@ function SharedNoteDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit Note</DialogTitle>
+      <DialogTitle>Edit note</DialogTitle>
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Typography variant="body2" sx={{ color: "text.secondary" }}>
@@ -191,13 +180,9 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
   const documentSession = useCanvasDocument();
   const documentState = useCanvasDocumentSnapshot(documentSession);
   const sharedEntry = item ? documentState.items.get(item.id) : undefined;
-  const sharedFragment =
-    item &&
-    sharedEntry &&
-    documentSession?.acceptsWrites &&
-    documentState.writable
-      ? documentSession.noteFragment(item.id)
-      : null;
+  const sharedFragment = item
+    ? liveNoteFragment(documentSession, documentState, item.id)
+    : null;
 
   const {
     control,
@@ -304,7 +289,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit Note</DialogTitle>
+      <DialogTitle>Edit note</DialogTitle>
       <form onSubmit={handleSubmit(onSubmit)}>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -381,7 +366,7 @@ export function EditNoteDialog({ open, onClose, item }: EditNoteDialogProps) {
             disabled={isSubmitting || loadFailed}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
-            {isSubmitting ? "Saving..." : "Save Changes"}
+            {isSubmitting ? "Saving..." : "Save changes"}
           </Button>
         </DialogActions>
       </form>

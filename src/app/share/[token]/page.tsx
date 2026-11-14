@@ -16,10 +16,12 @@ import {
   Toolbar,
   ButtonGroup,
   Tooltip,
+  Chip,
 } from "@mui/material";
 import { ZoomIn, ZoomOut, FitScreen } from "@mui/icons-material";
 import { Stage } from "react-konva";
 import Link from "next/link";
+import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { type CanvasItem } from "@/types/canvas";
 import type Konva from "konva";
 import {
@@ -245,12 +247,34 @@ export default function SharePage({ params }: SharePageProps) {
           p: 4,
         }}
       >
+        <Box
+          component={Link}
+          href="/"
+          aria-label="Memoria home"
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 1,
+            mb: 3,
+            color: "text.primary",
+            textDecoration: "none",
+            fontWeight: 700,
+          }}
+        >
+          <MemoriaLogo size={32} />
+          Memoria
+        </Box>
         <Alert severity="error" sx={{ mb: 2, maxWidth: 500 }}>
           {error}
         </Alert>
-        <Button component={Link} href="/" variant="contained">
-          Go to Home
-        </Button>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+          <Button component={Link} href="/" variant="contained">
+            Go to Memoria
+          </Button>
+          <Button component={Link} href="/auth/login" variant="outlined">
+            Sign in
+          </Button>
+        </Box>
       </Box>
     );
   }
@@ -268,37 +292,45 @@ export default function SharePage({ params }: SharePageProps) {
       <AppBar position="static" color="default" elevation={1}>
         {/* Wraps rather than overflowing at 320/375px. */}
         <Toolbar sx={{ flexWrap: "wrap", rowGap: 1, py: { xs: 1, sm: 0 } }}>
+          <Box
+            component={Link}
+            href="/"
+            aria-label="Memoria home"
+            sx={{ display: "inline-flex", mr: 1.5 }}
+          >
+            <MemoriaLogo size={28} />
+          </Box>
           <Typography
             variant="h6"
             component="div"
-            sx={{ flexGrow: 1, minWidth: 0, mr: 1 }}
+            sx={{
+              flexGrow: 1,
+              minWidth: 0,
+              mr: 1,
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              columnGap: 1,
+            }}
           >
-            {canvas?.name || "Shared Canvas"}{" "}
-            <Typography
-              component="span"
-              variant="caption"
-              sx={{
-                color: "text.secondary",
-              }}
-            >
-              (Read Only)
-            </Typography>
+            {canvas?.name || "Shared canvas"}
+            <Chip label="View only" size="small" variant="outlined" />
           </Typography>
 
           {/* Zoom Controls */}
           <Box sx={{ display: "flex", alignItems: "center", mr: 2 }}>
             <ButtonGroup variant="outlined" size="small" sx={{ mr: 1 }}>
-              <Tooltip title="Zoom Out">
+              <Tooltip title="Zoom out">
                 <Button onClick={handleZoomOut} disabled={zoom <= MIN_ZOOM}>
                   <ZoomOut />
                 </Button>
               </Tooltip>
-              <Tooltip title="Fit to Screen">
+              <Tooltip title="Fit to screen">
                 <Button onClick={handleFitToScreen}>
                   <FitScreen />
                 </Button>
               </Tooltip>
-              <Tooltip title="Zoom In">
+              <Tooltip title="Zoom in">
                 <Button onClick={handleZoomIn} disabled={zoom >= MAX_ZOOM}>
                   <ZoomIn />
                 </Button>
@@ -322,10 +354,10 @@ export default function SharePage({ params }: SharePageProps) {
             variant="outlined"
             sx={{ mr: 1 }}
           >
-            Sign In
+            Sign in
           </Button>
           <Button component={Link} href="/auth/register" variant="contained">
-            Sign Up
+            Create account
           </Button>
         </Toolbar>
       </AppBar>

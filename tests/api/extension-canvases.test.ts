@@ -59,7 +59,7 @@ describe("GET /api/v1/extensions/canvases", () => {
     });
     expect(mocks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: "user-1" },
+        where: { userId: "user-1", deletedAt: null },
         select: { id: true, name: true },
       }),
     );

@@ -80,12 +80,71 @@ describe("authenticated application shell", () => {
     });
     expect(
       within(primary)
-        .getByRole("link", { name: /Dashboard/i })
+        .getByRole("link", { name: "Canvases" })
         .getAttribute("aria-current"),
     ).toBe("page");
     expect(
       screen.getByRole("link", { name: "Notifications, 3 unread" }),
     ).toBeTruthy();
+  });
+
+  it("reaches every signed-in page from the top bar, account menu and drawer", () => {
+    render(
+      <AppShell>
+        <h1>Dashboard content</h1>
+      </AppShell>,
+    );
+
+    const primary = screen.getByRole("navigation", {
+      name: "Primary navigation",
+    });
+    expect(
+      within(primary)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("aria-label") ?? link.textContent),
+    ).toEqual(["Canvases", "Inbox", "Shared with me", "Workspaces", "Trash"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    const menuItems = screen
+      .getAllByRole("menuitem")
+      .map((item) => [item.textContent, item.getAttribute("href")]);
+    expect(menuItems).toEqual([
+      ["Settings", "/settings"],
+      ["Reminders", "/reminders"],
+      ["Weekly recap", "/recap"],
+      ["Help", "/help"],
+      ["Sign out", null],
+    ]);
+  });
+
+  it("lists the same places in the phone drawer", () => {
+    const { container } = render(
+      <AppShell>
+        <h1>Dashboard content</h1>
+      </AppShell>,
+    );
+
+    // Hidden by CSS at the test window's desktop width, so query it directly.
+    fireEvent.click(
+      container.querySelector('[aria-label="Open navigation menu"]')!,
+    );
+    const drawer = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(
+      within(drawer)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual([
+      "Canvases",
+      "Inbox",
+      "Shared with me",
+      "Workspaces",
+      "Trash",
+      "Notifications",
+      "Reminders",
+      "Weekly recap",
+      "Settings",
+      "Help",
+    ]);
   });
 
   it("renders no badge when nothing is unread", () => {

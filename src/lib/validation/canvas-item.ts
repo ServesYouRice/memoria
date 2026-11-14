@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { POLL_MAX_CHOICES } from "@/lib/polls/limits";
 import { tableContentSchema } from "@/lib/tables/table-content";
+import { pdfContentSchema } from "@/lib/pdf/pdf-content";
 import { ItemType } from "@/types/canvas";
 import { sanitizeUrl } from "@/lib/sanitization";
 import {
@@ -234,6 +235,8 @@ export const frameContentSchema = z.object({
 export const embedContentSchema = z.object({
   url: z.string().url().max(2048),
   embedType: z.enum(["youtube", "figma", "loom", "generic"]),
+  /** Shown on the card as plain text (IMP-114). */
+  title: z.string().trim().max(500).optional(),
 });
 
 /**
@@ -274,6 +277,7 @@ export const canvasItemContentSchemas = {
   [ItemType.EMBED]: embedContentSchema,
   [ItemType.POLL]: pollContentSchema,
   [ItemType.TABLE]: tableContentSchema,
+  [ItemType.PDF]: pdfContentSchema,
 } as const;
 
 export function parseCanvasItemContent(

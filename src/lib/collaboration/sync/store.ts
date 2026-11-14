@@ -79,7 +79,10 @@ async function migrateCanvasDocument(
     async (tx) => {
       await lockCanvasForMutation(tx, canvasId);
       const [canvas, existing] = await Promise.all([
-        tx.canvas.findUnique({ where: { id: canvasId }, select: { id: true } }),
+        tx.canvas.findUnique({
+          where: { id: canvasId, deletedAt: null },
+          select: { id: true },
+        }),
         tx.canvasDocument.findUnique({
           where: { canvasId },
           select: { canvasId: true },

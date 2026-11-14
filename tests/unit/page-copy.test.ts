@@ -275,7 +275,11 @@ describe("link.page-copy.backfill job", () => {
           type: "BOOKMARK",
           deletedAt: null,
           pageCopy: { is: null },
-          canvas: { isTemplate: false, user: { autoEnrichLinks: true } },
+          canvas: {
+            isTemplate: false,
+            deletedAt: null,
+            user: { autoEnrichLinks: true },
+          },
         }),
       }),
     );

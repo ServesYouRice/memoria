@@ -239,7 +239,10 @@ export function collaborationSyncUrl(location: {
 
 /** Normalize item content exactly as the HTTP API would store it. */
 function normalizeContent(type: ItemType, content: unknown): unknown {
-  if (type === ItemType.NOTE) return normalizeNoteContent(content);
+  // The document holds empty notes (the sync server reads them with
+  // `allowEmpty`), so a note can start empty and be typed on (IMP-143).
+  if (type === ItemType.NOTE)
+    return normalizeNoteContent(content, { allowEmpty: true });
   return parseCanvasItemContent(type, content);
 }
 

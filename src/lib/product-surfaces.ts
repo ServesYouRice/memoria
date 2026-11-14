@@ -8,6 +8,8 @@
  * @module lib/product-surfaces
  */
 
+import { parseVideoLink } from "@/lib/video/video-link";
+
 /**
  * DEC-011 — embeds are link previews. Nothing third-party executes: the canvas
  * renders a static card and the CSP keeps `frame-src` at `'none'`.
@@ -74,4 +76,30 @@ export function describeEmbedTarget(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * IMP-114: what a link-preview card says. A video card shows the video's
+ * title and where it is from ("YouTube · youtube.com"); it still opens in a
+ * new tab and plays nothing in the canvas (DEC-011).
+ */
+export function describeEmbedCard(content: { url: string; title?: unknown }): {
+  title: string;
+  source: string;
+  isVideo: boolean;
+} {
+  const host = describeEmbedTarget(content.url);
+  const video = parseVideoLink(content.url);
+  const title =
+    typeof content.title === "string" && content.title.trim()
+      ? content.title.trim()
+      : null;
+  if (video) {
+    return {
+      title: title ?? `${video.source} video`,
+      source: `${video.source} · ${host}`,
+      isVideo: true,
+    };
+  }
+  return { title: title ?? host, source: content.url, isVideo: false };
 }

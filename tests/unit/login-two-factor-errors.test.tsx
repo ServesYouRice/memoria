@@ -122,7 +122,7 @@ describe("two-factor step errors", () => {
       "That backup code is not valid.",
     );
     expect(secondFactorErrorMessage({ code: "INVALID_CODE" })).toBe(
-      "That code is not valid. Check your authenticator app and try again.",
+      "That two-step code did not work. Try again.",
     );
     expect(secondFactorErrorMessage({ status: 429 })).toBe(RATE_LIMITED);
     expect(secondFactorErrorMessage({ status: 429 }, 90)).toBe(

@@ -49,7 +49,7 @@ export function TimeMachineControl({
           alignItems: "center",
         }}
       >
-        <Typography variant="h6">Time Machine</Typography>
+        <Typography variant="h6">Replay changes</Typography>
         <Box>
           <Typography
             variant="subtitle1"
@@ -93,7 +93,7 @@ export function TimeMachineControl({
             startIcon={<Restore />}
             onClick={() => onRestore(currentVersion)}
           >
-            Restore This Version
+            Restore this version
           </Button>
         </Box>
       )}

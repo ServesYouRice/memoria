@@ -84,14 +84,16 @@ export function createShareInvitationEmailHandler(
     const invitation = await prisma.canvasShareInvitation.findUnique({
       where: { id: invitationId },
       include: {
-        canvas: { select: { name: true } },
+        canvas: { select: { name: true, deletedAt: true } },
         invitedBy: { select: { name: true, email: true } },
       },
     });
     if (
       !invitation ||
       invitation.respondedAt ||
-      invitation.expiresAt <= new Date()
+      invitation.expiresAt <= new Date() ||
+      // No invitation goes out for a canvas in Trash (IMP-132).
+      invitation.canvas.deletedAt
     )
       return;
     const recipient = await prisma.user.findUnique({

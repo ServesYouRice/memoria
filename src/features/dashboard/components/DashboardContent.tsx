@@ -14,9 +14,9 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  InputAdornment,
   Paper,
   TextField,
-  Tooltip,
   Typography,
   Alert,
   alpha,
@@ -29,16 +29,20 @@ import {
   BrushOutlined as CanvasIcon,
   FolderOutlined as WorkspaceIcon,
   UploadFile,
-  FileCopyOutlined as DuplicateIcon,
 } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import {
   useCanvases,
   useCreateCanvas,
   useDuplicateCanvas,
+  useUpdateCanvas,
   canvasKeys,
+  type CanvasListSort,
 } from "@/lib/hooks/use-canvases";
-import { useWorkspace } from "@/lib/hooks/use-workspaces";
+import {
+  useAssignCanvasToWorkspace,
+  useWorkspace,
+} from "@/lib/hooks/use-workspaces";
 import { ActivityFeed } from "./ActivityFeed";
 import { StarterRow } from "./StarterRow";
 import { ImportCanvasDialog } from "./ImportCanvasDialog";
@@ -46,14 +50,27 @@ import { SomethingOldCard } from "./SomethingOldCard";
 import { BLANK_TEMPLATE, TemplatePicker } from "./TemplatePicker";
 import { useCreateFromTemplate, useTemplates } from "@/lib/hooks/use-templates";
 import { CanvasCard, CanvasCardSkeleton, CardGrid } from "./CanvasCard";
-import { GlobalSearchDialog } from "@/components/GlobalSearchDialog";
-import { CommandPalette } from "@/components/CommandPalette";
+import { CanvasCardMenu } from "./CanvasCardMenu";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
-import { useThemeMode } from "@/lib/theme-context";
 import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
 import { apiFetch } from "@/lib/api/fetch-client";
-import { deleteCanvasesBounded, removeCanvasesFromPages } from "./bulk-delete";
+import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
+import {
+  deleteCanvasesBounded,
+  removeCanvasesFromPages,
+  restoreCanvasesBounded,
+} from "./bulk-delete";
+
+const canvasCount = (count: number) =>
+  `${count} canvas${count === 1 ? "" : "es"}`;
+
+const SORT_STORAGE_KEY = "memoria.dashboard.sort";
+const SORT_LABELS: Record<CanvasListSort, string> = {
+  updated: "Recently updated",
+  name: "Name (A to Z)",
+  created: "Newest first",
+};
 
 export function DashboardContent({ userName }: { userName?: string | null }) {
   const router = useRouter();
@@ -73,10 +90,53 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
+  // `/templates` lands here with `?new=1`: open "New canvas" once, then
+  // drop the parameter so a refresh does not reopen it (IMP-126).
+  const openNewCanvas = searchParams.get("new") === "1";
+  useEffect(() => {
+    if (!openNewCanvas) return;
+    setCreateDialogOpen(true);
+    router.replace("/dashboard");
+  }, [openNewCanvas, router]);
+
+  // IMP-136: sort and name filter run on the server, so they reach canvases
+  // that are not loaded yet.
+  const [sort, setSort] = useState<CanvasListSort>("updated");
+  const [filterText, setFilterText] = useState("");
+  const [filterQuery, setFilterQuery] = useState("");
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SORT_STORAGE_KEY);
+      if (saved && saved in SORT_LABELS) setSort(saved as CanvasListSort);
+    } catch {
+      // Storage can be blocked; the default order still works.
+    }
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setFilterQuery(filterText.trim()),
+      250,
+    );
+    return () => window.clearTimeout(timer);
+  }, [filterText]);
+  const changeSort = (next: CanvasListSort) => {
+    setSort(next);
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, next);
+    } catch {
+      // Remembering the choice is a convenience only.
+    }
+  };
+  const clearFilter = () => {
+    setFilterText("");
+    setFilterQuery("");
+  };
+
+  // The unfiltered list counts every canvas for the header; with the default
+  // sort and no filter both calls share one cached query.
+  const { data: allCanvasesData } = useCanvases(workspaceId || undefined);
   const {
     data: canvasesData,
     isLoading,
@@ -84,7 +144,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
-  } = useCanvases(workspaceId || undefined);
+  } = useCanvases(workspaceId || undefined, {
+    sort,
+    ...(filterQuery ? { q: filterQuery } : {}),
+  });
   const createCanvas = useCreateCanvas();
   // IMP-098: "New canvas" can start from a built-in template.
   const [startFrom, setStartFrom] = useState(BLANK_TEMPLATE);
@@ -93,6 +156,9 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const creating = createCanvas.isPending || createFromTemplate.isPending;
   // IMP-098: a private copy of one of the person's canvases.
   const duplicateCanvas = useDuplicateCanvas();
+  // IMP-137: the card menu renames and moves canvases.
+  const updateCanvas = useUpdateCanvas();
+  const assignToWorkspace = useAssignCanvasToWorkspace();
   const handleDuplicate = async (canvasId: string) => {
     try {
       const copy = await duplicateCanvas.mutateAsync(canvasId);
@@ -110,7 +176,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       );
     }
   };
-  const { mode, toggleTheme } = useThemeMode();
 
   const canvases = useMemo(() => {
     return canvasesData?.pages.flatMap((page) => page.canvases) ?? [];
@@ -161,19 +226,6 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     }
   };
 
-  // Command palette keyboard shortcut
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen(true);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   const toggleCanvasSelection = (canvasId: string) => {
     setSelectedCanvasIds((prev) => {
       const next = new Set(prev);
@@ -194,6 +246,37 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     if (selectionMode) setSelectedCanvasIds(new Set());
   };
 
+  // A card menu's Delete selects just that canvas outside selection mode;
+  // cancelling must not leave it selected.
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    if (!selectionMode) setSelectedCanvasIds(new Set());
+  };
+
+  // Undo of a bulk delete (IMP-133): the canvases come back from Trash.
+  const undoBulkDelete = async (ids: string[]) => {
+    const result = await restoreCanvasesBounded(ids, (id) =>
+      apiFetch(`/api/v1/canvases/${id}/restore`, { method: "POST" }),
+    );
+    const refetchType = result.rateLimited ? "none" : undefined;
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: canvasKeys.all, refetchType }),
+      queryClient.invalidateQueries({ queryKey: ["trash"], refetchType }),
+    ]);
+    const left = result.stillInTrash.length;
+    if (left === 0) {
+      toast.success("Restored");
+    } else if (result.restored.length > 0) {
+      toast.warning(
+        `Restored ${canvasCount(result.restored.length)}. ${canvasCount(left)} could not be restored and ${left === 1 ? "is" : "are"} still in Trash.`,
+      );
+    } else {
+      toast.error(
+        `Could not restore ${canvasCount(left)}. ${left === 1 ? "It is" : "They are"} still in Trash.`,
+      );
+    }
+  };
+
   const handleBulkDelete = async () => {
     const ids = visibleSelectedIds;
     if (ids.length === 0) return;
@@ -205,11 +288,15 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
         apiFetch(`/api/v1/canvases/${id}`, { method: "DELETE" }),
       );
       const succeeded = result.deleted.length;
-      const plural = (count: number) =>
-        `${count} canvas${count === 1 ? "" : "es"}`;
+      const moved = [...result.deleted];
+      const undo = {
+        // Long enough to read and reach the button (at least 8 seconds).
+        duration: 10_000,
+        action: { label: "Undo", onClick: () => void undoBulkDelete(moved) },
+      };
 
       if (result.failed.length === 0 && result.notAttempted.length === 0) {
-        toast.success(`Deleted ${plural(succeeded)}`);
+        toast.success(`${canvasCount(succeeded)} moved to Trash`, undo);
         setSelectedCanvasIds(new Set());
         setSelectionMode(false);
       } else {
@@ -222,12 +309,15 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             }.`
           : (result.failed.find((failure) => failure.detail)?.detail ??
             "Failed to delete canvas");
-        const message =
-          succeeded > 0
-            ? `Deleted ${plural(succeeded)}, ${unfinished} not deleted. ${reason}`
-            : `Failed to delete selected canvases. ${reason}`;
-        if (succeeded > 0) toast.warning(message);
-        else toast.error(message);
+        if (succeeded > 0)
+          toast.warning(
+            `${canvasCount(succeeded)} moved to Trash, ${unfinished} not moved. ${reason}`,
+            undo,
+          );
+        else
+          toast.error(
+            `Could not move the selected canvases to Trash. ${reason}`,
+          );
         setSelectedCanvasIds(
           new Set([
             ...result.failed.map((failure) => failure.id),
@@ -258,6 +348,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
 
   const totalCount =
     canvasesData?.pages[0]?.pagination.total ?? canvases.length;
+  const allCount = allCanvasesData?.pages[0]?.pagination.total ?? totalCount;
+  const filtering = filterQuery.length > 0;
+  const showListControls =
+    !selectionMode && (allCount > 0 || filterText.length > 0 || filtering);
 
   return (
     <>
@@ -276,7 +370,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             `Welcome back${userName ? `, ${userName}` : ""} — ${
               isLoading
                 ? "loading…"
-                : `${totalCount} canvas${totalCount === 1 ? "" : "es"}`
+                : `${allCount} canvas${allCount === 1 ? "" : "es"}`
             }`
           )
         }
@@ -298,7 +392,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
               startIcon={<UploadFile />}
               onClick={() => setImportDialogOpen(true)}
             >
-              Open file
+              Import
             </Button>
             <Button
               variant="contained"
@@ -311,9 +405,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
         }
       />
 
-      {!workspaceId && !selectionMode && (
-        <StarterRow onBlankCanvas={() => setCreateDialogOpen(true)} />
-      )}
+      {!workspaceId && !selectionMode && <StarterRow />}
 
       {!workspaceId && !selectionMode && <SomethingOldCard />}
 
@@ -406,7 +498,69 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             </CardGrid>
           )}
 
-          {!isLoading && !hasCanvases && (
+          {showListControls && (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: 1.5,
+                mb: 2,
+              }}
+            >
+              <TextField
+                size="small"
+                label="Filter by name"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                slotProps={{
+                  htmlInput: { maxLength: 100 },
+                  input: {
+                    endAdornment: filterText ? (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          edge="end"
+                          aria-label="Clear name filter"
+                          onClick={clearFilter}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
+                  },
+                }}
+                sx={{ width: { xs: "100%", sm: 260 } }}
+              />
+              <TextField
+                select
+                size="small"
+                label="Sort by"
+                value={sort}
+                onChange={(e) => changeSort(e.target.value as CanvasListSort)}
+                slotProps={{ select: { native: true } }}
+                sx={{ width: { xs: "100%", sm: 200 } }}
+              >
+                {Object.entries(SORT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </TextField>
+            </Box>
+          )}
+
+          {!isLoading && !hasCanvases && filtering && (
+            <Box sx={{ py: 6, textAlign: "center" }}>
+              <Typography sx={{ mb: 2 }}>
+                {`No canvases match "${filterQuery}"`}
+              </Typography>
+              <Button variant="outlined" onClick={clearFilter}>
+                Clear filter
+              </Button>
+            </Box>
+          )}
+
+          {!isLoading && !hasCanvases && !filtering && (
             <EmptyState
               icon={CanvasIcon}
               title={
@@ -461,20 +615,27 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                           }}
                         />
                       ) : (
-                        <Tooltip title="Duplicate">
-                          <IconButton
-                            size="small"
-                            aria-label={`Duplicate ${canvas.name}`}
-                            disabled={duplicateCanvas.isPending}
-                            onClick={() => void handleDuplicate(canvas.id)}
-                            sx={{
-                              bgcolor: "background.paper",
-                              "&:hover": { bgcolor: "background.paper" },
-                            }}
-                          >
-                            <DuplicateIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <CanvasCardMenu
+                          canvas={canvas}
+                          onRename={(name) =>
+                            updateCanvas.mutateAsync({
+                              canvasId: canvas.id,
+                              data: { name },
+                            })
+                          }
+                          onDuplicate={() => void handleDuplicate(canvas.id)}
+                          onMove={(target) =>
+                            assignToWorkspace.mutateAsync({
+                              canvasId: canvas.id,
+                              workspaceId: target,
+                            })
+                          }
+                          deleteLabel="Move to Trash"
+                          onDelete={() => {
+                            setSelectedCanvasIds(new Set([canvas.id]));
+                            setDeleteConfirmOpen(true);
+                          }}
+                        />
                       )
                     }
                   />
@@ -569,44 +730,28 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
       />
 
       {/* Delete confirmation dialog */}
-      <Dialog
-        open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-      >
-        <DialogTitle sx={{ fontWeight: 600 }}>Delete canvases?</DialogTitle>
+      <Dialog open={deleteConfirmOpen} onClose={closeDeleteConfirm}>
+        <DialogTitle sx={{ fontWeight: 600 }}>
+          Move {canvasCount(visibleSelectedIds.length)} to Trash?
+        </DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete {visibleSelectedIds.length} canvas
-            {visibleSelectedIds.length === 1 ? "" : "es"}? This action cannot be
-            undone.
+            You can restore {visibleSelectedIds.length === 1 ? "it" : "them"}{" "}
+            from Trash for {LAUNCH_LIMITS.trashRetentionDays} days.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
-          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={closeDeleteConfirm}>Cancel</Button>
           <Button
             onClick={handleBulkDelete}
             variant="contained"
             color="error"
             disabled={isDeleting || visibleSelectedIds.length === 0}
           >
-            {isDeleting ? "Deleting…" : "Delete"}
+            {isDeleting ? "Moving…" : "Move to Trash"}
           </Button>
         </DialogActions>
       </Dialog>
-
-      <GlobalSearchDialog
-        open={searchDialogOpen}
-        onClose={() => setSearchDialogOpen(false)}
-      />
-
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        onCreateCanvas={() => setCreateDialogOpen(true)}
-        onSearch={() => setSearchDialogOpen(true)}
-        onToggleTheme={toggleTheme}
-        isDarkMode={mode === "dark"}
-      />
     </>
   );
 }

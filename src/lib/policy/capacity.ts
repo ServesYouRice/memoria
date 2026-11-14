@@ -23,7 +23,8 @@ async function lock(tx: Store, scope: string, id: string) {
 export async function assertCanvasCapacity(tx: Store, userId: string) {
   await lock(tx, "canvas", userId);
   if (
-    (await tx.canvas.count({ where: { userId } })) >=
+    // A canvas in Trash (IMP-132) does not count; restoring one checks again.
+    (await tx.canvas.count({ where: { userId, deletedAt: null } })) >=
     LAUNCH_LIMITS.canvasesPerUser
   )
     exceeded("canvases", LAUNCH_LIMITS.canvasesPerUser);

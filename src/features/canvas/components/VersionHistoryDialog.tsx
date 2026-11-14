@@ -147,7 +147,7 @@ export function VersionHistoryDialog({
     <>
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle>
-          Version History
+          Saved versions
           <IconButton
             aria-label="Close version history"
             onClick={onClose}
@@ -282,7 +282,7 @@ export function VersionHistoryDialog({
                 onClick={() => setPendingRestore(true)}
                 disabled={!activeId || restoring}
               >
-                Restore This Version
+                Restore this version
               </Button>
               <Button
                 variant="contained"
@@ -293,7 +293,7 @@ export function VersionHistoryDialog({
                 {isCreating ? (
                   <CircularProgress size={20} />
                 ) : (
-                  "Save Current Version"
+                  "Save current version"
                 )}
               </Button>
             </>

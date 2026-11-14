@@ -81,7 +81,7 @@ export function WeeklyRecapSettings() {
         Once a week you get a short recap in the app: what you saved, piles it
         could go in, and links you have not opened in a while.
       </Typography>
-      <ListItem disablePadding sx={{ px: 1, gap: 2 }}>
+      <ListItem component="div" disablePadding sx={{ px: 1, gap: 2 }}>
         <ListItemText
           primary="Also send the recap by email"
           secondary="Off by default. The in-app recap always arrives."
@@ -97,7 +97,7 @@ export function WeeklyRecapSettings() {
           }}
         />
       </ListItem>
-      <ListItem disablePadding sx={{ px: 1, gap: 2 }}>
+      <ListItem component="div" disablePadding sx={{ px: 1, gap: 2 }}>
         <ListItemText
           primary="Old links"
           secondary="Links not opened for this long are offered for archiving. Archived links keep their summary and wait in Trash until you restore them."

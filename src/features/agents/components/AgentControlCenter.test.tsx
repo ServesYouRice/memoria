@@ -60,38 +60,32 @@ describe("AgentControlCenter query failures", () => {
     queries.timeline = failed();
     render(<AgentControlCenter />);
 
-    expect(screen.queryByText("No agent profiles configured yet.")).toBeNull();
+    expect(screen.queryByText("No AI helpers set up yet.")).toBeNull();
     expect(
       screen.queryByText("No suggestions are waiting for review."),
     ).toBeNull();
-    expect(
-      screen.queryByText("No change sets are waiting to be rolled back."),
-    ).toBeNull();
-    expect(
-      screen.getByText("Agent profiles could not be loaded."),
-    ).toBeTruthy();
+    expect(screen.queryByText("Nothing to undo.")).toBeNull();
+    expect(screen.getByText("AI helpers could not be loaded.")).toBeTruthy();
     expect(
       screen.getAllByText("Agent activity could not be loaded."),
     ).toHaveLength(2);
     expect(screen.queryByText(/\d+ agents/)).toBeNull();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Retry loading agent profiles" }),
+      screen.getByRole("button", { name: "Retry loading AI helpers" }),
     );
     expect(queries.profiles.refetch).toHaveBeenCalledTimes(1);
     // Sections whose query succeeded keep their empty-state text.
-    expect(
-      screen.getByText("No integration accounts configured yet."),
-    ).toBeTruthy();
+    expect(screen.getByText("No integrations connected yet.")).toBeTruthy();
   });
 
   it("keeps the empty-state text when every query succeeds with no data", () => {
     render(<AgentControlCenter />);
-    expect(screen.getByText("No agent profiles configured yet.")).toBeTruthy();
+    expect(screen.getByText("No AI helpers set up yet.")).toBeTruthy();
     expect(
       screen.getByText("No suggestions are waiting for review."),
     ).toBeTruthy();
-    expect(screen.getByText("0 agents")).toBeTruthy();
+    expect(screen.getByText("0 helpers")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
   });
 });

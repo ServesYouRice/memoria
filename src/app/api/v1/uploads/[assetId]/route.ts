@@ -8,6 +8,7 @@ import { readPrivateUploadObject } from "@/lib/uploads/private-storage";
 import { enqueueUploadDeletion } from "@/lib/uploads/lifecycle";
 import { resolveEmbedToken } from "@/lib/embeds/service";
 import { EMBED_ASSET_TOKEN_PARAM } from "@/lib/embeds/assets";
+import { PDF_MIME_TYPE } from "@/lib/uploads/file-types";
 
 interface RouteContext {
   params: Promise<{ assetId: string }>;
@@ -17,10 +18,11 @@ async function findAsset(assetId: string) {
   const asset = await prisma.uploadAsset.findUnique({
     where: { id: assetId },
     include: {
-      canvas: { select: { isPublic: true } },
+      canvas: { select: { isPublic: true, deletedAt: true } },
     },
   });
-  if (!asset) throw notFoundError("Upload", assetId);
+  // An upload on a canvas in Trash (IMP-132) reads as missing.
+  if (!asset || asset.canvas.deletedAt) throw notFoundError("Upload", assetId);
   return asset;
 }
 
@@ -74,13 +76,21 @@ export const GET = withApiHandler(
         ? "private, no-store"
         : "private, max-age=0, must-revalidate";
 
+    // A PDF (IMP-113) is untrusted: it opens only as its own page, in the
+    // browser's viewer in a new tab, or as a download (`?download=1`). No
+    // other site may load it as a resource, and it is never framed (the
+    // security headers on every response refuse framing).
+    const isPdf = asset.mimeType === PDF_MIME_TYPE;
+    const download =
+      isPdf && new URL(request.url).searchParams.get("download") === "1";
     const headers: Record<string, string> = {
       "content-type": asset.mimeType,
       "cache-control": cacheControl,
       etag: object.etag,
       "x-content-type-options": "nosniff",
-      "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.filename)}`,
+      "content-disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(asset.filename)}`,
     };
+    if (isPdf) headers["cross-origin-resource-policy"] = "same-origin";
     if (object.contentLength !== undefined) {
       headers["content-length"] = String(object.contentLength);
     }

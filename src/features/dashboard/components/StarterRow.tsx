@@ -15,7 +15,6 @@ import {
   Typography,
 } from "@mui/material";
 import {
-  AddBoxOutlined as BlankIcon,
   InboxOutlined as InboxIcon,
   LinkOutlined as LinkIcon,
 } from "@mui/icons-material";
@@ -57,7 +56,7 @@ function StarterTile({ tile }: { tile: Tile }) {
       focusRipple
       sx={{
         display: "flex",
-        // Phones: icon over a short label, three across (IMP-083).
+        // Phones: icon over a short label, side by side (IMP-083).
         flexDirection: { xs: "column", sm: "row" },
         justifyContent: { xs: "center", sm: "flex-start" },
         gap: { xs: 0.75, sm: 1.5 },
@@ -117,10 +116,11 @@ function StarterTile({ tile }: { tile: Tile }) {
 }
 
 /**
- * First steps on the dashboard (IMP-083): start a blank canvas, save a link
- * to the Inbox, or open the Inbox.
+ * First steps on the dashboard (IMP-083): save a link to the Inbox, or open
+ * the Inbox. The header's "New canvas" is the one way to start a canvas
+ * (IMP-136).
  */
-export function StarterRow({ onBlankCanvas }: { onBlankCanvas: () => void }) {
+export function StarterRow() {
   const router = useRouter();
   const [linkOpen, setLinkOpen] = useState(false);
   const [address, setAddress] = useState("");
@@ -143,12 +143,6 @@ export function StarterRow({ onBlankCanvas }: { onBlankCanvas: () => void }) {
 
   const tiles: Tile[] = [
     {
-      label: "Blank canvas",
-      hint: "Start from an empty page",
-      icon: BlankIcon,
-      onClick: onBlankCanvas,
-    },
-    {
       label: "Save a link",
       hint: "Keep a web page in your Inbox",
       icon: LinkIcon,
@@ -169,7 +163,7 @@ export function StarterRow({ onBlankCanvas }: { onBlankCanvas: () => void }) {
         aria-label="Get started"
         sx={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: 1.5,
           mb: 3,
         }}

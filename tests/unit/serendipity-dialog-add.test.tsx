@@ -42,7 +42,7 @@ async function scan(onAddItems: (items: unknown[]) => Promise<void>) {
       onAddItems={onAddItems}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Surprise Me" }));
+  fireEvent.click(screen.getByRole("button", { name: "Surprise me" }));
   await screen.findByText("Found 1 connections:");
   return onClose;
 }

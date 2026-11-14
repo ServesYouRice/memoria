@@ -5,7 +5,7 @@
 
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -24,8 +24,12 @@ import Link from "next/link";
 import {
   activityIcons,
   activityColors,
-  getActivityMessage,
+  getActivityGroupMessage,
+  groupActivities,
 } from "./activity-utils";
+
+/** IMP-138: lines shown before "Show all activity". */
+const COLLAPSED_LINES = 5;
 
 interface ActivityFeedProps {
   canvasId?: string;
@@ -37,9 +41,9 @@ interface ActivityFeedProps {
 
 /** Standalone sentence form of the shared activity message ("Created canvas …"). */
 function activitySentence(
-  activity: Parameters<typeof getActivityMessage>[0],
+  group: Parameters<typeof getActivityGroupMessage>[0],
 ): string {
-  const message = getActivityMessage(activity);
+  const message = getActivityGroupMessage(group);
   return message.charAt(0).toUpperCase() + message.slice(1);
 }
 
@@ -58,7 +62,14 @@ export function ActivityFeed({
     isFetchingNextPage,
   } = useActivities(canvasId, limit);
 
-  const activities = data?.pages.flatMap((page) => page.activities) || [];
+  const activities = useMemo(
+    () => data?.pages.flatMap((page) => page.activities) || [],
+    [data],
+  );
+  const groups = useMemo(() => groupActivities(activities), [activities]);
+  const [showAll, setShowAll] = useState(false);
+  const collapsed = !showAll && groups.length > COLLAPSED_LINES;
+  const shownGroups = collapsed ? groups.slice(0, COLLAPSED_LINES) : groups;
   const hasActivity = activities.length > 0;
   const loaded = !isLoading && !error;
 
@@ -82,7 +93,7 @@ export function ActivityFeed({
     <Box>
       {showTitle && (
         <Typography variant="h6" gutterBottom>
-          Recent Activity
+          Latest activity
         </Typography>
       )}
 
@@ -99,67 +110,77 @@ export function ActivityFeed({
         </Box>
       ) : (
         <List sx={{ p: 0 }}>
-          {activities.map((activity) => (
-            <ListItem
-              key={activity.id}
-              sx={{
-                px: 0,
-                py: 1.5,
-                borderBottom: 1,
-                borderColor: "divider",
-                "&:last-child": { borderBottom: 0 },
-              }}
-            >
-              <Avatar
+          {shownGroups.map((group) => {
+            const activity = group.latest;
+            return (
+              <ListItem
+                key={group.key}
                 sx={{
-                  mr: 2,
-                  bgcolor: `${activityColors[activity.type] || "default"}.main`,
-                  width: 36,
-                  height: 36,
+                  px: 0,
+                  py: 1.5,
+                  borderBottom: 1,
+                  borderColor: "divider",
+                  "&:last-child": { borderBottom: 0 },
                 }}
               >
-                {activityIcons[activity.type] || <Edit fontSize="small" />}
-              </Avatar>
-              <ListItemText
-                primary={
-                  <Box>
-                    {activity.canvasId && !canvasId ? (
-                      <Link
-                        href={`/canvas/${activity.canvasId}`}
-                        style={{ textDecoration: "none", color: "inherit" }}
-                      >
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            "&:hover": { textDecoration: "underline" },
-                          }}
+                <Avatar
+                  sx={{
+                    mr: 2,
+                    bgcolor: `${activityColors[activity.type] || "default"}.main`,
+                    width: 36,
+                    height: 36,
+                  }}
+                >
+                  {activityIcons[activity.type] || <Edit fontSize="small" />}
+                </Avatar>
+                <ListItemText
+                  primary={
+                    <Box>
+                      {activity.canvasId && !canvasId ? (
+                        <Link
+                          href={`/canvas/${activity.canvasId}`}
+                          style={{ textDecoration: "none", color: "inherit" }}
                         >
-                          {activitySentence(activity)}
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              "&:hover": { textDecoration: "underline" },
+                            }}
+                          >
+                            {activitySentence(group)}
+                          </Typography>
+                        </Link>
+                      ) : (
+                        <Typography variant="body2">
+                          {activitySentence(group)}
                         </Typography>
-                      </Link>
-                    ) : (
-                      <Typography variant="body2">
-                        {activitySentence(activity)}
-                      </Typography>
-                    )}
-                  </Box>
-                }
-                secondary={
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: "text.secondary",
-                    }}
-                  >
-                    {formatDistanceToNow(new Date(activity.createdAt), {
-                      addSuffix: true,
-                    })}
-                  </Typography>
-                }
-              />
+                      )}
+                    </Box>
+                  }
+                  secondary={
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                      }}
+                    >
+                      {formatDistanceToNow(new Date(activity.createdAt), {
+                        addSuffix: true,
+                      })}
+                    </Typography>
+                  }
+                />
+              </ListItem>
+            );
+          })}
+          {collapsed && (
+            <ListItem sx={{ justifyContent: "center" }}>
+              <Button onClick={() => setShowAll(true)}>
+                Show all activity
+              </Button>
             </ListItem>
-          ))}
-          {hasNextPage && (
+          )}
+          {!collapsed && hasNextPage && (
             <ListItem sx={{ justifyContent: "center" }}>
               <Button
                 onClick={() => fetchNextPage()}

@@ -232,11 +232,18 @@ model Canvas {
   /// Items from other canvases shown here too (IMP-109).
   placements   ItemPlacement[]
 
+  /// Set when the owner moved the canvas to Trash (IMP-132). A trashed canvas
+  /// reads as missing everywhere except its owner's Trash and restore; the
+  /// trash sweep purges it after `LAUNCH_LIMITS.trashRetentionDays`.
+  deletedAt   DateTime?
+  deletedById String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, createdAt])
   @@index([userId, updatedAt])
+  @@index([userId, deletedAt])
   @@index([userId, isTemplate]) // For template listing by user (Issue #12)
   @@index([shareToken])
   @@index([isPublic]) // For public canvas discovery (Issue #12)
@@ -337,6 +344,7 @@ model CanvasItem {
   clipBatchItems      ClipBatchItem[]
   enrichment          ItemEnrichment?
   pageCopy            ItemPageCopy?
+  pageCapture         ItemPageCapture?
   homeBoardSuggestion HomeBoardSuggestion?
   reminders           ItemReminder[]
   pollVotes           PollVote[]
@@ -344,6 +352,9 @@ model CanvasItem {
   notifications       Notification[]
   /// The other canvases this item also shows on (IMP-109).
   placements          ItemPlacement[]
+  /// Notes tied to moments of a video, and its transcript (IMP-114).
+  videoNotes          ItemVideoNote[]
+  transcript          ItemTranscript?
 
   @@index([canvasId, deletedAt])
   @@index([normalizedUrl])
@@ -398,6 +409,7 @@ enum ItemType {
   EMBED
   POLL
   TABLE
+  PDF
 }
 
 enum ShareRole {
@@ -814,27 +826,32 @@ enum KnowledgeEntityStatus {
 }
 
 model UploadAsset {
-  id          String            @id @default(cuid())
-  userId      String
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  canvasId    String
-  canvas      Canvas            @relation(fields: [canvasId], references: [id], onDelete: Cascade)
-  storageKey  String            @unique
-  storageMode String
-  filename    String
-  mimeType    String
-  size        Int
-  status      UploadAssetStatus @default(PENDING)
-  lastError   String?
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvasId     String
+  canvas       Canvas            @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  storageKey   String            @unique
+  storageMode  String
+  filename     String
+  mimeType     String
+  size         Int
+  status       UploadAssetStatus @default(PENDING)
+  lastError    String?
   // The text note the upload.note job made from this file (IMP-071). Set in
   // the same transaction that creates the note, so a repeated job skips. Not a
   // foreign key: notes are soft-deleted, and re-requesting clears it.
-  noteItemId  String?
-  createdAt   DateTime          @default(now())
+  noteItemId   String?
+  /// The saved link whose page this file is a picture or PDF of (IMP-110).
+  /// Not a foreign key: the sweep that follows an item's permanent deletion
+  /// finds files whose item is gone and deletes them with their quota.
+  sourceItemId String?
+  createdAt    DateTime          @default(now())
 
   @@index([userId, createdAt])
   @@index([canvasId, createdAt])
   @@index([status, createdAt])
+  @@index([sourceItemId])
 }
 
 model RegistrationInvite {
@@ -1420,6 +1437,75 @@ model ItemPageCopy {
 
   @@index([userId])
   @@index([searchVector], type: Gin, map: "idx_item_page_copy_fts")
+}
+
+/// A picture and a PDF of a saved link's page (IMP-110), kept only when the
+/// deployment turns page capture on. The files are UploadAsset rows (storage
+/// quota, export and deletion come with them); this row says which belong to
+/// the item. Deleted with its item; the files follow through the capture
+/// sweep. Untrusted web content: served only as an image or a PDF through an
+/// authorised route.
+model ItemPageCapture {
+  itemId       String     @id
+  item         CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the canvas, whose storage quota the files count against.
+  userId       String
+  /// The address that was captured.
+  url          String
+  imageAssetId String?
+  pdfAssetId   String?
+  capturedAt   DateTime
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+/// A note tied to a moment of a video card (IMP-114). Deleted with its item.
+model ItemVideoNote {
+  id        String     @id @default(cuid())
+  itemId    String
+  item      CanvasItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Who wrote it.
+  authorId  String
+  /// The moment, in whole seconds from the start of the video.
+  seconds   Int
+  text      String
+  createdAt DateTime   @default(now())
+
+  @@index([itemId, seconds])
+}
+
+enum TranscriptSource {
+  PASTED
+  FETCHED
+}
+
+/// A video card's transcript (IMP-114): pasted by a person, or read from the
+/// video's public captions when the deployment switches that on. Untrusted
+/// text: shown as plain text only and marked as data wherever AI reads it.
+/// Kept apart from ItemPageCopy because a saved video link has both. Deleted
+/// with its item.
+model ItemTranscript {
+  itemId       String                   @id
+  item         CanvasItem               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Owner of the canvas, whose storage budget the transcript counts against.
+  userId       String
+  /// The video address the transcript belongs to.
+  url          String
+  text         String
+  /// UTF-8 size of `text`, summed for the per-account budget.
+  textBytes    Int                      @default(0)
+  source       TranscriptSource
+  language     String?
+  /// When automatic fetching last finished for `url`, with or without text.
+  fetchedAt    DateTime?
+  searchVector Unsupported("tsvector")?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  @@index([userId])
+  @@index([searchVector], type: Gin, map: "idx_item_transcript_fts")
 }
 
 enum HomeBoardSuggestionStatus {

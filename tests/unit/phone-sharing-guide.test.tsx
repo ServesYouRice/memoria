@@ -101,7 +101,7 @@ describe("Help: save from your phone", () => {
   });
 });
 
-describe("API Keys: create a key for my iPhone", () => {
+describe("API keys: create a key for my iPhone", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
@@ -192,7 +192,7 @@ describe("share page on an iPhone", () => {
   });
 });
 
-describe("API Keys: iPhone key after signing in again", () => {
+describe("API keys: iPhone key after signing in again", () => {
   it("keeps the iPhone name in the dialog when a recent sign-in is needed", async () => {
     vi.stubGlobal(
       "fetch",

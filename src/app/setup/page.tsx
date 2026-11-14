@@ -1,4 +1,6 @@
-import { Box, Alert, Typography } from "@mui/material";
+import Link from "next/link";
+import { Box, Alert, Button, Typography } from "@mui/material";
+import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { env } from "@/lib/env";
 import { isBootstrapAvailable } from "@/lib/bootstrap";
 
@@ -20,10 +22,15 @@ export default async function SetupPage() {
     >
       {!bootstrapAvailable ? (
         <Box sx={{ maxWidth: 640, mx: "auto" }}>
-          <Alert severity="info">
-            Initial setup is disabled because this instance already has at least
-            one user.
+          <Box sx={{ mb: 3 }}>
+            <MemoriaLogo size={40} />
+          </Box>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Setup is already done on this installation.
           </Alert>
+          <Button component={Link} href="/auth/login" variant="contained">
+            Go to sign in
+          </Button>
         </Box>
       ) : (
         <>

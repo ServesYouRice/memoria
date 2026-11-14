@@ -17,7 +17,7 @@ vi.mock("@/lib/hooks/use-canvas-items", async (importOriginal) => ({
 import { resolveTimeMachineCapabilities } from "@/features/canvas/hooks/use-canvas-data";
 import { useItemGeometry } from "@/features/canvas/hooks/use-item-geometry";
 
-describe("Time Machine preview capabilities", () => {
+describe("Time machine preview capabilities", () => {
   it("turns every item mutation off while previewing and restores them after", () => {
     const owner = resolveCanvasCapabilities("OWNER");
     const preview = resolveTimeMachineCapabilities(owner, true);

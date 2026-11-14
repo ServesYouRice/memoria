@@ -95,11 +95,14 @@ function CopyField({ label, value }: { label: string; value: string }) {
 export function ApiKeysContent({
   serverAddress,
   shortcutUrl = null,
+  embedded = false,
 }: {
   /** This installation's address, for the phone Shortcut. */
   serverAddress: string;
   /** A ready-made Apple Shortcut, when the owner configured one. */
   shortcutUrl?: string | null;
+  /** Inside Settings, which already shows the title and intro (IMP-127). */
+  embedded?: boolean;
 }) {
   const { data, isLoading, error } = useApiKeys();
   const createApiKey = useCreateApiKey();
@@ -116,6 +119,7 @@ export function ApiKeysContent({
   const [signInAgain, setSignInAgain] = useState<string | null>(null);
 
   const keys = data?.keys ?? [];
+  const showEmptyState = !isLoading && !error && keys.length === 0;
 
   const handleCreate = async (phone = false) => {
     try {
@@ -184,29 +188,12 @@ export function ApiKeysContent({
 
   return (
     <>
-      <PageHeader
-        title="API Keys"
-        subtitle="Create keys for browser extensions and webhooks. Keep them secret."
-        actions={
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <Button
-              variant="outlined"
-              startIcon={<PhoneIcon />}
-              disabled={createApiKey.isPending}
-              onClick={() => void handleCreate(true)}
-            >
-              Create a key for my iPhone
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-            >
-              Create API key
-            </Button>
-          </Stack>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title="API keys"
+          subtitle="Create keys for browser extensions and webhooks. Keep them secret."
+        />
+      )}
 
       <Alert severity="info" sx={{ mb: 3 }}>
         Want to save links from your phone?{" "}
@@ -217,6 +204,28 @@ export function ApiKeysContent({
       </Alert>
 
       {error && <Alert severity="error">Failed to load API keys</Alert>}
+
+      {/* One "Create API key" button: here with the list, or in the empty
+          state when there are no keys yet (IMP-127). */}
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
+        {!showEmptyState && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+          >
+            Create API key
+          </Button>
+        )}
+        <Button
+          variant="outlined"
+          startIcon={<PhoneIcon />}
+          disabled={createApiKey.isPending}
+          onClick={() => void handleCreate(true)}
+        >
+          Create a key for my iPhone
+        </Button>
+      </Stack>
 
       {isLoading && (
         <Stack spacing={2}>
@@ -231,7 +240,7 @@ export function ApiKeysContent({
         </Stack>
       )}
 
-      {!isLoading && !error && keys.length === 0 && (
+      {showEmptyState && (
         <EmptyState
           icon={KeyIcon}
           title="No API keys yet"
@@ -365,7 +374,7 @@ export function ApiKeysContent({
                 <Button
                   color="inherit"
                   size="small"
-                  href="/auth/login?callbackUrl=%2Fapi-keys"
+                  href="/auth/login?callbackUrl=%2Fsettings%2Fapi-keys"
                 >
                   Sign in again
                 </Button>
