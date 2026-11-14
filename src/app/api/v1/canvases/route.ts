@@ -10,6 +10,19 @@ import { assertCanvasCapacity } from "@/lib/policy/capacity";
 import { validatedJson } from "@/lib/api/response";
 import { canvasListResponseSchema } from "@/lib/api/response-schemas";
 
+// IMP-136: optional sort and name filter. With neither, the order stays
+// newest edit first, as before.
+const listQuerySchema = z.object({
+  sort: z.enum(["updated", "name", "created"]).default("updated"),
+  q: z.string().trim().min(1).max(100).optional(),
+});
+
+const listOrderBy = {
+  updated: [{ updatedAt: "desc" as const }],
+  name: [{ name: "asc" as const }, { updatedAt: "desc" as const }],
+  created: [{ createdAt: "desc" as const }],
+};
+
 /**
  * GET /api/v1/canvases
  *
@@ -22,6 +35,10 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   // Pagination parameters
   const { searchParams } = new URL(request.url);
   const { limit, offset } = parsePagination(searchParams);
+  const { sort, q } = listQuerySchema.parse({
+    sort: searchParams.get("sort") || undefined,
+    q: searchParams.get("q") || undefined,
+  });
 
   const workspaceId = searchParams.get("workspaceId") || undefined;
   if (workspaceId) {
@@ -35,6 +52,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     userId,
     isTemplate: false,
     ...(workspaceId ? { workspaceId } : {}),
+    ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
   };
 
   // Get total count
@@ -43,9 +61,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
   // Fetch canvases with pagination
   const canvases = await prisma.canvas.findMany({
     where,
-    orderBy: {
-      updatedAt: "desc",
-    },
+    orderBy: listOrderBy[sort],
     take: limit,
     skip: offset,
     select: {

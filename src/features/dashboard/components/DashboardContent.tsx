@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  InputAdornment,
   Paper,
   TextField,
   Tooltip,
@@ -37,6 +38,7 @@ import {
   useCreateCanvas,
   useDuplicateCanvas,
   canvasKeys,
+  type CanvasListSort,
 } from "@/lib/hooks/use-canvases";
 import { useWorkspace } from "@/lib/hooks/use-workspaces";
 import { ActivityFeed } from "./ActivityFeed";
@@ -54,6 +56,13 @@ import { useThemeMode } from "@/lib/theme-context";
 import { canvasThumbnailUrl } from "@/lib/thumbnails/url";
 import { apiFetch } from "@/lib/api/fetch-client";
 import { deleteCanvasesBounded, removeCanvasesFromPages } from "./bulk-delete";
+
+const SORT_STORAGE_KEY = "memoria.dashboard.sort";
+const SORT_LABELS: Record<CanvasListSort, string> = {
+  updated: "Recently updated",
+  name: "Name (A to Z)",
+  created: "Newest first",
+};
 
 export function DashboardContent({ userName }: { userName?: string | null }) {
   const router = useRouter();
@@ -77,6 +86,42 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
+  // IMP-136: sort and name filter run on the server, so they reach canvases
+  // that are not loaded yet.
+  const [sort, setSort] = useState<CanvasListSort>("updated");
+  const [filterText, setFilterText] = useState("");
+  const [filterQuery, setFilterQuery] = useState("");
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SORT_STORAGE_KEY);
+      if (saved && saved in SORT_LABELS) setSort(saved as CanvasListSort);
+    } catch {
+      // Storage can be blocked; the default order still works.
+    }
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setFilterQuery(filterText.trim()),
+      250,
+    );
+    return () => window.clearTimeout(timer);
+  }, [filterText]);
+  const changeSort = (next: CanvasListSort) => {
+    setSort(next);
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, next);
+    } catch {
+      // Remembering the choice is a convenience only.
+    }
+  };
+  const clearFilter = () => {
+    setFilterText("");
+    setFilterQuery("");
+  };
+
+  // The unfiltered list counts every canvas for the header; with the default
+  // sort and no filter both calls share one cached query.
+  const { data: allCanvasesData } = useCanvases(workspaceId || undefined);
   const {
     data: canvasesData,
     isLoading,
@@ -84,7 +129,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
-  } = useCanvases(workspaceId || undefined);
+  } = useCanvases(workspaceId || undefined, {
+    sort,
+    ...(filterQuery ? { q: filterQuery } : {}),
+  });
   const createCanvas = useCreateCanvas();
   // IMP-098: "New canvas" can start from a built-in template.
   const [startFrom, setStartFrom] = useState(BLANK_TEMPLATE);
@@ -258,6 +306,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
 
   const totalCount =
     canvasesData?.pages[0]?.pagination.total ?? canvases.length;
+  const allCount = allCanvasesData?.pages[0]?.pagination.total ?? totalCount;
+  const filtering = filterQuery.length > 0;
+  const showListControls =
+    !selectionMode && (allCount > 0 || filterText.length > 0 || filtering);
 
   return (
     <>
@@ -276,7 +328,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             `Welcome back${userName ? `, ${userName}` : ""} — ${
               isLoading
                 ? "loading…"
-                : `${totalCount} canvas${totalCount === 1 ? "" : "es"}`
+                : `${allCount} canvas${allCount === 1 ? "" : "es"}`
             }`
           )
         }
@@ -298,7 +350,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
               startIcon={<UploadFile />}
               onClick={() => setImportDialogOpen(true)}
             >
-              Open file
+              Import
             </Button>
             <Button
               variant="contained"
@@ -311,9 +363,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
         }
       />
 
-      {!workspaceId && !selectionMode && (
-        <StarterRow onBlankCanvas={() => setCreateDialogOpen(true)} />
-      )}
+      {!workspaceId && !selectionMode && <StarterRow />}
 
       {!workspaceId && !selectionMode && <SomethingOldCard />}
 
@@ -406,7 +456,69 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
             </CardGrid>
           )}
 
-          {!isLoading && !hasCanvases && (
+          {showListControls && (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: 1.5,
+                mb: 2,
+              }}
+            >
+              <TextField
+                size="small"
+                label="Filter by name"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                slotProps={{
+                  htmlInput: { maxLength: 100 },
+                  input: {
+                    endAdornment: filterText ? (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          edge="end"
+                          aria-label="Clear name filter"
+                          onClick={clearFilter}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : undefined,
+                  },
+                }}
+                sx={{ width: { xs: "100%", sm: 260 } }}
+              />
+              <TextField
+                select
+                size="small"
+                label="Sort by"
+                value={sort}
+                onChange={(e) => changeSort(e.target.value as CanvasListSort)}
+                slotProps={{ select: { native: true } }}
+                sx={{ width: { xs: "100%", sm: 200 } }}
+              >
+                {Object.entries(SORT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </TextField>
+            </Box>
+          )}
+
+          {!isLoading && !hasCanvases && filtering && (
+            <Box sx={{ py: 6, textAlign: "center" }}>
+              <Typography sx={{ mb: 2 }}>
+                {`No canvases match "${filterQuery}"`}
+              </Typography>
+              <Button variant="outlined" onClick={clearFilter}>
+                Clear filter
+              </Button>
+            </Box>
+          )}
+
+          {!isLoading && !hasCanvases && !filtering && (
             <EmptyState
               icon={CanvasIcon}
               title={

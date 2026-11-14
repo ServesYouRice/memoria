@@ -97,15 +97,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("dashboard first steps", () => {
-  it("offers a blank canvas, saving a link and the Inbox", () => {
+  it("offers saving a link and the Inbox, not a second new-canvas tile", () => {
     render(<DashboardContent />);
     const starters = screen.getByRole("navigation", { name: "Get started" });
+    expect(starters.textContent).not.toContain("Blank canvas");
     expect(
       Array.from(starters.querySelectorAll("a, button")).map(
         (element) => element.textContent,
       ),
     ).toEqual([
-      expect.stringContaining("Blank canvas"),
       expect.stringContaining("Save a link"),
       expect.stringContaining("Open Inbox"),
     ]);

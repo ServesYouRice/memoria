@@ -77,13 +77,29 @@ export interface CanvasesListResponse {
   };
 }
 
+/** IMP-136: server-side sort and name filter for the canvas list. */
+export type CanvasListSort = "updated" | "name" | "created";
+export interface CanvasListOptions {
+  sort?: CanvasListSort;
+  q?: string;
+}
+
 /**
  * API client functions
  */
 const api = {
-  async listCanvases(offset = 0, workspaceId?: string) {
+  async listCanvases(
+    offset = 0,
+    workspaceId?: string,
+    options: CanvasListOptions = {},
+  ) {
     const params = new URLSearchParams({ limit: "24", offset: String(offset) });
     if (workspaceId) params.set("workspaceId", workspaceId);
+    if (options.sort && options.sort !== "updated") {
+      params.set("sort", options.sort);
+    }
+    const q = options.q?.trim();
+    if (q) params.set("q", q);
     const response = await apiFetch(`/api/v1/canvases?${params}`);
     if (!response.ok) throw new Error("Failed to fetch canvases");
     const raw = await response.json();
@@ -183,11 +199,22 @@ export const canvasKeys = {
 /**
  * List all canvases for the current user
  */
-export function useCanvases(workspaceId?: string) {
+export function useCanvases(
+  workspaceId?: string,
+  options: CanvasListOptions = {},
+) {
+  const sort = options.sort ?? "updated";
+  const q = options.q?.trim() ?? "";
   return useInfiniteQuery({
-    queryKey: [...canvasKeys.list(), workspaceId || "all"],
+    // Each sort and filter is cached on its own; the default stays as before.
+    queryKey: [
+      ...canvasKeys.list(),
+      workspaceId || "all",
+      ...(sort !== "updated" || q ? [{ sort, q }] : []),
+    ],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => api.listCanvases(pageParam, workspaceId),
+    queryFn: ({ pageParam }) =>
+      api.listCanvases(pageParam, workspaceId, { sort, q }),
     getNextPageParam: (lastPage) =>
       lastPage.pagination.hasMore
         ? lastPage.pagination.offset + lastPage.canvases.length
