@@ -37,6 +37,7 @@ import {
   decodeItemCursor,
 } from "@/lib/api/bounded-response";
 import { lockCanvasForMutation } from "@/lib/canvas/mutation-lock";
+import { enqueueTranscriptFetch } from "@/lib/video/video-items";
 
 /**
  * POST /api/v1/canvas-items
@@ -84,6 +85,14 @@ export async function POST(request: NextRequest) {
           itemId: created.id,
           version: created.version,
           operation: "created",
+        });
+        // A saved video gets its captions read when the deployment has
+        // that on (IMP-114); a no-op otherwise.
+        await enqueueTranscriptFetch(tx, {
+          itemId: created.id,
+          type: created.type,
+          content: created.content,
+          canvasId: data.canvasId,
         });
         return created;
       });

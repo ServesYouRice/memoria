@@ -19,6 +19,7 @@ silently truncated.
 | Account export | 384 MiB uncompressed input, 256 MiB compressed archive | streaming meter fails closed; output is private and checksummed; see [account-exports.md](account-exports.md) |
 | Export retention | 24 hours | durable delete job removes the private object |
 | Saved page text | 256 KiB per link, 64 MiB per account (UTF-8) | `storePageCopy` cuts a page at the link budget and keeps no text once the account budget is full; `RESOURCE_BUDGETS.pageCopy` |
+| Video transcripts and notes | 256 KiB per video and 64 MiB per account (UTF-8); 500 notes of 2,000 characters per video | a pasted transcript over the video budget is refused, a fetched one is cut to it, and none is kept once the account budget is full; `RESOURCE_BUDGETS.videoTranscript` |
 
 The deterministic regression suite is `tests/unit/resource-budgets.test.ts`.
 It serializes representative geometry at every advertised canvas size, checks

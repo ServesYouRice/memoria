@@ -32,4 +32,11 @@ export const RESOURCE_BUDGETS = {
     maxBytesPerLink: 256 * 1024,
     maxBytesPerAccount: 64 * 1024 * 1024,
   },
+  /** Video transcripts and notes (IMP-114): per video and per account. */
+  videoTranscript: {
+    maxBytesPerVideo: 256 * 1024,
+    maxBytesPerAccount: 64 * 1024 * 1024,
+    maxNotesPerVideo: 500,
+    maxNoteChars: 2_000,
+  },
 } as const;

@@ -334,6 +334,47 @@ async function buildArchive(
         cursor = rows.at(-1)!.itemId;
       }
     }
+    // Video transcripts and notes at moments (IMP-114), trash included.
+    {
+      let cursor: string | undefined;
+      for (;;) {
+        await assertNotCancelled(prisma, input.exportId, input.signal);
+        const rows = await prisma.itemTranscript.findMany({
+          where: { item: { canvas: { userId: input.userId } } },
+          orderBy: { itemId: "asc" },
+          take: ACCOUNT_EXPORT_PAGE_SIZE,
+          ...(cursor ? { cursor: { itemId: cursor }, skip: 1 } : {}),
+          select: {
+            itemId: true,
+            url: true,
+            text: true,
+            source: true,
+            language: true,
+            fetchedAt: true,
+            updatedAt: true,
+          },
+        });
+        for (const row of rows) await write("itemTranscript", row);
+        if (rows.length < ACCOUNT_EXPORT_PAGE_SIZE) break;
+        cursor = rows.at(-1)!.itemId;
+      }
+    }
+    await writePages("itemVideoNote", (cursor) =>
+      prisma.itemVideoNote.findMany({
+        where: { item: { canvas: { userId: input.userId } } },
+        orderBy: { id: "asc" },
+        take: ACCOUNT_EXPORT_PAGE_SIZE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true,
+          itemId: true,
+          authorId: true,
+          seconds: true,
+          text: true,
+          createdAt: true,
+        },
+      }),
+    );
     await writePages("canvasVersion", (cursor) =>
       prisma.canvasVersion.findMany({
         where: { canvas: { userId: input.userId } },

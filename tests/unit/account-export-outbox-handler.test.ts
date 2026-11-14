@@ -109,6 +109,8 @@ function fakePrisma(
     canvasItem: { findMany: emptyPage },
     canvasVersion: { findMany: emptyPage },
     itemPageCopy: { findMany: emptyPage },
+    itemTranscript: { findMany: emptyPage },
+    itemVideoNote: { findMany: emptyPage },
     canvasShare: { findMany: emptyPage },
     comment: { findMany: emptyPage },
     activity: { findMany: emptyPage },
@@ -214,6 +216,49 @@ describe("account export outbox handler", () => {
     expect(outbox.enqueue).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ type: "account-export.delete" }),
+    );
+  });
+
+  it("includes video transcripts and notes at moments (IMP-114)", async () => {
+    const { client } = fakePrisma();
+    const raw = client as unknown as Record<
+      string,
+      { findMany: ReturnType<typeof vi.fn> }
+    >;
+    raw.itemTranscript!.findMany = vi
+      .fn()
+      .mockResolvedValue([
+        { itemId: "item-1", url: "https://youtu.be/x", text: "0:05 Words" },
+      ]);
+    raw.itemVideoNote!.findMany = vi
+      .fn()
+      .mockResolvedValue([
+        { id: "note-1", itemId: "item-1", seconds: 65, text: "Key point" },
+      ]);
+
+    await createAccountExportBuildHandler(client)(job());
+
+    const lines = gunzipSync(storage.written)
+      .toString("utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { recordType: string; value: any });
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        recordType: "itemTranscript",
+        value: expect.objectContaining({ text: "0:05 Words" }),
+      }),
+    );
+    expect(lines).toContainEqual(
+      expect.objectContaining({
+        recordType: "itemVideoNote",
+        value: expect.objectContaining({ seconds: 65, text: "Key point" }),
+      }),
+    );
+    expect(raw.itemVideoNote!.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { item: { canvas: { userId } } },
+      }),
     );
   });
 
