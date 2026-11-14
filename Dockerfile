@@ -1,4 +1,4 @@
-FROM node:26.13.0-alpine AS source
+FROM node:26.13.1-alpine AS source
 
 WORKDIR /app
 RUN npm install --global pnpm@11.13.1
@@ -36,7 +36,7 @@ ENV NODE_ENV=production \
 RUN pnpm db:generate && pnpm build && pnpm prune --prod --ignore-scripts \
   && rm -rf .next/cache
 
-FROM node:26.13.0-alpine AS runtime
+FROM node:26.13.1-alpine AS runtime
 
 ENV NODE_ENV=production
 # server.ts binds the interface HOSTNAME names, and the container runtime
