@@ -82,6 +82,22 @@ saved, and suggest piles when you ask it to tidy up. It contains no scripts.
   workspace `skills/` folder).
 - Hermes: copy the `memoria` folder into `~/.hermes/skills/`.
 
+## Notes for AI agents in each workspace
+
+You can leave standing notes for AI apps in each workspace, such as "Keep
+notes short. File meeting notes on the Meetings canvas. Ask before adding
+more than five items at once." On the **Workspaces** page, open a
+workspace's menu and choose **Notes for AI agents**.
+
+- A connected app gets the notes when it reads a canvas in that workspace
+  (`canvases_get`), marked as your guidance and kept apart from the items,
+  which it still treats as data.
+- Only you, the workspace owner, can change them; an app connected by
+  anyone else never sees them.
+- They are guidance only. They never give an app more access or skip an
+  approval: what each app may do is still set on its connection.
+- Each change shows in your activity list. Empty the box to remove them.
+
 ## What a connected app can do
 
 | Tool | What it does | Needs your approval? |

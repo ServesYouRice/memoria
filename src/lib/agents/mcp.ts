@@ -92,6 +92,7 @@ import {
 } from "@/lib/agents/service-core";
 import { requireExternalWebhookExecution } from "@/lib/agents/external-delivery-policy";
 import { createLogger } from "@/lib/logger";
+import { agentNotesBlock } from "@/lib/agents/workspace-notes";
 
 const log = createLogger("agent-mcp");
 import {
@@ -131,6 +132,26 @@ function createUntrustedResult(payload: unknown): McpToolCallResult {
     ],
     structuredContent: payload,
   };
+}
+
+/**
+ * IMP-107: the owner's standing notes for the workspace of a canvas the
+ * agent may read, as a labelled block, or null. Only the workspace owner's
+ * own agents get them.
+ */
+async function workspaceNotesForCanvas(
+  userId: string,
+  canvasId: string,
+): Promise<string | null> {
+  const canvas = await prisma.canvas.findFirst({
+    where: { id: canvasId, userId },
+    select: {
+      workspace: { select: { name: true, agentNotes: true, userId: true } },
+    },
+  });
+  const workspace = canvas?.workspace;
+  if (!workspace || workspace.userId !== userId) return null;
+  return agentNotesBlock(workspace.name, workspace.agentNotes);
 }
 
 async function resolveAgentProfileForWrite(
@@ -676,7 +697,19 @@ export async function executeMcpTool(
     case "canvases.get": {
       const canvasId = String(args.canvasId || "");
       const canvas = await requireScopedCanvas(context, canvasId);
-      return createTextResult({ canvas });
+      const notes = await workspaceNotesForCanvas(context.userId, canvasId);
+      const result = createTextResult({ canvas });
+      // The owner's guidance comes first, in its own block, never mixed
+      // into canvas or item data.
+      return notes
+        ? {
+            ...result,
+            content: [
+              { type: "text" as const, text: notes },
+              ...result.content,
+            ],
+          }
+        : result;
     }
     case "items.list": {
       const canvasId = String(args.canvasId || "");

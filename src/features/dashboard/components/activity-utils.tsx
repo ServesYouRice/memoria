@@ -11,6 +11,7 @@ import {
   Share,
   Comment,
   ContentCopy,
+  SmartToyOutlined,
 } from "@mui/icons-material";
 import type { Activity } from "@/lib/hooks/use-activities";
 
@@ -25,6 +26,7 @@ export const activityIcons: Record<string, React.ReactNode> = {
   COMMENT_ADDED: <Comment fontSize="small" />,
   TEMPLATE_CREATED: <ContentCopy fontSize="small" />,
   TEMPLATE_USED: <ContentCopy fontSize="small" />,
+  WORKSPACE_AGENT_NOTES_UPDATED: <SmartToyOutlined fontSize="small" />,
 };
 
 export const activityColors: Record<string, string> = {
@@ -38,10 +40,12 @@ export const activityColors: Record<string, string> = {
   COMMENT_ADDED: "primary",
   TEMPLATE_CREATED: "secondary",
   TEMPLATE_USED: "secondary",
+  WORKSPACE_AGENT_NOTES_UPDATED: "secondary",
 };
 
 export function getActivityMessage(
-  activity: Pick<Activity, "type" | "canvasName">,
+  activity: Pick<Activity, "type" | "canvasName"> &
+    Partial<Pick<Activity, "metadata">>,
 ): string {
   const canvas = activity.canvasName ? `“${activity.canvasName}”` : "a canvas";
   switch (activity.type) {
@@ -65,6 +69,13 @@ export function getActivityMessage(
       return `created template ${canvas}`;
     case "TEMPLATE_USED":
       return `used template ${canvas}`;
+    case "WORKSPACE_AGENT_NOTES_UPDATED": {
+      const name = activity.metadata?.workspaceName;
+      const where = typeof name === "string" ? `“${name}”` : "a workspace";
+      return activity.metadata?.cleared
+        ? `removed the notes for AI agents in ${where}`
+        : `changed the notes for AI agents in ${where}`;
+    }
     default:
       return activity.type.toLowerCase().replace(/_/g, " ");
   }

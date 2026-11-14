@@ -25,7 +25,6 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
-| [IMP-107](tasks/IMP-107.md) | Standing notes for AI agents, per workspace | |
 | [IMP-108](tasks/IMP-108.md) | Tables on the canvas | |
 | [IMP-109](tasks/IMP-109.md) | One item on several canvases | |
 | [IMP-112](tasks/IMP-112.md) | Publish the AGPL-3.0 licence and a "never paywalled" promise | |

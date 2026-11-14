@@ -184,6 +184,7 @@ enum ActivityType {
   COMMENT_ADDED
   TEMPLATE_CREATED
   TEMPLATE_USED
+  WORKSPACE_AGENT_NOTES_UPDATED
 }
 
 model Canvas {
@@ -671,13 +672,16 @@ model ItemConnection {
 
 // Workspace model - allows users to organize canvases into groups
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  canvases  Canvas[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  /// The owner's standing notes for AI agents working here (IMP-107). Sent to
+  /// agents as the owner's guidance; they never change what agents may do.
+  agentNotes String?  @db.VarChar(2000)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canvases   Canvas[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([userId])
 }

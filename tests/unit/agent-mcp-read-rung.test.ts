@@ -15,7 +15,11 @@ const reads = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({
-  prisma: { comment: { findMany: reads.commentFindMany } },
+  prisma: {
+    comment: { findMany: reads.commentFindMany },
+    // IMP-107: canvases.get looks up the workspace notes.
+    canvas: { findFirst: vi.fn(async () => null) },
+  },
 }));
 vi.mock("@/lib/agents/query-core", () => ({
   searchScopedItems: reads.searchScopedItems,

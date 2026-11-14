@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { withApiHandler } from "@/lib/api/route-handler";
 import { NotFoundError, ForbiddenError } from "@/lib/errors";
+import { ActivityType, logActivity } from "@/lib/activity";
+import { agentNotesSchema } from "@/lib/agents/workspace-notes";
 
 interface RouteParams {
   params: Promise<{ workspaceId: string }>;
@@ -46,6 +48,7 @@ export const GET = withApiHandler(
     return NextResponse.json({
       id: workspace.id,
       name: workspace.name,
+      agentNotes: workspace.agentNotes ?? "",
       canvases: workspace.canvases.map((c) => ({
         id: c.id,
         name: c.name,
@@ -59,9 +62,13 @@ export const GET = withApiHandler(
   },
 );
 
-const updateWorkspaceSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-});
+const updateWorkspaceSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    // IMP-107: only the owner reaches this (checked above the update).
+    agentNotes: agentNotesSchema.optional(),
+  })
+  .strict();
 
 /**
  * PATCH /api/v1/workspaces/:workspaceId
@@ -93,9 +100,27 @@ export const PATCH = withApiHandler(
       data: updates,
     });
 
+    // IMP-107: what agents are told is part of the activity record.
+    if (
+      updates.agentNotes !== undefined &&
+      updates.agentNotes !== (workspace.agentNotes ?? null)
+    ) {
+      await logActivity({
+        userId,
+        type: ActivityType.WORKSPACE_AGENT_NOTES_UPDATED,
+        metadata: {
+          workspaceId,
+          workspaceName: updated.name,
+          cleared: updates.agentNotes === null,
+          characters: updates.agentNotes?.length ?? 0,
+        },
+      });
+    }
+
     return NextResponse.json({
       id: updated.id,
       name: updated.name,
+      agentNotes: updated.agentNotes ?? "",
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
     });

@@ -37,6 +37,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
     workspaces: workspaces.map((w) => ({
       id: w.id,
       name: w.name,
+      agentNotes: w.agentNotes ?? "",
       canvasCount: w._count.canvases,
       createdAt: w.createdAt.toISOString(),
       updatedAt: w.updatedAt.toISOString(),
