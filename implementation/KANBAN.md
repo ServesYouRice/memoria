@@ -31,7 +31,6 @@ CHK-ME-1 to CHK-ME-3).
 | ---- | ------- | ------- |
 | [IMP-155](tasks/IMP-155.md) | Claude web check gate | |
 | [IMP-156](tasks/IMP-156.md) | Measure the production image; under 1 GB | |
-| [IMP-157](tasks/IMP-157.md) | Passkeys stay off on the cluster: `DEPLOYMENT.md` and a refusal test | |
 
 ## WAITING
 
