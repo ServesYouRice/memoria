@@ -5,8 +5,10 @@ verifyDepsBeforeRun: false
 
 overrides:
   # GHSA-38f7-945m-qr2g: effect <3.20.0 loses AsyncLocalStorage context under
-  # concurrent RPC load. Pulled in only transitively via prisma → @prisma/config.
-  "effect@<3.20.0": ">=3.20.0"
+  # concurrent RPC load; GHSA-7589-6fvf-x4pw: effect <=3.22.0 has a ReDoS in
+  # Schema.TemplateLiteral. Pulled in only transitively via prisma →
+  # @prisma/config, which pins 3.20.0; 3.22.x is the same major line.
+  "effect@<3.22.1": ">=3.22.1 <4"
   # GHSA-7fh5-64p2-3v2j: postcss <8.5.10 XSS via unescaped </style>. Bundled by
   # next; a patch-line bump to the fixed 8.5.x is safe for the build pipeline.
   "postcss@<8.5.10": ">=8.5.10"
