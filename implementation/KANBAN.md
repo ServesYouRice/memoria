@@ -16,6 +16,14 @@ were not recorded); WebKit on Windows now retries once (PR #89).
 A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 16s).
 
+On 2026-11-21 an agent session ran the stages the 2026-11-14 batch skipped
+(DEC-023) on Node 26.13.0: `pnpm gate fast` (3040 tests), `pnpm gate build`,
+`pnpm gate redis` on Valkey 9.1.3 (12/12) and the integration suite on
+PostgreSQL 18.6 (297/297, drift check clean; `prisma migrate deploy` on a new
+empty database, because Prisma refuses `migrate reset` from an agent). It
+fixed the four failures it found. `pnpm gate e2e` and the image build did not
+run: under 5 GB of free disk and only Chromium.
+
 ## DOING
 
 | Card | Outcome | Evidence |
@@ -23,9 +31,8 @@ A backup to SeaweedFS and the documented restore drill passed (RPO 134s, RTO
 
 ## READY
 
-IMP-144 to IMP-153 come from the handbook's 2026-11-12 rehearsal run
-(`before-production.md` section memoria, `board.md` ME-01 to ME-08, RUN-ME-1
-to RUN-ME-3).
+IMP-154, IMP-156 and IMP-158 (WAITING) come from the handbook's 2026-11-21 re-check (`board.md`
+CHK-ME-1 to CHK-ME-3).
 
 | Card | Outcome | Depends |
 | ---- | ------- | ------- |
@@ -39,6 +46,9 @@ to RUN-ME-3).
 | [IMP-119](tasks/IMP-119.md) | Settings page shows one copy of each field while it loads | DEC-022 |
 | [IMP-140](tasks/IMP-140.md) | Press and hold opens an item's menu on touch screens (built; needs a real iPhone check) | DEC-021 |
 | [IMP-115](tasks/IMP-115.md) | A hosted paid plan people can sign up and pay for | DEC-019 |
+| [IMP-154](tasks/IMP-154.md) | Run the stages the 2026-11-14 batch skipped (build, integration, redis pass; `pnpm gate e2e` left) | DEC-023 | The 2026-11-14 batch was merged without its build, integration and browser stages (owner, 2026-11-14). An agent session ran build, integration and redis on 2026-11-21 and fixed what failed (IMP-154). Still to run on the dev machine: `pnpm gate e2e` on Chromium, Firefox and WebKit, and one image build (`pnpm release`, dry run) to read its size (IMP-156); the session had under 5 GB of free disk and no Firefox or WebKit | Run both on the dev machine; record the image size and the largest layers (`docker history`) | | IMP-154, IMP-156, IMP-110, IMP-140 |
+| [IMP-156](tasks/IMP-156.md) | Measure the production image; under 1 GB | DEC-023 |
+| [IMP-158](tasks/IMP-158.md) | Measure the outbox worker's memory with real PDFs on the shared server | IMP-056 |
 
 ## USER DECISIONS
 
@@ -60,3 +70,4 @@ Fill `Choice`; an executor then moves the related card from `WAITING` to
 | DEC-022 | Duplicate Settings fields come from React re-rendering the `loading.tsx` boundary while the server copy is still hidden; the trigger is unknown. Either debug against a production build on the dev machine, or delete `src/app/settings/loading.tsx` (Settings loses its loading placeholder) | Debug on a production build first | Debug against a production build (owner, 2026-11-14) | IMP-119 |
 | DEC-023 | Run `pnpm build`, `pnpm gate integration` and `pnpm gate e2e` on Node 26 on the dev machine for the 2026-11-14 batch (agent sessions had no disk for a build, no browser stack and no Redis) | Run on the dev machine | Merge without them (owner, 2026-11-14) | IMP-110, IMP-140 |
 | DEC-024 | Production sign-up: how do new people get in? Today `REGISTRATION_MODE=invite` and nothing creates an invite (handbook INF-32) | Keep `invite`; build an owner-only invite command and Settings page | Invite-only with an owner invite page and command (owner, 2026-11-14) | IMP-153 |
+| DEC-025 | May the optional page-capture worker (`Dockerfile.capture`: Chromium, an image of about 1 GB, a 1 GB memory limit, `PAGE_CAPTURE=true`) run on the shared server? (handbook CHK-ME-3) | Keep it off there until IMP-110's real-browser run has measured its memory and the server has room | | `PAGE_CAPTURE` in `infra` |

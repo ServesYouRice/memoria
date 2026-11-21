@@ -47,6 +47,7 @@ const envSchema = z
     INTERNAL_OPERATIONS_TOKEN: optionalString,
     MEMORIA_E2E_MODE: z.enum(['true']).optional(),
     AUTH_RATE_LIMIT_MAX_REQUESTS: optionalPositiveInt,
+    DEPLOYMENT_STAGE: z.enum(['production', 'staging']).default('production'),
     EMAIL_PROVIDER: z.enum(['console', 'smtp', 'sendgrid', 'resend']).default('console'),
     EMAIL_FROM: optionalEmail,
     EMAIL_SENDER_VERIFIED: z.enum(['true', 'false']).optional(),
@@ -78,6 +79,9 @@ const envSchema = z
   .superRefine((data, ctx) => {
     const validateProductionRuntime =
       data.NODE_ENV === 'production' && process.env.MEMORIA_BUILD_PHASE !== 'true';
+    // IMP-145: mail is required in production only; staging may run without a
+    // provider, as src/lib/env.ts allows.
+    const requireMail = validateProductionRuntime && data.DEPLOYMENT_STAGE !== 'staging';
 
     if (validateProductionRuntime && !data.REDIS_URL) {
       ctx.addIssue({
@@ -124,7 +128,7 @@ const envSchema = z
       });
     }
 
-    if (validateProductionRuntime && !['sendgrid', 'resend', 'smtp'].includes(data.EMAIL_PROVIDER)) {
+    if (requireMail && !['sendgrid', 'resend', 'smtp'].includes(data.EMAIL_PROVIDER)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_PROVIDER'],
@@ -147,21 +151,24 @@ const envSchema = z
         }
       }
 
-      if (!data.EMAIL_FROM || /@(localhost|[^@]+\.local)$/i.test(data.EMAIL_FROM)) {
+      if (
+        requireMail &&
+        (!data.EMAIL_FROM || /@(localhost|[^@]+\.local)$/i.test(data.EMAIL_FROM))
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['EMAIL_FROM'],
           message: 'EMAIL_FROM must use a verified, publicly routable domain.',
         });
       }
-      if (data.EMAIL_SENDER_VERIFIED !== 'true') {
+      if (requireMail && data.EMAIL_SENDER_VERIFIED !== 'true') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['EMAIL_SENDER_VERIFIED'],
           message: 'EMAIL_SENDER_VERIFIED=true is required in production.',
         });
       }
-      if (!data.EMAIL_DELIVERY_PROBE_TO) {
+      if (requireMail && !data.EMAIL_DELIVERY_PROBE_TO) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['EMAIL_DELIVERY_PROBE_TO'],

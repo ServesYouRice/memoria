@@ -28,6 +28,13 @@ One image, four processes, plus a migration Job per release:
 | `PASSKEYS_ENABLED`  | `false` until the final domain | `false` until the final domain   |
 | `TRUSTED_PROXY_CIDRS` | the ingress CIDR   | the ingress CIDR                            |
 
+The cluster must set `PASSKEYS_ENABLED=false` in both overlays. A passkey is
+bound to the domain it was made on, so passkeys stay off until the app has its
+final domain (handbook OWN-07). The setting defaults to `true` for self-hosters
+on their own domain, so a missing setting turns passkeys on. With `false`,
+every `/api/auth/passkey/*` endpoint answers 404 and the sign-in and Settings
+pages offer no passkey.
+
 Without a mail provider (staging), sharing a canvas shows the owner an
 invitation link to copy. `node scripts/validate-env.mjs` (or starting the app) refuses
 anything else that production needs.

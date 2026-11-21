@@ -58,6 +58,15 @@ describe("bookmark refresh starvation", () => {
       },
     });
 
+    // The cron picks the least recently refreshed bookmarks in the whole
+    // database, and earlier files in this serial suite leave never-refreshed
+    // bookmarks with real URLs behind (bookmark-import since IMP-091). Mark
+    // those as just refreshed so the batches below see only this canvas.
+    await prisma.canvasItem.updateMany({
+      where: { type: "BOOKMARK", canvasId: { not: canvas.id } },
+      data: { bookmarkRefreshedAt: new Date() },
+    });
+
     const cron = () =>
       refreshCron(
         new NextRequest("http://localhost/api/cron/refresh-bookmarks", {

@@ -28,8 +28,20 @@ beforeAll(() => {
 
 afterAll(async () => {
   if (!redis) return;
-  const stale = await redis.keys(`memoria:collaboration:admission:${scope}:*`);
-  for (const key of stale) await redis.del(key.slice("memoria:".length));
+  // SCAN, not KEYS: the shared cluster's ACL refuses KEYS (-@dangerous).
+  // ioredis does not prefix MATCH patterns, so the pattern carries it.
+  let cursor = "0";
+  do {
+    const [next, stale] = await redis.scan(
+      cursor,
+      "MATCH",
+      `memoria:collaboration:admission:${scope}:*`,
+      "COUNT",
+      500,
+    );
+    for (const key of stale) await redis.del(key.slice("memoria:".length));
+    cursor = next;
+  } while (cursor !== "0");
   redis.disconnect();
 });
 
