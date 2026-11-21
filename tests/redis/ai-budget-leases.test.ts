@@ -32,10 +32,22 @@ async function cleanup() {
   const redis = getRedisClient();
   if (!redis) return;
   const prefix = redis.options.keyPrefix ?? "";
-  const keys = await redis.keys(`${prefix}ai:*${userId}*`);
-  if (keys.length > 0) {
-    await redis.del(...keys.map((key) => key.slice(prefix.length)));
-  }
+  // SCAN, not KEYS: the shared cluster's ACL refuses KEYS (-@dangerous).
+  // ioredis does not prefix MATCH patterns, so the pattern carries it.
+  let cursor = "0";
+  do {
+    const [next, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      `${prefix}ai:*${userId}*`,
+      "COUNT",
+      500,
+    );
+    if (keys.length > 0) {
+      await redis.del(...keys.map((key) => key.slice(prefix.length)));
+    }
+    cursor = next;
+  } while (cursor !== "0");
 }
 
 describe("AI concurrency leases on Redis", () => {

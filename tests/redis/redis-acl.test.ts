@@ -289,8 +289,10 @@ describe("Redis under the shared Valkey ACL (IMP-073)", () => {
       schemaVersion: 1,
       createdAt: new Date("2026-07-28T20:00:00.000Z"),
     };
+    // IMP-109: the handler also looks up the item's other canvases.
     const prisma = {
       canvasEvent: { findUnique: async () => event },
+      itemPlacement: { findMany: async () => [] },
     } as never;
     const committed = nextMessage(subscriber, canvasChannel(canvasId));
     // The outbox handler's own publisher, not an injected one.
