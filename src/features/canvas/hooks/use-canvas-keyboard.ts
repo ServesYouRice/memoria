@@ -1,7 +1,17 @@
 import { useEffect } from "react";
 import type Konva from "konva";
 import { type CanvasItem } from "@/types/canvas";
+import { type CanvasTool } from "@/stores/canvasStore";
 import { shouldIgnoreGlobalShortcut } from "@/lib/keyboard/shortcuts";
+
+const TOOL_SHORTCUTS: Record<string, CanvasTool> = {
+  v: "select",
+  h: "pan",
+  t: "text",
+  r: "shape",
+  a: "arrow",
+  p: "draw",
+};
 
 interface UseCanvasKeyboardProps {
   onDelete: () => void;
@@ -10,6 +20,8 @@ interface UseCanvasKeyboardProps {
   onSelectAll: () => void;
   onDuplicate: () => void;
   onEscape: () => void;
+  onSelectTool?: (tool: CanvasTool) => void;
+  onAddNote?: () => void;
   enabled?: boolean;
   canEdit?: boolean;
 
@@ -37,6 +49,8 @@ export function useCanvasKeyboard({
   onSelectAll,
   onDuplicate,
   onEscape,
+  onSelectTool,
+  onAddNote,
   enabled = true,
   canEdit = true,
 
@@ -91,6 +105,24 @@ export function useCanvasKeyboard({
           }
         }
         return;
+      }
+
+      // Single-key tool switching (V/H/T/R/A/P) & Quick Note (N)
+      if (!isDrawing && !isCtrlOrCmd && !e.altKey && !e.shiftKey) {
+        const key = e.key.toLowerCase();
+        if (key === "n" && canEdit && onAddNote) {
+          e.preventDefault();
+          onAddNote();
+          return;
+        }
+        const nextTool = TOOL_SHORTCUTS[key];
+        if (nextTool && onSelectTool) {
+          if (nextTool === "select" || nextTool === "pan" || canEdit) {
+            e.preventDefault();
+            onSelectTool(nextTool);
+            return;
+          }
+        }
       }
 
       // Navigation (Arrows)
@@ -177,6 +209,8 @@ export function useCanvasKeyboard({
     onSelectAll,
     onDuplicate,
     onEscape,
+    onSelectTool,
+    onAddNote,
     // Dependencies for new features
     isDrawing,
     stageRef,

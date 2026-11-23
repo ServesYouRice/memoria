@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { Stage } from "react-konva";
 import { useCanvasStore } from "@/stores/canvasStore";
-import { Alert, Box, Button } from "@mui/material";
+import { Alert, Box, Button, Paper, Typography, alpha } from "@mui/material";
 import { useSession } from "@/lib/auth-client";
 import { useSearchParams } from "next/navigation";
 import {
@@ -122,7 +122,10 @@ import { RemoteCursor } from "@/features/canvas/components/RemoteCursor";
 import { RemoteReaction } from "@/features/canvas/components/RemoteReaction";
 import { AlignmentToolbar } from "@/features/canvas/components/AlignmentToolbar";
 import { CanvasAddBar } from "@/features/canvas/components/CanvasAddBar";
+import { CanvasSelectionToolbar } from "@/features/canvas/components/CanvasSelectionToolbar";
 import { CanvasViewControls } from "@/features/canvas/components/CanvasViewControls";
+import { useCameraTween } from "@/features/canvas/hooks/use-camera-tween";
+import type { NoteColorName } from "@/lib/note-colors";
 import { CanvasOrganisedList } from "@/features/canvas/components/CanvasOrganisedList";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
@@ -131,7 +134,7 @@ import {
 } from "@/lib/product-surfaces";
 import { isVersionConflict } from "@/lib/api/fetch-client";
 import { stageDragPosition } from "@/features/canvas/lib/stage-drag";
-import { appColor, appColorTokens } from "@/lib/theme";
+import { appColor, appColorTokens, motion } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
 import { thumbnailDataUrl } from "@/features/canvas/lib/thumbnail";
@@ -306,7 +309,25 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     snapToGrid: snapToGridEnabled,
     setSnapToGrid: setSnapToGridEnabled,
     activeTool,
+    setActiveTool,
   } = useCanvasStore();
+
+  // Smooth camera glides (fit-to-screen, jump-to-item, follow mode)
+  const cameraRef = useRef({ x: position.x, y: position.y, zoom });
+  cameraRef.current = { x: position.x, y: position.y, zoom };
+  const { animateTo: animateCameraTo, cancel: cancelCameraTween } =
+    useCameraTween({
+      stageRef,
+      getCurrent: () => cameraRef.current,
+      onCommit: ({ x, y, zoom: nextZoom }) => {
+        setZoom(nextZoom);
+        setPosition({ x, y });
+      },
+    });
+  const [spotlightItemId, setSpotlightItemId] = useState<string | null>(null);
+  const [isDragOverFiles, setIsDragOverFiles] = useState(false);
+  const dragDepthRef = useRef(0);
+  const addNoteShortcutRef = useRef<() => void>(() => {});
 
   // IMP-042: the collaborative document's save and access state.
   const documentSession = useCanvasDocument();
@@ -653,6 +674,8 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       setSelectedItemIds(new Set());
       setContextMenuPosition(null);
     },
+    onSelectTool: setActiveTool,
+    onAddNote: () => addNoteShortcutRef.current(),
     enabled: !isDrawing,
     canEdit,
     isDrawing,
@@ -680,18 +703,27 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     focusedItemRef.current = itemId;
     setSelectedItemId(itemId);
     setSelectedItemIds(new Set([itemId]));
-    setPosition({
+    setSpotlightItemId(itemId);
+    animateCameraTo({
       x: stageSize.width / 2 - (item.positionX + item.width / 2) * zoom,
       y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
+      zoom,
+      durationMs: 360,
     });
   }, [
+    animateCameraTo,
     geometry,
     searchParams,
-    setPosition,
     stageSize.height,
     stageSize.width,
     zoom,
   ]);
+
+  useEffect(() => {
+    if (!spotlightItemId) return;
+    const timer = window.setTimeout(() => setSpotlightItemId(null), 950);
+    return () => window.clearTimeout(timer);
+  }, [spotlightItemId]);
 
   // Gesture (Zoom)
   useGesture(
@@ -823,20 +855,20 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     getInitialEventSeed,
   });
 
-  // Follow Mode
+  // Follow Mode (smooth glide instead of instant snap)
   useEffect(() => {
     if (followingUserId) {
       const targetCursor = cursors.find((c) => c.userId === followingUserId);
       if (targetCursor) {
         const newX = stageSize.width / 2 - targetCursor.position.x * zoom;
         const newY = stageSize.height / 2 - targetCursor.position.y * zoom;
-        setPosition({ x: newX, y: newY });
+        animateCameraTo({ x: newX, y: newY, zoom, durationMs: 220 });
       }
     }
   }, [
+    animateCameraTo,
     cursors,
     followingUserId,
-    setPosition,
     stageSize.height,
     stageSize.width,
     zoom,
@@ -935,6 +967,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     },
   });
   const handleAddNote = () => void addNote();
+  addNoteShortcutRef.current = handleAddNote;
   const handleAddLink = () => setBookmarkDialogOpen(true);
 
   const handleAddTable = async () => {
@@ -1085,14 +1118,39 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     });
   };
 
-  /** Select an item and bring it to the middle of the screen. */
+  /** Select an item, smoothly glide to center it, and pulse a spotlight ring. */
   const jumpToItem = (item: CanvasItem) => {
     setSelectedItemId(item.id);
     setSelectedItemIds(new Set([item.id]));
-    setPosition({
+    setSpotlightItemId(item.id);
+    animateCameraTo({
       x: stageSize.width / 2 - (item.positionX + item.width / 2) * zoom,
       y: stageSize.height / 2 - (item.positionY + item.height / 2) * zoom,
+      zoom,
+      durationMs: 360,
     });
+  };
+
+  /** Quick note recolour from the floating contextual selection toolbar. */
+  const handleQuickNoteColor = (item: CanvasItem, color: NoteColorName) => {
+    if (!capabilities.canEditItems) return;
+    updateItemMutation.mutate(
+      {
+        itemId: item.id,
+        data: {
+          version: item.version,
+          content: { ...item.content, color } as CanvasItem["content"],
+        },
+      },
+      {
+        onError: (error) =>
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Could not change the note colour",
+          ),
+      },
+    );
   };
 
   /** Keyboard nudge from the accessible item list, on the same commit path. */
@@ -1574,8 +1632,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       canvasBounds?.maxY === null ||
       !canvasBounds
     ) {
-      setZoom(1);
-      setPosition({ x: 0, y: 0 });
+      animateCameraTo({ x: 0, y: 0, zoom: 1, durationMs: 320 });
       return;
     }
     const contentWidth = Math.max(1, canvasBounds.maxX - canvasBounds.minX);
@@ -1588,16 +1645,17 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         (stageSize.height - 96) / contentHeight,
       ),
     );
-    setZoom(nextZoom);
-    setPosition({
+    animateCameraTo({
       x:
         stageSize.width / 2 -
         ((canvasBounds.minX + canvasBounds.maxX) / 2) * nextZoom,
       y:
         stageSize.height / 2 -
         ((canvasBounds.minY + canvasBounds.maxY) / 2) * nextZoom,
+      zoom: nextZoom,
+      durationMs: 340,
     });
-  }, [canvasBounds, setPosition, setZoom, stageSize.height, stageSize.width]);
+  }, [animateCameraTo, canvasBounds, stageSize.height, stageSize.width]);
 
   const boundsKey = JSON.stringify(canvasBounds ?? null);
   useEffect(() => {
@@ -1805,11 +1863,6 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
         canvasName={canvasName}
       />
 
-      {viewMode === "manual" &&
-        !isPresentationMode &&
-        canEdit &&
-        activeTool === "draw" && <DrawingToolbar />}
-
       {viewMode === "organizer" ? (
         <CanvasOrganisedList
           canvasId={canvasId}
@@ -1829,6 +1882,21 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
           ref={stageContainerRef}
           role="region"
           aria-label="Infinite canvas. An equivalent keyboard- and screen-reader-accessible item list is available from the skip control."
+          onDragEnter={(event) => {
+            if (
+              capabilities.canCreateItems &&
+              event.dataTransfer?.types.includes("Files")
+            ) {
+              dragDepthRef.current += 1;
+              setIsDragOverFiles(true);
+            }
+          }}
+          onDragLeave={() => {
+            if (dragDepthRef.current > 0) {
+              dragDepthRef.current -= 1;
+              if (dragDepthRef.current === 0) setIsDragOverFiles(false);
+            }
+          }}
           onDragOver={(event) => {
             if (
               capabilities.canCreateItems &&
@@ -1838,15 +1906,59 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               event.dataTransfer.dropEffect = "copy";
             }
           }}
-          onDrop={handleDropFiles}
+          onDrop={(event) => {
+            dragDepthRef.current = 0;
+            setIsDragOverFiles(false);
+            handleDropFiles(event);
+          }}
           sx={{
             flexGrow: 1,
             position: "relative",
             overflow: "hidden",
-            cursor: isDrawing ? "crosshair" : "default",
+            cursor: isSpacePressed
+              ? "grab"
+              : isDrawing
+                ? "crosshair"
+                : "default",
             bgcolor: appColor("canvasBackground"),
           }}
         >
+          {isDragOverFiles && (
+            <Box
+              aria-hidden
+              sx={{
+                position: "absolute",
+                inset: 12,
+                zIndex: 140,
+                pointerEvents: "none",
+                borderRadius: 4,
+                border: "2px dashed",
+                borderColor: "primary.main",
+                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                backdropFilter: "blur(3px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                animation: `fadeIn 150ms ${motion.easeOut}`,
+              }}
+            >
+              <Paper
+                elevation={0}
+                sx={{
+                  px: 2.5,
+                  py: 1.25,
+                  borderRadius: 999,
+                  bgcolor: appColor("floatingSurface"),
+                  border: `1px solid ${appColor("floatingBorder")}`,
+                  boxShadow: appColor("floatingShadow"),
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Drop PDFs anywhere on the canvas
+                </Typography>
+              </Paper>
+            </Box>
+          )}
           {totalItemCount > allItems.length && (
             <Box
               role="status"
@@ -1971,6 +2083,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             x={position.x}
             y={position.y}
             draggable={!isDrawing && isSpacePressed && !isTimeMachineActive}
+            onDragStart={() => cancelCameraTween()}
             onDragMove={(event) => {
               const next = stageDragPosition(event);
               if (next) followStagePan(next);
@@ -1980,6 +2093,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               if (next) setPosition(next);
             }}
             onWheel={(event) => {
+              cancelCameraTween();
               event.evt.preventDefault();
               const stage = event.target.getStage();
               const pointer = stage?.getPointerPosition();
@@ -2196,11 +2310,72 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             })}
           </Box>
 
+          {spotlightItemId &&
+            (() => {
+              const focused = allItems.find((i) => i.id === spotlightItemId);
+              if (!focused) return null;
+              return (
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: "absolute",
+                    left: focused.positionX * zoom + position.x - 6,
+                    top: focused.positionY * zoom + position.y - 6,
+                    width: focused.width * zoom + 12,
+                    height: focused.height * zoom + 12,
+                    borderRadius: 3.5,
+                    border: "3px solid",
+                    borderColor: "primary.main",
+                    pointerEvents: "none",
+                    zIndex: 15,
+                    animation: "pulse 0.85s ease-out 1",
+                  }}
+                />
+              );
+            })()}
+
+          {selectedItemId &&
+            selectedItemIds.size === 1 &&
+            !isPresentationMode &&
+            !isDrawing &&
+            !inlineNoteItem &&
+            (() => {
+              const selectedItem = allItems.find(
+                (candidate) => candidate.id === selectedItemId,
+              );
+              if (!selectedItem) return null;
+              return (
+                <CanvasSelectionToolbar
+                  item={selectedItem}
+                  capabilities={capabilities}
+                  zoom={zoom}
+                  position={position}
+                  stageSize={stageSize}
+                  onEdit={() => handleActivateItem(selectedItem)}
+                  onDuplicate={handleDuplicateFromMenu}
+                  onComments={handleOpenComments}
+                  onDelete={handleDeleteFromMenu}
+                  onMore={(point) =>
+                    setContextMenuPosition({
+                      x: point.x,
+                      y: point.y,
+                      itemId: selectedItem.id,
+                    })
+                  }
+                  onNoteColor={
+                    selectedItem.type === ItemType.NOTE
+                      ? (color) => handleQuickNoteColor(selectedItem, color)
+                      : undefined
+                  }
+                />
+              );
+            })()}
+
           {selectedItemId &&
             selectedItemIds.size === 1 &&
             !isPresentationMode && (
               <Box
-                sx={{ position: "absolute", top: 80, right: 16, zIndex: 10 }}
+                sx={{ position: "absolute", top: 16, right: 16, zIndex: 10 }}
               >
                 <LinkedItemsPanel
                   itemId={selectedItemId}
@@ -2214,7 +2389,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             <Box
               sx={{
                 position: "absolute",
-                top: 80,
+                top: 16,
                 display: "flex",
                 justifyContent: "center",
                 width: "100%",
@@ -2231,14 +2406,14 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             </Box>
           )}
 
-          {isDrawing && (
+          {!isPresentationMode && canEdit && activeTool === "draw" && (
             <Box
               sx={{
                 position: "absolute",
-                top: 140,
+                bottom: { xs: 72, sm: 84 },
                 left: "50%",
                 transform: "translateX(-50%)",
-                zIndex: 10,
+                zIndex: 105,
               }}
             >
               <DrawingToolbar />

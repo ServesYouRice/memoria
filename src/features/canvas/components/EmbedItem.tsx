@@ -4,8 +4,11 @@ import { type CanvasItemAdapterProps, type EmbedContent } from "@/types/canvas";
 import { EMBED_PREVIEW_LABEL, describeEmbedCard } from "@/lib/product-surfaces";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
+import { fonts } from "@/lib/theme";
 
 type EmbedItemProps = CanvasItemAdapterProps;
+
+const CARD_RADIUS = 12;
 
 /**
  * DEC-011: embeds are presented as link previews. Nothing third-party is loaded
@@ -46,71 +49,67 @@ export const EmbedItem: React.FC<EmbedItemProps> = ({
       <Rect
         width={item.width}
         height={item.height}
-        fill={palette.surfaceSubtle}
-        stroke={palette.border}
-        strokeWidth={1}
-        cornerRadius={8}
+        fill={palette.surface}
+        stroke={isSelected ? palette.selection : palette.border}
+        strokeWidth={isSelected ? 2 : 1}
+        shadowColor="black"
+        shadowBlur={14}
+        shadowOpacity={palette.cardShadowOpacity}
+        shadowOffset={{ x: 0, y: 4 }}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
+        cornerRadius={CARD_RADIUS}
       />
 
       {/* Says what this card is, so it never reads as live content. */}
       <Text
-        x={0}
-        y={12}
-        width={item.width}
+        x={12}
+        y={14}
+        width={Math.max(item.width - 24, 0)}
         text={`${EMBED_PREVIEW_LABEL} · ${card.isVideo ? "VIDEO" : content.embedType.toUpperCase()}`}
         align="center"
         fontSize={11}
-        fontFamily="Inter, sans-serif"
-        fill={palette.textMuted}
+        fontStyle="bold"
+        fontFamily={fonts.body}
+        fill={palette.accentText}
         ellipsis
       />
 
       <Text
-        x={12}
+        x={14}
         y={item.height / 2 - 14}
-        width={Math.max(item.width - 24, 0)}
+        width={Math.max(item.width - 28, 0)}
         text={card.title}
         align="center"
         fontSize={16}
-        fontFamily="Inter, sans-serif"
+        fontStyle="bold"
+        fontFamily={fonts.heading}
         fill={palette.text}
         wrap="none"
         ellipsis
       />
       <Text
-        x={12}
-        y={item.height / 2 + 8}
-        width={Math.max(item.width - 24, 0)}
+        x={14}
+        y={item.height / 2 + 10}
+        width={Math.max(item.width - 28, 0)}
         text={card.source}
         align="center"
-        fontSize={10}
-        fontFamily="Inter, sans-serif"
-        fill={palette.textFaint}
+        fontSize={11}
+        fontFamily={fonts.body}
+        fill={palette.textMuted}
         ellipsis
       />
 
       <Text
         x={0}
-        y={item.height - 22}
+        y={item.height - 24}
         width={item.width}
-        text="Opens in a new tab"
+        text="Opens in a new tab ↗"
         align="center"
-        fontSize={10}
-        fontFamily="Inter, sans-serif"
+        fontSize={10.5}
+        fontFamily={fonts.body}
         fill={palette.textFaint}
       />
-
-      {isSelected && (
-        <Rect
-          x={0}
-          y={0}
-          width={item.width}
-          height={item.height}
-          stroke={palette.selection}
-          strokeWidth={2}
-          cornerRadius={8}
-        />
-      )}
     </Group>
   );
 };

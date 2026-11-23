@@ -11,6 +11,8 @@ import {
   TableRows,
 } from "@mui/icons-material";
 
+import { appColor, motion } from "@/lib/theme";
+
 interface AlignmentToolbarProps {
   onAlign: (
     type: "left" | "center" | "right" | "top" | "middle" | "bottom",
@@ -24,13 +26,17 @@ export const AlignmentToolbar: React.FC<AlignmentToolbarProps> = ({
 }) => {
   return (
     <Paper
-      elevation={3}
+      elevation={0}
       sx={{
-        p: 0.5,
-        borderRadius: 2,
+        p: 0.75,
+        borderRadius: 3,
         display: "flex",
         gap: 1,
-        bgcolor: "background.paper",
+        bgcolor: appColor("floatingSurface"),
+        backdropFilter: "blur(12px)",
+        border: `1px solid ${appColor("floatingBorder")}`,
+        boxShadow: appColor("floatingShadow"),
+        animation: `toolbarIn 180ms ${motion.easeOut}`,
       }}
     >
       <ToggleButtonGroup size="small" exclusive>

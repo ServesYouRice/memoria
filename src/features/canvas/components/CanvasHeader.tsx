@@ -64,7 +64,7 @@ import { MeetingTimer } from "./MeetingTimer";
 import type { SharedTimerSnapshot } from "@/lib/hooks/use-collaboration";
 import type { SharedTimerAction } from "@/lib/collaboration/shared-timer";
 import { isArCanvasEnabled } from "@/lib/product-surfaces";
-import { appColor, brand } from "@/lib/theme";
+import { appColor, brand, motion } from "@/lib/theme";
 import { PresentToAll } from "@mui/icons-material";
 import { zoomedIn, zoomedOut } from "./CanvasViewControls";
 import {
@@ -902,24 +902,57 @@ export function CanvasHeader({
                   role="group"
                   aria-label="Canvas view"
                   sx={{
-                    display: "flex",
+                    position: "relative",
+                    display: "inline-grid",
+                    gridTemplateColumns: "1fr 1fr",
                     flexShrink: 0,
+                    p: 0.375,
+                    borderRadius: 999,
+                    bgcolor: "action.hover",
+                    border: "1px solid",
+                    borderColor: "divider",
                     "& .MuiToggleButton-root": {
+                      position: "relative",
+                      zIndex: 1,
+                      border: 0,
+                      borderRadius: 999,
                       textTransform: "none",
+                      fontSize: "0.8125rem",
+                      fontWeight: 600,
                       px: 1.5,
-                      py: 0.5,
-                    },
-                    "& > :first-of-type": {
-                      borderTopRightRadius: 0,
-                      borderBottomRightRadius: 0,
-                    },
-                    "& > :last-of-type": {
-                      borderTopLeftRadius: 0,
-                      borderBottomLeftRadius: 0,
-                      ml: "-1px",
+                      py: 0.4,
+                      color: "text.secondary",
+                      transition: `color 180ms ${motion.easeOut}`,
+                      "&.Mui-selected": {
+                        bgcolor: "transparent",
+                        color: "text.primary",
+                        "&:hover": { bgcolor: "transparent" },
+                      },
+                      "&:hover": { bgcolor: "transparent" },
                     },
                   }}
                 >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      position: "absolute",
+                      top: 3,
+                      bottom: 3,
+                      left: 3,
+                      width: "calc(50% - 3px)",
+                      borderRadius: 999,
+                      bgcolor: "background.paper",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      boxShadow: 1,
+                      transform:
+                        viewMode === "organizer"
+                          ? "translateX(100%)"
+                          : "translateX(0%)",
+                      transition: `transform 260ms ${motion.springSnappy}`,
+                      pointerEvents: "none",
+                    }}
+                  />
                   {(["manual", "organizer"] as const).map((value) => (
                     <Tooltip key={value} title={VIEW_MODES[value].tooltip}>
                       <ToggleButton
@@ -968,9 +1001,38 @@ export function CanvasHeader({
               <Tooltip title={statusDisplay.tooltip}>
                 <Chip
                   icon={
-                    <OnlineIcon
-                      sx={{ fontSize: 12, color: statusDisplay.iconColor }}
-                    />
+                    <Box
+                      component="span"
+                      sx={{
+                        position: "relative",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 12,
+                        height: 12,
+                      }}
+                    >
+                      {collaborationStatus === "connected" && (
+                        <Box
+                          component="span"
+                          aria-hidden
+                          sx={{
+                            position: "absolute",
+                            inset: 1,
+                            borderRadius: "50%",
+                            bgcolor: "success.main",
+                            animation: "livePulse 2.4s ease-out infinite",
+                          }}
+                        />
+                      )}
+                      <OnlineIcon
+                        sx={{
+                          fontSize: 10,
+                          color: statusDisplay.iconColor,
+                          position: "relative",
+                        }}
+                      />
+                    </Box>
                   }
                   label={statusDisplay.label}
                   size="small"
@@ -982,7 +1044,7 @@ export function CanvasHeader({
                     height: 24,
                     fontSize: 12,
                     color: "text.primary",
-                    "& .MuiChip-icon": { marginLeft: 0.5 },
+                    "& .MuiChip-icon": { marginLeft: 0.75 },
                     ...(collaborationStatus === "connected" && {
                       bgcolor: LIVE_STATUS_BACKGROUND,
                       color: appColor("liveStatusText"),
@@ -1050,9 +1112,34 @@ export function CanvasHeader({
           </Box>
         )}
 
+        {onSearchChange && !showSearch && (
+          <Tooltip title="Search canvas">
+            <IconButton
+              aria-label="Search canvas"
+              onClick={() => setShowSearch(true)}
+              sx={{ display: { xs: "none", md: "inline-flex" } }}
+            >
+              <SearchIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {onAI && (
+          <Tooltip title="AI assistant">
+            <IconButton
+              aria-label="AI assistant"
+              color="primary"
+              onClick={onAI}
+              sx={{ display: { xs: "none", md: "inline-flex" } }}
+            >
+              <AIIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+
         {canManageCanvas && (
           <Button
-            variant="outlined"
+            variant="contained"
             startIcon={<ShareIcon />}
             aria-label="Share canvas"
             onClick={() => setShareDialogOpen(true)}

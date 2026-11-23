@@ -30,7 +30,7 @@ import {
   PictureAsPdfOutlined as PdfIcon,
 } from "@mui/icons-material";
 import { useCanvasStore, type CanvasTool } from "@/stores/canvasStore";
-import { TOUCH_TARGET } from "@/lib/theme";
+import { appColor, motion, TOUCH_TARGET } from "@/lib/theme";
 
 export interface CanvasAddBarProps {
   onAddNote: () => void;
@@ -76,14 +76,20 @@ function BarButton({
         sx={{
           flexDirection: "column",
           gap: 0.25,
-          minWidth: { xs: 38, sm: 60 },
+          minWidth: { xs: 38, sm: 52 },
           "@media (pointer: coarse)": { minWidth: TOUCH_TARGET },
-          minHeight: 52,
-          px: { xs: 0.25, sm: 0.75 },
-          borderRadius: 2,
+          minHeight: 50,
+          px: { xs: 0.25, sm: 0.65 },
+          borderRadius: 2.25,
           color: pressed ? "primary.main" : "text.secondary",
           bgcolor: pressed ? "action.selected" : "transparent",
+          transition: `background-color 150ms ${motion.easeOut}, color 150ms ${motion.easeOut}, transform 200ms ${motion.springSnappy}`,
           "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+          "&:active": { transform: "scale(0.94)" },
+          "& svg": {
+            transition: `transform 240ms ${motion.springSnappy}`,
+            transform: pressed ? "scale(1.08)" : "scale(1)",
+          },
           "&.Mui-focusVisible": {
             outline: "2px solid",
             outlineColor: "primary.main",
@@ -125,14 +131,14 @@ export function CanvasAddBar({
     {
       key: "select",
       label: "Select",
-      hint: "Select and move items",
+      hint: "Select and move items (V)",
       icon: <SelectIcon fontSize="small" />,
       tool: "select",
     },
     {
       key: "pan",
       label: "Pan",
-      hint: "Drag to move around the canvas",
+      hint: "Drag to move around the canvas (H or Space)",
       icon: <PanIcon fontSize="small" />,
       tool: "pan",
     },
@@ -141,7 +147,7 @@ export function CanvasAddBar({
     {
       key: "note",
       label: "Note",
-      hint: "Add a sticky note",
+      hint: "Add a sticky note (N)",
       icon: <NoteIcon fontSize="small" />,
       onClick: onAddNote,
     },
@@ -173,28 +179,28 @@ export function CanvasAddBar({
     {
       key: "text",
       label: "Text",
-      hint: "Click on the canvas to add text",
+      hint: "Click on the canvas to add text (T)",
       icon: <TextIcon fontSize="small" />,
       tool: "text",
     },
     {
       key: "shape",
       label: "Shape",
-      hint: "Drag on the canvas to draw a box",
+      hint: "Drag on the canvas to draw a box (R)",
       icon: <ShapeIcon fontSize="small" />,
       tool: "shape",
     },
     {
       key: "arrow",
       label: "Arrow",
-      hint: "Drag on the canvas to draw an arrow",
+      hint: "Drag on the canvas to draw an arrow (A)",
       icon: <ArrowIcon fontSize="small" />,
       tool: "arrow",
     },
     {
       key: "draw",
       label: "Draw",
-      hint: "Draw freehand with the pen",
+      hint: "Draw freehand with the pen (P)",
       icon: <DrawIcon fontSize="small" />,
       tool: "draw",
     },
@@ -247,7 +253,7 @@ export function CanvasAddBar({
 
   return (
     <Paper
-      elevation={3}
+      elevation={0}
       role="toolbar"
       aria-label="Add to canvas"
       sx={{
@@ -262,7 +268,11 @@ export function CanvasAddBar({
         alignItems: "center",
         gap: 0.25,
         p: { xs: 0.25, sm: 0.5 },
-        borderRadius: 3,
+        borderRadius: 3.5,
+        bgcolor: appColor("floatingSurface"),
+        backdropFilter: "blur(12px)",
+        border: `1px solid ${appColor("floatingBorder")}`,
+        boxShadow: appColor("floatingShadow"),
       }}
     >
       <Box sx={{ display: "flex", gap: { xs: 0, sm: 0.25 } }}>

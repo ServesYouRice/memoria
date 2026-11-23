@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Paper, Typography } from "@mui/material";
 import { CANVAS_PALETTE } from "@/features/canvas/lib/canvas-palette";
+import { motion } from "@/lib/theme";
 
 interface RemoteCursorChatProps {
   x: number;
@@ -31,12 +32,14 @@ export const RemoteCursorChat: React.FC<RemoteCursorChatProps> = ({
       <Paper
         elevation={3}
         sx={{
-          p: 1.5,
-          borderRadius: "12px 12px 12px 0",
+          px: 1.5,
+          py: 1,
+          borderRadius: "14px 14px 14px 2px",
           backgroundColor: color,
           color: "common.white",
-          maxWidth: 250,
-          animation: "fadeIn 0.2s ease-out",
+          maxWidth: 260,
+          transformOrigin: "bottom left",
+          animation: `bubblePop 240ms ${motion.springSnappy}`,
           mt: -1,
         }}
       >

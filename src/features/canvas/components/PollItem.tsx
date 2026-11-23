@@ -1,17 +1,52 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Group, Rect, Text } from "react-konva";
+import type Konva from "konva";
 import { toast } from "sonner";
 import { isPollContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
+import { tweenKonvaNode } from "@/features/canvas/lib/canvas-motion";
+import { fonts } from "@/lib/theme";
 import {
   nextPollChoices,
   usePollClose,
   usePollResult,
   usePollVote,
 } from "@/features/canvas/hooks/use-poll-results";
+
+function AnimatedVoteBar({
+  targetWidth,
+  height,
+  fill,
+}: {
+  targetWidth: number;
+  height: number;
+  fill: string;
+}) {
+  const rectRef = useRef<Konva.Rect>(null);
+  const initialWidthRef = useRef(targetWidth);
+
+  useEffect(() => {
+    tweenKonvaNode(rectRef.current, {
+      width: targetWidth,
+      duration: 0.28,
+    });
+  }, [targetWidth]);
+
+  return (
+    <Rect
+      ref={rectRef}
+      width={initialWidthRef.current}
+      height={height}
+      fill={fill}
+      cornerRadius={8}
+      opacity={0.55}
+      listening={false}
+    />
+  );
+}
 
 type PollItemProps = CanvasItemAdapterProps;
 
@@ -115,9 +150,15 @@ export function PollItem({
         fill={palette.surface}
         cornerRadius={12}
         shadowColor="black"
-        shadowBlur={isSelected ? 20 : 10}
-        shadowOpacity={isSelected ? 0.2 : 0.1}
+        shadowBlur={isSelected ? 20 : 14}
+        shadowOpacity={
+          isSelected
+            ? Math.min(0.45, palette.cardShadowOpacity * 1.4)
+            : palette.cardShadowOpacity
+        }
         shadowOffset={{ x: 0, y: 4 }}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
         stroke={isSelected ? palette.selection : palette.border}
         strokeWidth={isSelected ? 2 : 1}
       />
@@ -127,8 +168,9 @@ export function PollItem({
         y={PADDING}
         width={innerWidth}
         text={question}
-        fontSize={18}
+        fontSize={17}
         fontStyle="bold"
+        fontFamily={fonts.heading}
         fill={palette.text}
         wrap="word"
         height={HEADER_HEIGHT - PADDING}
@@ -175,12 +217,10 @@ export function PollItem({
               strokeWidth={1}
             />
             {totalVotes > 0 && (
-              <Rect
-                width={innerWidth * (percent / 100)}
+              <AnimatedVoteBar
+                targetWidth={innerWidth * (percent / 100)}
                 height={OPTION_HEIGHT}
                 fill={isVoted ? palette.accentSoft : palette.border}
-                cornerRadius={8}
-                opacity={0.5}
               />
             )}
             <Text
@@ -189,6 +229,7 @@ export function PollItem({
               width={innerWidth - 90}
               text={`${isVoted ? "✓ " : ""}${option.text}`}
               fontSize={14}
+              fontFamily={fonts.body}
               fill={isVoted ? palette.accentText : palette.textBody}
               wrap="none"
               ellipsis={true}
@@ -199,6 +240,7 @@ export function PollItem({
               width={70}
               text={`${count} · ${Math.round(percent)}%`}
               fontSize={12}
+              fontFamily={fonts.body}
               fill={palette.textMuted}
               align="right"
             />
@@ -212,6 +254,7 @@ export function PollItem({
         width={capabilities.canManageCanvas ? innerWidth - 90 : innerWidth}
         text={pollFooter(result?.voters ?? 0, multipleChoice, closed)}
         fontSize={11}
+        fontFamily={fonts.body}
         fill={palette.textFaint}
       />
       {capabilities.canManageCanvas && result && (
@@ -223,6 +266,7 @@ export function PollItem({
           text={closed ? "Reopen poll" : "Close poll"}
           fontSize={11}
           fontStyle="bold"
+          fontFamily={fonts.body}
           fill={palette.accentText}
           align="right"
           onClick={(e) => {

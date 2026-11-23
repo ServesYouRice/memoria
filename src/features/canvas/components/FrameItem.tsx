@@ -6,8 +6,12 @@ import {
   CANVAS_PALETTE,
   useCanvasPalette,
 } from "@/features/canvas/lib/canvas-palette";
+import { fonts } from "@/lib/theme";
 
 type FrameItemProps = CanvasItemAdapterProps;
+
+const FRAME_RADIUS = 16;
+const HEADER_HEIGHT = 36;
 
 export const FrameItem: React.FC<FrameItemProps> = ({
   item,
@@ -19,6 +23,7 @@ export const FrameItem: React.FC<FrameItemProps> = ({
 }) => {
   const palette = useCanvasPalette();
   const content = item.content as FrameContent;
+  const title = content.title || "Frame";
 
   return (
     <Group
@@ -37,53 +42,46 @@ export const FrameItem: React.FC<FrameItemProps> = ({
       }}
       onContextMenu={onContextMenu}
     >
+      {/* Soft section frame body */}
+      <Rect
+        x={0}
+        y={0}
+        width={item.width}
+        height={item.height}
+        fill={palette.frameBodyTint}
+        stroke={isSelected ? palette.selection : palette.borderStrong}
+        strokeWidth={isSelected ? 2 : 1}
+        cornerRadius={FRAME_RADIUS}
+        perfectDrawEnabled={false}
+      />
+
       {/* Title Bar */}
       <Rect
         x={0}
         y={0}
         width={item.width}
-        height={30}
+        height={HEADER_HEIGHT}
         fill={content.backgroundColor || palette.frameFill}
-        stroke={palette.border}
+        stroke={isSelected ? palette.selection : palette.borderStrong}
         strokeWidth={1}
-        cornerRadius={[4, 4, 0, 0]}
+        cornerRadius={[FRAME_RADIUS, FRAME_RADIUS, 0, 0]}
+        perfectDrawEnabled={false}
       />
       <Text
-        x={10}
-        y={8}
-        text={content.title || "Frame"}
+        x={14}
+        y={10}
+        width={Math.max(0, item.width - 28)}
+        text={title}
         fontSize={14}
-        fontFamily="Inter, sans-serif"
+        fontStyle="bold"
+        fontFamily={fonts.heading}
+        ellipsis
+        wrap="none"
         fill={
           content.backgroundColor ? CANVAS_PALETTE.light.text : palette.text
         }
+        listening={false}
       />
-
-      {/* Frame Body */}
-      <Rect
-        x={0}
-        y={30}
-        width={item.width}
-        height={item.height - 30}
-        fill="transparent"
-        stroke={palette.border}
-        strokeWidth={1}
-        cornerRadius={[0, 0, 4, 4]}
-      />
-
-      {/* Selection Highlight */}
-      {isSelected && (
-        <Rect
-          x={-2}
-          y={-2}
-          width={item.width + 4}
-          height={item.height + 4}
-          stroke={palette.selection}
-          strokeWidth={2}
-          cornerRadius={6}
-          listening={false}
-        />
-      )}
     </Group>
   );
 };

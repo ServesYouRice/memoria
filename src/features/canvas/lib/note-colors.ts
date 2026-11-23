@@ -24,20 +24,20 @@ export const NOTE_PALETTE: Record<
   Record<NoteColorName, NoteColors>
 > = {
   light: {
-    yellow: { fill: "#FFF3B0", stroke: "#E6CF62", text: "#3D3524" },
-    pink: { fill: "#FFDCE5", stroke: "#EEA9BB", text: "#4A2630" },
-    blue: { fill: "#D9E9FF", stroke: "#9CC0EE", text: "#1F3150" },
-    green: { fill: "#DAF2D6", stroke: "#9DD398", text: "#213D22" },
-    purple: { fill: "#E9E0FB", stroke: "#BAA5EC", text: "#33284D" },
-    orange: { fill: "#FFE2C7", stroke: "#F0B07A", text: "#4A2E17" },
+    yellow: { fill: "#FEF6C8", stroke: "#E6D273", text: "#3A311E" },
+    pink: { fill: "#FFE1EA", stroke: "#EFAFC2", text: "#4A2230" },
+    blue: { fill: "#DCEBFF", stroke: "#9FC1EE", text: "#1C3052" },
+    green: { fill: "#DCF4DC", stroke: "#9CD2A0", text: "#1E3B22" },
+    purple: { fill: "#ECE3FC", stroke: "#BEA9EC", text: "#31244D" },
+    orange: { fill: "#FFE6CE", stroke: "#EEB480", text: "#4A2B14" },
   },
   dark: {
-    yellow: { fill: "#3B3622", stroke: "#6B5F2E", text: "#F5EFD6" },
-    pink: { fill: "#3D2530", stroke: "#6E3F52", text: "#F8DFE7" },
-    blue: { fill: "#1F2D42", stroke: "#3A5577", text: "#DCE9FB" },
-    green: { fill: "#213326", stroke: "#3C6045", text: "#DCF1DE" },
-    purple: { fill: "#2C2640", stroke: "#50457A", text: "#E8E1FA" },
-    orange: { fill: "#3D2C1E", stroke: "#6E4D30", text: "#FBE5D0" },
+    yellow: { fill: "#2E2816", stroke: "#8A7228", text: "#FEF3C7" },
+    pink: { fill: "#351929", stroke: "#9E3E66", text: "#FCE7F3" },
+    blue: { fill: "#162744", stroke: "#3B6EB5", text: "#DBEAFE" },
+    green: { fill: "#162D24", stroke: "#2E7A5B", text: "#D1FAE5" },
+    purple: { fill: "#241D3D", stroke: "#6A55B8", text: "#EDE9FE" },
+    orange: { fill: "#362114", stroke: "#A35829", text: "#FFEDD5" },
   },
 };
 
@@ -69,14 +69,14 @@ export { NOTE_COLOR_NAMES };
  * exports all draw notes with these values.
  */
 export const NOTE_STYLE = {
-  cornerRadius: 10,
+  cornerRadius: 12,
   padding: 16,
   fontSize: 15,
-  lineHeight: 1.4,
+  lineHeight: 1.45,
   fontFamily: fonts.body,
   strokeWidth: 1,
-  selectedStrokeWidth: 2.5,
-  shadowBlur: 14,
+  selectedStrokeWidth: 2,
+  shadowBlur: 16,
   shadowOffset: { x: 0, y: 4 },
-  shadowOpacity: { light: 0.16, dark: 0.45 },
+  shadowOpacity: { light: 0.13, dark: 0.4 },
 } as const;

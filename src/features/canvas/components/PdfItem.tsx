@@ -17,8 +17,10 @@ import {
   pdfFileUrl,
   type PdfContent,
 } from "@/lib/pdf/pdf-content";
+import { fonts } from "@/lib/theme";
 
 const PADDING = 14;
+const CARD_RADIUS = 12;
 const BUTTON_WIDTH = 64;
 const BUTTON_HEIGHT = 28;
 
@@ -63,11 +65,17 @@ export function PdfCardFace({
         width={width}
         height={height}
         fill={palette.surface}
-        cornerRadius={10}
+        cornerRadius={CARD_RADIUS}
         shadowColor="black"
-        shadowBlur={selected ? 16 : 8}
-        shadowOpacity={selected ? 0.18 : 0.08}
-        shadowOffset={{ x: 0, y: 3 }}
+        shadowBlur={selected ? 18 : 14}
+        shadowOpacity={
+          selected
+            ? Math.min(0.45, palette.cardShadowOpacity * 1.4)
+            : palette.cardShadowOpacity
+        }
+        shadowOffset={{ x: 0, y: 4 }}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
         stroke={selected ? palette.selection : palette.border}
         strokeWidth={selected ? 2 : 1}
       />
@@ -76,7 +84,7 @@ export function PdfCardFace({
         y={PADDING}
         width={34}
         height={42}
-        cornerRadius={4}
+        cornerRadius={6}
         fill={palette.accentSofter}
         stroke={palette.borderStrong}
         strokeWidth={1}
@@ -89,6 +97,7 @@ export function PdfCardFace({
         align="center"
         fontSize={10}
         fontStyle="bold"
+        fontFamily={fonts.heading}
         fill={palette.accentText}
         listening={false}
       />
@@ -99,6 +108,7 @@ export function PdfCardFace({
         text={content.filename}
         fontSize={15}
         fontStyle="bold"
+        fontFamily={fonts.heading}
         fill={palette.text}
         wrap="none"
         ellipsis
@@ -110,6 +120,7 @@ export function PdfCardFace({
         width={Math.max(0, innerWidth - 46)}
         text={describePdfFile(content)}
         fontSize={12}
+        fontFamily={fonts.body}
         fill={palette.textMuted}
         wrap="none"
         ellipsis
@@ -121,7 +132,8 @@ export function PdfCardFace({
         width={Math.max(0, innerWidth - BUTTON_WIDTH - 8)}
         height={height - PADDING * 2 - 52}
         text={describePdfText(content.textStatus)}
-        fontSize={11}
+        fontSize={11.5}
+        fontFamily={fonts.body}
         fill={palette.textFaint}
         wrap="word"
         ellipsis
@@ -139,7 +151,7 @@ export function PdfCardFace({
         <Rect
           width={BUTTON_WIDTH}
           height={BUTTON_HEIGHT}
-          cornerRadius={6}
+          cornerRadius={8}
           fill={palette.accentSoft}
           stroke={palette.selection}
           strokeWidth={1}
@@ -152,6 +164,7 @@ export function PdfCardFace({
           verticalAlign="middle"
           fontSize={13}
           fontStyle="bold"
+          fontFamily={fonts.body}
           fill={palette.accentText}
         />
       </Group>

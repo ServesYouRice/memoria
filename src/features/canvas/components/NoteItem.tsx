@@ -22,10 +22,14 @@ import { normalizeNoteContent } from "@/lib/rich-text/note-format";
 import { useThemeMode } from "@/lib/theme-context";
 import { NOTE_STYLE, noteColorsFor } from "@/features/canvas/lib/note-colors";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
+import {
+  animateDragLift,
+  setStageCursor,
+} from "@/features/canvas/lib/canvas-motion";
 
 type NoteItemProps = CanvasItemAdapterProps;
 
-const RESIZE_HANDLE_SIZE = 8;
+const RESIZE_HANDLE_SIZE = 7;
 const MIN_WIDTH = 150;
 const MIN_HEIGHT = 100;
 
@@ -43,6 +47,7 @@ export function NoteItem({
   const mode = useThemeMode().mode;
   const noteColors = noteColorsFor(item.content, mode);
   const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const [localPosition, setLocalPosition] = useState({
     x: item.positionX,
     y: item.positionY,
@@ -136,12 +141,31 @@ export function NoteItem({
       y={localPosition.y}
       draggable={capabilities.canMoveItems}
       onDragStart={(e) => {
-        if (e.target === e.currentTarget) setIsDragging(true);
+        if (e.target === e.currentTarget) {
+          setIsDragging(true);
+          animateDragLift(groupRef.current, true, 0.7);
+          setStageCursor(e.target, "grabbing");
+        }
       }}
       onDragMove={handleDragMove}
       onDragEnd={(e) => {
-        if (e.target === e.currentTarget) setIsDragging(false);
+        if (e.target === e.currentTarget) {
+          setIsDragging(false);
+          animateDragLift(groupRef.current, false, 0);
+          setStageCursor(
+            e.target,
+            capabilities.canMoveItems ? "grab" : "default",
+          );
+        }
         handleDragEnd(e);
+      }}
+      onMouseEnter={(e) => {
+        setIsHovered(true);
+        if (capabilities.canMoveItems) setStageCursor(e.target, "grab");
+      }}
+      onMouseLeave={(e) => {
+        setIsHovered(false);
+        setStageCursor(e.target, "default");
       }}
       onClick={onSelect}
       onTap={onSelect}
@@ -153,16 +177,30 @@ export function NoteItem({
         width={localSize.width}
         height={localSize.height}
         fill={noteColors.fill}
-        stroke={isSelected ? palette.selection : noteColors.stroke}
+        stroke={
+          isSelected
+            ? palette.selection
+            : isHovered
+              ? palette.selection
+              : noteColors.stroke
+        }
         strokeWidth={
-          isSelected ? NOTE_STYLE.selectedStrokeWidth : NOTE_STYLE.strokeWidth
+          isSelected
+            ? NOTE_STYLE.selectedStrokeWidth
+            : isHovered
+              ? 1.5
+              : NOTE_STYLE.strokeWidth
         }
         cornerRadius={NOTE_STYLE.cornerRadius}
-        shadowEnabled={!isDragging}
+        shadowEnabled
         shadowColor="black"
-        shadowBlur={NOTE_STYLE.shadowBlur}
-        shadowOpacity={NOTE_STYLE.shadowOpacity[mode]}
-        shadowOffset={NOTE_STYLE.shadowOffset}
+        shadowBlur={isDragging ? 24 : NOTE_STYLE.shadowBlur}
+        shadowOpacity={
+          isDragging
+            ? Math.min(0.55, NOTE_STYLE.shadowOpacity[mode] * 1.45)
+            : NOTE_STYLE.shadowOpacity[mode]
+        }
+        shadowOffset={isDragging ? { x: 0, y: 10 } : NOTE_STYLE.shadowOffset}
         shadowForStrokeEnabled={false}
         perfectDrawEnabled={false}
       />
@@ -190,7 +228,9 @@ export function NoteItem({
             x={localSize.width}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("se", e)}
             onDragEnd={(e) => handleResizeEnd("se", e)}
@@ -208,7 +248,9 @@ export function NoteItem({
             x={0}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={(e) => handleResizeEnd("sw", e)}
@@ -226,7 +268,9 @@ export function NoteItem({
             x={localSize.width}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={(e) => handleResizeEnd("ne", e)}
@@ -244,7 +288,9 @@ export function NoteItem({
             x={0}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={(e) => handleResizeEnd("nw", e)}

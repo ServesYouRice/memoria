@@ -1,7 +1,14 @@
 "use client";
 
 import React from "react";
-import { Divider, IconButton, Paper, Tooltip, Typography } from "@mui/material";
+import {
+  ButtonBase,
+  Divider,
+  IconButton,
+  Paper,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import {
   ZoomIn,
   ZoomOut,
@@ -10,6 +17,7 @@ import {
   GridOff as GridOffIcon,
   Straighten as SnapIcon,
 } from "@mui/icons-material";
+import { appColor, motion } from "@/lib/theme";
 
 export const ZOOM_STEP = 0.1;
 export const MIN_ZOOM = 0.1;
@@ -48,7 +56,7 @@ export function CanvasViewControls({
 }: CanvasViewControlsProps) {
   return (
     <Paper
-      elevation={2}
+      elevation={0}
       role="toolbar"
       aria-label="View"
       sx={{
@@ -60,7 +68,11 @@ export function CanvasViewControls({
         alignItems: "center",
         gap: 0.25,
         p: 0.5,
-        borderRadius: 3,
+        borderRadius: 3.5,
+        bgcolor: appColor("floatingSurface"),
+        backdropFilter: "blur(12px)",
+        border: `1px solid ${appColor("floatingBorder")}`,
+        boxShadow: appColor("floatingShadow"),
       }}
     >
       <Tooltip title="Zoom out">
@@ -71,18 +83,33 @@ export function CanvasViewControls({
           <ZoomOut fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Typography
-        component="output"
-        aria-label="Zoom level"
-        sx={{
-          minWidth: 44,
-          textAlign: "center",
-          fontSize: 13,
-          fontWeight: 600,
-        }}
-      >
-        {Math.round(zoom * 100)}%
-      </Typography>
+      <Tooltip title="Reset zoom to 100%">
+        <ButtonBase
+          onClick={() => onZoomChange(1)}
+          aria-label="Reset zoom to 100%"
+          sx={{
+            borderRadius: 1.5,
+            px: 0.75,
+            py: 0.5,
+            minWidth: 46,
+            transition: `background-color 150ms ${motion.easeOut}`,
+            "&:hover": { bgcolor: "action.hover" },
+          }}
+        >
+          <Typography
+            component="output"
+            aria-label="Zoom level"
+            sx={{
+              textAlign: "center",
+              fontSize: 13,
+              fontWeight: 600,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {Math.round(zoom * 100)}%
+          </Typography>
+        </ButtonBase>
+      </Tooltip>
       <Tooltip title="Zoom in">
         <IconButton
           aria-label="Zoom in"

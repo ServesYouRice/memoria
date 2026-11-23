@@ -4,6 +4,7 @@ import React from "react";
 import { Box, Slider, Button, Typography, Paper } from "@mui/material";
 import { Restore, Close } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
+import { appColor, motion } from "@/lib/theme";
 
 interface TimeMachineControlProps {
   versions: any[];
@@ -27,19 +28,25 @@ export function TimeMachineControl({
 
   return (
     <Paper
-      elevation={3}
+      elevation={0}
       sx={{
         position: "absolute",
-        bottom: 32,
+        bottom: 24,
         left: "50%",
         transform: "translateX(-50%)",
-        width: "80%",
-        maxWidth: 800,
-        p: 3,
+        width: "90%",
+        maxWidth: 760,
+        p: 2.5,
+        borderRadius: 4,
+        bgcolor: appColor("floatingSurface"),
+        backdropFilter: "blur(12px)",
+        border: `1px solid ${appColor("floatingBorder")}`,
+        boxShadow: appColor("floatingShadow"),
         zIndex: 1000,
         display: "flex",
         flexDirection: "column",
-        gap: 2,
+        gap: 1.5,
+        animation: `toolbarIn 220ms ${motion.springGentle}`,
       }}
     >
       <Box

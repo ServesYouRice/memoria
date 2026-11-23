@@ -18,6 +18,7 @@ import { useThemeMode } from "@/lib/theme-context";
 import { NOTE_STYLE, noteColorsFor } from "@/features/canvas/lib/note-colors";
 import { fragmentKey } from "@/features/canvas/lib/live-note";
 import { noteScreenRect } from "@/features/canvas/lib/note-screen-rect";
+import { appColor, motion } from "@/lib/theme";
 
 /** Popups opened from the editor (such as its link dialog) count as inside. */
 const EDITOR_POPUP_SELECTOR =
@@ -25,6 +26,8 @@ const EDITOR_POPUP_SELECTOR =
 
 /** Room kept below the note for the Tags / Done bar, in screen pixels. */
 const BAR_SPACE_PX = 56;
+/** Minimum vertical clearance above the note before flipping the toolbar below. */
+const TOOLBAR_CLEARANCE_PX = 60;
 
 export interface NoteInlineEditorProps {
   item: Pick<
@@ -75,9 +78,10 @@ export function NoteInlineEditor({
   const colors = noteColorsFor(item.content, mode);
   // Counter-scale for controls that keep their normal size at any zoom.
   const unscale = `scale(${1 / zoom})`;
+  const toolbarBelow = rect.top < TOOLBAR_CLEARANCE_PX;
   const maxHeight = Math.max(
     item.height,
-    (viewportHeight - rect.top - BAR_SPACE_PX) / zoom,
+    (viewportHeight - rect.top - BAR_SPACE_PX - (toolbarBelow ? 52 : 0)) / zoom,
   );
 
   return (
@@ -115,16 +119,26 @@ export function NoteInlineEditor({
         frameless
         toolbarSx={{
           position: "absolute",
-          bottom: "100%",
+          ...(toolbarBelow
+            ? {
+                top: "100%",
+                mt: `${48 / zoom}px`,
+                transformOrigin: "top left",
+              }
+            : {
+                bottom: "100%",
+                mb: `${8 / zoom}px`,
+                transformOrigin: "bottom left",
+              }),
           left: 0,
           width: "max-content",
-          mb: `${8 / zoom}px`,
           transform: unscale,
-          transformOrigin: "bottom left",
-          border: 1,
-          borderColor: "divider",
-          borderRadius: 1,
-          boxShadow: 2,
+          bgcolor: appColor("floatingSurface"),
+          backdropFilter: "blur(12px)",
+          border: `1px solid ${appColor("floatingBorder")}`,
+          borderRadius: 2.5,
+          boxShadow: appColor("floatingShadow"),
+          animation: `toolbarIn 180ms ${motion.easeOut}`,
         }}
         contentSx={{
           maxHeight,
@@ -134,6 +148,7 @@ export function NoteInlineEditor({
           borderRadius: `${NOTE_STYLE.cornerRadius}px`,
           outline: "2px solid",
           outlineColor: "primary.main",
+          boxShadow: appColor("floatingShadow"),
           fontFamily: NOTE_STYLE.fontFamily,
           fontSize: `${NOTE_STYLE.fontSize}px`,
           lineHeight: String(NOTE_STYLE.lineHeight),
@@ -147,15 +162,16 @@ export function NoteInlineEditor({
           gap: 1,
           width: "max-content",
           mt: `${8 / zoom}px`,
-          px: 1,
+          px: 1.25,
           py: 0.5,
           transform: unscale,
           transformOrigin: "top left",
-          bgcolor: "background.paper",
-          border: 1,
-          borderColor: "divider",
-          borderRadius: 1,
-          boxShadow: 2,
+          bgcolor: appColor("floatingSurface"),
+          backdropFilter: "blur(12px)",
+          border: `1px solid ${appColor("floatingBorder")}`,
+          borderRadius: 2.5,
+          boxShadow: appColor("floatingShadow"),
+          animation: `toolbarIn 180ms ${motion.easeOut}`,
         }}
       >
         <Typography variant="caption" sx={{ color: "text.secondary" }}>

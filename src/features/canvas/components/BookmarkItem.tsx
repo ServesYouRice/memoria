@@ -23,12 +23,27 @@ import type Konva from "konva";
 import { isBookmarkContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
+import {
+  animateDragLift,
+  setStageCursor,
+} from "@/features/canvas/lib/canvas-motion";
 
 type BookmarkItemProps = CanvasItemAdapterProps;
 
-const RESIZE_HANDLE_SIZE = 8;
+const RESIZE_HANDLE_SIZE = 7;
 const MIN_WIDTH = 200;
 const MIN_HEIGHT = 80;
+const CARD_RADIUS = 12;
+const FOOTER_HEIGHT = 30;
+const PADDING = 14;
+
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
 
 type ResizeCorner = "se" | "sw" | "ne" | "nw";
 
@@ -83,6 +98,9 @@ function BookmarkItemComponent({
     height: item.height,
   });
   const [favicon, setFavicon] = useState<HTMLImageElement | null>(null);
+  const [previewImg, setPreviewImg] = useState<HTMLImageElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Extract bookmark content
   const content = isBookmarkContent(item.content)
@@ -111,13 +129,27 @@ function BookmarkItemComponent({
         setFavicon(img);
       };
       img.onerror = () => {
-        console.error("Failed to load favicon:", content.favicon);
+        setFavicon(null);
       };
       img.src = faviconSrc;
     } else {
       setFavicon(null);
     }
   }, [content.favicon]);
+
+  // Load Open Graph preview cover image when unfurled
+  useEffect(() => {
+    const previewSrc = toImageProxyUrl(content.previewImage);
+    if (previewSrc) {
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => setPreviewImg(img);
+      img.onerror = () => setPreviewImg(null);
+      img.src = previewSrc;
+    } else {
+      setPreviewImg(null);
+    }
+  }, [content.previewImage]);
 
   // Handle drag. Only drags of the Group itself move the bookmark; a resize
   // handle's drag events must not reach these handlers.
@@ -192,6 +224,14 @@ function BookmarkItemComponent({
     content.url.length > 50
       ? content.url.substring(0, 47) + "..."
       : content.url;
+  const domainLabel = content.siteName || extractDomain(content.url);
+  const showCover = Boolean(previewImg) && localSize.height >= 165;
+  const coverHeight = showCover
+    ? Math.min(104, Math.round(localSize.height * 0.42))
+    : 0;
+  const bodyTop = coverHeight + PADDING;
+  const footerTop = Math.max(bodyTop, localSize.height - FOOTER_HEIGHT);
+  const innerWidth = Math.max(0, localSize.width - PADDING * 2);
 
   return (
     <Group
@@ -199,118 +239,229 @@ function BookmarkItemComponent({
       x={localPosition.x}
       y={localPosition.y}
       draggable={capabilities.canMoveItems}
+      onDragStart={(e) => {
+        if (e.target !== e.currentTarget) return;
+        setIsDragging(true);
+        animateDragLift(groupRef.current, true);
+        setStageCursor(e.target, "grabbing");
+      }}
       onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
+      onDragEnd={(e) => {
+        if (e.target === e.currentTarget) {
+          setIsDragging(false);
+          animateDragLift(groupRef.current, false);
+          setStageCursor(
+            e.target,
+            capabilities.canMoveItems ? "grab" : "default",
+          );
+        }
+        handleDragEnd(e);
+      }}
+      onMouseEnter={(e) => {
+        setIsHovered(true);
+        if (capabilities.canMoveItems) setStageCursor(e.target, "grab");
+      }}
+      onMouseLeave={(e) => {
+        setIsHovered(false);
+        setStageCursor(e.target, "default");
+      }}
       onClick={onSelect}
       onTap={onSelect}
       onDblClick={onActivate}
       onDblTap={onActivate}
       onContextMenu={onContextMenu}
     >
-      {/* Main bookmark rectangle */}
+      {/* Main bookmark card surface */}
       <Rect
         width={localSize.width}
         height={localSize.height}
         fill={palette.bookmark.fill}
-        stroke={isSelected ? palette.selection : palette.bookmark.stroke}
-        strokeWidth={isSelected ? 3 : 2}
+        stroke={
+          isSelected
+            ? palette.selection
+            : isHovered
+              ? palette.borderStrong
+              : palette.bookmark.stroke
+        }
+        strokeWidth={isSelected ? 2 : 1}
         shadowColor="black"
-        shadowBlur={5}
-        shadowOpacity={0.2}
-        shadowOffset={{ x: 2, y: 2 }}
-        cornerRadius={8}
+        shadowBlur={isDragging ? 24 : 14}
+        shadowOpacity={
+          isDragging
+            ? Math.min(0.48, palette.cardShadowOpacity * 1.45)
+            : palette.cardShadowOpacity
+        }
+        shadowOffset={isDragging ? { x: 0, y: 10 } : { x: 0, y: 4 }}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
+        cornerRadius={CARD_RADIUS}
+      />
+
+      {/* Optional unfurled Open Graph cover image */}
+      {showCover && previewImg && (
+        <Group
+          clipX={0}
+          clipY={0}
+          clipWidth={localSize.width}
+          clipHeight={coverHeight}
+          listening={false}
+        >
+          <KonvaImage
+            image={previewImg}
+            x={0}
+            y={0}
+            width={localSize.width}
+            height={coverHeight}
+            cornerRadius={[CARD_RADIUS, CARD_RADIUS, 0, 0]}
+          />
+          <Rect
+            x={0}
+            y={coverHeight - 1}
+            width={localSize.width}
+            height={1}
+            fill={palette.border}
+            listening={false}
+          />
+        </Group>
+      )}
+
+      {/* Subtle footer band */}
+      <Rect
+        x={1}
+        y={footerTop}
+        width={Math.max(0, localSize.width - 2)}
+        height={Math.max(0, FOOTER_HEIGHT - 1)}
+        fill={palette.bookmark.footerBg}
+        cornerRadius={[0, 0, CARD_RADIUS - 1, CARD_RADIUS - 1]}
+        listening={false}
+        perfectDrawEnabled={false}
+      />
+      <Rect
+        x={1}
+        y={footerTop}
+        width={Math.max(0, localSize.width - 2)}
+        height={1}
+        fill={palette.border}
+        listening={false}
       />
 
       {/* Content area with metadata */}
       {hasMetadata ? (
         <>
-          {/* Favicon */}
-          {favicon && (
-            <KonvaImage image={favicon} x={10} y={10} width={20} height={20} />
-          )}
-
           {/* Title */}
           {content.title && (
             <Text
-              x={favicon ? 38 : 10}
-              y={10}
-              width={localSize.width - (favicon ? 48 : 20)}
+              x={PADDING}
+              y={bodyTop}
+              width={innerWidth}
               text={content.title}
               fontSize={15}
-              fontWeight="bold"
-              fontFamily={fonts.body}
+              fontStyle="bold"
+              lineHeight={1.3}
+              fontFamily={fonts.heading}
               fill={palette.bookmark.text}
               wrap="none"
               ellipsis={true}
+              listening={false}
+              perfectDrawEnabled={false}
             />
           )}
 
-          {/* Description */}
-          {blurb && (
+          {/* Description / AI summary */}
+          {blurb && footerTop - (bodyTop + 26) > 14 && (
             <Text
-              x={10}
-              y={35}
-              width={localSize.width - 20}
-              height={localSize.height - 65}
+              x={PADDING}
+              y={bodyTop + 24}
+              width={innerWidth}
+              height={Math.max(0, footerTop - bodyTop - 32)}
               text={blurb}
-              fontSize={12}
+              fontSize={12.5}
+              lineHeight={1.45}
               fontFamily={fonts.body}
               fill={palette.textMuted}
               wrap="word"
+              ellipsis={true}
+              listening={false}
+              perfectDrawEnabled={false}
             />
           )}
-
-          {/* Site name or URL */}
-          <Text
-            x={10}
-            y={localSize.height - 25}
-            width={localSize.width - 20}
-            text={content.siteName || displayUrl}
-            fontSize={10}
-            fontFamily={fonts.body}
-            fill={palette.textFaint}
-            wrap="none"
-            ellipsis={true}
-          />
         </>
       ) : (
         <>
-          {/* Bookmark icon/indicator (fallback when no metadata) */}
+          {/* Accent link badge (fallback when no metadata) */}
           <Rect
-            x={10}
-            y={10}
-            width={30}
-            height={30}
-            fill={palette.bookmark.stroke}
-            cornerRadius={4}
+            x={PADDING}
+            y={bodyTop}
+            width={28}
+            height={28}
+            fill={palette.accentSoft}
+            cornerRadius={7}
+            listening={false}
+          />
+          <Text
+            x={PADDING}
+            y={bodyTop + 7}
+            width={28}
+            text="↗"
+            align="center"
+            fontSize={13}
+            fontStyle="bold"
+            fontFamily={fonts.body}
+            fill={palette.accentText}
+            listening={false}
           />
 
           {/* URL text (fallback when no metadata) */}
           <Text
-            x={50}
-            y={15}
-            width={localSize.width - 60}
+            x={PADDING + 38}
+            y={bodyTop + 6}
+            width={Math.max(0, innerWidth - 38)}
             text={displayUrl}
             fontSize={14}
-            fontFamily={fonts.body}
+            fontStyle="bold"
+            fontFamily={fonts.heading}
             fill={palette.bookmark.link}
-            textDecoration="underline"
             wrap="none"
             ellipsis={true}
-          />
-
-          {/* "Bookmark" label */}
-          <Text
-            x={10}
-            y={localSize.height - 30}
-            width={localSize.width - 20}
-            text="Bookmark"
-            fontSize={11}
-            fontFamily={fonts.body}
-            fill={palette.textMuted}
+            listening={false}
           />
         </>
       )}
+
+      {/* Footer: favicon + domain + open cue */}
+      {favicon && (
+        <KonvaImage
+          image={favicon}
+          x={PADDING}
+          y={footerTop + 7}
+          width={16}
+          height={16}
+          listening={false}
+        />
+      )}
+      <Text
+        x={favicon ? PADDING + 22 : PADDING}
+        y={footerTop + 9}
+        width={Math.max(0, innerWidth - (favicon ? 42 : 20))}
+        text={domainLabel}
+        fontSize={11}
+        fontFamily={fonts.body}
+        fill={palette.textMuted}
+        wrap="none"
+        ellipsis={true}
+        listening={false}
+      />
+      <Text
+        x={localSize.width - PADDING - 14}
+        y={footerTop + 8}
+        width={14}
+        text="↗"
+        align="right"
+        fontSize={12}
+        fontFamily={fonts.body}
+        fill={palette.bookmark.link}
+        listening={false}
+      />
 
       {/* Resize handles (only when selected) */}
       {isSelected && capabilities.canResizeItems && (
@@ -320,7 +471,9 @@ function BookmarkItemComponent({
             x={localSize.width}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             {...resizeHandleEvents("se")}
             onMouseEnter={(e) => {
@@ -338,7 +491,9 @@ function BookmarkItemComponent({
             x={0}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             {...resizeHandleEvents("sw")}
             onMouseEnter={(e) => {
@@ -356,7 +511,9 @@ function BookmarkItemComponent({
             x={localSize.width}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             {...resizeHandleEvents("ne")}
             onMouseEnter={(e) => {
@@ -374,7 +531,9 @@ function BookmarkItemComponent({
             x={0}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             {...resizeHandleEvents("nw")}
             onMouseEnter={(e) => {

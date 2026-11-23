@@ -8,6 +8,7 @@ import { commitGroupDragEnd } from "@/features/canvas/lib/geometry-adapter";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 import { useTableEditor } from "@/features/canvas/lib/table-editor-store";
 import { useUpdateCanvasItem } from "@/lib/hooks/use-canvas-items";
+import { fonts } from "@/lib/theme";
 import {
   TABLE_MAX_COLUMN_WIDTH,
   TABLE_MAX_ROW_HEIGHT,
@@ -107,7 +108,12 @@ export function TableItem({
         fill={palette.surface}
         stroke={isSelected ? palette.selection : palette.borderStrong}
         strokeWidth={isSelected ? 2 : 1}
-        cornerRadius={4}
+        shadowColor="black"
+        shadowBlur={14}
+        shadowOpacity={palette.cardShadowOpacity}
+        shadowOffset={{ x: 0, y: 4 }}
+        shadowForStrokeEnabled={false}
+        cornerRadius={12}
       />
       {table.rows.map((row, rowIndex) =>
         table.columns.map((column, columnIndex) => {
@@ -140,6 +146,7 @@ export function TableItem({
                 text={value}
                 fontSize={14}
                 fontStyle={rowIndex === 0 ? "bold" : "normal"}
+                fontFamily={rowIndex === 0 ? fonts.heading : fonts.body}
                 fill={palette.text}
                 verticalAlign="middle"
                 wrap="word"

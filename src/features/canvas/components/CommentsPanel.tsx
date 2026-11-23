@@ -33,6 +33,21 @@ import { useSession } from "@/lib/auth-client";
 import { formatDistanceToNow } from "date-fns";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 
+const ITEM_TYPE_LABELS: Record<string, string> = {
+  NOTE: "Note",
+  BOOKMARK: "Bookmark",
+  IMAGE: "Image",
+  DRAWING: "Drawing",
+  SHAPE: "Shape",
+  ARROW: "Arrow",
+  TEXT: "Text",
+  FRAME: "Frame",
+  EMBED: "Link preview",
+  POLL: "Poll",
+  TABLE: "Table",
+  PDF: "PDF",
+};
+
 export interface CommentsPanelProps {
   open: boolean;
   onClose: () => void;
@@ -206,7 +221,7 @@ export function CommentsPanel({
                 color: "text.secondary",
               }}
             >
-              {itemType === "NOTE" ? "Note" : "Bookmark"}
+              {ITEM_TYPE_LABELS[itemType] ?? "Item"}
             </Typography>
           </Box>
           <IconButton aria-label="Close comments" onClick={onClose}>

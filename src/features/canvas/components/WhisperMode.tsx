@@ -158,7 +158,7 @@ export function WhisperMode({ open, onClose, onSend }: WhisperModeProps) {
                   <SendIcon />
                 </IconButton>
               ),
-              style: { fontSize: "1.2rem" },
+              sx: { fontSize: "1.2rem" },
             },
           }}
         />

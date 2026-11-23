@@ -17,10 +17,16 @@ import {
 import { isImageContent, type CanvasItemAdapterProps } from "@/types/canvas";
 import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
+import {
+  animateDragLift,
+  setStageCursor,
+} from "@/features/canvas/lib/canvas-motion";
+import { fonts } from "@/lib/theme";
 
 type ImageItemProps = CanvasItemAdapterProps;
 
-const RESIZE_HANDLE_SIZE = 8;
+const RESIZE_HANDLE_SIZE = 7;
+const IMAGE_RADIUS = 10;
 const MIN_WIDTH = 100;
 const MIN_HEIGHT = 100;
 
@@ -46,6 +52,8 @@ export function ImageItem({
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const content = isImageContent(item.content)
     ? item.content
@@ -153,8 +161,32 @@ export function ImageItem({
       x={localPosition.x}
       y={localPosition.y}
       draggable={capabilities.canMoveItems}
+      onDragStart={(e) => {
+        if (e.target !== e.currentTarget) return;
+        setIsDragging(true);
+        animateDragLift(groupRef.current, true);
+        setStageCursor(e.target, "grabbing");
+      }}
       onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
+      onDragEnd={(e) => {
+        if (e.target === e.currentTarget) {
+          setIsDragging(false);
+          animateDragLift(groupRef.current, false);
+          setStageCursor(
+            e.target,
+            capabilities.canMoveItems ? "grab" : "default",
+          );
+        }
+        handleDragEnd(e);
+      }}
+      onMouseEnter={(e) => {
+        setIsHovered(true);
+        if (capabilities.canMoveItems) setStageCursor(e.target, "grab");
+      }}
+      onMouseLeave={(e) => {
+        setIsHovered(false);
+        setStageCursor(e.target, "default");
+      }}
       onClick={onSelect}
       onTap={onSelect}
       onDblClick={onActivate}
@@ -166,13 +198,25 @@ export function ImageItem({
         width={localSize.width}
         height={localSize.height}
         fill={palette.surface}
-        stroke={isSelected ? palette.selection : palette.border}
-        strokeWidth={isSelected ? 3 : 1}
+        stroke={
+          isSelected
+            ? palette.selection
+            : isHovered
+              ? palette.borderStrong
+              : palette.border
+        }
+        strokeWidth={isSelected ? 2 : 1}
         shadowColor="black"
-        shadowBlur={5}
-        shadowOpacity={0.2}
-        shadowOffset={{ x: 2, y: 2 }}
-        cornerRadius={4}
+        shadowBlur={isDragging ? 24 : 14}
+        shadowOpacity={
+          isDragging
+            ? Math.min(0.48, palette.cardShadowOpacity * 1.45)
+            : palette.cardShadowOpacity
+        }
+        shadowOffset={isDragging ? { x: 0, y: 10 } : { x: 0, y: 4 }}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
+        cornerRadius={IMAGE_RADIUS}
       />
 
       {/* Image */}
@@ -183,7 +227,7 @@ export function ImageItem({
           y={0}
           width={localSize.width}
           height={localSize.height}
-          cornerRadius={4}
+          cornerRadius={IMAGE_RADIUS}
         />
       )}
 
@@ -198,8 +242,8 @@ export function ImageItem({
               ? `🖼 ${content.filename || "Image"}\nImage unavailable · click to retry`
               : "Loading image…"
           }
-          fontSize={14}
-          fontFamily="Arial"
+          fontSize={13}
+          fontFamily={fonts.body}
           fill={imageFailed ? palette.imageError : palette.textFaint}
           align="center"
           onClick={
@@ -221,40 +265,41 @@ export function ImageItem({
         />
       )}
 
-      {/* Alt text on hover (shown as overlay when selected) */}
+      {/* Alt text caption shown when selected */}
       {isSelected && content.alt && (
         <Rect
           x={0}
-          y={localSize.height - 30}
+          y={localSize.height - 32}
           width={localSize.width}
-          height={30}
+          height={32}
           fill={palette.scrim}
-          cornerRadius={[0, 0, 4, 4]}
+          cornerRadius={[0, 0, IMAGE_RADIUS, IMAGE_RADIUS]}
         />
       )}
       {isSelected && content.alt && (
         <Text
-          x={8}
+          x={10}
           y={localSize.height - 22}
-          width={localSize.width - 16}
+          width={localSize.width - 20}
           text={content.alt}
           fontSize={12}
-          fontFamily="Arial"
+          fontFamily={fonts.body}
           fill={palette.scrimText}
           wrap="none"
           ellipsis={true}
         />
       )}
 
-      {/* Resize handles and delete button */}
+      {/* Resize handles */}
       {isSelected && capabilities.canResizeItems && (
         <>
-          {/* Resize handles */}
           <Circle
             x={localSize.width}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("se", e)}
             onDragEnd={(e) => handleResizeEnd("se", e)}
@@ -272,7 +317,9 @@ export function ImageItem({
             x={0}
             y={localSize.height}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={(e) => handleResizeEnd("sw", e)}
@@ -290,7 +337,9 @@ export function ImageItem({
             x={localSize.width}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={(e) => handleResizeEnd("ne", e)}
@@ -308,7 +357,9 @@ export function ImageItem({
             x={0}
             y={0}
             radius={RESIZE_HANDLE_SIZE}
-            fill={palette.selection}
+            fill={palette.surface}
+            stroke={palette.selection}
+            strokeWidth={2}
             draggable
             onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={(e) => handleResizeEnd("nw", e)}

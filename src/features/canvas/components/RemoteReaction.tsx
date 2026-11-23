@@ -24,13 +24,15 @@ export const RemoteReaction: React.FC<RemoteReactionProps> = ({
         zIndex: 1000,
         pointerEvents: "none",
         transform: "translate(-50%, -50%)",
-        animation: "popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+        animation: "reactionFloat 2.8s ease-out forwards",
+        willChange: "transform, opacity",
       }}
     >
       <Typography
         sx={{
-          fontSize: "3rem",
-          filter: `drop-shadow(0 2px 4px ${CANVAS_PALETTE.light.shadow})`,
+          fontSize: "2.75rem",
+          lineHeight: 1,
+          filter: `drop-shadow(0 4px 8px ${CANVAS_PALETTE.light.shadow})`,
         }}
       >
         {emoji}
@@ -42,12 +44,15 @@ export const RemoteReaction: React.FC<RemoteReactionProps> = ({
           top: "100%",
           left: "50%",
           transform: "translateX(-50%)",
+          mt: 0.5,
           whiteSpace: "nowrap",
-          color: "white",
+          color: "common.white",
           backgroundColor: CANVAS_PALETTE.light.scrim,
-          px: 0.5,
+          px: 0.75,
+          py: 0.125,
           borderRadius: 1,
           fontSize: "0.7rem",
+          fontWeight: 600,
         }}
       >
         {senderName}
