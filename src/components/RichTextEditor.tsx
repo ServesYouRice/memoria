@@ -348,7 +348,9 @@ export function RichTextEditor({
               selected={editor.isActive("heading", { level: 1 })}
             >
               <Tooltip title="Heading 1">
-                <span style={{ fontSize: "12px", fontWeight: "bold" }}>H1</span>
+                <Box component="span" sx={{ fontSize: 12, fontWeight: 700 }}>
+                  H1
+                </Box>
               </Tooltip>
             </ToggleButton>
             <ToggleButton
@@ -359,7 +361,9 @@ export function RichTextEditor({
               selected={editor.isActive("heading", { level: 2 })}
             >
               <Tooltip title="Heading 2">
-                <span style={{ fontSize: "12px", fontWeight: "bold" }}>H2</span>
+                <Box component="span" sx={{ fontSize: 12, fontWeight: 700 }}>
+                  H2
+                </Box>
               </Tooltip>
             </ToggleButton>
             <ToggleButton
@@ -370,7 +374,9 @@ export function RichTextEditor({
               selected={editor.isActive("heading", { level: 3 })}
             >
               <Tooltip title="Heading 3">
-                <span style={{ fontSize: "12px", fontWeight: "bold" }}>H3</span>
+                <Box component="span" sx={{ fontSize: 12, fontWeight: 700 }}>
+                  H3
+                </Box>
               </Tooltip>
             </ToggleButton>
           </ToggleButtonGroup>
@@ -420,11 +426,7 @@ export function RichTextEditor({
             aria-label="Add link"
           >
             <Tooltip title="Add link">
-              <LinkIcon
-                sx={{
-                  fontSize: "small",
-                }}
-              />
+              <LinkIcon fontSize="small" />
             </Tooltip>
           </IconButton>
         </Box>

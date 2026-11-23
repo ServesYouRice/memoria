@@ -99,10 +99,23 @@ const touchTarget = {
   },
 };
 
+export const motion = {
+  /** Crisp entrance curve for panels, menus, and toolbars. */
+  easeOut: "cubic-bezier(0.16, 1, 0.3, 1)",
+  /** Faster exit curve so dismissals feel effortless. */
+  easeIn: "cubic-bezier(0.7, 0, 0.84, 0)",
+  /** Smooth settle curve for modals, drawers, and elevated cards. */
+  springGentle: "cubic-bezier(0.22, 1, 0.36, 1)",
+  /** Native CSS linear() spring for tactile micro-interactions. */
+  springSnappy:
+    "linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1)",
+} as const;
+
 export const transitions = {
-  fast: "150ms cubic-bezier(0.4, 0, 0.2, 1)",
-  normal: "250ms cubic-bezier(0.4, 0, 0.2, 1)",
-  slow: "350ms cubic-bezier(0.4, 0, 0.2, 1)",
+  fast: `150ms ${motion.easeOut}`,
+  normal: `240ms ${motion.springGentle}`,
+  slow: `340ms ${motion.springGentle}`,
+  spring: `360ms ${motion.springSnappy}`,
 };
 
 /**
@@ -121,15 +134,19 @@ export const appColorTokens = {
     tooltipText: "#f1f5f9",
     appBarBackground: glassStyles.light.background,
     appBarBorder: glassStyles.light.border,
+    floatingSurface: "rgba(255, 255, 255, 0.86)",
+    floatingBorder: "rgba(15, 23, 42, 0.09)",
+    floatingShadow:
+      "0 8px 28px rgba(15, 23, 42, 0.1), 0 1px 3px rgba(15, 23, 42, 0.06)",
     menuShadow: "0 10px 32px rgba(15, 23, 42, 0.12)",
-    cardHoverShadow: `0 8px 24px ${alpha(brand.secondary.main, 0.08)}`,
+    cardHoverShadow: `0 10px 28px ${alpha(brand.secondary.main, 0.09)}`,
     // Flat, muted disabled fill with a label that keeps at least 3:1 contrast.
     disabledButtonBackground: "#e2e8f0",
     disabledButtonText: "#64748b",
-    canvasBackground: "#f0f2f5",
-    canvasGrid: "#e0e0e0",
+    canvasBackground: "#f4f5f7",
+    canvasGrid: "#e2e6ed",
     /** IMP-085: the faint dots of the default canvas background. */
-    canvasDot: "#c5cbd6",
+    canvasDot: "#cbd2de",
     focusRing: brand.primary.main,
     /** IMP-125: "Live" label on its green tint (6.1:1; success.dark is 4.3:1). */
     liveStatusText: "#166534",
@@ -142,8 +159,12 @@ export const appColorTokens = {
     tooltipText: "#0f172a",
     appBarBackground: glassStyles.dark.background,
     appBarBorder: glassStyles.dark.border,
+    floatingSurface: "rgba(17, 26, 46, 0.86)",
+    floatingBorder: "rgba(241, 245, 249, 0.1)",
+    floatingShadow:
+      "0 12px 32px rgba(0, 0, 0, 0.52), 0 1px 2px rgba(0, 0, 0, 0.35)",
     menuShadow: "0 10px 32px rgba(0, 0, 0, 0.5)",
-    cardHoverShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+    cardHoverShadow: "0 10px 28px rgba(0, 0, 0, 0.44)",
     disabledButtonBackground: "#1e293b",
     disabledButtonText: "#94a3b8",
     canvasBackground: "#0d1526",
@@ -240,25 +261,31 @@ export function createAppTheme() {
         fontFamily: fonts.heading,
         fontWeight: 800,
         letterSpacing: "-0.025em",
+        textWrap: "balance",
       },
       h2: {
         fontFamily: fonts.heading,
         fontWeight: 700,
         letterSpacing: "-0.02em",
+        textWrap: "balance",
       },
       h3: {
         fontFamily: fonts.heading,
         fontWeight: 700,
         letterSpacing: "-0.015em",
+        textWrap: "balance",
       },
       h4: {
         fontFamily: fonts.heading,
         fontWeight: 700,
         letterSpacing: "-0.01em",
+        textWrap: "balance",
       },
-      h5: { fontFamily: fonts.heading, fontWeight: 600 },
+      h5: { fontFamily: fonts.heading, fontWeight: 600, textWrap: "balance" },
       h6: { fontFamily: fonts.heading, fontWeight: 600 },
       subtitle1: { fontWeight: 500 },
+      body1: { textWrap: "pretty" },
+      body2: { textWrap: "pretty" },
       button: { fontWeight: 600, letterSpacing: "0.01em" },
     },
     shape: {
@@ -282,6 +309,11 @@ export function createAppTheme() {
           },
           ":root": tokenDeclarations("light"),
           [DARK_SCHEME_SELECTOR]: tokenDeclarations("dark"),
+          "@media (prefers-reduced-motion: no-preference)": {
+            "@view-transition": {
+              navigation: "auto",
+            },
+          },
           "@media (prefers-reduced-motion: reduce)": {
             html: { scrollBehavior: "auto" },
             "*, *::before, *::after": {
@@ -292,11 +324,11 @@ export function createAppTheme() {
             },
           },
           "@keyframes fadeIn": {
-            from: { opacity: 0, transform: "translateY(10px)" },
+            from: { opacity: 0, transform: "translateY(6px)" },
             to: { opacity: 1, transform: "translateY(0)" },
           },
           "@keyframes slideIn": {
-            from: { opacity: 0, transform: "translateX(-10px)" },
+            from: { opacity: 0, transform: "translateX(-8px)" },
             to: { opacity: 1, transform: "translateX(0)" },
           },
           "@keyframes pulse": {
@@ -311,10 +343,69 @@ export function createAppTheme() {
             "0%, 100%": { transform: "translateY(0px)" },
             "50%": { transform: "translateY(-10px)" },
           },
+          "@keyframes popIn": {
+            "0%": { opacity: 0, transform: "scale(0.84)" },
+            "100%": { opacity: 1, transform: "scale(1)" },
+          },
+          "@keyframes reactionFloat": {
+            "0%": {
+              opacity: 0,
+              transform: "translate(-50%, -50%) scale(0.35)",
+            },
+            "14%": {
+              opacity: 1,
+              transform: "translate(-50%, -58%) scale(1.16)",
+            },
+            "24%": {
+              opacity: 1,
+              transform: "translate(-50%, -64%) scale(1)",
+            },
+            "78%": {
+              opacity: 1,
+              transform: "translate(-48%, -108%) scale(1)",
+            },
+            "100%": {
+              opacity: 0,
+              transform: "translate(-52%, -132%) scale(0.92)",
+            },
+          },
+          "@keyframes bubblePop": {
+            "0%": { opacity: 0, transform: "scale(0.82) translateY(4px)" },
+            "100%": { opacity: 1, transform: "scale(1) translateY(0)" },
+          },
+          "@keyframes toolbarIn": {
+            "0%": { opacity: 0, transform: "translateY(6px) scale(0.96)" },
+            "100%": { opacity: 1, transform: "translateY(0) scale(1)" },
+          },
+          "@keyframes livePulse": {
+            "0%": { transform: "scale(1)", opacity: 0.55 },
+            "70%": { transform: "scale(2.1)", opacity: 0 },
+            "100%": { transform: "scale(2.1)", opacity: 0 },
+          },
+          "@keyframes cardShuffleIn": {
+            "0%": { opacity: 0, transform: "translateX(12px)" },
+            "100%": { opacity: 1, transform: "translateX(0)" },
+          },
+          "@keyframes checkPop": {
+            "0%": { opacity: 0, transform: "scale(0.5) rotate(-20deg)" },
+            "100%": { opacity: 1, transform: "scale(1) rotate(0deg)" },
+          },
+          "@keyframes logoBloomPulse": {
+            "0%, 100%": { transform: "rotate(12deg) scale(1)" },
+            "50%": { transform: "rotate(26deg) scale(1.06)" },
+          },
         },
       },
       MuiIconButton: {
-        styleOverrides: { root: touchTarget },
+        styleOverrides: {
+          root: {
+            transition: `background-color ${transitions.fast}, color ${transitions.fast}, transform ${transitions.fast}`,
+            "&:active:not(:disabled)": {
+              transform: "scale(0.93)",
+            },
+            ...touchTarget,
+          },
+        },
       },
       MuiCheckbox: {
         styleOverrides: { root: touchTarget },
@@ -329,7 +420,10 @@ export function createAppTheme() {
             fontWeight: 600,
             borderRadius: 10,
             padding: "8px 18px",
-            transition: `all ${transitions.fast}`,
+            transition: `background-color ${transitions.fast}, border-color ${transitions.fast}, color ${transitions.fast}, box-shadow ${transitions.fast}, transform ${transitions.fast}`,
+            "&:active:not(:disabled)": {
+              transform: "scale(0.975)",
+            },
             ...touchTarget,
           },
           sizeLarge: {
@@ -458,7 +552,7 @@ export function createAppTheme() {
           root: {
             borderRadius: 8,
             margin: "2px 6px",
-            transition: `all ${transitions.fast}`,
+            transition: `background-color ${transitions.fast}, color ${transitions.fast}`,
           },
         },
       },

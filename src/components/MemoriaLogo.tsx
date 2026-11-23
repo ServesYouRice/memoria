@@ -1,10 +1,16 @@
 "use client";
 
 import { useId } from "react";
+import { Box } from "@mui/material";
+import { motion } from "@/lib/theme";
 
 export interface MemoriaLogoProps {
   /** Rendered width/height in px. */
   size?: number;
+  /** Gentle forget-me-not petal bloom on hover (default true). */
+  animated?: boolean;
+  /** Slow breathing petal pulse for loading states. */
+  pulsing?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -17,21 +23,56 @@ export interface MemoriaLogoProps {
  * Inline SVG so it scales crisply at any size; ids are namespaced with
  * useId so multiple instances can coexist on a page.
  */
-export function MemoriaLogo({ size = 32, className, style }: MemoriaLogoProps) {
+export function MemoriaLogo({
+  size = 32,
+  animated = true,
+  pulsing = false,
+  className,
+  style,
+}: MemoriaLogoProps) {
   const uid = useId();
   const brandId = `${uid}-brand`;
   const gridId = `${uid}-grid`;
   const tileId = `${uid}-tile`;
 
   return (
-    <svg
+    <Box
+      component="svg"
       viewBox="0 0 512 512"
       width={size}
       height={size}
       className={className}
-      style={{ flexShrink: 0, display: "block", ...style }}
+      style={style}
       role="img"
       aria-label="Memoria"
+      sx={{
+        flexShrink: 0,
+        display: "block",
+        "& .memoria-petals": {
+          transformOrigin: "256px 256px",
+          transform: "rotate(12deg)",
+          transition: animated
+            ? `transform 360ms ${motion.springSnappy}`
+            : undefined,
+          ...(pulsing && {
+            animation: "logoBloomPulse 2.4s ease-in-out infinite",
+          }),
+        },
+        "& .memoria-eye": {
+          transformOrigin: "256px 256px",
+          transition: animated
+            ? `transform 280ms ${motion.springSnappy}`
+            : undefined,
+        },
+        ...(animated && {
+          "&:hover .memoria-petals, a:hover & .memoria-petals": {
+            transform: "rotate(26deg) scale(1.05)",
+          },
+          "&:hover .memoria-eye, a:hover & .memoria-eye": {
+            transform: "scale(1.08)",
+          },
+        }),
+      }}
     >
       <defs>
         <linearGradient id={brandId} x1="0" y1="0" x2="1" y2="1">
@@ -95,7 +136,7 @@ export function MemoriaLogo({ size = 32, className, style }: MemoriaLogoProps) {
 
       {/* forget-me-not: light-blue canvas-card petals, amber eye */}
       <g transform="translate(256 256) scale(0.78) translate(-256 -256)">
-        <g transform="rotate(12 256 256)" fill="#93c5fd">
+        <g className="memoria-petals" fill="#93c5fd">
           <rect x="214" y="136" width="84" height="84" rx="26" />
           <rect
             x="214"
@@ -130,8 +171,14 @@ export function MemoriaLogo({ size = 32, className, style }: MemoriaLogoProps) {
             transform="rotate(288 256 256)"
           />
         </g>
-        <circle cx="256" cy="256" r="34" fill="#fbbf24" />
+        <circle
+          className="memoria-eye"
+          cx="256"
+          cy="256"
+          r="34"
+          fill="#fbbf24"
+        />
       </g>
-    </svg>
+    </Box>
   );
 }
