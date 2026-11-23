@@ -8,6 +8,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogContent,
@@ -20,12 +21,14 @@ import {
   MenuItem,
   Paper,
   Select,
+  Skeleton,
   Stack,
   Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import { motion } from "@/lib/theme";
 import {
   AutoAwesomeOutlined as AskIcon,
   Close as CloseIcon,
@@ -317,7 +320,15 @@ export function AskPalette({
       maxWidth="sm"
       aria-labelledby="ask-palette-title"
       slotProps={{
-        paper: { sx: { borderRadius: fullScreen ? 0 : 2, overflow: "hidden" } },
+        paper: {
+          sx: {
+            borderRadius: fullScreen ? 0 : 3.5,
+            overflow: "hidden",
+            animation: fullScreen
+              ? undefined
+              : `toolbarIn 180ms ${motion.easeOut}`,
+          },
+        },
       }}
     >
       <Box
@@ -419,13 +430,54 @@ export function AskPalette({
           ))}
         </Select>
       </Stack>
-      <DialogContent sx={{ minHeight: 120 }}>
+      <DialogContent sx={{ minHeight: 140 }}>
+        {asking && (
+          <Stack
+            spacing={1.25}
+            sx={{ py: 1 }}
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <Skeleton variant="text" width="88%" height={24} />
+            <Skeleton variant="text" width="72%" height={24} />
+            <Skeleton variant="rounded" height={48} sx={{ mt: 0.5 }} />
+          </Stack>
+        )}
         {!result && !error && !asking && (
-          <Typography variant="body2" color="text.secondary">
-            Try “what was that knife site I saved?” or “make a Japan canvas from
-            everything about Japan”. Answers come only from your own canvases,
-            and changes wait for your approval.
-          </Typography>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Answers come only from your own canvases, and any proposed changes
+              wait for your approval.
+            </Typography>
+            <Stack
+              direction="row"
+              spacing={1}
+              useFlexGap
+              sx={{ flexWrap: "wrap" }}
+            >
+              {[
+                "Summarise what I saved recently",
+                "Find links I haven't organised yet",
+                "Group related notes into a new canvas",
+              ].map((prompt) => (
+                <Chip
+                  key={prompt}
+                  label={prompt}
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setQuestion(prompt)}
+                  sx={{
+                    cursor: "pointer",
+                    transition: `border-color 150ms ${motion.easeOut}, background-color 150ms ${motion.easeOut}`,
+                    "&:hover": {
+                      borderColor: "primary.main",
+                      bgcolor: "action.hover",
+                    },
+                  }}
+                />
+              ))}
+            </Stack>
+          </Stack>
         )}
         {error &&
           (needsSetup ? (
@@ -522,7 +574,7 @@ const visuallyHidden = {
   width: 1,
   height: 1,
   overflow: "hidden",
-  clip: "rect(0 0 0 0)",
+  clipPath: "inset(50%)",
   whiteSpace: "nowrap",
 } as const;
 

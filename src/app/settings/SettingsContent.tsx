@@ -68,6 +68,7 @@ import { RegistrationInviteSettings } from "./RegistrationInviteSettings";
 import { ApiKeysContent } from "../api-keys/ApiKeysContent";
 import { SecuritySettings } from "@/features/auth/components/SecuritySettings";
 import { DisabledReason } from "@/components/DisabledReason";
+import { SHORTCUT_GROUPS } from "@/lib/keyboard/shortcut-catalog";
 import {
   LEGACY_SETTINGS_ANCHORS,
   SETTINGS_SECTIONS,
@@ -108,17 +109,6 @@ interface AiUsage {
   requests: number;
   rejections: number;
 }
-
-// Keyboard shortcuts data
-const keyboardShortcuts = [
-  { keys: ["Ctrl", "K"], description: "Search all canvases" },
-  { keys: ["Ctrl", "S"], description: "Save (auto-saved)" },
-  { keys: ["Delete"], description: "Delete selected item" },
-  { keys: ["Escape"], description: "Deselect / Close dialog" },
-  { keys: ["Ctrl", "+"], description: "Zoom in" },
-  { keys: ["Ctrl", "-"], description: "Zoom out" },
-  { keys: ["Ctrl", "0"], description: "Reset zoom" },
-];
 
 function SettingsSection({
   id,
@@ -615,52 +605,74 @@ function ShortcutsGroup() {
       icon={<KeyboardIcon color="primary" />}
       title="Shortcut list"
     >
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-          gap: 1.5,
-        }}
-      >
-        {keyboardShortcuts.map((shortcut, index) => (
-          <Box
-            key={index}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              p: 1.5,
-              borderRadius: 2,
-              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
-            }}
-          >
-            <Typography variant="body2" sx={{ color: "text.secondary" }}>
-              {shortcut.description}
+      <Stack spacing={3}>
+        {SHORTCUT_GROUPS.map((group) => (
+          <Box key={group.title}>
+            <Typography
+              variant="subtitle2"
+              sx={{ fontWeight: 700, color: "primary.main", mb: 1.25 }}
+            >
+              {group.title}
             </Typography>
-            <Box sx={{ display: "flex", gap: 0.5 }}>
-              {shortcut.keys.map((key, i) => (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                gap: 1.25,
+              }}
+            >
+              {group.shortcuts.map((shortcut, index) => (
                 <Box
-                  key={i}
-                  component="kbd"
+                  key={index}
                   sx={{
-                    px: 1.25,
-                    py: 0.5,
-                    borderRadius: 1,
-                    bgcolor: "background.paper",
-                    border: 1,
-                    borderColor: "divider",
-                    fontFamily: "monospace",
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    p: 1.25,
+                    borderRadius: 2,
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
                   }}
                 >
-                  {key}
+                  <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                    {shortcut.description}
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.5,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {shortcut.keys
+                      .filter((key) => key !== "+")
+                      .map((key, i) => (
+                        <Box
+                          key={i}
+                          component="kbd"
+                          sx={{
+                            px: 1,
+                            py: 0.35,
+                            borderRadius: 1,
+                            bgcolor: "background.paper",
+                            border: 1,
+                            borderColor: "divider",
+                            fontFamily: "monospace",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {key}
+                        </Box>
+                      ))}
+                  </Box>
                 </Box>
               ))}
             </Box>
           </Box>
         ))}
-      </Box>
+      </Stack>
     </SettingsSection>
   );
 }
@@ -754,7 +766,7 @@ function AiUsageSection({
 
 function AiUsageDetails({ aiUsage }: { aiUsage: AiUsage }) {
   const lines = [
-    `Tokens set aside today: ${aiUsage.tokensUsed.toLocaleString()} of ${aiUsage.tokenLimit.toLocaleString()}`,
+    `Tokens set aside today: ${aiUsage.tokensUsed.toLocaleString("en-US")} of ${aiUsage.tokenLimit.toLocaleString("en-US")}`,
     `Cost so far today: ${formatUsd(aiUsage.costMicroUsdUsed)} of ${formatUsd(aiUsage.costMicroUsdLimit)}`,
     `Requests running now: ${aiUsage.activeRequests} of ${aiUsage.concurrencyLimit}`,
     `Requests refused today: ${aiUsage.rejections}`,

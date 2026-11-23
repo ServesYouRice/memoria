@@ -10,6 +10,7 @@ import {
   Skeleton,
   Typography,
 } from "@mui/material";
+import { appColor, motion } from "@/lib/theme";
 
 /** Placeholder colours for cards without a preview, picked by name. */
 const PLACEHOLDER_COLORS = [
@@ -72,7 +73,19 @@ export function CanvasCard({
       sx={{
         height: "100%",
         position: "relative",
-        animation: `fadeIn 0.4s ease-out ${Math.min(index * 0.04, 0.4)}s both`,
+        animation: `fadeIn 240ms ${motion.easeOut} ${Math.min(index * 28, 200)}ms both`,
+        "&:hover": {
+          transform: "translateY(-3px)",
+          "& .canvas-card-thumb": {
+            transform: "scale(1.035)",
+          },
+          "& .canvas-card-corner": {
+            opacity: 1,
+          },
+        },
+        "&:focus-within .canvas-card-corner": {
+          opacity: 1,
+        },
         ...(selected && {
           borderColor: "primary.main",
           boxShadow: (theme) => `0 0 0 1px ${theme.palette.primary.main}`,
@@ -80,7 +93,18 @@ export function CanvasCard({
       }}
     >
       {corner && (
-        <Box sx={{ position: "absolute", top: 8, right: 8, zIndex: 2 }}>
+        <Box
+          className="canvas-card-corner"
+          sx={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 2,
+            opacity: selected || !href ? 1 : { xs: 1, md: 0.72 },
+            transition: `opacity 150ms ${motion.easeOut}`,
+            "@media (pointer: coarse)": { opacity: 1 },
+          }}
+        >
           {corner}
         </Box>
       )}
@@ -102,7 +126,7 @@ export function CanvasCard({
       >
         <Box
           sx={{
-            height: 150,
+            height: 156,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -113,26 +137,37 @@ export function CanvasCard({
                   // color-mix works with the CSS-variable theme in both modes.
                   `color-mix(in srgb, ${
                     (theme.vars ?? theme).palette[placeholder.color].main
-                  } 14%, transparent)`,
+                  } 12%, transparent)`,
+            ...(!showPreview && {
+              backgroundImage: `radial-gradient(${appColor("canvasDot")} 1.1px, transparent 1.1px)`,
+              backgroundSize: "16px 16px",
+            }),
           }}
         >
           {showPreview ? (
             <Box
               component="img"
+              className="canvas-card-thumb"
               src={thumbnail ?? undefined}
               alt=""
               onError={() => setImageError(true)}
-              sx={{ width: "100%", height: "100%", objectFit: "cover" }}
+              sx={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                transition: `transform 300ms ${motion.springGentle}`,
+              }}
             />
           ) : (
             <Typography
               aria-hidden
               data-testid="canvas-card-placeholder"
               sx={{
-                fontSize: 56,
+                fontSize: 52,
                 fontWeight: 700,
                 lineHeight: 1,
                 color: `${placeholder.color}.main`,
+                transition: `transform 260ms ${motion.springSnappy}`,
               }}
             >
               {placeholder.initial}

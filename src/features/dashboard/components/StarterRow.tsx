@@ -19,6 +19,7 @@ import {
   LinkOutlined as LinkIcon,
 } from "@mui/icons-material";
 import { buildShareTargetHref } from "@/app/share-target/shared-link";
+import { appColor, motion } from "@/lib/theme";
 
 /** A typed address becomes a URL; "example.com" gets https://. */
 export function normalizeLink(input: string): string | null {
@@ -68,8 +69,14 @@ function StarterTile({ tile }: { tile: Tile }) {
         borderColor: "divider",
         bgcolor: "background.paper",
         textAlign: { xs: "center", sm: "left" },
-        transition: "border-color 0.15s ease",
-        "&:hover": { borderColor: "primary.main" },
+        transition: `border-color 150ms ${motion.easeOut}, transform 220ms ${motion.springGentle}, box-shadow 220ms ${motion.springGentle}`,
+        "&:hover": {
+          borderColor: "primary.main",
+          transform: "translateY(-2px)",
+          boxShadow: appColor("cardHoverShadow"),
+          "& .starter-tile-icon": { transform: "scale(1.06)" },
+        },
+        "&:active": { transform: "translateY(0) scale(0.985)" },
         "&.Mui-focusVisible": {
           outline: "2px solid",
           outlineColor: "primary.main",
@@ -78,6 +85,7 @@ function StarterTile({ tile }: { tile: Tile }) {
       }}
     >
       <Box
+        className="starter-tile-icon"
         sx={{
           width: 40,
           height: 40,
@@ -88,6 +96,7 @@ function StarterTile({ tile }: { tile: Tile }) {
           justifyContent: "center",
           color: "primary.main",
           bgcolor: "action.hover",
+          transition: `transform 240ms ${motion.springSnappy}`,
         }}
       >
         <Icon />

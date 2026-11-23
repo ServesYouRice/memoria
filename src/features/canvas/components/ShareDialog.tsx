@@ -18,10 +18,13 @@ import {
   Alert,
   CircularProgress,
   IconButton,
+  Avatar,
   List,
   ListItem,
+  ListItemAvatar,
   ListItemText,
   ListItemSecondaryAction,
+  Paper,
   Select,
   MenuItem,
   FormControl,
@@ -30,8 +33,10 @@ import {
   InputAdornment,
   useMediaQuery,
   useTheme,
+  alpha,
 } from "@mui/material";
-import { Close, ContentCopy, Delete } from "@mui/icons-material";
+import { Check, Close, ContentCopy, Delete } from "@mui/icons-material";
+import { motion } from "@/lib/theme";
 import { ApiError, apiFetch } from "@/lib/api/fetch-client";
 import { confirmDialog } from "@/stores/confirmStore";
 import { EmbedManager } from "./EmbedManager";
@@ -101,6 +106,25 @@ export function ShareDialog({
   // IMP-145: where mail is not set up, the server hands back the link.
   const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
   const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
+  const [copiedTarget, setCopiedTarget] = useState<"public" | "invite" | null>(
+    null,
+  );
+  const copyTimerRef = useRef<number | null>(null);
+
+  const flashCopied = (target: "public" | "invite") => {
+    setCopiedTarget(target);
+    if (copyTimerRef.current !== null)
+      window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setCopiedTarget(null), 2000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   // Load existing shares
   const loadShares = useCallback(async () => {
@@ -196,6 +220,7 @@ export function ShareDialog({
     if (shareUrl) {
       try {
         await navigator.clipboard.writeText(shareUrl);
+        flashCopied("public");
         setSuccess("Link copied to clipboard!");
         setError(null);
       } catch (err) {
@@ -208,6 +233,7 @@ export function ShareDialog({
     if (!invitationUrl) return;
     try {
       await navigator.clipboard.writeText(invitationUrl);
+      flashCopied("invite");
       setSuccess("Invitation link copied");
       setError(null);
     } catch (err) {
@@ -381,8 +407,19 @@ export function ShareDialog({
                         onClick={handleCopyInvitation}
                         edge="end"
                         aria-label="Copy invitation link"
+                        color={
+                          copiedTarget === "invite" ? "success" : "default"
+                        }
                       >
-                        <ContentCopy />
+                        {copiedTarget === "invite" ? (
+                          <Check
+                            sx={{
+                              animation: `checkPop 220ms ${motion.springSnappy}`,
+                            }}
+                          />
+                        ) : (
+                          <ContentCopy />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -397,7 +434,19 @@ export function ShareDialog({
           )}
 
           {/* Public Link Section */}
-          <Box>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2,
+              borderRadius: 3,
+              bgcolor: (theme) =>
+                isPublic
+                  ? alpha(theme.palette.primary.main, 0.04)
+                  : "action.hover",
+              borderColor: isPublic ? "primary.main" : "divider",
+              transition: `border-color 180ms ${motion.easeOut}, background-color 180ms ${motion.easeOut}`,
+            }}
+          >
             <FormControlLabel
               control={
                 <Switch
@@ -408,30 +457,30 @@ export function ShareDialog({
                   }
                 />
               }
-              label="Anyone with the link can view"
+              label={
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Anyone with the link can view
+                </Typography>
+              }
             />
             <Typography
               variant="caption"
               sx={{
                 color: "text.secondary",
                 display: "block",
-                ml: 4,
+                ml: 5.5,
               }}
             >
-              Public links are view-only
+              Public links are view-only. Turning sharing off invalidates the
+              URL.
             </Typography>
-
-            <Alert severity="info" sx={{ mt: 1 }}>
-              If you turn sharing off or make a new link, the old link stops
-              working for good.
-            </Alert>
 
             {isPublic && shareUrl && (
               <TextField
                 value={shareUrl}
                 fullWidth
                 size="small"
-                sx={{ mt: 2 }}
+                sx={{ mt: 2, bgcolor: "background.paper", borderRadius: 2 }}
                 slotProps={{
                   htmlInput: { "aria-label": "Public share link" },
                   input: {
@@ -442,8 +491,19 @@ export function ShareDialog({
                           onClick={handleCopyLink}
                           edge="end"
                           aria-label="Copy public link"
+                          color={
+                            copiedTarget === "public" ? "success" : "default"
+                          }
                         >
-                          <ContentCopy />
+                          {copiedTarget === "public" ? (
+                            <Check
+                              sx={{
+                                animation: `checkPop 220ms ${motion.springSnappy}`,
+                              }}
+                            />
+                          ) : (
+                            <ContentCopy />
+                          )}
                         </IconButton>
                       </InputAdornment>
                     ),
@@ -452,16 +512,32 @@ export function ShareDialog({
               />
             )}
             {isPublic && (
-              <Button
-                variant="outlined"
-                onClick={() => void handleRotateLink()}
-                disabled={rotatingLink || generatingLink || publicStatusLoading}
-                sx={{ mt: 1 }}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 1,
+                  mt: 1.5,
+                }}
               >
-                {rotatingLink ? "Making a new link…" : "Make a new link"}
-              </Button>
+                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                  Making a new link stops the old URL from working.
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => void handleRotateLink()}
+                  disabled={
+                    rotatingLink || generatingLink || publicStatusLoading
+                  }
+                >
+                  {rotatingLink ? "Making a new link…" : "Make a new link"}
+                </Button>
+              </Box>
             )}
-          </Box>
+          </Paper>
 
           {/* Share with Specific People */}
           <Box>
@@ -520,7 +596,21 @@ export function ShareDialog({
             {shares.length > 0 && (
               <List dense>
                 {shares.map((share) => (
-                  <ListItem key={share.id}>
+                  <ListItem key={share.id} sx={{ px: 0.5 }}>
+                    <ListItemAvatar sx={{ minWidth: 42 }}>
+                      <Avatar
+                        sx={{
+                          width: 30,
+                          height: 30,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          bgcolor: "primary.main",
+                          color: "primary.contrastText",
+                        }}
+                      >
+                        {share.email.charAt(0).toUpperCase()}
+                      </Avatar>
+                    </ListItemAvatar>
                     <ListItemText
                       primary={share.email}
                       secondary={`Can ${share.role.toLowerCase()}`}
@@ -552,7 +642,21 @@ export function ShareDialog({
                 </Typography>
                 <List dense aria-label="Pending invitations">
                   {invitations.map((invitation) => (
-                    <ListItem key={invitation.id}>
+                    <ListItem key={invitation.id} sx={{ px: 0.5 }}>
+                      <ListItemAvatar sx={{ minWidth: 42 }}>
+                        <Avatar
+                          sx={{
+                            width: 30,
+                            height: 30,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            bgcolor: "action.selected",
+                            color: "text.primary",
+                          }}
+                        >
+                          {invitation.email.charAt(0).toUpperCase()}
+                        </Avatar>
+                      </ListItemAvatar>
                       <ListItemText
                         primary={invitation.email}
                         secondary={`Invited to ${invitation.role.toLowerCase()}`}

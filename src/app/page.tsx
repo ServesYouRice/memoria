@@ -11,6 +11,7 @@ import {
   Link,
 } from "@mui/material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 
 // Pictures of a real canvas (IMP-081), one per colour mode. The app sets
@@ -164,9 +165,12 @@ export default async function Home() {
               Memoria
             </Typography>
           </Box>
-          <Button href="/auth/login" color="inherit">
-            Sign in
-          </Button>
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            <ThemeToggle />
+            <Button href="/auth/login" color="inherit">
+              Sign in
+            </Button>
+          </Stack>
         </Box>
       </Container>
 
@@ -186,7 +190,7 @@ export default async function Home() {
             <Typography
               variant="h1"
               sx={{
-                fontSize: { xs: "2.25rem", sm: "3rem", md: "3.5rem" },
+                fontSize: "clamp(2.25rem, 4.5vw, 3.5rem)",
                 lineHeight: 1.08,
                 mb: 2.5,
               }}
@@ -267,6 +271,12 @@ export default async function Home() {
                   borderColor: "divider",
                   bgcolor: "background.paper",
                   mb: 2.5,
+                  transition:
+                    "transform 260ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1)",
+                  "&:hover": {
+                    transform: "translateY(-3px)",
+                    boxShadow: "0 12px 32px rgba(28,36,82,0.12)",
+                  },
                 }}
               >
                 <ModePicture picture={ability.picture} />

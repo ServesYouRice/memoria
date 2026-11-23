@@ -17,52 +17,12 @@ import {
   Divider,
 } from "@mui/material";
 import { Close } from "@mui/icons-material";
+import { SHORTCUT_GROUPS } from "@/lib/keyboard/shortcut-catalog";
 
 export interface KeyboardShortcutsDialogProps {
   open: boolean;
   onClose: () => void;
 }
-
-interface Shortcut {
-  keys: string[];
-  description: string;
-}
-
-interface ShortcutCategory {
-  title: string;
-  shortcuts: Shortcut[];
-}
-
-const shortcuts: ShortcutCategory[] = [
-  {
-    title: "Canvas navigation",
-    shortcuts: [
-      { keys: ["Space", "+", "Drag"], description: "Pan canvas" },
-      { keys: ["Scroll"], description: "Zoom in/out" },
-      { keys: ["Ctrl/Cmd", "+", "0"], description: "Reset zoom" },
-    ],
-  },
-  {
-    title: "Canvas actions",
-    shortcuts: [
-      { keys: ["Delete"], description: "Delete selected items" },
-      { keys: ["Ctrl/Cmd", "+", "A"], description: "Select all" },
-    ],
-  },
-  {
-    title: "Comments",
-    shortcuts: [
-      { keys: ["Ctrl/Cmd", "+", "Enter"], description: "Submit comment" },
-    ],
-  },
-  {
-    title: "General",
-    shortcuts: [
-      { keys: ["?"], description: "Show keyboard shortcuts" },
-      { keys: ["Esc"], description: "Close dialogs" },
-    ],
-  },
-];
 
 export function KeyboardShortcutsDialog({
   open,
@@ -70,7 +30,7 @@ export function KeyboardShortcutsDialog({
 }: KeyboardShortcutsDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700, pr: 6 }}>
         Keyboard Shortcuts
         <IconButton
           onClick={onClose}
@@ -81,17 +41,19 @@ export function KeyboardShortcutsDialog({
         </IconButton>
       </DialogTitle>
 
-      <DialogContent>
-        {shortcuts.map((category, idx) => (
+      <DialogContent dividers>
+        {SHORTCUT_GROUPS.map((category, idx) => (
           <Box
             key={category.title}
-            sx={{ mb: idx < shortcuts.length - 1 ? 3 : 0 }}
+            sx={{ mb: idx < SHORTCUT_GROUPS.length - 1 ? 3 : 0 }}
           >
             <Typography
-              variant="subtitle1"
+              variant="subtitle2"
               gutterBottom
               sx={{
-                fontWeight: "bold",
+                fontWeight: 700,
+                color: "primary.main",
+                letterSpacing: "0.02em",
               }}
             >
               {category.title}
@@ -103,28 +65,41 @@ export function KeyboardShortcutsDialog({
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  py: 1,
+                  gap: 2,
+                  py: 0.9,
                   borderBottom: sIdx < category.shortcuts.length - 1 ? 1 : 0,
                   borderColor: "divider",
                 }}
               >
                 <Typography variant="body2">{shortcut.description}</Typography>
-                <Box sx={{ display: "flex", gap: 0.5 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    flexShrink: 0,
+                  }}
+                >
                   {shortcut.keys.map((key, kIdx) => (
                     <React.Fragment key={kIdx}>
-                      {kIdx > 0 && (
-                        <Typography variant="body2" sx={{ mx: 0.5 }}>
-                          {key === "+" ? "+" : ""}
+                      {key === "+" ? (
+                        <Typography
+                          variant="caption"
+                          sx={{ color: "text.secondary", mx: 0.25 }}
+                        >
+                          +
                         </Typography>
-                      )}
-                      {key !== "+" && (
+                      ) : (
                         <Chip
                           label={key}
                           size="small"
+                          variant="outlined"
                           sx={{
                             fontFamily: "monospace",
                             fontSize: "0.75rem",
+                            fontWeight: 600,
                             height: 24,
+                            bgcolor: "background.default",
                           }}
                         />
                       )}
@@ -133,7 +108,7 @@ export function KeyboardShortcutsDialog({
                 </Box>
               </Box>
             ))}
-            {idx < shortcuts.length - 1 && <Divider sx={{ mt: 2 }} />}
+            {idx < SHORTCUT_GROUPS.length - 1 && <Divider sx={{ mt: 2 }} />}
           </Box>
         ))}
       </DialogContent>

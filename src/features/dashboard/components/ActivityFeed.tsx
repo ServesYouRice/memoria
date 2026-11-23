@@ -137,9 +137,10 @@ export function ActivityFeed({
                   primary={
                     <Box>
                       {activity.canvasId && !canvasId ? (
-                        <Link
+                        <Box
+                          component={Link}
                           href={`/canvas/${activity.canvasId}`}
-                          style={{ textDecoration: "none", color: "inherit" }}
+                          sx={{ textDecoration: "none", color: "inherit" }}
                         >
                           <Typography
                             variant="body2"
@@ -149,7 +150,7 @@ export function ActivityFeed({
                           >
                             {activitySentence(group)}
                           </Typography>
-                        </Link>
+                        </Box>
                       ) : (
                         <Typography variant="body2">
                           {activitySentence(group)}
