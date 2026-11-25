@@ -103,3 +103,134 @@ export function setStageCursor(
 export function easeOutQuint(t: number): number {
   return 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 5);
 }
+
+/**
+ * Choreographed item flight when an item's world position changes externally
+ * (alignment, distribution, auto-layout, or remote moves).
+ */
+export function animateItemFlight(
+  node: Konva.Node | null | undefined,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  duration = 0.26,
+): void {
+  if (!node) return;
+  if (Math.hypot(to.x - from.x, to.y - from.y) < 1) return;
+  if (
+    prefersReducedMotion() ||
+    typeof node.to !== "function" ||
+    typeof node.setAttrs !== "function"
+  ) {
+    return;
+  }
+  node.setAttrs({ x: from.x, y: from.y });
+  tweenKonvaNode(node, {
+    x: to.x,
+    y: to.y,
+    duration,
+    easing: Konva.Easings.EaseOut,
+  });
+}
+
+/**
+ * Returns true if an item was created very recently, used to trigger spawn
+ * entrance animations without animating pre-existing items on initial load or pan.
+ */
+export function isRecentlyCreatedItem(
+  createdAt: Date | string | number | null | undefined,
+  windowMs = 1500,
+): boolean {
+  if (!createdAt) return false;
+  const timestamp =
+    createdAt instanceof Date
+      ? createdAt.getTime()
+      : typeof createdAt === "number"
+        ? createdAt
+        : Date.parse(createdAt);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
+  const age = Date.now() - timestamp;
+  return age >= -1000 && age <= windowMs;
+}
+
+/**
+ * Computes zoom-invariant resize handle dimensions in world units so handles
+ * stay visually consistent and comfortably clickable across zoom levels.
+ */
+export function zoomInvariantHandleMetrics(
+  zoom: number,
+  baseRadius = 7,
+  baseStrokeWidth = 2,
+): { radius: number; strokeWidth: number } {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const radius = Math.min(36, Math.max(2, baseRadius / safeZoom));
+  const strokeWidth = Math.min(8, Math.max(0.75, baseStrokeWidth / safeZoom));
+  return { radius, strokeWidth };
+}
+
+export interface PanVelocitySample {
+  x: number;
+  y: number;
+  t: number;
+}
+
+/**
+ * Computes release velocity (px/ms) from recent Stage pan drag samples.
+ * Returns zero velocity if the pointer paused before release.
+ */
+export function computePanReleaseVelocity(
+  samples: readonly PanVelocitySample[],
+  now: number,
+  maxAgeMs = 90,
+  maxSpeed = 2.4,
+): { vx: number; vy: number } {
+  if (samples.length < 2) return { vx: 0, vy: 0 };
+  const latest = samples[samples.length - 1];
+  if (!latest || now - latest.t > 55) return { vx: 0, vy: 0 };
+
+  let anchor = samples[0]!;
+  for (let i = samples.length - 2; i >= 0; i--) {
+    const candidate = samples[i]!;
+    if (latest.t - candidate.t <= maxAgeMs) {
+      anchor = candidate;
+    } else {
+      break;
+    }
+  }
+
+  const dt = latest.t - anchor.t;
+  if (dt <= 4) return { vx: 0, vy: 0 };
+
+  let vx = (latest.x - anchor.x) / dt;
+  let vy = (latest.y - anchor.y) / dt;
+  const speed = Math.hypot(vx, vy);
+  if (speed > maxSpeed) {
+    const scale = maxSpeed / speed;
+    vx *= scale;
+    vy *= scale;
+  }
+  return { vx, vy };
+}
+
+/**
+ * Distinguishes discrete mouse-wheel zoom ticks from continuous trackpad
+ * pinch/scroll gestures so trackpad pinch remains immediate while wheel ticks
+ * receive smooth micro-damping.
+ */
+export function isDiscreteWheelEvent(
+  evt: Pick<WheelEvent, "deltaMode" | "deltaX" | "deltaY" | "ctrlKey">,
+): boolean {
+  if (evt.ctrlKey && evt.deltaMode === 0 && Math.abs(evt.deltaY) < 40) {
+    return false;
+  }
+  if (evt.deltaMode !== 0) return true;
+  return (
+    evt.deltaX === 0 &&
+    Number.isInteger(evt.deltaY) &&
+    Math.abs(evt.deltaY) >= 40
+  );
+}
+
+/** Clamps canvas zoom within the supported [0.1, 5] range. */
+export function clampZoom(zoom: number, min = 0.1, max = 5): number {
+  return Math.min(max, Math.max(min, zoom));
+}

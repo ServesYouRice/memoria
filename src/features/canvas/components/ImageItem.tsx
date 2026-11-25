@@ -19,8 +19,13 @@ import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 import {
   animateDragLift,
+  animateItemFlight,
+  animateItemSpawn,
+  isRecentlyCreatedItem,
   setStageCursor,
+  zoomInvariantHandleMetrics,
 } from "@/features/canvas/lib/canvas-motion";
+import { useCanvasStore } from "@/stores/canvasStore";
 import { fonts } from "@/lib/theme";
 
 type ImageItemProps = CanvasItemAdapterProps;
@@ -45,23 +50,56 @@ export function ImageItem({
     x: item.positionX,
     y: item.positionY,
   });
+  const localPositionRef = useRef(localPosition);
+  localPositionRef.current = localPosition;
   const [localSize, setLocalSize] = useState({
     width: item.width,
     height: item.height,
   });
+  const prevSizeRef = useRef({ width: item.width, height: item.height });
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   const [isHovered, setIsHovered] = useState(false);
+  const currentZoom = useCanvasStore((state) =>
+    isSelected && capabilities.canResizeItems ? state.currentZoom : 1,
+  );
+  const handleMetrics = zoomInvariantHandleMetrics(
+    currentZoom,
+    RESIZE_HANDLE_SIZE,
+    2,
+  );
 
   const content = isImageContent(item.content)
     ? item.content
     : { url: "", filename: "Invalid image" };
 
   useEffect(() => {
+    if (isRecentlyCreatedItem(item.createdAt)) {
+      animateItemSpawn(groupRef.current);
+    }
+    // Only animate entrance on initial mount for newly created images.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const prevPos = localPositionRef.current;
+    const prevSize = prevSizeRef.current;
+    const sizeUnchanged =
+      prevSize.width === item.width && prevSize.height === item.height;
+    prevSizeRef.current = { width: item.width, height: item.height };
+
     setLocalPosition({ x: item.positionX, y: item.positionY });
     setLocalSize({ width: item.width, height: item.height });
+
+    if (!isDraggingRef.current && sizeUnchanged) {
+      animateItemFlight(groupRef.current, prevPos, {
+        x: item.positionX,
+        y: item.positionY,
+      });
+    }
   }, [item.positionX, item.positionY, item.width, item.height]);
 
   useEffect(() => {
@@ -163,6 +201,7 @@ export function ImageItem({
       draggable={capabilities.canMoveItems}
       onDragStart={(e) => {
         if (e.target !== e.currentTarget) return;
+        isDraggingRef.current = true;
         setIsDragging(true);
         animateDragLift(groupRef.current, true);
         setStageCursor(e.target, "grabbing");
@@ -170,6 +209,7 @@ export function ImageItem({
       onDragMove={handleDragMove}
       onDragEnd={(e) => {
         if (e.target === e.currentTarget) {
+          isDraggingRef.current = false;
           setIsDragging(false);
           animateDragLift(groupRef.current, false);
           setStageCursor(
@@ -296,10 +336,10 @@ export function ImageItem({
           <Circle
             x={localSize.width}
             y={localSize.height}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             onDragMove={(e) => handleResize("se", e)}
             onDragEnd={(e) => handleResizeEnd("se", e)}
@@ -316,10 +356,10 @@ export function ImageItem({
           <Circle
             x={0}
             y={localSize.height}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             onDragMove={(e) => handleResize("sw", e)}
             onDragEnd={(e) => handleResizeEnd("sw", e)}
@@ -336,10 +376,10 @@ export function ImageItem({
           <Circle
             x={localSize.width}
             y={0}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             onDragMove={(e) => handleResize("ne", e)}
             onDragEnd={(e) => handleResizeEnd("ne", e)}
@@ -356,10 +396,10 @@ export function ImageItem({
           <Circle
             x={0}
             y={0}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             onDragMove={(e) => handleResize("nw", e)}
             onDragEnd={(e) => handleResizeEnd("nw", e)}

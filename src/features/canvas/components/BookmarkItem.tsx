@@ -25,8 +25,13 @@ import { toImageProxyUrl } from "@/lib/images/proxy-url";
 import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 import {
   animateDragLift,
+  animateItemFlight,
+  animateItemSpawn,
+  isRecentlyCreatedItem,
   setStageCursor,
+  zoomInvariantHandleMetrics,
 } from "@/features/canvas/lib/canvas-motion";
+import { useCanvasStore } from "@/stores/canvasStore";
 
 type BookmarkItemProps = CanvasItemAdapterProps;
 
@@ -93,14 +98,26 @@ function BookmarkItemComponent({
     x: item.positionX,
     y: item.positionY,
   });
+  const localPositionRef = useRef(localPosition);
+  localPositionRef.current = localPosition;
   const [localSize, setLocalSize] = useState({
     width: item.width,
     height: item.height,
   });
+  const prevSizeRef = useRef({ width: item.width, height: item.height });
   const [favicon, setFavicon] = useState<HTMLImageElement | null>(null);
   const [previewImg, setPreviewImg] = useState<HTMLImageElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   const [isHovered, setIsHovered] = useState(false);
+  const currentZoom = useCanvasStore((state) =>
+    isSelected && capabilities.canResizeItems ? state.currentZoom : 1,
+  );
+  const handleMetrics = zoomInvariantHandleMetrics(
+    currentZoom,
+    RESIZE_HANDLE_SIZE,
+    2,
+  );
 
   // Extract bookmark content
   const content = isBookmarkContent(item.content)
@@ -113,10 +130,31 @@ function BookmarkItemComponent({
   // page description is the fallback.
   const blurb = content.summary || content.description;
 
+  useEffect(() => {
+    if (isRecentlyCreatedItem(item.createdAt)) {
+      animateItemSpawn(groupRef.current);
+    }
+    // Only animate entrance on initial mount for newly created bookmarks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sync with server updates
   useEffect(() => {
+    const prevPos = localPositionRef.current;
+    const prevSize = prevSizeRef.current;
+    const sizeUnchanged =
+      prevSize.width === item.width && prevSize.height === item.height;
+    prevSizeRef.current = { width: item.width, height: item.height };
+
     setLocalPosition({ x: item.positionX, y: item.positionY });
     setLocalSize({ width: item.width, height: item.height });
+
+    if (!isDraggingRef.current && sizeUnchanged) {
+      animateItemFlight(groupRef.current, prevPos, {
+        x: item.positionX,
+        y: item.positionY,
+      });
+    }
   }, [item.positionX, item.positionY, item.width, item.height]);
 
   // Load favicon if available (remote favicons go through the image proxy)
@@ -241,6 +279,7 @@ function BookmarkItemComponent({
       draggable={capabilities.canMoveItems}
       onDragStart={(e) => {
         if (e.target !== e.currentTarget) return;
+        isDraggingRef.current = true;
         setIsDragging(true);
         animateDragLift(groupRef.current, true);
         setStageCursor(e.target, "grabbing");
@@ -248,6 +287,7 @@ function BookmarkItemComponent({
       onDragMove={handleDragMove}
       onDragEnd={(e) => {
         if (e.target === e.currentTarget) {
+          isDraggingRef.current = false;
           setIsDragging(false);
           animateDragLift(groupRef.current, false);
           setStageCursor(
@@ -470,10 +510,10 @@ function BookmarkItemComponent({
           <Circle
             x={localSize.width}
             y={localSize.height}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             {...resizeHandleEvents("se")}
             onMouseEnter={(e) => {
@@ -490,10 +530,10 @@ function BookmarkItemComponent({
           <Circle
             x={0}
             y={localSize.height}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             {...resizeHandleEvents("sw")}
             onMouseEnter={(e) => {
@@ -510,10 +550,10 @@ function BookmarkItemComponent({
           <Circle
             x={localSize.width}
             y={0}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             {...resizeHandleEvents("ne")}
             onMouseEnter={(e) => {
@@ -530,10 +570,10 @@ function BookmarkItemComponent({
           <Circle
             x={0}
             y={0}
-            radius={RESIZE_HANDLE_SIZE}
+            radius={handleMetrics.radius}
             fill={palette.surface}
             stroke={palette.selection}
-            strokeWidth={2}
+            strokeWidth={handleMetrics.strokeWidth}
             draggable
             {...resizeHandleEvents("nw")}
             onMouseEnter={(e) => {

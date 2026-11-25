@@ -56,6 +56,23 @@ import {
   pdfCardInput,
   uploadPdf,
 } from "@/features/canvas/hooks/use-pdf-upload";
+import {
+  PROXIED_IMAGE_MAX_BYTES,
+  uploadFileDirect,
+} from "@/lib/uploads/direct-upload-client";
+import { ALLOWED_IMAGE_MIME_TYPES } from "@/lib/uploads/file-types";
+import { MAX_NOTE_TEXT_LENGTH } from "@/lib/constants";
+import { EMPTY_VERSIONED_NOTE_CONTENT } from "@/components/RichTextEditor";
+import {
+  normalizeNoteContent,
+  type VersionedNoteContent,
+} from "@/lib/rich-text/note-format";
+import {
+  clampZoom,
+  computePanReleaseVelocity,
+  isDiscreteWheelEvent,
+  type PanVelocitySample,
+} from "@/features/canvas/lib/canvas-motion";
 import { TableCellDialog } from "@/features/canvas/components/TableCellDialog";
 import {
   createTable,
@@ -155,6 +172,7 @@ import {
 } from "@/features/canvas/lib/live-note";
 import {
   NEW_NOTE_SIZE,
+  newNotePosition,
   useAddNote,
 } from "@/features/canvas/hooks/use-add-note";
 import {
@@ -204,6 +222,92 @@ export async function runConfirmAction(
 
 /** Pan distance, in screen pixels, before the drawn item set is recomputed. */
 const VIEWPORT_STEP_PX = 256;
+
+const ACCEPTED_DROP_IMAGE_MIME_TYPES = new Set<string>(
+  ALLOWED_IMAGE_MIME_TYPES,
+);
+const ACCEPTED_DROP_IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
+const IMAGE_CARD_MAX_SIZE = 400;
+
+/** Matches PNG, JPEG, WebP, and GIF files for canvas drag-and-drop. */
+export function looksLikeSupportedImage(file: {
+  name: string;
+  type: string;
+}): boolean {
+  const mime = file.type.split(";")[0]?.trim().toLowerCase();
+  if (mime) return ACCEPTED_DROP_IMAGE_MIME_TYPES.has(mime);
+  return ACCEPTED_DROP_IMAGE_EXTENSIONS.test(file.name);
+}
+
+/** Returns a normalized http(s) URL if clipboard text is a single URL, else null. */
+export function parseClipboardHttpUrl(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed || /\s/.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** Builds normalized VersionedNoteContent from plain clipboard text. */
+export function plainTextToNoteContent(text: string): VersionedNoteContent {
+  const bounded = text.trim().slice(0, MAX_NOTE_TEXT_LENGTH);
+  const paragraphs = bounded
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => {
+      const inline: Array<Record<string, unknown>> = [];
+      paragraph.split("\n").forEach((line, index) => {
+        if (index > 0) inline.push({ type: "hardBreak" });
+        if (line) inline.push({ type: "text", text: line });
+      });
+      return { type: "paragraph", content: inline };
+    });
+  return normalizeNoteContent({
+    formatVersion: 1,
+    document: { type: "doc", content: paragraphs },
+  });
+}
+
+/** Computes display dimensions for a dropped/pasted image (max 400px, preserving aspect). */
+export function computeImageCanvasSize(dimensions: {
+  width?: number;
+  height?: number;
+}): { width: number; height: number } {
+  let width = dimensions.width || IMAGE_CARD_MAX_SIZE;
+  let height = dimensions.height || IMAGE_CARD_MAX_SIZE;
+  if (width > IMAGE_CARD_MAX_SIZE || height > IMAGE_CARD_MAX_SIZE) {
+    const ratio = Math.min(
+      IMAGE_CARD_MAX_SIZE / width,
+      IMAGE_CARD_MAX_SIZE / height,
+    );
+    width = Math.max(40, Math.floor(width * ratio));
+    height = Math.max(40, Math.floor(height * ratio));
+  }
+  return { width, height };
+}
+
+async function measureImageDimensions(
+  url: string,
+): Promise<{ width?: number; height?: number }> {
+  if (typeof globalThis.Image !== "function") return {};
+  return new Promise((resolve) => {
+    const img = new globalThis.Image();
+    img.onload = () =>
+      resolve({
+        width: img.naturalWidth || undefined,
+        height: img.naturalHeight || undefined,
+      });
+    img.onerror = () => resolve({});
+    img.src = url;
+  });
+}
 
 /**
  * IMP-042: the board opens the canvas's collaborative document and edits it
@@ -310,24 +414,43 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     setSnapToGrid: setSnapToGridEnabled,
     activeTool,
     setActiveTool,
+    setZoom: setStoreZoom,
   } = useCanvasStore();
 
-  // Smooth camera glides (fit-to-screen, jump-to-item, follow mode)
+  useEffect(() => {
+    setStoreZoom(zoom);
+  }, [zoom, setStoreZoom]);
+
+  // Smooth camera glides (fit-to-screen, jump-to-item, follow mode, pan inertia, wheel zoom)
   const cameraRef = useRef({ x: position.x, y: position.y, zoom });
   cameraRef.current = { x: position.x, y: position.y, zoom };
-  const { animateTo: animateCameraTo, cancel: cancelCameraTween } =
-    useCameraTween({
-      stageRef,
-      getCurrent: () => cameraRef.current,
-      onCommit: ({ x, y, zoom: nextZoom }) => {
-        setZoom(nextZoom);
-        setPosition({ x, y });
-      },
-    });
+  const panSamplesRef = useRef<PanVelocitySample[]>([]);
+  const {
+    animateTo: animateCameraTo,
+    glidePan,
+    wheelZoomBy,
+    cancel: cancelCameraTween,
+  } = useCameraTween({
+    stageRef,
+    getCurrent: () => cameraRef.current,
+    onFrame: ({ x, y, zoom: liveZoom }) => {
+      cameraRef.current = { x, y, zoom: liveZoom };
+      setStoreZoom(liveZoom);
+    },
+    onCommit: ({ x, y, zoom: nextZoom }) => {
+      setZoom(nextZoom);
+      setPosition({ x, y });
+    },
+  });
   const [spotlightItemId, setSpotlightItemId] = useState<string | null>(null);
   const [isDragOverFiles, setIsDragOverFiles] = useState(false);
   const dragDepthRef = useRef(0);
   const addNoteShortcutRef = useRef<() => void>(() => {});
+  const quickNotePendingRef = useRef(false);
+  const [quickNoteDialogPos, setQuickNoteDialogPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   // IMP-042: the collaborative document's save and access state.
   const documentSession = useCanvasDocument();
@@ -599,46 +722,186 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
     onPaste: async () => {
       if (!canEdit) return;
       try {
-        const clipboardText = await navigator.clipboard.readText();
-        const data: unknown = JSON.parse(clipboardText);
-        if (
-          !data ||
-          typeof data !== "object" ||
-          !("memoriaClipboard" in data) ||
-          data.memoriaClipboard !== 1 ||
-          !("type" in data) ||
-          typeof data.type !== "string" ||
-          !Object.values(ItemType).includes(data.type as ItemType) ||
-          !("content" in data) ||
-          typeof data.content !== "object" ||
-          data.content === null
-        ) {
+        let clipboardText = "";
+        let clipboardImageFile: File | null = null;
+
+        if (typeof navigator.clipboard?.read === "function") {
+          try {
+            const clipboardItems = await navigator.clipboard.read();
+            for (const item of clipboardItems) {
+              if (!clipboardImageFile) {
+                const imageType = item.types.find((type) =>
+                  ACCEPTED_DROP_IMAGE_MIME_TYPES.has(
+                    type.split(";")[0]?.trim().toLowerCase() ?? "",
+                  ),
+                );
+                if (imageType) {
+                  const blob = await item.getType(imageType);
+                  const ext = imageType.split("/")[1]?.split(";")[0] || "png";
+                  clipboardImageFile = new File([blob], `pasted-image.${ext}`, {
+                    type: imageType,
+                  });
+                }
+              }
+              if (!clipboardText && item.types.includes("text/plain")) {
+                const blob = await item.getType("text/plain");
+                clipboardText = await blob.text();
+              }
+            }
+          } catch {
+            // Fall back to readText when clipboard.read() is blocked or unsupported.
+          }
+        }
+
+        if (!clipboardText && !clipboardImageFile) {
+          clipboardText = (await navigator.clipboard?.readText?.()) ?? "";
+        }
+
+        const stage = stageRef.current;
+        const pointer = stage?.getPointerPosition();
+        const liveX = stage ? stage.x() : position.x;
+        const liveY = stage ? stage.y() : position.y;
+        const liveZoom = stage && stage.scaleX() > 0 ? stage.scaleX() : zoom;
+        const targetPoint = pointer
+          ? {
+              x: (pointer.x - liveX) / liveZoom,
+              y: (pointer.y - liveY) / liveZoom,
+            }
+          : viewportCenterWorld(position, stageSize, zoom);
+        const nextZIndex =
+          Math.max(0, ...allItems.map((item) => item.zIndex)) + 1;
+
+        // 1. Internal Memoria item copy/paste (preserve exact format)
+        if (clipboardText) {
+          let parsed: unknown = null;
+          try {
+            parsed = JSON.parse(clipboardText);
+          } catch {
+            parsed = null;
+          }
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "memoriaClipboard" in parsed &&
+            parsed.memoriaClipboard === 1 &&
+            "type" in parsed &&
+            typeof parsed.type === "string" &&
+            Object.values(ItemType).includes(parsed.type as ItemType) &&
+            "content" in parsed &&
+            typeof parsed.content === "object" &&
+            parsed.content !== null
+          ) {
+            const width =
+              "width" in parsed && typeof parsed.width === "number"
+                ? Math.min(2000, Math.max(40, parsed.width))
+                : 200;
+            const height =
+              "height" in parsed && typeof parsed.height === "number"
+                ? Math.min(2000, Math.max(40, parsed.height))
+                : 150;
+            const positionX = pointer ? targetPoint.x + 20 : 120;
+            const positionY = pointer ? targetPoint.y + 20 : 120;
+
+            await createItem({
+              canvasId,
+              type: parsed.type as ItemType,
+              positionX,
+              positionY,
+              width,
+              height,
+              zIndex: nextZIndex,
+              content: parsed.content as CanvasItem["content"],
+              tags: [],
+            });
+            return;
+          }
+        }
+
+        // 2. Clipboard image -> upload & place Image item
+        if (clipboardImageFile) {
+          await handleAddImageFiles([clipboardImageFile], targetPoint);
           return;
         }
 
-        const width =
-          "width" in data && typeof data.width === "number"
-            ? Math.min(2000, Math.max(40, data.width))
-            : 200;
-        const height =
-          "height" in data && typeof data.height === "number"
-            ? Math.min(2000, Math.max(40, data.height))
-            : 150;
-        const pointer = stageRef.current?.getPointerPosition();
-        const positionX = pointer ? (pointer.x - position.x) / zoom + 20 : 120;
-        const positionY = pointer ? (pointer.y - position.y) / zoom + 20 : 120;
+        // 3. External http(s) URL -> unfurled Bookmark card
+        const pastedUrl = parseClipboardHttpUrl(clipboardText);
+        if (pastedUrl) {
+          const toastId = toast.loading("Adding bookmark…");
+          let unfurled: {
+            title?: string;
+            description?: string;
+            favicon?: string;
+            previewImage?: string;
+            siteName?: string;
+            unfurledAt?: string;
+          } | null = null;
+          try {
+            const response = await fetch("/api/v1/unfurl", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: pastedUrl }),
+            });
+            if (response.ok) {
+              unfurled = (await response.json()) as {
+                title?: string;
+                description?: string;
+                favicon?: string;
+                previewImage?: string;
+                siteName?: string;
+                unfurledAt?: string;
+              };
+            }
+          } catch {
+            // Fall back to a plain bookmark card if unfurling fails.
+          }
 
-        await createItem({
-          canvasId,
-          type: data.type as ItemType,
-          positionX,
-          positionY,
-          width,
-          height,
-          zIndex: Math.max(0, ...allItems.map((item) => item.zIndex)) + 1,
-          content: data.content as CanvasItem["content"],
-          tags: [],
-        });
+          const hasMetadata = Boolean(unfurled?.title || unfurled?.description);
+          const height = unfurled?.previewImage ? 210 : hasMetadata ? 150 : 100;
+          const width = 300;
+          const created = await createItem({
+            canvasId,
+            type: ItemType.BOOKMARK,
+            positionX: targetPoint.x - width / 2,
+            positionY: targetPoint.y - height / 2,
+            width,
+            height,
+            zIndex: nextZIndex,
+            content: {
+              url: pastedUrl,
+              title: unfurled?.title,
+              description: unfurled?.description,
+              favicon: unfurled?.favicon,
+              previewImage: unfurled?.previewImage,
+              siteName: unfurled?.siteName,
+              unfurledAt: unfurled?.unfurledAt,
+            },
+            tags: [],
+          });
+          setSelectedItemId(created.id);
+          setSelectedItemIds(new Set([created.id]));
+          toast.success("Bookmark added to the canvas.", { id: toastId });
+          return;
+        }
+
+        // 4. Plain text (when not editing text) -> Sticky Note
+        const trimmedText = clipboardText.trim();
+        if (trimmedText && !inlineNote) {
+          const width = 240;
+          const height = 200;
+          const created = await createItem({
+            canvasId,
+            type: ItemType.NOTE,
+            positionX: targetPoint.x - width / 2,
+            positionY: targetPoint.y - height / 2,
+            width,
+            height,
+            zIndex: nextZIndex,
+            content: plainTextToNoteContent(trimmedText),
+            tags: [],
+          });
+          setSelectedItemId(created.id);
+          setSelectedItemIds(new Set([created.id]));
+        }
       } catch {
         toast.error("Clipboard content could not be pasted");
       }
@@ -729,6 +992,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   useGesture(
     {
       onPinch: ({ offset: [d] }) => {
+        cancelCameraTween(false);
         setZoom(d);
       },
     },
@@ -1022,20 +1286,101 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
       }
     }
   };
+  const handleAddImageFiles = async (
+    files: File[],
+    at: { x: number; y: number },
+    startOffsetIndex = 0,
+  ) => {
+    if (!capabilities.canCreateItems) return;
+    let zIndex = Math.max(0, ...allItems.map((item) => item.zIndex)) + 1;
+    for (const [index, file] of files.entries()) {
+      const toastId = toast.loading(`Uploading ${file.name}…`);
+      try {
+        const response = await uploadFileDirect(file, {
+          canvasId,
+          fallbackMaxBytes: PROXIED_IMAGE_MAX_BYTES,
+          fallback: () => {
+            const form = new FormData();
+            form.append("file", file);
+            form.append("canvasId", canvasId);
+            return fetch("/api/v1/upload", {
+              method: "POST",
+              body: form,
+            });
+          },
+        });
+        if (!response.ok) {
+          const errorBody = (await response.json().catch(() => null)) as {
+            detail?: string;
+            error?: string;
+          } | null;
+          throw new Error(
+            errorBody?.detail || errorBody?.error || "Failed to upload image",
+          );
+        }
+        const data = (await response.json()) as {
+          url: string;
+          filename?: string;
+        };
+        const dimensions = await measureImageDimensions(data.url);
+        const { width, height } = computeImageCanvasSize(dimensions);
+        const offsetX = (startOffsetIndex + index) * 320;
+        const created = await createItem({
+          canvasId,
+          type: ItemType.IMAGE,
+          positionX: at.x + offsetX - width / 2,
+          positionY: at.y - height / 2,
+          width,
+          height,
+          zIndex: zIndex++,
+          content: {
+            url: data.url,
+            filename: (data.filename || file.name || "image").slice(0, 255),
+            alt: "",
+            width: dimensions.width,
+            height: dimensions.height,
+          },
+          tags: [],
+        });
+        setSelectedItemId(created.id);
+        setSelectedItemIds(new Set([created.id]));
+        toast.success(`${file.name} is on the canvas.`, { id: toastId });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "The image was not added.",
+          { id: toastId },
+        );
+      }
+    }
+  };
   const handleDropFiles = (event: React.DragEvent<HTMLDivElement>) => {
     const files = Array.from(event.dataTransfer?.files ?? []);
     if (!capabilities.canCreateItems || files.length === 0) return;
     event.preventDefault();
     const pdfs = files.filter(looksLikePdf);
-    if (pdfs.length < files.length) {
-      toast.error("Only PDFs can be dropped here. Add pictures with Image.");
+    const images = files.filter(
+      (file) => !looksLikePdf(file) && looksLikeSupportedImage(file),
+    );
+    if (pdfs.length + images.length < files.length) {
+      toast.error(
+        "Only images (PNG, JPEG, WebP, GIF) and PDFs can be dropped on the canvas.",
+      );
     }
-    if (pdfs.length === 0) return;
+    if (pdfs.length === 0 && images.length === 0) return;
     const box = event.currentTarget.getBoundingClientRect();
-    void handleAddPdfFiles(pdfs, {
-      x: (event.clientX - box.left - position.x) / zoom,
-      y: (event.clientY - box.top - position.y) / zoom,
-    });
+    const stage = stageRef.current;
+    const stageX = stage ? stage.x() : position.x;
+    const stageY = stage ? stage.y() : position.y;
+    const dropPoint = {
+      x: (event.clientX - box.left - stageX) / zoom,
+      y: (event.clientY - box.top - stageY) / zoom,
+    };
+    if (pdfs.length > 0) {
+      void handleAddPdfFiles(pdfs, dropPoint);
+    }
+    if (images.length > 0) {
+      void handleAddImageFiles(images, dropPoint, pdfs.length);
+    }
   };
 
   const handleWhisperSend = async (text: string) => {
@@ -1580,6 +1925,72 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   }, [items, renderedItems]);
 
   const [isPresentationMode, setPresentationMode] = useState(false);
+  const isPanMode =
+    !isDrawing &&
+    !isTimeMachineActive &&
+    (isSpacePressed || activeTool === "pan");
+
+  const handleStageDblClick = async (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => {
+    if (
+      !canEdit ||
+      !capabilities.canCreateItems ||
+      activeTool !== "select" ||
+      isPanMode ||
+      isTimeMachineActive ||
+      isPresentationMode
+    ) {
+      return;
+    }
+    const stage = event.target.getStage();
+    if (!stage || event.target !== stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const liveX = stage.x();
+    const liveY = stage.y();
+    const liveZoom = stage.scaleX() > 0 ? stage.scaleX() : zoom;
+    const worldPoint = {
+      x: (pointer.x - liveX) / liveZoom,
+      y: (pointer.y - liveY) / liveZoom,
+    };
+    const spot = newNotePosition(worldPoint, allItems);
+    const liveEditing = liveEditingAvailable(documentSession, documentState);
+
+    if (!liveEditing) {
+      setQuickNoteDialogPos(spot);
+      setNoteDialogOpen(true);
+      return;
+    }
+    if (quickNotePendingRef.current) return;
+    quickNotePendingRef.current = true;
+    try {
+      const created = await createItem({
+        canvasId,
+        type: ItemType.NOTE,
+        positionX: spot.x,
+        positionY: spot.y,
+        width: NEW_NOTE_SIZE,
+        height: NEW_NOTE_SIZE,
+        zIndex: Math.max(0, ...allItems.map((item) => item.zIndex)) + 1,
+        content: EMPTY_VERSIONED_NOTE_CONTENT,
+        tags: [],
+      });
+      setSelectedItemId(created.id);
+      setSelectedItemIds(new Set([created.id]));
+      if (viewMode === "manual" && editsNoteInPlace(created, liveZoom, true)) {
+        setPendingInlineNoteId(created.id);
+      } else {
+        setEditingNoteItem(created);
+        setEditNoteDialogOpen(true);
+      }
+    } catch {
+      toast.error("The note was not added.");
+    } finally {
+      quickNotePendingRef.current = false;
+    }
+  };
 
   // IMP-142: the in-place editor follows the note as it is panned, zoomed or
   // moved, and closes when the note is deleted or live editing stops.
@@ -1596,10 +2007,13 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
   }, [closeInlineNote, inlineNote, inlineNoteFragment]);
   // IMP-143: the fallback note dialog also creates its note in view.
   const viewCenter = viewportCenterWorld(position, stageSize, zoom);
-  const noteDialogPosition = {
+  const noteDialogPosition = quickNoteDialogPos ?? {
     x: viewCenter.x - NEW_NOTE_SIZE / 2,
     y: viewCenter.y - NEW_NOTE_SIZE / 2,
   };
+  useEffect(() => {
+    if (!noteDialogOpen) setQuickNoteDialogPos(null);
+  }, [noteDialogOpen]);
   // IMP-143: a new note opens in place as soon as its shared text is ready.
   const pendingInlineItem = pendingInlineNoteId
     ? allItems.find((candidate) => candidate.id === pendingInlineNoteId)
@@ -1906,6 +2320,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
               event.dataTransfer.dropEffect = "copy";
             }
           }}
+          onPointerDown={() => cancelCameraTween(true)}
           onDrop={(event) => {
             dragDepthRef.current = 0;
             setIsDragOverFiles(false);
@@ -1915,11 +2330,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             flexGrow: 1,
             position: "relative",
             overflow: "hidden",
-            cursor: isSpacePressed
-              ? "grab"
-              : isDrawing
-                ? "crosshair"
-                : "default",
+            cursor: isPanMode ? "grab" : isDrawing ? "crosshair" : "default",
             bgcolor: appColor("canvasBackground"),
           }}
         >
@@ -1954,7 +2365,7 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  Drop PDFs anywhere on the canvas
+                  Drop images or PDFs anywhere on the canvas
                 </Typography>
               </Paper>
             </Box>
@@ -2082,36 +2493,72 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
             scaleY={zoom}
             x={position.x}
             y={position.y}
-            draggable={!isDrawing && isSpacePressed && !isTimeMachineActive}
-            onDragStart={() => cancelCameraTween()}
+            draggable={isPanMode}
+            onDragStart={(event) => {
+              if (event.target !== event.target.getStage()) return;
+              cancelCameraTween(false);
+              panSamplesRef.current = [
+                {
+                  x: event.target.x(),
+                  y: event.target.y(),
+                  t: performance.now(),
+                },
+              ];
+            }}
             onDragMove={(event) => {
               const next = stageDragPosition(event);
-              if (next) followStagePan(next);
+              if (!next) return;
+              panSamplesRef.current.push({
+                x: next.x,
+                y: next.y,
+                t: performance.now(),
+              });
+              if (panSamplesRef.current.length > 8) {
+                panSamplesRef.current.shift();
+              }
+              followStagePan(next);
             }}
             onDragEnd={(event) => {
               const next = stageDragPosition(event);
-              if (next) setPosition(next);
+              if (!next) return;
+              const { vx, vy } = computePanReleaseVelocity(
+                panSamplesRef.current,
+                performance.now(),
+              );
+              panSamplesRef.current = [];
+              glidePan({ x: next.x, y: next.y, vx, vy });
             }}
             onWheel={(event) => {
-              cancelCameraTween();
               event.evt.preventDefault();
               const stage = event.target.getStage();
               const pointer = stage?.getPointerPosition();
               if (!stage || !pointer) return;
               const factor = event.evt.deltaY > 0 ? 1 / 1.1 : 1.1;
-              const nextZoom = Math.min(5, Math.max(0.1, zoom * factor));
+
+              if (isDiscreteWheelEvent(event.evt)) {
+                wheelZoomBy({
+                  factor,
+                  pointerX: pointer.x,
+                  pointerY: pointer.y,
+                });
+                return;
+              }
+
+              cancelCameraTween(false);
+              const liveZoom = stage.scaleX() > 0 ? stage.scaleX() : zoom;
+              const nextZoom = clampZoom(liveZoom * factor);
               // The stage's own offset: mid-pan, React's position may lag.
-              const worldX = (pointer.x - stage.x()) / zoom;
-              const worldY = (pointer.y - stage.y()) / zoom;
+              const worldX = (pointer.x - stage.x()) / liveZoom;
+              const worldY = (pointer.y - stage.y()) / liveZoom;
               setZoom(nextZoom);
               setPosition({
                 x: pointer.x - worldX * nextZoom,
                 y: pointer.y - worldY * nextZoom,
               });
             }}
-            onMouseDown={isSpacePressed ? undefined : handleStageMouseDown}
+            onMouseDown={isPanMode ? undefined : handleStageMouseDown}
             onMouseMove={(event) => {
-              if (!isSpacePressed) handleStageMouseMove(event);
+              if (!isPanMode) handleStageMouseMove(event);
               const stage = event.target.getStage();
               const pointer = stage?.getPointerPosition();
               if (stage && pointer) {
@@ -2121,8 +2568,14 @@ function CanvasBoardContent({ canvasId }: CanvasBoardProps) {
                 );
               }
             }}
-            onMouseUp={isSpacePressed ? undefined : handleStageMouseUp}
+            onMouseUp={isPanMode ? undefined : handleStageMouseUp}
             onClick={handleStageClick}
+            onDblClick={(event) => {
+              void handleStageDblClick(event);
+            }}
+            onDblTap={(event) => {
+              void handleStageDblClick(event);
+            }}
             ref={stageRef}
             onContextMenu={(e) => e.evt.preventDefault()}
           >
