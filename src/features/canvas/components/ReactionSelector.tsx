@@ -1,8 +1,12 @@
+"use client";
+
 import React from "react";
 import { Paper, IconButton, Box } from "@mui/material";
+import { prefersReducedMotion } from "@/features/canvas/lib/canvas-motion";
 import { appColor, motion } from "@/lib/theme";
 
 const REACTIONS = ["👍", "❤️", "🔥", "😂", "😮", "🎉"];
+const STAGGER_MS = 20;
 
 interface ReactionSelectorProps {
   x: number;
@@ -17,6 +21,8 @@ export const ReactionSelector: React.FC<ReactionSelectorProps> = ({
   onSelect,
   onClose,
 }) => {
+  const reducedMotion = prefersReducedMotion();
+
   return (
     <Box
       sx={{
@@ -38,7 +44,12 @@ export const ReactionSelector: React.FC<ReactionSelectorProps> = ({
           backdropFilter: "blur(12px)",
           border: `1px solid ${appColor("floatingBorder")}`,
           boxShadow: appColor("floatingShadow"),
-          animation: `toolbarIn 180ms ${motion.springSnappy}`,
+          animation: reducedMotion
+            ? "none"
+            : `toolbarIn 180ms ${motion.springSnappy}`,
+          "@media (prefers-reduced-motion: reduce)": {
+            animation: "none",
+          },
         }}
       >
         {REACTIONS.map((emoji, index) => (
@@ -46,6 +57,7 @@ export const ReactionSelector: React.FC<ReactionSelectorProps> = ({
             key={emoji}
             size="small"
             aria-label={`React with ${emoji}`}
+            data-stagger-ms={reducedMotion ? 0 : index * STAGGER_MS}
             onClick={(e) => {
               e.stopPropagation();
               onSelect(emoji);
@@ -55,11 +67,24 @@ export const ReactionSelector: React.FC<ReactionSelectorProps> = ({
               fontSize: "1.25rem",
               width: 38,
               height: 38,
-              animation: `popIn 240ms ${motion.springSnappy} ${index * 22}ms both`,
-              transition: `transform 200ms ${motion.springSnappy}, background-color 140ms ease`,
+              animation: reducedMotion
+                ? "none"
+                : `popIn 240ms ${motion.springSnappy} ${index * STAGGER_MS}ms both`,
+              transition: reducedMotion
+                ? "none"
+                : `transform 200ms ${motion.springSnappy}, background-color 140ms ease`,
               "&:hover": {
-                transform: "scale(1.34) translateY(-4px)",
+                transform: reducedMotion
+                  ? "none"
+                  : "scale(1.34) translateY(-4px)",
                 bgcolor: "action.hover",
+              },
+              "@media (prefers-reduced-motion: reduce)": {
+                animation: "none",
+                transition: "none",
+                "&:hover": {
+                  transform: "none",
+                },
               },
             }}
           >

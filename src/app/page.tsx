@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import { MemoriaLogo } from "@/components/MemoriaLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LandingInteractiveHero } from "@/components/LandingInteractiveHero";
 import { LAUNCH_LIMITS } from "@/lib/policy/launch-limits";
 
 // Pictures of a real canvas (IMP-081), one per colour mode. The app sets
@@ -31,13 +32,6 @@ const DARK_ONLY = {
   ...FIT_IMAGE,
   display: "none",
   [DARK]: { display: "block" },
-};
-
-const HERO_PICTURE = {
-  name: "canvas",
-  width: 1260,
-  height: 645,
-  alt: "A Memoria canvas planning a weekend in Lisbon: sticky notes, a link card for Belém Tower, a sunset photo and a hand-drawn arrow.",
 };
 
 const ABILITIES = [
@@ -236,7 +230,7 @@ export default async function Home() {
               boxShadow: PICTURE_SHADOW,
             }}
           >
-            <ModePicture picture={HERO_PICTURE} eager />
+            <LandingInteractiveHero />
           </Box>
         </Container>
       </Box>

@@ -1,6 +1,6 @@
 import React from "react";
 import type Konva from "konva";
-import { Group, Layer } from "react-konva";
+import { Group, Layer, Rect } from "react-konva";
 import type {
   CanvasCapabilities,
   CanvasItem,
@@ -36,6 +36,15 @@ import { TableItem } from "@/features/canvas/components/TableItem";
 import { PdfItem } from "@/features/canvas/components/PdfItem";
 import { isStructuralCanvasItem } from "@/features/canvas/search";
 import { createPressAndHold } from "@/features/canvas/press-and-hold";
+import {
+  useCanvasPalette,
+  type CanvasPalette,
+} from "@/features/canvas/lib/canvas-palette";
+import {
+  animateItemSpawn,
+  prefersReducedMotion,
+  tweenKonvaNode,
+} from "@/features/canvas/lib/canvas-motion";
 
 interface CanvasItemLayerProps {
   items: CanvasItem[];
@@ -62,6 +71,116 @@ interface CanvasItemLayerProps {
   ) => void;
 }
 
+interface AnimatedItemGroupProps {
+  item: CanvasItem;
+  targetOpacity: number;
+  isSearchHighlighted: boolean;
+  isSearchActiveAndMatch: boolean;
+  shouldAnimateSpawn: boolean;
+  palette: CanvasPalette;
+  onTouchStart: (event: Konva.KonvaEventObject<TouchEvent>) => void;
+  onDragStart: (event: Konva.KonvaEventObject<DragEvent>) => void;
+  children: React.ReactNode;
+}
+
+function AnimatedItemGroup({
+  item,
+  targetOpacity,
+  isSearchHighlighted,
+  isSearchActiveAndMatch,
+  shouldAnimateSpawn,
+  palette,
+  onTouchStart,
+  onDragStart,
+  children,
+}: AnimatedItemGroupProps) {
+  const groupRef = React.useRef<Konva.Group>(null);
+  const spawnTriggeredRef = React.useRef(false);
+  const prevOpacityRef = React.useRef(targetOpacity);
+  const wasMatchRef = React.useRef(isSearchActiveAndMatch);
+
+  const hasBounds =
+    item.type !== ItemType.ARROW && item.width > 0 && item.height > 0;
+  const pivotX = hasBounds ? item.positionX + item.width / 2 : 0;
+  const pivotY = hasBounds ? item.positionY + item.height / 2 : 0;
+
+  React.useEffect(() => {
+    if (!shouldAnimateSpawn || spawnTriggeredRef.current) return;
+    spawnTriggeredRef.current = true;
+    animateItemSpawn(groupRef.current);
+  }, [shouldAnimateSpawn]);
+
+  React.useEffect(() => {
+    if (prevOpacityRef.current === targetOpacity) return;
+    const prevOpacity = prevOpacityRef.current;
+    prevOpacityRef.current = targetOpacity;
+    const node = groupRef.current;
+    if (!node) return;
+    if (
+      !prefersReducedMotion() &&
+      typeof node.to === "function" &&
+      typeof node.setAttrs === "function"
+    ) {
+      node.setAttrs({ opacity: prevOpacity });
+    }
+    tweenKonvaNode(node, {
+      opacity: targetOpacity,
+      duration: 0.18,
+    });
+  }, [targetOpacity]);
+
+  React.useEffect(() => {
+    const wasMatch = wasMatchRef.current;
+    wasMatchRef.current = isSearchActiveAndMatch;
+    if (!isSearchActiveAndMatch || wasMatch || !hasBounds) return;
+    const node = groupRef.current;
+    if (!node || prefersReducedMotion() || typeof node.to !== "function") {
+      return;
+    }
+    tweenKonvaNode(node, {
+      scaleX: 1.03,
+      scaleY: 1.03,
+      duration: 0.12,
+      onFinish: () => {
+        tweenKonvaNode(node, {
+          scaleX: 1,
+          scaleY: 1,
+          duration: 0.18,
+        });
+      },
+    });
+  }, [isSearchActiveAndMatch, hasBounds]);
+
+  return (
+    <Group
+      ref={groupRef}
+      x={pivotX}
+      y={pivotY}
+      offsetX={pivotX}
+      offsetY={pivotY}
+      opacity={targetOpacity}
+      onTouchStart={onTouchStart}
+      onDragStart={onDragStart}
+    >
+      {isSearchHighlighted && hasBounds && (
+        <Rect
+          x={item.positionX - 4}
+          y={item.positionY - 4}
+          width={item.width + 8}
+          height={item.height + 8}
+          cornerRadius={14}
+          fill={palette.selectionFill}
+          stroke={palette.selection}
+          strokeWidth={1.5}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      )}
+      {children}
+    </Group>
+  );
+}
+
 /**
  * Renders every item type through the same adapter contract: capabilities in,
  * one geometry commit out. No item component owns its own durable write.
@@ -85,10 +204,63 @@ export const CanvasItemLayer = React.memo(function CanvasItemLayer({
   allItems,
   onMoveArrowEnd,
 }: CanvasItemLayerProps) {
+  const palette = useCanvasPalette();
+  const sourceItems = allItems ?? items;
   const itemsById = React.useMemo(
-    () => new Map((allItems ?? items).map((item) => [item.id, item])),
-    [allItems, items],
+    () => new Map(sourceItems.map((item) => [item.id, item])),
+    [sourceItems],
   );
+
+  const frameChildCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    const frames = sourceItems.filter(
+      (candidate) => candidate.type === ItemType.FRAME,
+    );
+    if (frames.length === 0) return counts;
+    for (const frame of frames) {
+      let count = 0;
+      const fx1 = frame.positionX;
+      const fy1 = frame.positionY;
+      const fx2 = fx1 + frame.width;
+      const fy2 = fy1 + frame.height;
+      for (const candidate of sourceItems) {
+        if (candidate.id === frame.id || candidate.type === ItemType.FRAME) {
+          continue;
+        }
+        const cx = candidate.positionX + candidate.width / 2;
+        const cy = candidate.positionY + candidate.height / 2;
+        if (cx >= fx1 && cx <= fx2 && cy >= fy1 && cy <= fy2) {
+          count += 1;
+        }
+      }
+      counts.set(frame.id, count);
+    }
+    return counts;
+  }, [sourceItems]);
+
+  const hasMountedRef = React.useRef(false);
+  const knownIdsRef = React.useRef<Set<string> | null>(null);
+  if (knownIdsRef.current === null) {
+    knownIdsRef.current = new Set(sourceItems.map((item) => item.id));
+  }
+  const newlyAddedIds = new Set<string>();
+  if (hasMountedRef.current) {
+    const unseen = sourceItems.filter(
+      (item) => !knownIdsRef.current!.has(item.id),
+    );
+    // Avoid animating a bulk initial async fetch if the layer mounted empty.
+    if (knownIdsRef.current.size > 0 || unseen.length <= 3) {
+      for (const item of unseen) {
+        newlyAddedIds.add(item.id);
+      }
+    }
+  }
+  React.useEffect(() => {
+    hasMountedRef.current = true;
+    for (const item of sourceItems) {
+      knownIdsRef.current!.add(item.id);
+    }
+  }, [sourceItems]);
 
   // IMP-140: iOS Safari sends no `contextmenu` for a long press, so a held
   // finger opens the same item menu that right-click opens.
@@ -193,7 +365,12 @@ export const CanvasItemLayer = React.memo(function CanvasItemLayer({
           rendered = <TextItem {...adapterProps} />;
         }
         if (item.type === ItemType.FRAME && isFrameItemContent(item.content)) {
-          rendered = <FrameItem {...adapterProps} />;
+          rendered = (
+            <FrameItem
+              {...adapterProps}
+              childCount={frameChildCounts.get(item.id)}
+            />
+          );
         }
         if (item.type === ItemType.EMBED && isEmbedContent(item.content)) {
           rendered = <EmbedItem {...adapterProps} />;
@@ -210,16 +387,22 @@ export const CanvasItemLayer = React.memo(function CanvasItemLayer({
         if (!rendered) return null;
 
         const isMatch = searchMatchIds?.has(item.id) ?? true;
+        const isSelected = selectedItemIds.has(item.id);
         const opacity =
-          !searchActive || isMatch || selectedItemIds.has(item.id)
+          !searchActive || isMatch || isSelected
             ? 1
             : isStructuralCanvasItem(item)
               ? 0.55
               : 0.18;
         return (
-          <Group
+          <AnimatedItemGroup
             key={item.id}
-            opacity={opacity}
+            item={item}
+            targetOpacity={opacity}
+            isSearchHighlighted={searchActive && isMatch && !isSelected}
+            isSearchActiveAndMatch={searchActive && isMatch}
+            shouldAnimateSpawn={newlyAddedIds.has(item.id)}
+            palette={palette}
             onTouchStart={(event) => {
               const touch = event.evt.touches[0];
               if (touch) {
@@ -238,7 +421,7 @@ export const CanvasItemLayer = React.memo(function CanvasItemLayer({
             }}
           >
             {rendered}
-          </Group>
+          </AnimatedItemGroup>
         );
       })}
 
