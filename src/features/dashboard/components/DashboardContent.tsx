@@ -17,18 +17,25 @@ import {
   InputAdornment,
   Paper,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
   Typography,
   Alert,
   alpha,
 } from "@mui/material";
 import {
   Add as AddIcon,
+  ChevronRight as CollapseSidebarIcon,
   Delete as DeleteIcon,
   CheckBoxOutlineBlank,
   Close as CloseIcon,
   BrushOutlined as CanvasIcon,
   FolderOutlined as WorkspaceIcon,
+  GridView as GridViewIcon,
+  History as ActivityIcon,
   UploadFile,
+  ViewList as ViewListIcon,
 } from "@mui/icons-material";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -39,10 +46,12 @@ import {
   canvasKeys,
   type CanvasListSort,
 } from "@/lib/hooks/use-canvases";
+import * as workspaceHooks from "@/lib/hooks/use-workspaces";
 import {
   useAssignCanvasToWorkspace,
   useWorkspace,
 } from "@/lib/hooks/use-workspaces";
+import { TOUCH_TARGET } from "@/lib/theme";
 import { ActivityFeed } from "./ActivityFeed";
 import { StarterRow } from "./StarterRow";
 import { ImportCanvasDialog } from "./ImportCanvasDialog";
@@ -66,11 +75,88 @@ const canvasCount = (count: number) =>
   `${count} canvas${count === 1 ? "" : "es"}`;
 
 const SORT_STORAGE_KEY = "memoria.dashboard.sort";
+const VIEW_MODE_STORAGE_KEY = "memoria.dashboard.viewMode";
+const ACTIVITY_COLLAPSED_STORAGE_KEY = "memoria.dashboard.activityCollapsed";
+
+type DashboardViewMode = "grid" | "list";
+
 const SORT_LABELS: Record<CanvasListSort, string> = {
   updated: "Recently updated",
   name: "Name (A to Z)",
   created: "Newest first",
 };
+
+function hasUseWorkspacesHook(): boolean {
+  try {
+    return typeof workspaceHooks.useWorkspaces === "function";
+  } catch {
+    return false;
+  }
+}
+
+function WorkspaceFilterPills({
+  workspaceId,
+  onSelect,
+}: {
+  workspaceId: string | null;
+  onSelect: (nextWorkspaceId: string | null) => void;
+}) {
+  const { data } = workspaceHooks.useWorkspaces();
+  const workspaces = useMemo(
+    () =>
+      [...(data?.workspaces ?? [])].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    [data],
+  );
+
+  if (workspaces.length === 0) return null;
+
+  return (
+    <Box
+      role="group"
+      aria-label="Filter by workspace"
+      data-testid="workspace-filter-pills"
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 0.75,
+        mb: 2,
+      }}
+    >
+      <Chip
+        size="small"
+        label="All canvases"
+        variant={!workspaceId ? "filled" : "outlined"}
+        color={!workspaceId ? "primary" : "default"}
+        onClick={() => onSelect(null)}
+        aria-pressed={!workspaceId}
+        sx={{
+          "@media (pointer: coarse)": { minHeight: TOUCH_TARGET },
+        }}
+      />
+      {workspaces.map((ws) => {
+        const active = workspaceId === ws.id;
+        return (
+          <Chip
+            key={ws.id}
+            size="small"
+            icon={<WorkspaceIcon fontSize="small" />}
+            label={ws.name}
+            variant={active ? "filled" : "outlined"}
+            color={active ? "primary" : "default"}
+            onClick={() => onSelect(active ? null : ws.id)}
+            aria-pressed={active}
+            sx={{
+              "@media (pointer: coarse)": { minHeight: TOUCH_TARGET },
+            }}
+          />
+        );
+      })}
+    </Box>
+  );
+}
 
 export function DashboardContent({ userName }: { userName?: string | null }) {
   const router = useRouter();
@@ -82,6 +168,8 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [showActivity, setShowActivity] = useState(true);
+  const [activityCollapsed, setActivityCollapsed] = useState(false);
+  const [viewMode, setViewMode] = useState<DashboardViewMode>("grid");
   const [newCanvasName, setNewCanvasName] = useState("");
   const createInFlightRef = useRef(false);
   const [selectedCanvasIds, setSelectedCanvasIds] = useState<Set<string>>(
@@ -110,8 +198,18 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     try {
       const saved = window.localStorage.getItem(SORT_STORAGE_KEY);
       if (saved && saved in SORT_LABELS) setSort(saved as CanvasListSort);
+      const savedView = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+      if (savedView === "grid" || savedView === "list") {
+        setViewMode(savedView);
+      }
+      const savedActivity = window.localStorage.getItem(
+        ACTIVITY_COLLAPSED_STORAGE_KEY,
+      );
+      if (savedActivity === "true") {
+        setActivityCollapsed(true);
+      }
     } catch {
-      // Storage can be blocked; the default order still works.
+      // Storage can be blocked; the defaults still work.
     }
   }, []);
   useEffect(() => {
@@ -128,6 +226,28 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
     } catch {
       // Remembering the choice is a convenience only.
     }
+  };
+  const changeViewMode = (next: DashboardViewMode) => {
+    setViewMode(next);
+    try {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, next);
+    } catch {
+      // Remembering the choice is a convenience only.
+    }
+  };
+  const toggleActivityCollapsed = () => {
+    setActivityCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          ACTIVITY_COLLAPSED_STORAGE_KEY,
+          String(next),
+        );
+      } catch {
+        // Remembering the choice is a convenience only.
+      }
+      return next;
+    });
   };
   const clearFilter = () => {
     setFilterText("");
@@ -352,6 +472,68 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
   const filtering = filterQuery.length > 0;
   const showListControls =
     !selectionMode && (allCount > 0 || filterText.length > 0 || filtering);
+  const activityVisible = showActivity && !activityCollapsed;
+  const canShowWorkspacePills =
+    !selectionMode &&
+    hasUseWorkspacesHook() &&
+    (showListControls || Boolean(workspaceId));
+
+  const renderCanvasCard = (
+    canvas: (typeof canvases)[number],
+    index: number,
+  ) => (
+    <CanvasCard
+      key={canvas.id}
+      name={canvas.name}
+      thumbnail={canvasThumbnailUrl(canvas)}
+      index={index}
+      variant={viewMode}
+      isPublic={Boolean(canvas.isPublic)}
+      isShared={Boolean(canvas.shares && canvas.shares.length > 0)}
+      selected={selectedCanvasIds.has(canvas.id)}
+      meta={`Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}
+      href={selectionMode ? undefined : `/canvas/${canvas.id}`}
+      onClick={
+        selectionMode ? (e) => handleCanvasClick(canvas.id, e) : undefined
+      }
+      corner={
+        selectionMode ? (
+          <Checkbox
+            checked={selectedCanvasIds.has(canvas.id)}
+            onChange={() => toggleCanvasSelection(canvas.id)}
+            onClick={(e) => e.stopPropagation()}
+            sx={{
+              bgcolor: "background.paper",
+              borderRadius: 1,
+              p: 0.25,
+            }}
+          />
+        ) : (
+          <CanvasCardMenu
+            canvas={canvas}
+            onRename={(name) =>
+              updateCanvas.mutateAsync({
+                canvasId: canvas.id,
+                data: { name },
+              })
+            }
+            onDuplicate={() => void handleDuplicate(canvas.id)}
+            onMove={(target) =>
+              assignToWorkspace.mutateAsync({
+                canvasId: canvas.id,
+                workspaceId: target,
+              })
+            }
+            deleteLabel="Move to Trash"
+            onDelete={() => {
+              setSelectedCanvasIds(new Set([canvas.id]));
+              setDeleteConfirmOpen(true);
+            }}
+          />
+        )
+      }
+    />
+  );
 
   return (
     <>
@@ -414,7 +596,7 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           display: "grid",
           gridTemplateColumns: {
             xs: "1fr",
-            md: showActivity ? "minmax(0, 1fr) 320px" : "1fr",
+            md: activityVisible ? "minmax(0, 1fr) 320px" : "1fr",
           },
           gap: 3,
           alignItems: "start",
@@ -437,6 +619,9 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                 borderRadius: 3,
                 bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
                 animation: "fadeIn 0.25s ease-out",
+                "@media (prefers-reduced-motion: reduce)": {
+                  animation: "none",
+                },
               }}
             >
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
@@ -503,6 +688,8 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
               sx={{
                 display: "flex",
                 flexDirection: { xs: "column", sm: "row" },
+                alignItems: { xs: "stretch", sm: "center" },
+                flexWrap: "wrap",
                 gap: 1.5,
                 mb: 2,
               }}
@@ -546,7 +733,112 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
                   </option>
                 ))}
               </TextField>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  ml: { xs: 0, sm: "auto" },
+                }}
+              >
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={viewMode}
+                  aria-label="Canvas view"
+                  onChange={(_, next: DashboardViewMode | null) => {
+                    if (next) changeViewMode(next);
+                  }}
+                >
+                  <ToggleButton
+                    value="grid"
+                    aria-label="Grid view"
+                    sx={{
+                      "@media (pointer: coarse)": {
+                        minWidth: TOUCH_TARGET,
+                        minHeight: TOUCH_TARGET,
+                      },
+                    }}
+                  >
+                    <Tooltip title="Grid view">
+                      <GridViewIcon fontSize="small" />
+                    </Tooltip>
+                  </ToggleButton>
+                  <ToggleButton
+                    value="list"
+                    aria-label="Compact list view"
+                    sx={{
+                      "@media (pointer: coarse)": {
+                        minWidth: TOUCH_TARGET,
+                        minHeight: TOUCH_TARGET,
+                      },
+                    }}
+                  >
+                    <Tooltip title="Compact list">
+                      <ViewListIcon fontSize="small" />
+                    </Tooltip>
+                  </ToggleButton>
+                </ToggleButtonGroup>
+                {showActivity && (
+                  <Tooltip
+                    title={
+                      activityCollapsed
+                        ? "Show activity sidebar"
+                        : "Hide activity sidebar"
+                    }
+                  >
+                    <Button
+                      size="small"
+                      variant={activityCollapsed ? "outlined" : "text"}
+                      startIcon={<ActivityIcon fontSize="small" />}
+                      onClick={toggleActivityCollapsed}
+                      aria-pressed={!activityCollapsed}
+                      aria-label={
+                        activityCollapsed
+                          ? "Show activity sidebar"
+                          : "Hide activity sidebar"
+                      }
+                      sx={{
+                        whiteSpace: "nowrap",
+                        "@media (pointer: coarse)": {
+                          minHeight: TOUCH_TARGET,
+                        },
+                      }}
+                    >
+                      {activityCollapsed ? "Show activity" : "Hide activity"}
+                    </Button>
+                  </Tooltip>
+                )}
+              </Box>
             </Box>
+          )}
+
+          {!showListControls && showActivity && activityCollapsed && (
+            <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ActivityIcon fontSize="small" />}
+                onClick={toggleActivityCollapsed}
+                aria-pressed={false}
+                aria-label="Show activity sidebar"
+              >
+                Show activity
+              </Button>
+            </Box>
+          )}
+
+          {canShowWorkspacePills && (
+            <WorkspaceFilterPills
+              workspaceId={workspaceId}
+              onSelect={(nextWorkspaceId) =>
+                router.push(
+                  nextWorkspaceId
+                    ? `/dashboard?workspace=${encodeURIComponent(nextWorkspaceId)}`
+                    : "/dashboard",
+                )
+              }
+            />
           )}
 
           {!isLoading && !hasCanvases && filtering && (
@@ -587,60 +879,22 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
 
           {!isLoading && hasCanvases && (
             <>
-              <CardGrid>
-                {canvases.map((canvas, index) => (
-                  <CanvasCard
-                    key={canvas.id}
-                    name={canvas.name}
-                    thumbnail={canvasThumbnailUrl(canvas)}
-                    index={index}
-                    selected={selectedCanvasIds.has(canvas.id)}
-                    meta={`Updated ${formatDistanceToNow(new Date(canvas.updatedAt), { addSuffix: true })}`}
-                    href={selectionMode ? undefined : `/canvas/${canvas.id}`}
-                    onClick={
-                      selectionMode
-                        ? (e) => handleCanvasClick(canvas.id, e)
-                        : undefined
-                    }
-                    corner={
-                      selectionMode ? (
-                        <Checkbox
-                          checked={selectedCanvasIds.has(canvas.id)}
-                          onChange={() => toggleCanvasSelection(canvas.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          sx={{
-                            bgcolor: "background.paper",
-                            borderRadius: 1,
-                            p: 0.25,
-                          }}
-                        />
-                      ) : (
-                        <CanvasCardMenu
-                          canvas={canvas}
-                          onRename={(name) =>
-                            updateCanvas.mutateAsync({
-                              canvasId: canvas.id,
-                              data: { name },
-                            })
-                          }
-                          onDuplicate={() => void handleDuplicate(canvas.id)}
-                          onMove={(target) =>
-                            assignToWorkspace.mutateAsync({
-                              canvasId: canvas.id,
-                              workspaceId: target,
-                            })
-                          }
-                          deleteLabel="Move to Trash"
-                          onDelete={() => {
-                            setSelectedCanvasIds(new Set([canvas.id]));
-                            setDeleteConfirmOpen(true);
-                          }}
-                        />
-                      )
-                    }
-                  />
-                ))}
-              </CardGrid>
+              {viewMode === "list" ? (
+                <Box
+                  data-testid="canvas-list-view"
+                  sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                >
+                  {canvases.map((canvas, index) =>
+                    renderCanvasCard(canvas, index),
+                  )}
+                </Box>
+              ) : (
+                <CardGrid>
+                  {canvases.map((canvas, index) =>
+                    renderCanvasCard(canvas, index),
+                  )}
+                </CardGrid>
+              )}
               {hasNextPage && (
                 <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
                   <Button
@@ -655,10 +909,10 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
           )}
         </Box>
 
-        {/* Activity feed: stacked below the canvases on small screens and
-            left out when there is nothing to show, so the cards use the
-            width (IMP-083). */}
-        {showActivity && (
+        {/* Activity feed: stacked below the canvases on small screens,
+            collapsible on desktop, and left out when there is nothing to show
+            so the cards use the width (IMP-083). */}
+        {activityVisible && (
           <Paper
             variant="outlined"
             data-testid="activity-feed-panel"
@@ -669,7 +923,22 @@ export function DashboardContent({ userName }: { userName?: string | null }) {
               borderRadius: 3,
             }}
           >
-            <ActivityFeed limit={15} onHasActivity={setShowActivity} />
+            <ActivityFeed
+              limit={15}
+              onHasActivity={setShowActivity}
+              headerAction={
+                <Tooltip title="Hide activity sidebar">
+                  <IconButton
+                    size="small"
+                    aria-label="Collapse activity sidebar"
+                    onClick={toggleActivityCollapsed}
+                    sx={{ display: { xs: "none", md: "inline-flex" } }}
+                  >
+                    <CollapseSidebarIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              }
+            />
           </Paper>
         )}
       </Box>

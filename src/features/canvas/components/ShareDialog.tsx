@@ -19,11 +19,11 @@ import {
   CircularProgress,
   IconButton,
   Avatar,
+  Chip,
   List,
   ListItem,
   ListItemAvatar,
   ListItemText,
-  ListItemSecondaryAction,
   Paper,
   Select,
   MenuItem,
@@ -62,6 +62,12 @@ interface PendingInvitation {
   expiresAt: string;
   createdAt: string;
 }
+
+const SHARE_ROLE_LABELS: Record<Share["role"], string> = {
+  VIEW: "Viewer",
+  COMMENT: "Commenter",
+  EDIT: "Editor",
+};
 
 function formatShareError(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
@@ -415,6 +421,9 @@ export function ShareDialog({
                           <Check
                             sx={{
                               animation: `checkPop 220ms ${motion.springSnappy}`,
+                              "@media (prefers-reduced-motion: reduce)": {
+                                animation: "none",
+                              },
                             }}
                           />
                         ) : (
@@ -499,6 +508,9 @@ export function ShareDialog({
                             <Check
                               sx={{
                                 animation: `checkPop 220ms ${motion.springSnappy}`,
+                                "@media (prefers-reduced-motion: reduce)": {
+                                  animation: "none",
+                                },
                               }}
                             />
                           ) : (
@@ -594,9 +606,24 @@ export function ShareDialog({
 
             {/* List of shared users */}
             {shares.length > 0 && (
-              <List dense>
+              <List dense aria-label="Shared collaborators">
                 {shares.map((share) => (
-                  <ListItem key={share.id} sx={{ px: 0.5 }}>
+                  <ListItem
+                    key={share.id}
+                    sx={{ px: 0.5, pr: 6 }}
+                    secondaryAction={
+                      <IconButton
+                        edge="end"
+                        aria-label={`Revoke access for ${share.email}`}
+                        onClick={() =>
+                          void handleRevokeShare(share.id, share.email)
+                        }
+                        disabled={revokingShareId !== null}
+                      >
+                        <Delete />
+                      </IconButton>
+                    }
+                  >
                     <ListItemAvatar sx={{ minWidth: 42 }}>
                       <Avatar
                         sx={{
@@ -613,20 +640,29 @@ export function ShareDialog({
                     </ListItemAvatar>
                     <ListItemText
                       primary={share.email}
-                      secondary={`Can ${share.role.toLowerCase()}`}
+                      slotProps={{ secondary: { component: "div" } }}
+                      secondary={
+                        <Box
+                          component="span"
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.75,
+                            mt: 0.25,
+                          }}
+                        >
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color={
+                              share.role === "EDIT" ? "primary" : "default"
+                            }
+                            label={SHARE_ROLE_LABELS[share.role]}
+                            sx={{ height: 20, fontSize: "0.7rem" }}
+                          />
+                        </Box>
+                      }
                     />
-                    <ListItemSecondaryAction>
-                      <IconButton
-                        edge="end"
-                        aria-label={`Revoke access for ${share.email}`}
-                        onClick={() =>
-                          void handleRevokeShare(share.id, share.email)
-                        }
-                        disabled={revokingShareId !== null}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </ListItemSecondaryAction>
                   </ListItem>
                 ))}
               </List>
@@ -642,7 +678,25 @@ export function ShareDialog({
                 </Typography>
                 <List dense aria-label="Pending invitations">
                   {invitations.map((invitation) => (
-                    <ListItem key={invitation.id} sx={{ px: 0.5 }}>
+                    <ListItem
+                      key={invitation.id}
+                      sx={{ px: 0.5, pr: 6 }}
+                      secondaryAction={
+                        <IconButton
+                          edge="end"
+                          aria-label={`Revoke invitation for ${invitation.email}`}
+                          onClick={() =>
+                            void handleRevokeInvitation(
+                              invitation.id,
+                              invitation.email,
+                            )
+                          }
+                          disabled={revokingShareId !== null}
+                        >
+                          <Delete />
+                        </IconButton>
+                      }
+                    >
                       <ListItemAvatar sx={{ minWidth: 42 }}>
                         <Avatar
                           sx={{
@@ -659,23 +713,26 @@ export function ShareDialog({
                       </ListItemAvatar>
                       <ListItemText
                         primary={invitation.email}
-                        secondary={`Invited to ${invitation.role.toLowerCase()}`}
+                        slotProps={{ secondary: { component: "div" } }}
+                        secondary={
+                          <Box
+                            component="span"
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 0.75,
+                              mt: 0.25,
+                            }}
+                          >
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={`Invited · ${SHARE_ROLE_LABELS[invitation.role]}`}
+                              sx={{ height: 20, fontSize: "0.7rem" }}
+                            />
+                          </Box>
+                        }
                       />
-                      <ListItemSecondaryAction>
-                        <IconButton
-                          edge="end"
-                          aria-label={`Revoke invitation for ${invitation.email}`}
-                          onClick={() =>
-                            void handleRevokeInvitation(
-                              invitation.id,
-                              invitation.email,
-                            )
-                          }
-                          disabled={revokingShareId !== null}
-                        >
-                          <Delete />
-                        </IconButton>
-                      </ListItemSecondaryAction>
                     </ListItem>
                   ))}
                 </List>

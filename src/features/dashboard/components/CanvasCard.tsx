@@ -7,9 +7,14 @@ import {
   Card,
   CardActionArea,
   CardContent,
+  Chip,
   Skeleton,
   Typography,
 } from "@mui/material";
+import {
+  PeopleOutlined as SharedIcon,
+  Public as PublicIcon,
+} from "@mui/icons-material";
 import { appColor, motion } from "@/lib/theme";
 
 /** Placeholder colours for cards without a preview, picked by name. */
@@ -50,6 +55,14 @@ export interface CanvasCardProps {
   href?: string;
   onClick?: (event: React.MouseEvent) => void;
   index?: number;
+  /** Grid card (default) or compact horizontal list row. */
+  variant?: "grid" | "list";
+  /** Subtle metadata chip when the canvas has a public link enabled. */
+  isPublic?: boolean;
+  /** Subtle metadata chip when the canvas is shared with collaborators. */
+  isShared?: boolean;
+  /** Optional item count metadata chip when provided by the caller. */
+  itemCount?: number;
 }
 
 /** Canvas preview card shared by the dashboard, shared-with-me, and workspace views. */
@@ -63,19 +76,89 @@ export function CanvasCard({
   href,
   onClick,
   index = 0,
+  variant = "grid",
+  isPublic = false,
+  isShared = false,
+  itemCount,
 }: CanvasCardProps) {
   const [imageError, setImageError] = useState(false);
   const placeholder = placeholderFor(name);
   const showPreview = Boolean(thumbnail) && !imageError;
+  const isList = variant === "list";
+  const hasMetadataChips =
+    isPublic || isShared || typeof itemCount === "number";
+
+  const metadataChips = hasMetadataChips ? (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 0.75,
+        mt: isList ? 0.5 : 0.75,
+      }}
+    >
+      {typeof itemCount === "number" && (
+        <Chip
+          size="small"
+          variant="outlined"
+          label={`${itemCount} item${itemCount === 1 ? "" : "s"}`}
+          sx={{
+            height: 20,
+            fontSize: "0.7rem",
+            color: "text.secondary",
+            borderColor: "divider",
+          }}
+        />
+      )}
+      {isPublic && (
+        <Chip
+          size="small"
+          variant="outlined"
+          color="primary"
+          icon={<PublicIcon sx={{ fontSize: "13px !important" }} />}
+          label="Public"
+          sx={{
+            height: 20,
+            fontSize: "0.7rem",
+          }}
+        />
+      )}
+      {isShared && (
+        <Chip
+          size="small"
+          variant="outlined"
+          icon={<SharedIcon sx={{ fontSize: "13px !important" }} />}
+          label="Shared"
+          sx={{
+            height: 20,
+            fontSize: "0.7rem",
+            color: "text.secondary",
+            borderColor: "divider",
+          }}
+        />
+      )}
+    </Box>
+  ) : null;
 
   return (
     <Card
+      data-view={variant}
       sx={{
-        height: "100%",
+        height: isList ? "auto" : "100%",
         position: "relative",
         animation: `fadeIn 240ms ${motion.easeOut} ${Math.min(index * 28, 200)}ms both`,
+        "@media (prefers-reduced-motion: reduce)": {
+          animation: "none",
+          "&:hover": {
+            transform: "none",
+            "& .canvas-card-thumb": {
+              transform: "none",
+            },
+          },
+        },
         "&:hover": {
-          transform: "translateY(-3px)",
+          transform: isList ? "translateY(-1px)" : "translateY(-3px)",
           "& .canvas-card-thumb": {
             transform: "scale(1.035)",
           },
@@ -97,10 +180,11 @@ export function CanvasCard({
           className="canvas-card-corner"
           sx={{
             position: "absolute",
-            top: 8,
-            right: 8,
+            top: isList ? "50%" : 8,
+            right: isList ? 10 : 8,
+            transform: isList ? "translateY(-50%)" : "none",
             zIndex: 2,
-            opacity: selected || !href ? 1 : { xs: 1, md: 0.72 },
+            opacity: selected || !href || isList ? 1 : { xs: 1, md: 0.72 },
             transition: `opacity 150ms ${motion.easeOut}`,
             "@media (pointer: coarse)": { opacity: 1 },
           }}
@@ -108,7 +192,7 @@ export function CanvasCard({
           {corner}
         </Box>
       )}
-      {badge && (
+      {badge && !isList && (
         <Box sx={{ position: "absolute", top: 8, left: 8, zIndex: 2 }}>
           {badge}
         </Box>
@@ -120,13 +204,18 @@ export function CanvasCard({
         sx={{
           height: "100%",
           display: "flex",
-          flexDirection: "column",
-          alignItems: "stretch",
+          flexDirection: isList ? "row" : "column",
+          alignItems: isList ? "center" : "stretch",
+          pr: isList && corner ? 6 : 0,
         }}
       >
         <Box
           sx={{
-            height: 156,
+            height: isList ? 56 : 156,
+            width: isList ? 84 : "100%",
+            flexShrink: 0,
+            m: isList ? 1 : 0,
+            borderRadius: isList ? 1.5 : 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -163,7 +252,7 @@ export function CanvasCard({
               aria-hidden
               data-testid="canvas-card-placeholder"
               sx={{
-                fontSize: 52,
+                fontSize: isList ? 24 : 52,
                 fontWeight: 700,
                 lineHeight: 1,
                 color: `${placeholder.color}.main`,
@@ -174,16 +263,35 @@ export function CanvasCard({
             </Typography>
           )}
         </Box>
-        <CardContent sx={{ flexGrow: 1, width: "100%", py: 1.5 }}>
-          <Typography
-            variant="subtitle1"
-            noWrap
+        <CardContent
+          sx={{
+            flexGrow: 1,
+            minWidth: 0,
+            width: isList ? "auto" : "100%",
+            py: isList ? 1 : 1.5,
+            px: isList ? 1.5 : 2,
+            "&:last-child": { pb: isList ? 1 : 1.5 },
+          }}
+        >
+          <Box
             sx={{
-              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              minWidth: 0,
             }}
           >
-            {name}
-          </Typography>
+            <Typography
+              variant="subtitle1"
+              noWrap
+              sx={{
+                fontWeight: 600,
+              }}
+            >
+              {name}
+            </Typography>
+            {badge && isList && <Box sx={{ flexShrink: 0 }}>{badge}</Box>}
+          </Box>
           {meta && (
             <Typography
               variant="caption"
@@ -196,6 +304,7 @@ export function CanvasCard({
               {meta}
             </Typography>
           )}
+          {metadataChips}
         </CardContent>
       </CardActionArea>
     </Card>
@@ -209,6 +318,9 @@ export function CanvasCardSkeleton({ index = 0 }: { index?: number }) {
       sx={{
         height: "100%",
         animation: `fadeIn 0.4s ease-out ${index * 0.06}s both`,
+        "@media (prefers-reduced-motion: reduce)": {
+          animation: "none",
+        },
       }}
     >
       <Skeleton variant="rectangular" height={150} />

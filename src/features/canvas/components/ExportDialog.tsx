@@ -10,6 +10,7 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Switch,
   Typography,
   Box,
   Chip,
@@ -40,6 +41,8 @@ import { toJsonCanvas } from "@/lib/canvas-formats/json-canvas";
 import { describeCounts } from "@/lib/canvas-formats/describe";
 
 const EXPORT_PADDING = 40;
+/** Selector name matching no Konva layer, keeping dot/grid overlays visible. */
+const EXPORT_EXCLUDE_NONE = "export-exclude-none";
 
 export type ExportFormat = "json" | "markdown" | "pdf" | "png" | "canvas";
 
@@ -110,6 +113,7 @@ export function ExportDialog({
   stageRef,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>("png");
+  const [includeBackground, setIncludeBackground] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const boardCapture = useContext(BoardExportCaptureContext);
@@ -132,7 +136,7 @@ export function ExportDialog({
       if (!bounds) throw new Error("The canvas has no items to export");
       return captureStageRegion(stage, bounds, {
         pixelRatio: 2,
-        exclude: EXPORT_EXCLUDE_NAME,
+        exclude: includeBackground ? EXPORT_EXCLUDE_NONE : EXPORT_EXCLUDE_NAME,
       });
     } finally {
       session.restore();
@@ -304,6 +308,44 @@ export function ExportDialog({
             })}
           </RadioGroup>
         </FormControl>
+        {(format === "png" || format === "pdf") && (
+          <Box
+            sx={{
+              mt: 2,
+              px: 1.5,
+              py: 1.25,
+              borderRadius: 2.5,
+              border: "1px solid",
+              borderColor: "divider",
+              bgcolor: "action.hover",
+            }}
+          >
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={includeBackground}
+                  onChange={(e) => setIncludeBackground(e.target.checked)}
+                  disabled={isExporting}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    Include dot/grid background
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: "text.secondary", display: "block" }}
+                  >
+                    Keep the canvas dot or grid pattern in the exported image.
+                  </Typography>
+                </Box>
+              }
+              sx={{ m: 0, width: "100%", alignItems: "flex-start", gap: 1 }}
+            />
+          </Box>
+        )}
         {format === "canvas" && (
           <Alert severity={canvasLeftOut ? "info" : "success"} sx={{ mt: 2 }}>
             {canvasLeftOut

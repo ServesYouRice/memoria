@@ -35,6 +35,8 @@ interface ActivityFeedProps {
   canvasId?: string;
   limit?: number;
   showTitle?: boolean;
+  /** Optional action control placed opposite the "Latest activity" title. */
+  headerAction?: React.ReactNode;
   /** Told once loaded whether there is anything to show (IMP-083). */
   onHasActivity?: (hasActivity: boolean) => void;
 }
@@ -51,6 +53,7 @@ export function ActivityFeed({
   canvasId,
   limit = 20,
   showTitle = true,
+  headerAction,
   onHasActivity,
 }: ActivityFeedProps) {
   const {
@@ -92,9 +95,18 @@ export function ActivityFeed({
   return (
     <Box>
       {showTitle && (
-        <Typography variant="h6" gutterBottom>
-          Latest activity
-        </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1,
+            mb: 0.75,
+          }}
+        >
+          <Typography variant="h6">Latest activity</Typography>
+          {headerAction}
+        </Box>
       )}
 
       {activities.length === 0 ? (
