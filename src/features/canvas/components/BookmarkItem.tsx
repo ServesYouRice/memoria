@@ -26,8 +26,6 @@ import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 import {
   animateDragLift,
   animateItemFlight,
-  animateItemSpawn,
-  isRecentlyCreatedItem,
   setStageCursor,
   zoomInvariantHandleMetrics,
 } from "@/features/canvas/lib/canvas-motion";
@@ -129,14 +127,6 @@ function BookmarkItemComponent({
   // The enrichment summary says what the link is; a clipped selection or the
   // page description is the fallback.
   const blurb = content.summary || content.description;
-
-  useEffect(() => {
-    if (isRecentlyCreatedItem(item.createdAt)) {
-      animateItemSpawn(groupRef.current);
-    }
-    // Only animate entrance on initial mount for newly created bookmarks.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Sync with server updates
   useEffect(() => {

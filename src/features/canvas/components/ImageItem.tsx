@@ -20,8 +20,6 @@ import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 import {
   animateDragLift,
   animateItemFlight,
-  animateItemSpawn,
-  isRecentlyCreatedItem,
   setStageCursor,
   zoomInvariantHandleMetrics,
 } from "@/features/canvas/lib/canvas-motion";
@@ -75,14 +73,6 @@ export function ImageItem({
   const content = isImageContent(item.content)
     ? item.content
     : { url: "", filename: "Invalid image" };
-
-  useEffect(() => {
-    if (isRecentlyCreatedItem(item.createdAt)) {
-      animateItemSpawn(groupRef.current);
-    }
-    // Only animate entrance on initial mount for newly created images.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     const prevPos = localPositionRef.current;

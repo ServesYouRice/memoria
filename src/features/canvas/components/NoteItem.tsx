@@ -25,8 +25,6 @@ import { useCanvasPalette } from "@/features/canvas/lib/canvas-palette";
 import {
   animateDragLift,
   animateItemFlight,
-  animateItemSpawn,
-  isRecentlyCreatedItem,
   setStageCursor,
   zoomInvariantHandleMetrics,
 } from "@/features/canvas/lib/canvas-motion";
@@ -86,14 +84,6 @@ export function NoteItem({
       readableText = stripHtmlTags(content.text || "Unsupported note content");
     }
   }
-
-  useEffect(() => {
-    if (isRecentlyCreatedItem(item.createdAt)) {
-      animateItemSpawn(groupRef.current);
-    }
-    // Only animate entrance on initial mount for newly created notes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     const prevPos = localPositionRef.current;
